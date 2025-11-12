@@ -211,15 +211,27 @@ Documentation: [Status]
 
 Invoke **implementation-tracker** one final time for complete documentation.
 
-#### Step 4.3: Recommend Code Review
+#### Step 4.3: Offer Reconciliation
 
-Suggest code review:
+Offer to reconcile implementation against spec:
 ```
 Implementation complete!
 
 ✅ All [Y] requirements implemented
 ✅ Implementation tracked and documented
 
+Would you like me to:
+1. Run `/reconcile` to verify all requirements are met
+2. Run `/review-code` to check code quality and standards
+3. Both (reconcile first, then review)
+```
+
+If user chooses reconciliation, invoke the `/reconcile` command.
+
+#### Step 4.4: Recommend Code Review
+
+After reconciliation (if run) or if user skips, suggest code review:
+```
 RECOMMENDED NEXT STEP 👉 Run `/review-code` to verify quality and standards adherence.
 ```
 
