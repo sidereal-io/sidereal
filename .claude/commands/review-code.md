@@ -22,22 +22,41 @@ If reviewing against a spec, which spec? [Or specify "general review"]
 
 WAIT for user response.
 
-### Step 2: Invoke Code Reviewer Agent
+### Step 2: Offer Reconciliation (if spec-based review)
+
+If reviewing against a spec, offer to reconcile first:
+
+```
+Would you like me to run reconciliation before code review?
+
+Reconciliation verifies all spec requirements are implemented.
+Code review checks code quality and standards.
+
+Options:
+1. Reconcile first, then review
+2. Just review code
+```
+
+If user chooses reconciliation, invoke `/reconcile` first, then proceed to code review.
+
+### Step 3: Invoke Code Reviewer Agent
 
 Once scope is determined, use the **code-reviewer** subagent:
 
 Provide the code-reviewer with:
 - Review scope (recent changes / specific files / branch / feature area)
 - Spec path (if reviewing against a spec)
+- Reconciliation results (if reconciliation was run)
 - Any specific concerns user mentioned
 
 The code-reviewer will:
 - Analyze the code
 - Check against standards in `.ai/standards/`
 - Verify spec conformance (if applicable)
+- Consider reconciliation findings (if available)
 - Generate detailed review report
 
-### Step 3: Present Results
+### Step 4: Present Results
 
 After code-reviewer completes, present the summary to user:
 
@@ -60,7 +79,7 @@ Code Review Complete!
 Full report: [location if saved to file]
 ```
 
-### Step 4: Offer Next Steps
+### Step 5: Offer Next Steps
 
 Based on review results:
 
