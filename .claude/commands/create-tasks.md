@@ -8,12 +8,12 @@ You will need ONE OR BOTH of these files to inform your tasks breakdown:
 - `.ai/specs/[this-spec]/spec.md`
 - `.ai/specs/[this-spec]/planning/requirements.md`
 
-IF you don't have ONE OR BOTH of those files in your current conversation context, then ask user to provide direction on where to you can find them by outputting the following request then wait for user's response:
+IF you don't have ONE OR BOTH of those files in your current conversation context, then ask user to provide direction on where you can find them by outputting the following request then wait for user's response:
 
 ```
 I'll need a spec.md or requirements.md (or both) in order to build a tasks list.
 
-Please direct me to where I can find those.  If you haven't created them yet, you can run /shape-spec or /write-spec.
+Please direct me to where I can find those.  If you haven't created them yet, you can run /plan-spec or /write-spec.
 ```
 
 ## PHASE 2: Create tasks.md
