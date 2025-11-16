@@ -8,3 +8,6 @@
 - **Remove Dead Code**: Delete unused code, commented-out blocks, and imports rather than leaving them as clutter
 - **Backward compatibility only when required:** Unless specifically instructed otherwise, assume you do not need to write additional code logic to handle backward compatibility.
 - **DRY Principle**: Avoid duplication by extracting common logic into reusable functions or modules
+- **Self-Documenting Code**: Write code that explains itself through clear structure and naming
+- **Minimal, helpful comments**: Add concise, minimal comments to explain large sections of code logic.
+- **Don't comment changes or fixes**: Do not leave code comments that sp
