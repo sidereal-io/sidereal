@@ -1,5 +1,6 @@
 # Roadmap
 
+1.  [ ] **Project Setup** - Inititalize a new project following the architecture outlined in `.ai/standards/architecture.md` and the standards outlined in `.ai/standards/*` `S`
 1.  [ ] **Equipment Catalog Management** — Implement full-stack CRUD (Create, Read, Update, Delete) for the Equipment Catalog, allowing users to define their telescopes, cameras, and filters. `M`
 2.  [ ] **SAL & Local File Ingestion** — Implement the Storage Abstraction Layer (SAL) with a local filesystem provider. Create a backend service to scan specified directories and populate the database catalog with new image records. `L`
 3.  [ ] **Basic Image Gallery UI** — Develop a simple frontend view that fetches all images from the catalog API and displays them as a list or thumbnail grid, demonstrating the ingestion process. `S`
