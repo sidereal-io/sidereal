@@ -21,6 +21,6 @@ This document outlines the technical architecture choices for the Sidereal proje
 - **Database**: PostgreSQL
 
 ### Testing and Quality
-- **Unit and Integration Test Framework**: Jest
+- **Unit and Integration Test Framework**: Vitest
 - **End-to-end Test Framework**: Playwright
 - **Linting/Formatting**: ESLint
