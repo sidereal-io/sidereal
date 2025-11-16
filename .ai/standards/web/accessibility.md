@@ -1,5 +1,6 @@
 ## UI accessibility standards
 
+- **Web Content Accessibility Guidelines**: Strive to meet WCAG 2.1 AA when possible
 - **Semantic HTML**: Use appropriate HTML elements (nav, main, button, etc.) that convey meaning to assistive technologies
 - **Keyboard Navigation**: Ensure all interactive elements are accessible via keyboard with visible focus indicators
 - **Color Contrast**: Maintain sufficient contrast ratios (4.5:1 for normal text) and don't rely solely on color to convey information
