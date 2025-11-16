@@ -1,4 +1,4 @@
-## UI component standards
+## UI Components Standard
 
 - **Single Responsibility**: Each component should have one clear purpose and do it well
 - **Reusability**: Design components to be reused across different contexts with configurable props

@@ -1,4 +1,4 @@
-## Responsive design best practices
+## Responsive Standard
 
 - **Standard Breakpoints**: Consistently use standard breakpoints across the application (e.g., mobile, tablet, desktop)
 - **Fluid Layouts**: Use percentage-based widths and flexible containers that adapt to screen size

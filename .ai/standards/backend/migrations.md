@@ -1,4 +1,4 @@
-## Database Migration Standards
+## Database Migration Standard
 
 - **Reversible Migrations**: Always implement rollback/down methods to enable safe migration reversals
 - **Small, Focused Changes**: Keep each migration focused on a single logical change for clarity and easier troubleshooting

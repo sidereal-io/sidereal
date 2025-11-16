@@ -1,4 +1,4 @@
-## CSS standards
+## CSS standard
 
 - **Consistent Methodology**: Apply and stick to the project's consistent CSS methodology
 - **Avoid Overriding Framework Styles**: Work with your framework's patterns rather than fighting against them with excessive overrides

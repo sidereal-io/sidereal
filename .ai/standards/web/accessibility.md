@@ -1,4 +1,4 @@
-## UI accessibility standards
+## Accessibility Standard
 
 - **Web Content Accessibility Guidelines**: Strive to meet WCAG 2.1 AA when possible
 - **Semantic HTML**: Use appropriate HTML elements (nav, main, button, etc.) that convey meaning to assistive technologies
