@@ -137,3 +137,16 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Docker volumes and data
+postgres-data/
+.docker/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Test outputs
+test-results/
+playwright-report/
