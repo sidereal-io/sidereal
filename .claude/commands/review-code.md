@@ -51,7 +51,6 @@ Provide the code-reviewer with:
 
 The code-reviewer will:
 - Analyze the code
-- Check against standards in `.ai/standards/`
 - Verify spec conformance (if applicable)
 - Consider reconciliation findings (if available)
 - Generate detailed review report

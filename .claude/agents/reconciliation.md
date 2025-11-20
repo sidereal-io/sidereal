@@ -24,7 +24,7 @@ Read the complete specification context:
 
 ```bash
 # Identify spec path (provided by orchestrator or find most recent)
-SPEC_PATH=".ai/specs/[spec-name]"
+SPEC_PATH="docs/planning/specs/[spec-name]"
 
 # Read all relevant documents
 cat $SPEC_PATH/planning/requirements.md
@@ -138,7 +138,7 @@ Example:
 
 ### Step 7: Generate Reconciliation Report
 
-Create comprehensive report at: `.ai/specs/[spec-name]/implementation/reconciliation.md`
+Create comprehensive report at: `docs/planning/specs/[spec-name]/implementation/reconciliation.md`
 
 ```markdown
 # Reconciliation Report: [Spec Name]
@@ -364,7 +364,7 @@ Important Gaps: [N]
 
 Recommendation: [Approve | Approve with Follow-up | Needs Work]
 
-Full report: .ai/specs/[spec-name]/implementation/reconciliation.md
+Full report: docs/planning/specs/[spec-name]/implementation/reconciliation.md
 ```
 
 ## Important Constraints

@@ -18,7 +18,7 @@ First, check if the user has already provided instructions about which task grou
 
 **If the user has NOT provided instructions:**
 
-Read `.ai/specs/[this-spec]/tasks.md` to review the available task groups, then output the following message to the user and WAIT for their response:
+Read `docs/planning/specs/[this-spec]/tasks.md` to review the available task groups, then output the following message to the user and WAIT for their response:
 
 ```
 Should we proceed with implementation of all task groups in tasks.md?
@@ -31,16 +31,16 @@ If not, then please specify which task(s) to implement.
 Delegate to the **task-implementer** subagent to implement the specified task group(s):
 
 Provide to the subagent:
-- The specific task group(s) from `.ai/specs/[this-spec]/tasks.md` including the parent task, all sub-tasks, and any sub-bullet points
-- The path to this spec's documentation: `.ai/specs/[this-spec]/spec.md`
-- The path to this spec's requirements: `.ai/specs/[this-spec]/planning/requirements.md`
-- The path to this spec's visuals (if any): `.ai/specs/[this-spec]/planning/visuals`
+- The specific task group(s) from `docs/planning/specs/[this-spec]/tasks.md` including the parent task, all sub-tasks, and any sub-bullet points
+- The path to this spec's documentation: `docs/planning/specs/[this-spec]/spec.md`
+- The path to this spec's requirements: `docs/planning/specs/[this-spec]/planning/requirements.md`
+- The path to this spec's visuals (if any): `docs/planning/specs/[this-spec]/planning/visuals`
 
 Instruct the subagent to:
 1. Analyze the provided spec.md, requirements.md, and visuals (if any)
 2. Analyze patterns in the codebase according to its built-in workflow
 3. Implement the assigned task group according to requirements and standards
-4. Update `.ai/specs/[this-spec]/tasks.md` to mark completed tasks with `- [x]`
+4. Update `docs/planning/specs/[this-spec]/tasks.md` to mark completed tasks with `- [x]`
 
 ### PHASE 3: Produce the final verification report
 
@@ -49,7 +49,7 @@ IF ALL task groups in tasks.md are marked complete with `- [x]`, then proceed wi
 Assuming all tasks are marked complete, then delegate to the **implementation-verifier** subagent to do its implementation verification and produce its final verification report.
 
 Provide to the subagent the following:
-- The path to this spec: `.ai/specs/[this-spec]`
+- The path to this spec: `docs/planning/specs/[this-spec]`
 Instruct the subagent to do the following:
   1. Run all of its final verifications according to its built-in workflow
-  2. Produce the final verification report in `.ai/specs/[this-spec]/verifications/final-verification.md`.
+  2. Produce the final verification report in `docs/planning/specs/[this-spec]/verifications/final-verification.md`.

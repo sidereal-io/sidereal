@@ -71,17 +71,16 @@ sidereal/
 │   ├── typescript-config/ # Shared TypeScript configurations
 │   ├── eslint-config/     # Shared ESLint rules
 │   └── shared-types/      # Common TypeScript types
-├── .ai/
-│   └── standards/         # Project coding standards and conventions
+├── docs/
+│   └── planning/          # Project vision, milestones, and requirements
 ├── docker-compose.yml     # Multi-service container orchestration
-└── pnpm-workspace.yaml   # Monorepo workspace configuration
+└── pnpm-workspace.yaml    # Monorepo workspace configuration
 ```
 
 ## 5. 📚 Development Documentation
 
 - **Frontend**: See [apps/frontend/README.md](apps/frontend/README.md)
 - **Backend**: See [apps/backend/README.md](apps/backend/README.md)
-- **Standards**: See [.ai/standards/](.ai/standards/) for coding conventions
 
 ## 6. 🧪 Testing
 

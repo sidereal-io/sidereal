@@ -5,7 +5,7 @@ You are creating a comprehensive specification for a new feature.
 Use the **spec-writer** subagent to create the specification document for this spec:
 
 Provide the spec-writer with:
-- The spec folder path (find the current one or the most recent in `.ai/specs/*/`)
+- The spec folder path (find the current one or the most recent in `docs/planning/specs/*/`)
 - The requirements from `planning/requirements.md`
 - Any visual assets in `planning/visuals/`
 
