@@ -22,7 +22,7 @@ Determine which spec to implement:
 ```bash
 # If user provided spec name/path, use that
 # Otherwise, list available specs
-ls -t .ai/specs/*/spec.md | head -5
+ls -t docs/planning/specs/*/spec.md | head -5
 ```
 
 Ask user which spec to implement if ambiguous.
@@ -32,23 +32,23 @@ Ask user which spec to implement if ambiguous.
 Read the specification:
 ```bash
 # Read the spec
-cat .ai/specs/[spec-name]/spec.md
+cat docs/planning/specs/[spec-name]/spec.md
 
 # Check for requirements context
-cat .ai/specs/[spec-name]/planning/requirements.md
+cat docs/planning/specs/[spec-name]/planning/requirements.md
 
 # Check for visual assets
-ls .ai/specs/[spec-name]/planning/visuals/ 2>/dev/null
+ls docs/planning/specs/[spec-name]/planning/visuals/ 2>/dev/null
 ```
 
 #### Step 1.3: Create Implementation Structure
 
 If not exists, create:
 ```bash
-mkdir -p .ai/specs/[spec-name]/implementation
+mkdir -p docs/planning/specs/[spec-name]/implementation
 ```
 
-Create initial checklist at `.ai/specs/[spec-name]/implementation/checklist.md`:
+Create initial checklist at `docs/planning/specs/[spec-name]/implementation/checklist.md`:
 
 ```markdown
 # Implementation Checklist: [Spec Name]
@@ -121,7 +121,7 @@ For each requirement or task:
 
 1. **Clarify**: Ensure you understand what needs to be built
 2. **Check for Reusable Code**: Reference "Existing Code to Leverage" from spec
-3. **Build**: Write the code following standards in `.ai/standards/`
+3. **Build**: Write the code
 4. **Validate**: Ensure validation.md principles are followed
 5. **Handle Errors**: Apply proper error handling
 6. **Test**: Write minimal tests per testing.md (if at logical completion point)
@@ -131,7 +131,7 @@ For each requirement or task:
 After completing each requirement or significant task, update the checklist:
 
 ```bash
-# Update .ai/specs/[spec-name]/implementation/checklist.md
+# Update docs/planning/specs/[spec-name]/implementation/checklist.md
 # Mark completed items with [x]
 ```
 
@@ -169,7 +169,7 @@ Provide the tracker with:
 - Recent work completed
 - Any deviations from spec
 
-The tracker will update `.ai/specs/[spec-name]/implementation/progress.md`.
+The tracker will update `docs/planning/specs/[spec-name]/implementation/progress.md`.
 
 Inform user:
 ```
@@ -184,7 +184,7 @@ Status update saved to implementation/progress.md
 
 When implementation is complete (or user requests verification):
 
-1. Read the checklist: `.ai/specs/[spec-name]/implementation/checklist.md`
+1. Read the checklist: `docs/planning/specs/[spec-name]/implementation/checklist.md`
 2. Compare against spec.md requirements
 3. Identify any incomplete items
 
@@ -238,12 +238,6 @@ RECOMMENDED NEXT STEP 👉 Run `/review-code` to verify quality and standards ad
 ## Important Guidelines
 
 ### During Implementation
-
-**Follow Standards**:
-- Apply `.ai/standards/coding-style.md`
-- Implement validation per `.ai/standards/validation.md`
-- Follow testing approach in `.ai/standards/testing.md`
-- Use conventions from `.ai/standards/conventions.md`
 
 **Reuse Existing Code**:
 - Check spec's "Existing Code to Leverage" section

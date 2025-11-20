@@ -88,7 +88,6 @@ Establish a complete, containerized monorepo development environment with Hono +
 - Frontend README explaining app structure, available scripts, and how to add components
 - Backend README explaining API structure, migration workflow, and how to add endpoints
 - Include architecture diagram showing service communication flow between containers
-- Document standards alignment in root README pointing to `.ai/standards/` directory
 
 ## Visual Design
 No visual assets provided for this infrastructure setup specification.
@@ -96,9 +95,8 @@ No visual assets provided for this infrastructure setup specification.
 ## Existing Code to Leverage
 
 **No existing application code**
-- This is a greenfield project with only `.ai` documentation currently in the repository
+- This is a greenfield project with only `docs/planning` documentation currently in the repository
 - No existing patterns to follow or components to reuse
-- Project standards in `.ai/standards/` define conventions that must be followed from the start
 - Future features will leverage the infrastructure created by this specification
 - Shared packages created here will become the foundation for code reuse across apps
 

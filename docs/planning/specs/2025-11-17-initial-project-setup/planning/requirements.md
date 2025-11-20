@@ -75,14 +75,14 @@ What should explicitly NOT be included in this initial setup? For example: authe
 
 ### Existing Code to Reference
 
-No similar existing features identified for reference. This is a greenfield project - only `.ai` documentation exists.
+No similar existing features identified for reference. This is a greenfield project - only `docs/planning` documentation exists.
 
 ### Follow-up Questions
 
 **Follow-up 1: Standards Alignment**
-Review the project standards in `.ai/standards/` to ensure requirements align with coding style, testing approach, validation requirements, and frontend/backend patterns. Should the spec explicitly reference these standards?
+Review the project standards in `docs/planning/architecture.md` to ensure requirements align with coding style, testing approach, validation requirements, and frontend/backend patterns. Should the spec explicitly reference these standards?
 
-**Answer:** Yes, document all findings in `planning/requirements.md` following the standard format. Include sections for each key area: monorepo structure (apps/ and packages/), Docker setup, dependencies, database configuration, development workflow, and explicit scope boundaries. Ensure alignment with `.ai/standards/` for:
+**Answer:** Yes, document all findings in `planning/requirements.md` following the standard format. Include sections for each key area: monorepo structure (apps/ and packages/), Docker setup, dependencies, database configuration, development workflow, and explicit scope boundaries. Ensure alignment with `docs/planning/architecture.md` for:
 - Coding style (naming, formatting, functions)
 - Testing (minimal during dev, defer edge cases)
 - Validation (server-side required)
@@ -206,7 +206,7 @@ This is a greenfield project with no existing codebase to reuse. However, the se
 ### Technical Considerations
 
 **Alignment with Project Standards:**
-The specification must ensure alignment with standards defined in `.ai/standards/`:
+The specification must ensure alignment with standards defined in `docs/planning/architecture.md`:
 - Coding style: naming conventions, formatting, function structure
 - Testing: minimal during development, defer edge cases, focus on critical paths
 - Validation: server-side validation required for all inputs

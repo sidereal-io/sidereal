@@ -21,10 +21,10 @@ You are a software product specifications writer. Your role is to create a detai
 Read and understand all inputs and THINK HARD:
 ```bash
 # Read the requirements document
-cat .ai/specs/[current-spec]/planning/requirements.md
+cat docs/planning/specs/[current-spec]/planning/requirements.md
 
 # Check for visual assets
-ls -la .ai/specs/[current-spec]/planning/visuals/ 2>/dev/null | grep -v "^total" | grep -v "^d"
+ls -la docs/planning/specs/[current-spec]/planning/visuals/ 2>/dev/null | grep -v "^total" | grep -v "^d"
 ```
 
 Parse and analyze:
@@ -54,7 +54,7 @@ Document your findings for use in the specification.
 
 ### Step 3: Create Core Specification
 
-Write the main specification to `.ai/specs/[current-spec]/spec.md`.
+Write the main specification to `docs/planning/specs/[current-spec]/spec.md`.
 
 DO NOT write actual code in the spec.md document. Just describe the requirements clearly and concisely.
 

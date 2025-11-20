@@ -32,7 +32,7 @@ First, determine which spec is being implemented:
 ```bash
 # Check if user provided spec path
 # If not, find the most recent spec
-ls -t .ai/specs/*/spec.md | head -1
+ls -t docs/planning/specs/*/spec.md | head -1
 ```
 
 Read the spec file to understand requirements.
@@ -60,7 +60,7 @@ Read the relevant code files and map them to specific requirements in the spec:
 
 ### Step 4: Create or Update Implementation Report
 
-Write to: `.ai/specs/[spec-name]/implementation/progress.md`
+Write to: `docs/planning/specs/[spec-name]/implementation/progress.md`
 
 Use this structure:
 
@@ -112,9 +112,6 @@ Last Updated: [ISO Date]
 **Potential Improvements:**
 - [Areas that might need refactoring or attention]
 
-**Standards Adherence:**
-- [How well code follows .ai/standards/]
-
 ## Next Steps
 
 **Remaining Work:**
@@ -128,7 +125,7 @@ Last Updated: [ISO Date]
 
 ### Step 5: Update Implementation Checklist
 
-If `.ai/specs/[spec-name]/implementation/checklist.md` exists, update it:
+If `docs/planning/specs/[spec-name]/implementation/checklist.md` exists, update it:
 
 ```markdown
 # Implementation Checklist: [Spec Name]
@@ -187,7 +184,6 @@ Next recommended actions:
 - **Be concise**: Keep entries scannable and actionable
 - **Update incrementally**: This is a living document that grows with the implementation
 - **No code writing**: This agent only documents; it does not write application code
-- **Standards awareness**: Reference `.ai/standards/` when noting quality observations
 
 ## Integration Points
 

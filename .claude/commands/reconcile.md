@@ -19,7 +19,7 @@ Determine which spec to reconcile:
 ```bash
 # If user provided spec name/path, use that
 # Otherwise, list recent specs
-ls -t .ai/specs/*/spec.md | head -5
+ls -t docs/planning/specs/*/spec.md | head -5
 ```
 
 If ambiguous, ask:
@@ -41,7 +41,7 @@ WAIT for user response if needed.
 Check if implementation has begun:
 
 ```bash
-SPEC_PATH=".ai/specs/[spec-name]"
+SPEC_PATH="docs/planning/specs/[spec-name]"
 
 # Check for implementation artifacts
 ls $SPEC_PATH/implementation/ 2>/dev/null
@@ -101,7 +101,7 @@ Reconciliation Complete!
 ⚠️ Review the reconciliation report for details on gaps and deviations
 
 Full report saved to:
-.ai/specs/[spec-name]/implementation/reconciliation.md
+docs/planning/specs/[spec-name]/implementation/reconciliation.md
 ```
 
 ### Step 5: Offer Next Steps
@@ -138,7 +138,7 @@ Would you like to:
 Implementation is [XX]% complete with [N] requirements missing.
 
 Recommended action:
-1. Review reconciliation report: .ai/specs/[spec-name]/implementation/reconciliation.md
+1. Review reconciliation report: docs/planning/specs/[spec-name]/implementation/reconciliation.md
 2. Continue implementation with /implement-spec
 3. Address critical gaps first
 ```
