@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the system architecture and technology choices for the Sidereal project. It is intended for developers who need to understand the system design and implementation details.
+This document describes the system architecture and technology choices for the Sidereal project. It is intended for developers who need to understand the system design and implementation details, including the detailed backend API design and ingestion orchestrator system.
 
 ## System Architecture
 
