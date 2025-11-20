@@ -113,40 +113,29 @@ Response includes nested related entities rather than just IDs.
 
 ---
 
-## Ingestion Orchestrator
+## Image Ingestion Orchestrator
 
-The ingestion orchestrator is responsible for discovering, importing, and enriching entities from external sources. It follows a pluggable architecture inspired by [Backstage's catalog processing system](https://backstage.io/docs/features/software-catalog/life-of-an-entity/).
+The ingestion orchestrator is responsible for discovering, importing, and enriching images from external sources with additional metadata and relations.
 
 ### Architecture Overview
 
-```
-┌─────────────────┐     ┌──────────────────┐      ┌──────────────┐
-│ Entity Providers│────▶│ Processing Queue │─────▶│ Processors   │
-│                 │     │                  │      │              │
-│ - FileScanner   │     │ - Unprocessed    │      │ - FITS       │
-│ - WatchFolder   │     │ - Pending        │      │ - XISF       │
-│ - Import        │     │ - Failed         │      │ - Astrometry │
-└─────────────────┘     └──────────────────┘      │ - Thumbnail  │
-                                                  └──────┬───────┘
-                                                         │
-                                                         ▼
-                                                  ┌─────────────┐
-                                                  │  Stitching  │
-                                                  │             │
-                                                  │ Final Entity│
-                                                  └─────────────┘
+```mermaid
+graph LR
+    A[Image Providers<br/>- FileScanner<br/>- WatchFolder<br/>- Import] --> B[Processing Queue<br/>- Unprocessed<br/>- Pending<br/>- Failed]
+    B --> C[Processors<br/>- FITS<br/>- XISF<br/>- Astrometry<br/>- Thumbnail]
+    C --> D[Stitching<br/><br/>Final Entity]
 ```
 
 ### Core Components
 
-#### 1. Entity Providers
+#### 1. Image Providers
 
-Entity providers are the sources of raw entity data. They discover entities from external systems and emit them into the processing queue.
+Image Providers are the sources of raw image metadata. They discover images from external systems and emit them into the processing queue.
 
 **Responsibilities:**
 - Connect to external data sources (filesystem, cloud storage, APIs)
-- Discover new entities
-- Emit raw entity data with minimal validation
+- Discover new images
+- Emit raw image metadata with minimal validation
 - Track what has been ingested (for incremental updates)
 
 **Built-in Providers:**
@@ -159,7 +148,7 @@ Entity providers are the sources of raw entity data. They discover entities from
 
 #### 2. Processing Queue
 
-The processing queue tracks entities through their lifecycle:
+The processing queue tracks images through their lifecycle:
 
 | State | Description |
 |-------|-------------|
@@ -174,25 +163,25 @@ The queue supports:
 - Dead-letter handling for persistent failures
 - Distributed processing across multiple workers
 
-#### 3. Entity Processors
+#### 3. Image Processors
 
-Processors transform raw entity data into enriched, validated entities. They run in sequence and can emit additional entities or relations.
+Processors transform raw image data into enriched, validated image entities. They run in sequence and can emit additional entities or relations.
 
 **Responsibilities:**
 - Parse and extract metadata from files
 - Validate entity data
-- Enrich entities with computed/derived data
-- Emit related entities (e.g., thumbnails, calibration links)
+- Enrich image entities with computed/derived metadata
+- Emit related entities (e.g., thumbnails, calibration frames, equipment, targets, etc.)
 - Report errors for failed processing
 
 **Built-in Processors:**
 
 | Processor | Description | Input | Output |
 |-----------|-------------|-------|--------|
-| `FITSHeaderProcessor` | Extracts FITS header metadata | Image entity | Enriched metadata |
-| `XISFProcessor` | Parses XISF file metadata | Image entity | Enriched metadata |
-| `ThumbnailProcessor` | Generates preview images | Image entity | Thumbnail references |
-| `AstrometryProcessor` | Plate solves images | Image entity | WCS coordinates |
+| `FITSHeaderProcessor` | Extracts FITS header metadata | Image Entity | Enriched metadata |
+| `XISFProcessor` | Parses XISF file metadata | Image Entity | Enriched metadata |
+| `ThumbnailProcessor` | Generates preview images | Image Entity | Thumbnail references |
+| `AstrometryProcessor` | Plate solves images | Image Entity | WCS coordinates |
 | `ObjectIdentifier` | Identifies celestial objects | Image with WCS | Target relations |
 
 **Processing Characteristics:**
