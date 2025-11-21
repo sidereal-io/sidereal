@@ -1,103 +1,274 @@
 # Architecture
 
-This document describes the system architecture and technology choices for the Sidereal project. It is intended for developers who need to understand the system design and implementation details, including the detailed backend API design and ingestion orchestrator system.
+This document describes the system architecture for the Sidereal project, including terminology and component overview.
 
-## System Architecture
+## Terminology
 
-Sidereal follows a three-tier web application architecture with clear separation of concerns between presentation, business logic, and data persistence.
+### Monorepo Structure
 
-### Component Overview
+Sidereal uses a monorepo structure organized into two main categories:
 
-#### Web Frontend
-**Purpose**: Provides the user interface and handles all user interactions.
+#### Apps
+**Apps** are deployable applications that users interact with or that provide services. Each app is independently runnable and serves a specific purpose in the system.
 
-**Responsibilities**:
-- Renders UI components and manages client-side state
-- Handles user input validation and feedback
-- Makes HTTP requests to the backend API
-- Manages client-side routing and navigation
+Currently deployed apps:
+- `apps/frontend` - Web application that provides the user interface
+- `apps/backend` - API server that handles business logic and data operations
 
-**Boundaries**: The frontend has no direct database access. All data operations must go through the backend API.
+#### Packages
+**Packages** are shared libraries, configurations, and utilities that are consumed by apps and other packages. They provide common functionality and ensure consistency across the monorepo.
 
-#### Backend API
-**Purpose**: Serves as the application server, handling business logic and data operations.
+Current packages:
+- `packages/shared-types` - TypeScript type definitions shared between frontend and backend
+- `packages/eslint-config` - Shared ESLint configuration for code quality
+- `packages/typescript-config` - Shared TypeScript compiler configuration
 
-**Responsibilities**:
-- Exposes HTTP endpoints for frontend consumption
-- Implements business logic and validation rules
-- Manages database queries and transactions
-- Handles authentication and authorization
-- Transforms and formats data for API responses
+## System Overview
 
-**Boundaries**: The backend is the only component with database access. It does not serve static files or handle UI rendering.
+Sidereal follows a three-tier architecture with clear separation between presentation, business logic, and data persistence.
 
-#### Database
-**Purpose**: Provides persistent data storage for the application.
+- The frontend web application provides the user interface for Sidereal. It renders UI components, manages client-side state, and communicates with the backend API via HTTP requests.
+- The [backend](#backend-architecture) API server handles all business logic, validates requests, manages database operations, and exposes HTTP endpoints for the frontend to consume.
+- A PostgreSQL database provides persistent storage for all application data, enforcing data integrity and managing concurrent access.
 
-**Responsibilities**:
-- Stores application data in a relational schema
-- Enforces data integrity through constraints
-- Manages transactions and concurrent access
+## Backend Architecture
 
-**Boundaries**: The database is only accessible by the backend API. No direct client connections are permitted.
+The backend serves two primary functions:
+1. **Entity API** — A RESTful API for managing domain entities (Images, Users, Albums, Equipment, etc.)
+2. **Ingestion Orchestrator** — A pluggable system for ingesting, processing, and enriching entities from various sources
 
-## Data Flow
+### Entity-Based API
 
-The typical data flow through the system follows this pattern:
+#### Core Entities
 
-1. **User Action**: User interacts with the web frontend (e.g., submits a form, clicks a button)
-2. **API Request**: Frontend sends an HTTP request to a backend API endpoint
-3. **Business Logic**: Backend validates the request and executes business logic
-4. **Database Query**: Backend uses the ORM to query or modify data in PostgreSQL
-5. **Response**: Backend formats the data and returns an HTTP response
-6. **UI Update**: Frontend receives the response and updates the user interface
+The backend exposes APIs for the following domain entities:
 
-**Error Handling**: Errors at any stage are propagated back to the frontend with appropriate HTTP status codes and error messages.
+| Entity | Description | Key Fields |
+|--------|-------------|------------|
+| **Image** | Astronomical image with metadata | path, format, dimensions, captureDate, equipment |
+| **User** | System user | email, name, preferences |
+| **Album** | Collection of images | name, description, images |
+| **Equipment** | Telescopes, cameras, filters | type, manufacturer, model, specs |
+| **Target** | Celestial objects | name, type, coordinates, catalog references |
 
-## Deployment & Environment
+#### API Design Patterns
 
-### Containerization
-The entire stack is containerized using Docker, with each component running in its own container:
-- **Frontend Container**: Serves the built React application
-- **Backend Container**: Runs the Hono API server
-- **Database Container**: Runs PostgreSQL
+###### Resource Naming
 
-### Orchestration
-Docker Compose manages the multi-container setup, defining:
-- Service dependencies (backend depends on database, frontend depends on backend)
-- Network configuration (containers communicate via Docker network)
-- Volume mounts (database persistence, development hot-reload)
-- Environment variables (connection strings, ports, configuration)
+All entity APIs follow RESTful conventions:
 
-### Communication
-- Frontend and backend communicate over HTTP
-- Backend and database communicate via PostgreSQL wire protocol
-- All inter-container communication happens on a private Docker network
+```
+GET    /api/{entity}           # List entities (with pagination/filtering)
+POST   /api/{entity}           # Create entity
+GET    /api/{entity}/:id       # Get single entity
+PUT    /api/{entity}/:id       # Update entity
+DELETE /api/{entity}/:id       # Delete entity
+```
 
-## Technology Stack
+Example endpoints:
+- `GET /api/images?target=M31&equipment=123`
+- `POST /api/albums`
+- `GET /api/equipment/456`
 
-### Web Frontend
-- **Framework**: Hono
-- **UI**: React
-- **CSS**: Tailwind CSS
-- **Commponents**: shadcn/ui
+###### Response Format
 
-### Backend API
-- **Framework**: Hono
-- **ORM/Query Builder**: Drizzle
-- **Runtime**: Node.js
+All API responses use the standardized `ApiResponse<T>` wrapper:
 
-### Database
-- **RDBMS**: PostgreSQL - Relational database with ACID compliance
+```typescript
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  timestamp: string;
+}
+```
 
-## Testing & Quality
+Success response:
+```json
+{
+  "success": true,
+  "data": { "id": "123", "name": "Orion Nebula" },
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
 
-### Testing Strategy
-- **Unit & Integration Tests**: Vitest - Fast unit test framework with built-in mocking
-- **End-to-End Tests**: Playwright - Browser automation for full-stack testing
-- **Code Quality**: ESLint - Static analysis and code style enforcement
+Error response:
+```json
+{
+  "success": false,
+  "error": "Image not found",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
 
-### Test Coverage
-- Frontend: Component tests, integration tests for API interactions
-- Backend: Unit tests for business logic, integration tests for API endpoints
-- E2E: Critical user workflows across the entire stack
+###### Pagination
+
+List endpoints support cursor-based pagination:
+
+```typescript
+interface PaginatedResponse<T> {
+  items: T[];
+  cursor?: string;
+  hasMore: boolean;
+  total?: number;
+}
+```
+
+Request: `GET /api/images?cursor=abc123&limit=50`
+
+###### Filtering and Sorting
+
+List endpoints support query parameter filtering:
+
+```
+GET /api/images?equipment=123&target=M31&sort=-captureDate&limit=20
+```
+
+- Exact match: `?field=value`
+- Multiple values: `?field=value1,value2`
+- Date range: `?from=2024-01-01&to=2024-02-01`
+- Sorting: `?sort=field` (ascending) or `?sort=-field` (descending)
+
+#### Entity Relationships
+
+Entities reference each other through IDs. The API supports expanding related entities:
+
+```
+GET /api/images/123?expand=equipment,target
+```
+
+Response includes nested related entities rather than just IDs.
+
+---
+
+### Image Ingestion Orchestrator
+
+The ingestion orchestrator is responsible for discovering, importing, and enriching images from external sources with additional metadata and relations.
+
+#### Architecture Overview
+
+```mermaid
+graph LR
+    A[Image Providers<br/>- FileScanner<br/>- WatchFolder<br/>- Import] --> B[Processing Queue<br/>- Unprocessed<br/>- Pending<br/>- Failed]
+    B --> C[Processors<br/>- FITS<br/>- XISF<br/>- Astrometry<br/>- Thumbnail]
+    C --> D[Stitching<br/><br/>Final Entity]
+```
+
+#### Core Components
+
+###### 1. Image Providers
+
+Image Providers are the sources of raw image metadata. They discover images from external systems and emit them into the processing queue.
+
+**Responsibilities:**
+- Connect to external data sources (filesystem, cloud storage, APIs)
+- Discover new images
+- Emit raw image metadata with minimal validation
+- Track what has been ingested (for incremental updates)
+
+**Built-in Providers:**
+
+| Provider | Description | Trigger |
+|----------|-------------|---------|
+| `FileSystemScanner` | Scans directories for image files | Manual/Scheduled |
+| `WatchFolderProvider` | Monitors folders for new files | File system events |
+| `ImportProvider` | Handles manual file uploads | User action |
+
+###### 2. Processing Queue
+
+The processing queue tracks images through their lifecycle:
+
+| State | Description |
+|-------|-------------|
+| `unprocessed` | Newly ingested, awaiting processing |
+| `processing` | Currently being processed |
+| `processed` | Successfully processed |
+| `failed` | Processing failed (with error details) |
+
+The queue supports:
+- Priority ordering
+- Retry logic with backoff
+- Dead-letter handling for persistent failures
+- Distributed processing across multiple workers
+
+##### 3. Image Processors
+
+Processors transform raw image data into enriched, validated image entities. They run in sequence and can emit additional entities or relations.
+
+**Responsibilities:**
+- Parse and extract metadata from files
+- Validate entity data
+- Enrich image entities with computed/derived metadata
+- Emit related entities (e.g., thumbnails, calibration frames, equipment, targets, etc.)
+- Report errors for failed processing
+
+**Built-in Processors:**
+
+| Processor | Description | Input | Output |
+|-----------|-------------|-------|--------|
+| `FITSHeaderProcessor` | Extracts FITS header metadata | Image Entity | Enriched metadata |
+| `XISFProcessor` | Parses XISF file metadata | Image Entity | Enriched metadata |
+| `ThumbnailProcessor` | Generates preview images | Image Entity | Thumbnail references |
+| `AstrometryProcessor` | Plate solves images | Image Entity | WCS coordinates |
+| `ObjectIdentifier` | Identifies celestial objects | Image with WCS | Target relations |
+
+**Processing Characteristics:**
+- Processors are invoked in registered order
+- Each processor can modify the entity or pass it through unchanged
+- Processing is idempotent (re-processing produces same result)
+- Processors should be stateless (use cache for optimization)
+
+##### 4. Stitching
+
+Stitching is the final assembly step that combines:
+- The processed entity data
+- All emitted relations (incoming and outgoing)
+- Any processing errors
+
+#### Processing Flow
+
+1. **Ingestion**: Provider emits raw entity with basic structure
+2. **Validation**: Schema validation (required fields, types)
+3. **Queue**: Entity enters processing queue with `unprocessed` status
+4. **Processing**: Each processor runs in sequence:
+   - Processor examines entity kind/type
+   - If applicable, processes and emits result
+   - Can emit relations, errors, or discovered entities
+5. **Stitching**: Assemble final entity with all relations
+6. **Storage**: Persist to database, update search index
+7. **API**: Entity available through REST API
+
+#### Error Handling
+
+Processing errors are categorized:
+
+| Type | Description | Action |
+|------|-------------|--------|
+| `validation` | Entity structure invalid | Reject, don't retry |
+| `transient` | Temporary failure (network, etc.) | Retry with backoff |
+| `permanent` | Cannot process (corrupt file, etc.) | Mark failed |
+
+Failed entities retain their last successful state (if any) and include error details in the stitched result.
+
+---
+
+### Future Considerations
+
+#### Scalability
+
+- **Distributed Processing**: Workers can run on multiple nodes
+- **Queue Backend**: Replace in-memory queue with Redis/PostgreSQL
+- **Incremental Ingestion**: Delta mutations for large datasets
+
+#### Additional Processors
+
+- **AI Object Detection**: Identify objects without plate solving
+- **Quality Analysis**: Score image sharpness, noise, tracking
+- **Stacking Detection**: Group related sub-exposures
+- **Weather Integration**: Enrich with atmospheric conditions
+
+#### Additional Providers
+
+- **Cloud Storage**: AWS S3, Google Cloud Storage
+- **PixInsight Integration**: Import from PI projects
+- **NINA Integration**: Sync with N.I.N.A. session data
