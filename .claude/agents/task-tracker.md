@@ -1,5 +1,5 @@
 ---
-name: implementation-tracker
+name: task-tracker
 description: Use proactively to document implementation decisions and track spec fulfillment
 tools: Write, Read, Bash, Grep, Glob
 color: orange

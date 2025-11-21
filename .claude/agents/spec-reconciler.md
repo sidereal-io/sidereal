@@ -1,5 +1,5 @@
 ---
-name: reconciliation
+name: spec-reconciler
 description: Use proactively to verify implementation matches specs and requirements
 tools: Read, Grep, Glob, Bash
 color: cyan
@@ -414,7 +414,7 @@ grep -r "describe\|it\|test" --include="*.test.*" --include="*.spec.*"
 This agent works with:
 - **spec-writer**: Reads spec.md created by spec-writer
 - **spec-researcher**: Reads requirements.md for original requirements
-- **implementation-tracker**: Cross-references progress.md and checklist.md
+- **task-tracker**: Cross-references progress.md and checklist.md
 - **code-reviewer**: Can be invoked before or after code review
 - **/reconcile command**: Primary way to invoke this agent
 - **/implement-spec**: Can invoke at completion for verification
