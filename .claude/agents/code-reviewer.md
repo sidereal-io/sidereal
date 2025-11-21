@@ -285,7 +285,7 @@ Strengths: [Brief mention]
 ## Integration Points
 
 This agent works with:
-- **implementation-tracker**: Uses implementation reports for context
+- **task-tracker**: Uses implementation reports for context
 - **spec-writer**: References spec.md for conformance checking
 - **/review-code command**: Invoked by the review command
 

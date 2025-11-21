@@ -46,10 +46,11 @@ Instruct the subagent to:
 
 IF ALL task groups in tasks.md are marked complete with `- [x]`, then proceed with this step.  Otherwise, return to PHASE 1.
 
-Assuming all tasks are marked complete, then delegate to the **implementation-verifier** subagent to do its implementation verification and produce its final verification report.
+Assuming all tasks are marked complete, then delegate to the **spec-verifier** subagent to do its verification and produce its final verification report.
 
 Provide to the subagent the following:
 - The path to this spec: `docs/planning/specs/[this-spec]`
 Instruct the subagent to do the following:
   1. Run all of its final verifications according to its built-in workflow
   2. Produce the final verification report in `docs/planning/specs/[this-spec]/verifications/final-verification.md`.
+

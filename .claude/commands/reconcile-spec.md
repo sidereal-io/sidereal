@@ -60,7 +60,7 @@ Would you like to:
 
 ### Step 3: Invoke Reconciliation Agent
 
-Use the **reconciliation** subagent:
+Use the **spec-reconciler** subagent:
 
 Provide the reconciliation agent with:
 - Spec path
@@ -138,8 +138,8 @@ Would you like to:
 Implementation is [XX]% complete with [N] requirements missing.
 
 Recommended action:
-1. Review reconciliation report: docs/planning/specs/[spec-name]/implementation/reconciliation.md
-2. Continue implementation with /implement-spec
+1. Review reconciliation report: `docs/planning/specs/[spec-name]/implementation/reconciliation.md`
+2. Continue implementation with `/implement-spec`
 3. Address critical gaps first
 ```
 
