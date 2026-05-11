@@ -97,7 +97,7 @@ jobs:
         run: ./docker/smoke-test.sh local-scan:${{ github.ref_name }}
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: local-scan:${{ github.ref_name }}
           format: 'sarif'

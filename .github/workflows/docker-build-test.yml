@@ -106,7 +106,7 @@ jobs:
 
       - name: Scan for vulnerabilities (SARIF)
         id: security-scan
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: skymmich:test-${{ github.event.pull_request.number }}
           format: 'sarif'
