@@ -24,7 +24,7 @@ jobs:
           delete-only-untagged-versions: 'true'
 
       - name: Prune old intermediate tags (keep releases, latest, main)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
