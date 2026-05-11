@@ -4,7 +4,7 @@
 FROM node:24-alpine AS builder
 
 # Upgrade npm and patch its bundled dependencies to fix known CVEs
-RUN npm install -g npm@11.11.0 && \
+RUN npm install -g npm@11.14.1 && \
     npm pack minimatch@10.2.4 && \
     tar -xzf minimatch-10.2.4.tgz -C /usr/local/lib/node_modules/npm/node_modules/minimatch --strip-components=1 && \
     rm minimatch-10.2.4.tgz && \
@@ -40,7 +40,7 @@ RUN npm run build:docker
 FROM node:24-alpine AS runtime
 
 # Upgrade npm and patch its bundled dependencies to fix known CVEs
-RUN npm install -g npm@11.11.0 && \
+RUN npm install -g npm@11.14.1 && \
     npm pack minimatch@10.2.4 && \
     tar -xzf minimatch-10.2.4.tgz -C /usr/local/lib/node_modules/npm/node_modules/minimatch --strip-components=1 && \
     rm minimatch-10.2.4.tgz && \
