@@ -1,7 +1,7 @@
 # Multi-stage build for Skymmich
 # SECURITY: This image does not contain any secrets or API keys
 # All sensitive configuration is provided via environment variables at runtime
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 
 # Upgrade npm and patch its bundled dependencies to fix known CVEs
 RUN npm install -g npm@11.11.0 && \
@@ -37,7 +37,7 @@ COPY tools/ ./tools/
 RUN npm run build:docker
 
 # Production stage
-FROM node:24-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 # Upgrade npm and patch its bundled dependencies to fix known CVEs
 RUN npm install -g npm@11.11.0 && \
