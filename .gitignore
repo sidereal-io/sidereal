@@ -92,7 +92,7 @@ docker-compose.immich.yml
 # Documentation (internal/dev only)
 docs/screenshots.md
 
-# Skymmich specific
+# Sidereal specific
 sidecars/
 xmp-sidecars/
 uploads/

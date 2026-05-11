@@ -1,6 +1,6 @@
 <p align="center">
   <img src="apps/client/public/logo.png" width="300">
-  <h1 style="font-size: 55px" align="center">SKYMMICH</h1>
+  <h1 style="font-size: 55px" align="center">SIDEREAL</h1>
 </p>
 
 <p align="center">
@@ -11,16 +11,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mstelz/Skymmich/actions/workflows/docker-build-push.yml"><img src="https://github.com/mstelz/Skymmich/actions/workflows/docker-build-push.yml/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/mstelz/Skymmich/actions/workflows/release.yml"><img src="https://github.com/mstelz/Skymmich/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
-  <a href="https://github.com/mstelz/Skymmich/security"><img src="https://img.shields.io/badge/Security-Trivy%20Scanned-brightgreen" alt="Security Scan" /></a>
+  <a href="https://github.com/mstelz/Sidereal/actions/workflows/docker-build-push.yml"><img src="https://github.com/mstelz/Sidereal/actions/workflows/docker-build-push.yml/badge.svg" alt="Build Status" /></a>
+  <a href="https://github.com/mstelz/Sidereal/actions/workflows/release.yml"><img src="https://github.com/mstelz/Sidereal/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://github.com/mstelz/Sidereal/security"><img src="https://img.shields.io/badge/Security-Trivy%20Scanned-brightgreen" alt="Security Scan" /></a>
 </p>
 
-**Skymmich** is a self-hosted photo gallery and management system designed specifically for astrophotographers. Built to integrate seamlessly with your [Immich](https://immich.app/) photo library, it provides intelligent plate solving, equipment tracking, and comprehensive metadata management tailored for deep-sky imaging workflows.
+**Sidereal** is a self-hosted photo gallery and management system designed specifically for astrophotographers. Built to integrate seamlessly with your [Immich](https://immich.app/) photo library, it provides intelligent plate solving, equipment tracking, and comprehensive metadata management tailored for deep-sky imaging workflows.
 
 Perfect for organizing, analyzing, and showcasing your astrophotography collection with full control over your data and infrastructure.
 
-> **Disclaimer**: Skymmich is an independent project and is not affiliated with, endorsed by, or officially connected to Immich or its developers. Skymmich is a third-party application that integrates with Immich's public API.
+> **Disclaimer**: Sidereal is an independent project and is not affiliated with, endorsed by, or officially connected to Immich or its developers. Sidereal is a third-party application that integrates with Immich's public API.
 
 <div align="center">
   <img width="80%" src="assets/images/demo.gif" />
@@ -82,7 +82,7 @@ Perfect for organizing, analyzing, and showcasing your astrophotography collecti
 
 ## Quick Start
 
-> **Prerequisites**: Skymmich requires a running [Immich](https://immich.app/) instance for photo management. Ensure you have Immich set up and accessible before proceeding.
+> **Prerequisites**: Sidereal requires a running [Immich](https://immich.app/) instance for photo management. Ensure you have Immich set up and accessible before proceeding.
 
 ### Option 1: Docker Compose (Recommended)
 
@@ -90,9 +90,9 @@ Single container setup with built-in SQLite database — no external database ne
 
 ```bash
 # Download production compose file
-curl -o docker-compose.prod.yml https://raw.githubusercontent.com/mstelz/Skymmich/main/docker-compose.prod.yml
+curl -o docker-compose.prod.yml https://raw.githubusercontent.com/mstelz/Sidereal/main/docker-compose.prod.yml
 
-# Start Skymmich
+# Start Sidereal
 docker compose -f docker-compose.prod.yml up -d
 
 # Access the application
@@ -100,7 +100,7 @@ open http://localhost:5000
 ```
 
 **What this includes:**
-- Skymmich application from GitHub Container Registry
+- Sidereal application from GitHub Container Registry
 - Built-in SQLite database with persistent storage
 - Health checks and automatic restarts
 - Volume mounts for configuration, logs, and database
@@ -117,41 +117,41 @@ Single container deployment using GitHub Container Registry:
 
 ```bash
 # Pull the latest image
-docker pull ghcr.io/mstelz/skymmich:latest
+docker pull ghcr.io/mstelz/sidereal:latest
 
 # Run with Docker (uses built-in SQLite database)
 docker run -d \
-  --name skymmich \
+  --name sidereal \
   -p 5000:5000 \
   -e NODE_ENV=production \
-  -v skymmich-config:/app/config \
-  -v skymmich-cache:/app/cache \
-  ghcr.io/mstelz/skymmich:latest
+  -v sidereal-config:/app/config \
+  -v sidereal-cache:/app/cache \
+  ghcr.io/mstelz/sidereal:latest
 
 # Access the application
 open http://localhost:5000
 ```
 
-> To use PostgreSQL instead, add `-e DATABASE_URL="postgresql://user:password@host:5432/skymmich"` to the command above.
+> To use PostgreSQL instead, add `-e DATABASE_URL="postgresql://user:password@host:5432/sidereal"` to the command above.
 
 ### Option 3: UnRAID Template
 
-> **Coming Soon**: Skymmich will be available in UnRAID Community Applications for easy one-click installation.
+> **Coming Soon**: Sidereal will be available in UnRAID Community Applications for easy one-click installation.
 
 For now, manual installation:
 
-1. **Install Skymmich**: Add container using template URL `https://raw.githubusercontent.com/mstelz/Skymmich/main/docker/unraid-templates/skymmich.xml`
+1. **Install Sidereal**: Add container using template URL `https://raw.githubusercontent.com/mstelz/Sidereal/main/docker/unraid-templates/sidereal.xml`
 2. **Configure**: Optionally set Immich URL and API keys (can also be done via admin UI)
 3. **Access**: Navigate to `http://your-server:2284`
 
-> No external database needed — Skymmich uses a built-in SQLite database stored in the config directory. To use PostgreSQL instead, set the `DATABASE_URL` field in the template.
+> No external database needed — Sidereal uses a built-in SQLite database stored in the config directory. To use PostgreSQL instead, set the `DATABASE_URL` field in the template.
 
 ### Option 4: Development Setup
 
 ```bash
 # Clone and install dependencies
-git clone https://github.com/mstelz/Skymmich.git
-cd Skymmich
+git clone https://github.com/mstelz/Sidereal.git
+cd Sidereal
 npm install
 
 # Option A: Build and run with Docker Compose (builds from source)
@@ -217,38 +217,38 @@ After startup, access the admin interface at `/admin` to configure:
 
 ## Database Migration
 
-Skymmich includes a bidirectional migration script for moving data between SQLite and PostgreSQL:
+Sidereal includes a bidirectional migration script for moving data between SQLite and PostgreSQL:
 
 ```bash
 # PostgreSQL → SQLite
 node tools/scripts/migrate-db.js \
-  --from postgresql://user:pass@host:5432/skymmich \
-  --to sqlite:path/to/skymmich.db
+  --from postgresql://user:pass@host:5432/sidereal \
+  --to sqlite:path/to/sidereal.db
 
 # SQLite → PostgreSQL
 node tools/scripts/migrate-db.js \
   --from sqlite:path/to/local.db \
-  --to postgresql://user:pass@host:5432/skymmich
+  --to postgresql://user:pass@host:5432/sidereal
 ```
 
 Inside a Docker container:
 ```bash
 node /app/dist/tools/scripts/migrate-db.js \
   --from postgresql://... \
-  --to sqlite:/app/config/skymmich.db
+  --to sqlite:/app/config/sidereal.db
 ```
-To avoid running the command manually inside the container, set the `AUTO_DB_MIGRATE_FROM` environment variable (and optional `AUTO_DB_MIGRATE_TO`) on the Skymmich service. The Docker startup script runs the migration before launching the app, deletes any existing SQLite target file (unless `AUTO_DB_MIGRATE_RESET_SQLITE=false`), and writes a marker to `/app/config/.auto-db-migrated` so it only happens once unless you delete that file or set `AUTO_DB_MIGRATE_ONCE=false`.
+To avoid running the command manually inside the container, set the `AUTO_DB_MIGRATE_FROM` environment variable (and optional `AUTO_DB_MIGRATE_TO`) on the Sidereal service. The Docker startup script runs the migration before launching the app, deletes any existing SQLite target file (unless `AUTO_DB_MIGRATE_RESET_SQLITE=false`), and writes a marker to `/app/config/.auto-db-migrated` so it only happens once unless you delete that file or set `AUTO_DB_MIGRATE_ONCE=false`.
 
 The script handles all type conversions (timestamps, booleans, JSON, arrays) and respects foreign key ordering automatically. SQLite targets run the bundled Drizzle migrations during the copy; PostgreSQL targets should be initialized once beforehand so the schema exists.
 
 ## Container Images
 
-Skymmich provides ready-to-use container images through GitHub Container Registry:
+Sidereal provides ready-to-use container images through GitHub Container Registry:
 
 ### Available Images
-- **Latest Release**: `ghcr.io/mstelz/skymmich:latest`
-- **Specific Version**: `ghcr.io/mstelz/skymmich:v1.x.x`
-- **Development**: `ghcr.io/mstelz/skymmich:main`
+- **Latest Release**: `ghcr.io/mstelz/sidereal:latest`
+- **Specific Version**: `ghcr.io/mstelz/sidereal:v1.x.x`
+- **Development**: `ghcr.io/mstelz/sidereal:main`
 
 ### Supported Architectures
 - `linux/amd64` (x86_64)
@@ -266,7 +266,7 @@ All images are automatically built, tested, and scanned for vulnerabilities usin
 
 ```
 ┌─────────────────────────────────────┐
-│        Skymmich Container           │
+│        Sidereal Container           │
 ├─────────────────────────────────────┤
 │  Frontend (React + TypeScript)      │
 │  ├─ Vite build system               │    ┌─────────────────────┐
@@ -286,14 +286,14 @@ All images are automatically built, tested, and scanned for vulnerabilities usin
 │  └─ Graceful shutdown handling      │
 ├─────────────────────────────────────┤
 │  SQLite (built-in, default)         │
-│  └─ /app/config/skymmich.db         │
+│  └─ /app/config/sidereal.db         │
 └─────────────────────────────────────┘
 ```
 
 ## Project Structure
 
 ```
-Skymmich/
+Sidereal/
 ├── apps/
 │   ├── client/                 # React frontend application
 │   │   ├── src/
@@ -337,8 +337,8 @@ node --version  # v20+
 npm --version   # 10+
 
 # Clone repository
-git clone https://github.com/mstelz/Skymmich.git
-cd Skymmich
+git clone https://github.com/mstelz/Sidereal.git
+cd Sidereal
 ```
 
 ### Setup
@@ -374,7 +374,7 @@ docker compose up -d               # Full stack via Docker
 
 ### Testing
 
-Skymmich includes comprehensive end-to-end testing using Playwright:
+Sidereal includes comprehensive end-to-end testing using Playwright:
 
 ```bash
 # Run all tests
@@ -392,7 +392,7 @@ npm run test:e2e:headed # Run tests in headed browser mode
 - `playwright.config.ts` - Playwright configuration with multiple browsers
 
 **Prerequisites for Testing:**
-- Skymmich application running on `http://localhost:5173`
+- Sidereal application running on `http://localhost:5173`
 - Test database with sample data
 - All dependencies installed via `npm install`
 
@@ -405,7 +405,7 @@ npm run check          # TypeScript compilation check
 
 ## CI/CD & Deployment
 
-Skymmich uses GitHub Actions for continuous integration and deployment. All builds are automatically tested, scanned for vulnerabilities, and containerized.
+Sidereal uses GitHub Actions for continuous integration and deployment. All builds are automatically tested, scanned for vulnerabilities, and containerized.
 
 ### Automated Workflows
 
@@ -436,7 +436,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [ ] XMP sidecar viewer and editor for astrophotography metadata
 
 ### Integrations
-- [ ] **NINA Plugin**: Sync session data (targets, equipment, acquisition details) directly from N.I.N.A. to Skymmich
+- [ ] **NINA Plugin**: Sync session data (targets, equipment, acquisition details) directly from N.I.N.A. to Sidereal
 - [ ] **Local Plate Solving**: Integration with local solvers (ASTAP, PixInsight) for offline solving without Astrometry.net
 
 ### Advanced Features
@@ -448,8 +448,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [ ] Community features (sharing, public galleries)
 
 ### Community & Help
-- **Bug Reports**: [GitHub Issues](https://github.com/mstelz/Skymmich/issues)
-- **Feature Requests**: [GitHub Discussions](https://github.com/mstelz/Skymmich/discussions)
+- **Bug Reports**: [GitHub Issues](https://github.com/mstelz/Sidereal/issues)
+- **Feature Requests**: [GitHub Discussions](https://github.com/mstelz/Sidereal/discussions)
 
 ## License
 
@@ -468,6 +468,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built for the astrophotography community**
 
-[Star this repo](https://github.com/mstelz/Skymmich) | [Report bug](https://github.com/mstelz/Skymmich/issues) | [Request feature](https://github.com/mstelz/Skymmich/discussions)
+[Star this repo](https://github.com/mstelz/Sidereal) | [Report bug](https://github.com/mstelz/Sidereal/issues) | [Request feature](https://github.com/mstelz/Sidereal/discussions)
 
 </div>

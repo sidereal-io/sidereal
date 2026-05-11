@@ -1,10 +1,10 @@
 # CI/CD Pipeline Documentation
 
-This document describes the continuous integration and continuous deployment (CI/CD) pipeline for Skymmich, including automated builds, testing, security scanning, and release processes.
+This document describes the continuous integration and continuous deployment (CI/CD) pipeline for Sidereal, including automated builds, testing, security scanning, and release processes.
 
 ## Overview
 
-Skymmich uses GitHub Actions for CI/CD automation with three main workflows:
+Sidereal uses GitHub Actions for CI/CD automation with three main workflows:
 
 1. **Build and Push** - Automated builds and container registry pushes
 2. **PR Testing** - Pull request validation and testing
@@ -95,8 +95,8 @@ Skymmich uses GitHub Actions for CI/CD automation with three main workflows:
    - Example: `v1.2.3`
 
 2. **Release Artifacts**
-   - Distribution archive: `skymmich-v1.0.0-dist.tar.gz`
-   - Source archive: `skymmich-v1.0.0-source.tar.gz`
+   - Distribution archive: `sidereal-v1.0.0-dist.tar.gz`
+   - Source archive: `sidereal-v1.0.0-source.tar.gz`
    - SBOM: `sbom-v1.0.0.spdx.json`
 
 3. **Docker Images**
@@ -152,13 +152,13 @@ SBOMs are retained for 30 days as build artifacts.
 Every build produces downloadable artifacts:
 
 ### PR Builds
-- **Docker Image**: Compressed Docker image (`skymmich-pr-{PR#}-{SHA}.tar.gz`)
-- **Application Snapshot**: Built application files (`skymmich-snapshot-{SHA}.tar.gz`)
+- **Docker Image**: Compressed Docker image (`sidereal-pr-{PR#}-{SHA}.tar.gz`)
+- **Application Snapshot**: Built application files (`sidereal-snapshot-{SHA}.tar.gz`)
 - **Retention**: 7 days
 
 ### Main Branch Builds
 - **SBOM**: Software Bill of Materials (`sbom-{SHA}.spdx.json`)
-- **Application Snapshot**: Built application files (`skymmich-snapshot-{SHA}.tar.gz`)
+- **Application Snapshot**: Built application files (`sidereal-snapshot-{SHA}.tar.gz`)
 - **Retention**: 30 days
 
 ### Using Artifacts
@@ -166,16 +166,16 @@ Every build produces downloadable artifacts:
 **Load Docker Image:**
 ```bash
 # Download and load the Docker image artifact
-gunzip -c skymmich-pr-123-abc123.tar.gz | docker load
+gunzip -c sidereal-pr-123-abc123.tar.gz | docker load
 
 # Run the image
-docker run -p 5000:5000 skymmich:test-123
+docker run -p 5000:5000 sidereal:test-123
 ```
 
 **Use Application Snapshot:**
 ```bash
 # Extract and use the built application
-tar -xzf skymmich-snapshot-abc123.tar.gz
+tar -xzf sidereal-snapshot-abc123.tar.gz
 cd dist/
 node index.js
 ```

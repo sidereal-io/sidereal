@@ -13,7 +13,7 @@ export interface AppConfig {
     syncCoordinates: boolean;
     syncTags: boolean;
     immichMapping: string; // The path Immich uses internally (e.g., /usr/src/app/upload)
-    localMapping: string;  // The path where that same volume is mounted in Skymmich (e.g., /immich-upload)
+    localMapping: string;  // The path where that same volume is mounted in Sidereal (e.g., /immich-upload)
   };
   astrometry: {
     apiKey: string;

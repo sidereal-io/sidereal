@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>Skymmich</Name>
-  <Repository>ghcr.io/mstelz/skymmich:latest</Repository>
-  <Registry>https://ghcr.io/mstelz/skymmich</Registry>
+  <Name>Sidereal</Name>
+  <Repository>ghcr.io/mstelz/sidereal:latest</Repository>
+  <Registry>https://ghcr.io/mstelz/sidereal</Registry>
   <Network>bridge</Network>
   <WebUI>http://[IP]:[PORT:2284]/</WebUI>
-  <Icon>https://raw.githubusercontent.com/mstelz/skymmich/main/assets/images/skymmich-transparent.png</Icon>
-  <TemplateURL>https://raw.githubusercontent.com/mstelz/skymmich/main/docker/unraid-templates/skymmich.xml</TemplateURL>
-  <Support>https://github.com/mstelz/skymmich/issues</Support>
-  <Project>https://github.com/mstelz/skymmich</Project>
+  <Icon>https://raw.githubusercontent.com/mstelz/sidereal/main/assets/images/sidereal-transparent.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/mstelz/sidereal/main/docker/unraid-templates/sidereal.xml</TemplateURL>
+  <Support>https://github.com/mstelz/sidereal/issues</Support>
+  <Project>https://github.com/mstelz/sidereal</Project>
   <Beta>False</Beta>
   <Category>MediaApp:Photos MediaApp:Other Tools:</Category>
   <Date>2026-03-23</Date>
@@ -56,7 +56,7 @@
     - FEAT: PostgreSQL support for production environments
     - FEAT: Worker process management with enable/disable functionality
     - FIX: Thumbnail proxy endpoint 500 errors resolved
-    - REFACTOR: Project renamed from Skymmich to Skymmich
+    - REFACTOR: Project renamed from Sidereal to Sidereal
     - DOCS: Enhanced security documentation and deployment guides
     
     ### v0.2.0
@@ -65,7 +65,7 @@
     - FEAT: PostgreSQL support for production environments
     - FEAT: Worker process management with enable/disable functionality
     - FIX: Thumbnail proxy endpoint 500 errors resolved
-    - REFACTOR: Project renamed from Skymmich to Skymmich
+    - REFACTOR: Project renamed from Sidereal to Sidereal
     - DOCS: Enhanced security documentation and deployment guides
     
     ### v0.1.0
@@ -76,13 +76,13 @@
     - Immich synchronization
   </Changes>
   <Overview>
-    Skymmich is a comprehensive astrophotography image management and analysis application that bridges the gap between your astrophotography sessions and organized digital asset management. It provides seamless integration with Immich for photo management, advanced plate solving through Astrometry.net, and detailed equipment tracking to help you organize and analyze your celestial captures.
+    Sidereal is a comprehensive astrophotography image management and analysis application that bridges the gap between your astrophotography sessions and organized digital asset management. It provides seamless integration with Immich for photo management, advanced plate solving through Astrometry.net, and detailed equipment tracking to help you organize and analyze your celestial captures.
   </Overview>
   
   <Requires/>
   
   <Description>
-    Skymmich is a comprehensive astrophotography image management and analysis application. It provides automatic synchronization with Immich, plate solving capabilities through Astrometry.net, equipment tracking, and detailed image metadata management. Perfect for organizing and analyzing your astrophotography collection.
+    Sidereal is a comprehensive astrophotography image management and analysis application. It provides automatic synchronization with Immich, plate solving capabilities through Astrometry.net, equipment tracking, and detailed image metadata management. Perfect for organizing and analyzing your astrophotography collection.
     
     Features:
     - Interactive Sky Map (Aladin Lite v3)
@@ -121,17 +121,17 @@
   
   <Config Name="WebUI Port" Target="5000" Default="2284" Mode="tcp" Description="Port for web interface" Type="Port" Display="always" Required="true" Mask="false">2284</Config>
   
-  <Config Name="Config Directory" Target="/app/config" Default="/mnt/user/appdata/skymmich/config" Mode="rw" Description="Configuration and SQLite database storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/skymmich/config</Config>
+  <Config Name="Config Directory" Target="/app/config" Default="/mnt/user/appdata/sidereal/config" Mode="rw" Description="Configuration and SQLite database storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sidereal/config</Config>
   
-  <Config Name="Logs Directory" Target="/app/logs" Default="/mnt/user/appdata/skymmich/logs" Mode="rw" Description="Application logs storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/skymmich/logs</Config>
+  <Config Name="Logs Directory" Target="/app/logs" Default="/mnt/user/appdata/sidereal/logs" Mode="rw" Description="Application logs storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sidereal/logs</Config>
   
-  <Config Name="Sidecar Directory" Target="/app/sidecars" Default="/mnt/user/appdata/skymmich/sidecars" Mode="rw" Description="XMP sidecar files storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/skymmich/sidecars</Config>
+  <Config Name="Sidecar Directory" Target="/app/sidecars" Default="/mnt/user/appdata/sidereal/sidecars" Mode="rw" Description="XMP sidecar files storage" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sidereal/sidecars</Config>
   
-  <Config Name="Cache Directory" Target="/app/cache" Default="/mnt/user/appdata/skymmich/cache" Mode="rw" Description="Cache storage for thumbnails and survey images" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/skymmich/cache</Config>
+  <Config Name="Cache Directory" Target="/app/cache" Default="/mnt/user/appdata/sidereal/cache" Mode="rw" Description="Cache storage for thumbnails and survey images" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/sidereal/cache</Config>
   
   <Config Name="XMP Sidecar Path" Target="XMP_SIDECAR_PATH" Default="/app/sidecars" Mode="" Description="Directory for XMP sidecar files" Type="Variable" Display="advanced" Required="false" Mask="false">/app/sidecars</Config>
   
-  <Config Name="Database URL" Target="DATABASE_URL" Default="" Mode="" Description="Leave empty to use built-in SQLite database. Set to a PostgreSQL connection string for external database support (e.g., postgresql://skymmich:password@postgres:5432/skymmich)" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Database URL" Target="DATABASE_URL" Default="" Mode="" Description="Leave empty to use built-in SQLite database. Set to a PostgreSQL connection string for external database support (e.g., postgresql://sidereal:password@postgres:5432/sidereal)" Type="Variable" Display="always" Required="false" Mask="false"></Config>
   
   <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="Application environment" Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
   

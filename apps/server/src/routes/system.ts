@@ -263,7 +263,7 @@ export default function systemRoutes(wsManager?: WsManager) {
 
       const dbBuffer = await readFile(sqliteDbPath);
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `skymmich-backup-${timestamp}.db`;
+      const filename = `sidereal-backup-${timestamp}.db`;
 
       return new Response(dbBuffer, {
         headers: {

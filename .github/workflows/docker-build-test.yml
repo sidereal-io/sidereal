@@ -64,8 +64,8 @@ jobs:
           platforms: linux/amd64
           push: false
           tags: |
-            skymmich:test-${{ github.event.pull_request.number }}
-            skymmich:test-${{ github.sha }}
+            sidereal:test-${{ github.event.pull_request.number }}
+            sidereal:test-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: true  # Load image for local testing
@@ -76,7 +76,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Test if the image was built successfully
-          if docker image inspect skymmich:test-${{ github.event.pull_request.number }} > /dev/null 2>&1; then
+          if docker image inspect sidereal:test-${{ github.event.pull_request.number }} > /dev/null 2>&1; then
             echo "✅ **Image built successfully**" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Image build failed**" >> $GITHUB_STEP_SUMMARY
@@ -84,31 +84,31 @@ jobs:
           fi
           
           # Check image size
-          IMAGE_SIZE=$(docker image inspect skymmich:test-${{ github.event.pull_request.number }} --format='{{.Size}}' | numfmt --to=iec-i --suffix=B)
+          IMAGE_SIZE=$(docker image inspect sidereal:test-${{ github.event.pull_request.number }} --format='{{.Size}}' | numfmt --to=iec-i --suffix=B)
           echo "📦 **Image size:** $IMAGE_SIZE" >> $GITHUB_STEP_SUMMARY
           
           # Test if required directories exist
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Directory Structure Check" >> $GITHUB_STEP_SUMMARY
-          docker run --rm skymmich:test-${{ github.event.pull_request.number }} ls -la /app/dist > /dev/null 2>&1 && echo "✅ /app/dist exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/dist missing" >> $GITHUB_STEP_SUMMARY
-          docker run --rm skymmich:test-${{ github.event.pull_request.number }} ls -la /app/config > /dev/null 2>&1 && echo "✅ /app/config exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/config missing" >> $GITHUB_STEP_SUMMARY
-          docker run --rm skymmich:test-${{ github.event.pull_request.number }} ls -la /app/logs > /dev/null 2>&1 && echo "✅ /app/logs exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/logs missing" >> $GITHUB_STEP_SUMMARY
-          docker run --rm skymmich:test-${{ github.event.pull_request.number }} ls -la /app/sidecars > /dev/null 2>&1 && echo "✅ /app/sidecars exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/sidecars missing" >> $GITHUB_STEP_SUMMARY
+          docker run --rm sidereal:test-${{ github.event.pull_request.number }} ls -la /app/dist > /dev/null 2>&1 && echo "✅ /app/dist exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/dist missing" >> $GITHUB_STEP_SUMMARY
+          docker run --rm sidereal:test-${{ github.event.pull_request.number }} ls -la /app/config > /dev/null 2>&1 && echo "✅ /app/config exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/config missing" >> $GITHUB_STEP_SUMMARY
+          docker run --rm sidereal:test-${{ github.event.pull_request.number }} ls -la /app/logs > /dev/null 2>&1 && echo "✅ /app/logs exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/logs missing" >> $GITHUB_STEP_SUMMARY
+          docker run --rm sidereal:test-${{ github.event.pull_request.number }} ls -la /app/sidecars > /dev/null 2>&1 && echo "✅ /app/sidecars exists" >> $GITHUB_STEP_SUMMARY || echo "❌ /app/sidecars missing" >> $GITHUB_STEP_SUMMARY
           
           # Check if startup script is executable
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Startup Script Check" >> $GITHUB_STEP_SUMMARY
-          docker run --rm --entrypoint="" skymmich:test-${{ github.event.pull_request.number }} test -x /app/startup.sh && echo "✅ startup.sh is executable" >> $GITHUB_STEP_SUMMARY || echo "❌ startup.sh is not executable" >> $GITHUB_STEP_SUMMARY
+          docker run --rm --entrypoint="" sidereal:test-${{ github.event.pull_request.number }} test -x /app/startup.sh && echo "✅ startup.sh is executable" >> $GITHUB_STEP_SUMMARY || echo "❌ startup.sh is not executable" >> $GITHUB_STEP_SUMMARY
 
       - name: Run container smoke test
         id: smoke-test
-        run: ./docker/smoke-test.sh skymmich:test-${{ github.event.pull_request.number }}
+        run: ./docker/smoke-test.sh sidereal:test-${{ github.event.pull_request.number }}
 
       - name: Scan for vulnerabilities (SARIF)
         id: security-scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: skymmich:test-${{ github.event.pull_request.number }}
+          image-ref: sidereal:test-${{ github.event.pull_request.number }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -127,7 +127,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         if: always()  # Generate report even if previous scan failed
         with:
-          image-ref: skymmich:test-${{ github.event.pull_request.number }}
+          image-ref: sidereal:test-${{ github.event.pull_request.number }}
           format: 'table'
           severity: 'CRITICAL,HIGH,MEDIUM'
           output: 'trivy-report.txt'
@@ -136,21 +136,21 @@ jobs:
       - name: Export Docker image as artifact
         if: success() || failure()  # Export even if security scan failed
         run: |
-          docker save skymmich:test-${{ github.event.pull_request.number }} | gzip > skymmich-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
+          docker save sidereal:test-${{ github.event.pull_request.number }} | gzip > sidereal-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
 
       - name: Upload Docker image artifact
         if: success() || failure()
         uses: actions/upload-artifact@v7
         with:
           name: docker-image-pr-${{ github.event.pull_request.number }}
-          path: skymmich-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
+          path: sidereal-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
           retention-days: 7
 
       - name: Create application snapshot
         if: success() || failure()
         run: |
           mkdir -p snapshot
-          tar -czf snapshot/skymmich-snapshot-${{ github.sha }}.tar.gz \
+          tar -czf snapshot/sidereal-snapshot-${{ github.sha }}.tar.gz \
             --exclude=node_modules \
             --exclude=.git \
             --exclude=snapshot \
@@ -161,7 +161,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: app-snapshot-${{ github.sha }}
-          path: snapshot/skymmich-snapshot-${{ github.sha }}.tar.gz
+          path: snapshot/sidereal-snapshot-${{ github.sha }}.tar.gz
           retention-days: 7
 
       - name: Comment PR with results

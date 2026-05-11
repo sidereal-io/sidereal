@@ -1,4 +1,4 @@
-# Skymmich Docker Compose Configuration (SQLite — no external database needed)
+# Sidereal Docker Compose Configuration (SQLite — no external database needed)
 #
 # Usage: docker compose up -d
 #
@@ -6,12 +6,12 @@
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 
 services:
-  skymmich:
+  sidereal:
     build: .
-    container_name: skymmich
+    container_name: sidereal
     restart: unless-stopped
     ports:
-      - "${SKYMMICH_PORT:-5000}:5000"
+      - "${SIDEREAL_PORT:-5000}:5000"
     environment:
       - NODE_ENV=production
       - XMP_SIDECAR_PATH=/app/sidecars
@@ -23,11 +23,11 @@ services:
       - AUTO_DB_MIGRATE_MARKER=${AUTO_DB_MIGRATE_MARKER:-/app/config/.auto-db-migrated}
       - AUTO_DB_MIGRATE_RESET_SQLITE=${AUTO_DB_MIGRATE_RESET_SQLITE:-true}
     volumes:
-      - skymmich-config:/app/config
-      - skymmich-logs:/app/logs
-      - skymmich-sidecars:/app/sidecars
-      - skymmich-cache:/app/cache
-      - skymmich_immich-upload:/immich-upload
+      - sidereal-config:/app/config
+      - sidereal-logs:/app/logs
+      - sidereal-sidecars:/app/sidecars
+      - sidereal-cache:/app/cache
+      - sidereal_immich-upload:/immich-upload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
@@ -36,13 +36,13 @@ services:
       start_period: 40s
 
 volumes:
-  skymmich-config:
+  sidereal-config:
     driver: local
-  skymmich-logs:
+  sidereal-logs:
     driver: local
-  skymmich-sidecars:
+  sidereal-sidecars:
     driver: local
-  skymmich-cache:
+  sidereal-cache:
     driver: local
-  skymmich_immich-upload:
+  sidereal_immich-upload:
     external: true

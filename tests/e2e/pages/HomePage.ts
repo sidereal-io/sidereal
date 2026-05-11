@@ -26,7 +26,7 @@ export class HomePage extends BasePage {
     this.plateSolvedSelect = page.getByRole('combobox').filter({ hasText: /all status/i });
     this.advancedButton = page.getByRole('button', { name: /advanced/i });
     this.emptyState = page.getByText(/no astrophotography images found/i);
-    this.githubLink = page.locator('a[href="https://github.com/mstelz/skymmich"]');
+    this.githubLink = page.locator('a[href="https://github.com/mstelz/sidereal"]');
   }
 
   async goto() {
@@ -35,7 +35,7 @@ export class HomePage extends BasePage {
 
   async verifyPageElements() {
     await expect(this.header).toBeVisible();
-    await expect(this.appTitle).toHaveText('Skymmich');
+    await expect(this.appTitle).toHaveText('Sidereal');
     await expect(this.searchInput).toBeVisible();
     await expect(this.syncButton).toBeVisible();
   }

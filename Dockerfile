@@ -1,4 +1,4 @@
-# Multi-stage build for Skymmich
+# Multi-stage build for Sidereal
 # SECURITY: This image does not contain any secrets or API keys
 # All sensitive configuration is provided via environment variables at runtime
 FROM node:24-alpine AS builder
@@ -56,7 +56,7 @@ RUN apk upgrade --no-cache && \
 
 # Create app user for security (will be remapped via PUID/PGID if provided)
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S skymmich -u 1001 -G nodejs
+    adduser -S sidereal -u 1001 -G nodejs
 
 # Set working directory
 WORKDIR /app

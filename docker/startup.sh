@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Skymmich Container Startup Script
+# Sidereal Container Startup Script
 set -e
 
 mask_connection_string() {
@@ -31,7 +31,7 @@ run_auto_db_migration() {
     elif [ -n "$DATABASE_URL" ]; then
         AUTO_DB_MIGRATE_TARGET="$DATABASE_URL"
     else
-        SQLITE_TARGET_PATH=${SQLITE_DB_PATH:-/app/config/skymmich.db}
+        SQLITE_TARGET_PATH=${SQLITE_DB_PATH:-/app/config/sidereal.db}
         AUTO_DB_MIGRATE_TARGET="sqlite:$SQLITE_TARGET_PATH"
     fi
 
@@ -45,7 +45,7 @@ run_auto_db_migration() {
     echo "  From: $(mask_connection_string "$AUTO_DB_MIGRATE_FROM")"
     echo "  To: $(mask_connection_string "$AUTO_DB_MIGRATE_TARGET")"
 
-    if ! su-exec skymmich node "$MIGRATE_SCRIPT" --from "$AUTO_DB_MIGRATE_FROM" --to "$AUTO_DB_MIGRATE_TARGET"; then
+    if ! su-exec sidereal node "$MIGRATE_SCRIPT" --from "$AUTO_DB_MIGRATE_FROM" --to "$AUTO_DB_MIGRATE_TARGET"; then
         echo "Automatic database migration failed; aborting startup."
         exit 1
     fi
@@ -62,21 +62,21 @@ run_auto_db_migration() {
 PUID=${PUID:-1001}
 PGID=${PGID:-1001}
 
-echo "Updating skymmich user to PUID=$PUID and GID=$PGID..."
+echo "Updating sidereal user to PUID=$PUID and GID=$PGID..."
 groupmod -o -g "$PGID" nodejs || true
-usermod -o -u "$PUID" skymmich || true
+usermod -o -u "$PUID" sidereal || true
 
 # Ensure proper ownership of application and data directories
 echo "Setting directory permissions..."
-chown -R skymmich:nodejs /app/config /app/logs /app/sidecars /app/cache /app/dist
+chown -R sidereal:nodejs /app/config /app/logs /app/sidecars /app/cache /app/dist
 
-echo "Starting Skymmich container..."
+echo "Starting Sidereal container..."
 echo "Node.js version: $(node --version)"
 echo "Environment: ${NODE_ENV:-development}"
 if [ -n "$DATABASE_URL" ]; then
     echo "Database: PostgreSQL ($(echo "$DATABASE_URL" | sed 's|://[^:]*:[^@]*@|://****:****@|'))"
 else
-    echo "Database: SQLite (built-in at /app/config/skymmich.db)"
+    echo "Database: SQLite (built-in at /app/config/sidereal.db)"
 fi
 echo "Plate solving enabled: ${ENABLE_PLATE_SOLVING:-true}"
 echo "XMP sidecar path: ${XMP_SIDECAR_PATH:-/app/sidecars}"
@@ -108,13 +108,13 @@ else
     echo "No DATABASE_URL provided, using built-in SQLite database"
 fi
 
-# Run database migrations as skymmich user
+# Run database migrations as sidereal user
 echo "Running database migrations..."
 if [ -n "$DATABASE_URL" ]; then
     # PostgreSQL migrations
     if [ -f "/app/dist/tools/scripts/apply-pg-migrations.js" ]; then
         echo "Running PostgreSQL migrations..."
-        su-exec skymmich node /app/dist/tools/scripts/apply-pg-migrations.js || {
+        su-exec sidereal node /app/dist/tools/scripts/apply-pg-migrations.js || {
             echo "PostgreSQL migration failed, but continuing..."
         }
     else
@@ -149,16 +149,16 @@ cleanup() {
 # Trap signals for graceful shutdown
 trap cleanup TERM INT
 
-# Start main application as skymmich user
+# Start main application as sidereal user
 echo "Starting main application..."
-su-exec skymmich node /app/dist/index.js &
+su-exec sidereal node /app/dist/index.js &
 MAIN_PID=$!
 echo "Main process started with PID: $MAIN_PID"
 
-# Start worker process if enabled as skymmich user
+# Start worker process if enabled as sidereal user
 if [ "${ENABLE_PLATE_SOLVING:-true}" = "true" ]; then
     echo "Starting worker process..."
-    su-exec skymmich node /app/dist/worker.js &
+    su-exec sidereal node /app/dist/worker.js &
     WORKER_PID=$!
     echo "Worker process started with PID: $WORKER_PID"
 else
@@ -178,7 +178,7 @@ check_processes() {
     if [ "${ENABLE_PLATE_SOLVING:-true}" = "true" ] && [ -n "$WORKER_PID" ]; then
         if ! kill -0 "$WORKER_PID" 2>/dev/null; then
             echo "WARNING: Worker process (PID: $WORKER_PID) has died, restarting..."
-            su-exec skymmich node /app/dist/worker.js &
+            su-exec sidereal node /app/dist/worker.js &
             WORKER_PID=$!
             echo "Worker process restarted with PID: $WORKER_PID"
         fi
