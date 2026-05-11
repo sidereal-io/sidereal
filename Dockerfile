@@ -11,6 +11,9 @@ RUN npm install -g npm@11.11.0 && \
     npm pack tar@7.5.11 && \
     tar -xzf tar-7.5.11.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
     rm tar-7.5.11.tgz && \
+    npm pack ip-address@10.2.0 && \
+    tar -xzf ip-address-10.2.0.tgz -C /usr/local/lib/node_modules/npm/node_modules/ip-address --strip-components=1 && \
+    rm ip-address-10.2.0.tgz && \
     npm cache clean --force
 
 # Set working directory
@@ -47,6 +50,9 @@ RUN npm install -g npm@11.11.0 && \
     npm pack tar@7.5.11 && \
     tar -xzf tar-7.5.11.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
     rm tar-7.5.11.tgz && \
+    npm pack ip-address@10.2.0 && \
+    tar -xzf ip-address-10.2.0.tgz -C /usr/local/lib/node_modules/npm/node_modules/ip-address --strip-components=1 && \
+    rm ip-address-10.2.0.tgz && \
     npm cache clean --force
 
 # Upgrade base packages (fixes zlib CVEs) and install runtime dependencies
