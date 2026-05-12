@@ -421,6 +421,10 @@ Sidereal uses GitHub Actions for continuous integration and deployment. All buil
 
 For detailed CI/CD documentation, see [docs/CI_CD.md](docs/CI_CD.md).
 
+## Upgrading from Skymmich
+
+If you were running the project under its former name (Skymmich), see the [Migration Guide](docs/MIGRATION.md) for step-by-step instructions on renaming Docker volumes, database files, and environment variables.
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.

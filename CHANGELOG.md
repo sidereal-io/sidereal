@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **Rebrand**: Renamed project from Skymmich to Sidereal across all code, configuration, documentation, and Docker artifacts.
+- **Rebrand**: Renamed project from Skymmich to Sidereal across all code, configuration, documentation, and Docker artifacts. See the [Migration Guide](docs/MIGRATION.md) for upgrade steps.
 
 ### Breaking Changes
 - **Environment variable**: `SKYMMICH_PORT` → `SIDEREAL_PORT`
