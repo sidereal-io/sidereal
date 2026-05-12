@@ -23,7 +23,7 @@ A file management system that lets users organize, sort, and associate their raw
 
 ## Technical Considerations
 
-- File storage: could reference files by path (local/NAS) rather than uploading to Skymmich directly
+- File storage: could reference files by path (local/NAS) rather than uploading to Sidereal directly
 - Schema additions: tables for frames, calibration library, session-file associations
 - Potentially large data volumes — needs to be lightweight and reference-based
 

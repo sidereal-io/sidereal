@@ -40,7 +40,7 @@ export function DatabaseSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = response.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'skymmich-backup.db';
+      a.download = response.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'sidereal-backup.db';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

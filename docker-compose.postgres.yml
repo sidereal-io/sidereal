@@ -1,4 +1,4 @@
-# PostgreSQL override for Skymmich
+# PostgreSQL override for Sidereal
 #
 # Layer this on top of the base compose file to use PostgreSQL instead of SQLite:
 #   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
@@ -8,30 +8,30 @@
 #   echo "POSTGRES_PASSWORD=your_secure_password" > .env
 
 services:
-  skymmich:
+  sidereal:
     environment:
-      - DATABASE_URL=postgresql://skymmich:${POSTGRES_PASSWORD}@skymmich-db:5432/skymmich
+      - DATABASE_URL=postgresql://sidereal:${POSTGRES_PASSWORD}@sidereal-db:5432/sidereal
     depends_on:
-      skymmich-db:
+      sidereal-db:
         condition: service_healthy
     networks:
-      - skymmich-network
+      - sidereal-network
 
-  skymmich-db:
+  sidereal-db:
     image: postgres:15-alpine
-    container_name: skymmich-db
+    container_name: sidereal-db
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=skymmich
-      - POSTGRES_USER=skymmich
+      - POSTGRES_DB=sidereal
+      - POSTGRES_USER=sidereal
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
     volumes:
-      - skymmich-database:/var/lib/postgresql/data
+      - sidereal-database:/var/lib/postgresql/data
     networks:
-      - skymmich-network
+      - sidereal-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U skymmich -d skymmich"]
+      test: ["CMD-SHELL", "pg_isready -U sidereal -d sidereal"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39,9 +39,9 @@ services:
     # Don't expose PostgreSQL port externally for security
 
 networks:
-  skymmich-network:
+  sidereal-network:
     driver: bridge
 
 volumes:
-  skymmich-database:
+  sidereal-database:
     driver: local

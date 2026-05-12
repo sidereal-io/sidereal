@@ -1,6 +1,6 @@
-### Project Overview: Skymmich
+### Project Overview: Sidereal
 
-**Skymmich** is a full-stack web application designed as a comprehensive management system for astrophotography. It allows users to organize, view, and analyze their astronomical images by integrating with external services for image storage and celestial object identification.
+**Sidereal** is a full-stack web application designed as a comprehensive management system for astrophotography. It allows users to organize, view, and analyze their astronomical images by integrating with external services for image storage and celestial object identification.
 
 The application features a modern, real-time, and responsive user interface, a robust backend, and a dedicated background worker for handling long-running tasks.
 
@@ -36,4 +36,4 @@ The project is structured as a monorepo-like full-stack application with distinc
     *   **Build**: `esbuild` is used to build the server and worker for production, while `vite` builds the frontend.
     *   **Task Runner**: `npm scripts` are used to manage development, build, and production startup, with `concurrently` to run multiple processes at once (e.g., server and worker).
 
-In summary, Skymmich is a sophisticated and modern web application that leverages a range of powerful tools to provide a specialized and feature-rich experience for astrophotography enthusiasts.
+In summary, Sidereal is a sophisticated and modern web application that leverages a range of powerful tools to provide a specialized and feature-rich experience for astrophotography enthusiasts.

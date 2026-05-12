@@ -86,8 +86,8 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-            <img src="/logo.png" alt="Skymmich Logo" className="h-8 w-8" />
-            <h1 className="text-xl font-bold text-foreground">Skymmich</h1>
+            <img src="/logo.png" alt="Sidereal Logo" className="h-8 w-8" />
+            <h1 className="text-xl font-bold text-foreground">Sidereal</h1>
           </Link>
 
           {/* Desktop navigation */}
@@ -110,7 +110,7 @@ export function Header() {
               {syncing ? 'Syncing...' : 'Sync Immich'}
             </Button>
             <a
-              href="https://github.com/mstelz/skymmich"
+              href="https://github.com/mstelz/sidereal"
               target="_blank"
               rel="noopener noreferrer"
               title="View on GitHub"
@@ -152,8 +152,8 @@ export function Header() {
               <SheetContent side="right" className="w-64 p-0">
                 <SheetTitle className="sr-only">Navigation</SheetTitle>
                 <div className="flex items-center space-x-2 px-4 h-16 border-b border-border">
-                  <img src="/logo.png" alt="Skymmich Logo" className="h-8 w-8" />
-                  <span className="text-xl font-bold text-foreground">Skymmich</span>
+                  <img src="/logo.png" alt="Sidereal Logo" className="h-8 w-8" />
+                  <span className="text-xl font-bold text-foreground">Sidereal</span>
                 </div>
                 <nav className="flex flex-col py-2">
                   {NAV_LINKS.map(({ href, label }) => (

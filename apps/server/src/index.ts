@@ -84,7 +84,7 @@ async function startServer() {
     });
   }
 
-  console.log(`Skymmich server running on port ${PORT}`);
+  console.log(`Sidereal server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Database: ${process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite'}`);
   console.log(`Worker manager available in production mode`);

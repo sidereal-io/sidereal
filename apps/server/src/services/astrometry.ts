@@ -43,7 +43,7 @@ export interface PlateSolvingResult {
   machineTags: string[];
 }
 
-const HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; Skymmich/1.0)' };
+const HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; Sidereal/1.0)' };
 
 export class AstrometryService {
   private astrometryApiKey: string;

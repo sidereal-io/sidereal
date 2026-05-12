@@ -6,7 +6,7 @@ on:
   workflow_dispatch:      # Allow manual trigger
 
 env:
-  PACKAGE_NAME: skymmich
+  PACKAGE_NAME: sidereal
 
 jobs:
   prune:

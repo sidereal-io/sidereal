@@ -37,7 +37,7 @@ async function initializeDatabase() {
   } else {
     // Use built-in SQLite database
     try {
-      const dbPath = process.env.SQLITE_DB_PATH || (process.env.NODE_ENV === 'production' ? '/app/config/skymmich.db' : 'local.db');
+      const dbPath = process.env.SQLITE_DB_PATH || (process.env.NODE_ENV === 'production' ? '/app/config/sidereal.db' : 'local.db');
       console.log(`Using SQLite database: ${dbPath}`);
 
       // Dynamic imports to handle missing dependencies gracefully

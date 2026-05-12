@@ -255,7 +255,7 @@ export function ImmichSection({
             <Label htmlFor="metadataSyncEnabled">Enable metadata writeback to Immich</Label>
           </div>
           <p className="text-sm text-muted-foreground">
-            When enabled, Skymmich metadata (description, coordinates, tags) can be synced back to your Immich assets.
+            When enabled, Sidereal metadata (description, coordinates, tags) can be synced back to your Immich assets.
           </p>
 
           {settings.immich.metadataSyncEnabled && (

@@ -87,7 +87,7 @@ class CatalogService {
     let commitSha = '';
     try {
       const apiResponse = await fetch(GITHUB_API_URL, {
-        headers: { 'User-Agent': 'Skymmich/1.0' },
+        headers: { 'User-Agent': 'Sidereal/1.0' },
       });
       if (apiResponse.ok) {
         const commits = await apiResponse.json();
@@ -117,7 +117,7 @@ class CatalogService {
     const currentSha = (settings.catalog_commitSha as string) || '';
 
     const apiResponse = await fetch(GITHUB_API_URL, {
-      headers: { 'User-Agent': 'Skymmich/1.0' },
+      headers: { 'User-Agent': 'Sidereal/1.0' },
     });
 
     if (!apiResponse.ok) {

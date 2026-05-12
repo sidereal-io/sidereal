@@ -1,17 +1,17 @@
-# Skymmich API Documentation
+# Sidereal API Documentation
 
-This document describes the REST API endpoints available in Skymmich.
+This document describes the REST API endpoints available in Sidereal.
 
 ## Base URL
 
-All API endpoints are relative to your Skymmich server's base URL:
+All API endpoints are relative to your Sidereal server's base URL:
 ```
 http://localhost:5000/api
 ```
 
 ## Authentication
 
-Currently, Skymmich does not require authentication for API access. All endpoints are publicly accessible when the server is running.
+Currently, Sidereal does not require authentication for API access. All endpoints are publicly accessible when the server is running.
 
 ## Response Format
 
@@ -1112,7 +1112,7 @@ GET /api/admin/database
 ```json
 {
   "type": "sqlite",
-  "path": "/app/config/skymmich.db",
+  "path": "/app/config/sidereal.db",
   "sizeBytes": 1048576,
   "lastModified": "2024-01-15T10:00:00Z"
 }
@@ -1169,7 +1169,7 @@ Currently, there are no rate limits implemented. However, be mindful of:
 
 ## WebSocket Events
 
-Skymmich uses native WebSocket for real-time updates. Connect to `ws://<host>/ws` and listen for JSON messages:
+Sidereal uses native WebSocket for real-time updates. Connect to `ws://<host>/ws` and listen for JSON messages:
 
 ### Plate Solving Updates
 ```javascript
@@ -1222,6 +1222,6 @@ Note: Admin settings take precedence over environment variables.
 ## Support
 
 For API support and questions:
-- Check the [GitHub Issues](https://github.com/mstelz/Skymmich/issues)
+- Check the [GitHub Issues](https://github.com/mstelz/Sidereal/issues)
 - Review the [Contributing Guide](../CONTRIBUTING.md)
-- Join discussions in [GitHub Discussions](https://github.com/mstelz/Skymmich/discussions)
+- Join discussions in [GitHub Discussions](https://github.com/mstelz/Sidereal/discussions)

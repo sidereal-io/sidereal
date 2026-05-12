@@ -1,6 +1,6 @@
 # Equipment Management Features
 
-This document describes the equipment management functionality added to Skymmich, which allows users to track and manage equipment used for astrophotography images.
+This document describes the equipment management functionality added to Sidereal, which allows users to track and manage equipment used for astrophotography images.
 
 ## Overview
 

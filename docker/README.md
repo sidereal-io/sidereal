@@ -1,6 +1,6 @@
-# Skymmich Docker Deployment
+# Sidereal Docker Deployment
 
-This directory contains all the necessary files for deploying Skymmich using Docker containers.
+This directory contains all the necessary files for deploying Sidereal using Docker containers.
 
 ## Quick Start
 
@@ -8,11 +8,11 @@ This directory contains all the necessary files for deploying Skymmich using Doc
 
 ```bash
 git clone <your-repo-url>
-cd skymmich
+cd sidereal
 docker compose up -d
 ```
 
-No external database or `.env` file required — Skymmich uses a built-in SQLite database by default.
+No external database or `.env` file required — Sidereal uses a built-in SQLite database by default.
 
 ### 2. Environment Configuration (Optional)
 
@@ -20,7 +20,7 @@ Copy `docker/.env.docker.example` to `.env` in the project root to customize:
 
 ```bash
 # Optional: Application configuration
-SKYMMICH_PORT=5000
+SIDEREAL_PORT=5000
 IMMICH_URL=http://your-immich-server:2283
 IMMICH_API_KEY=your_immich_api_key_here
 ASTROMETRY_API_KEY=your_astrometry_api_key_here
@@ -42,21 +42,21 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 ## Files Overview
 
 ### Core Files
-- `Dockerfile` - Multi-stage build for Skymmich application
+- `Dockerfile` - Multi-stage build for Sidereal application
 - `docker-compose.yml` - Default setup (SQLite, single container)
 - `docker-compose.postgres.yml` - PostgreSQL override (layer on top)
 - `startup.sh` - Container entry point script
 - `.env.docker.example` - Docker environment variable template
 
 ### UnRAID Templates
-- `unraid-templates/skymmich.xml` - Main application template
+- `unraid-templates/sidereal.xml` - Main application template
 
 ## UnRAID Installation
 
-### Step 1: Install Skymmich
+### Step 1: Install Sidereal
 1. Go to Docker tab in UnRAID
 2. Click "Add Container"
-3. Use template URL: `https://raw.githubusercontent.com/mstelz/Skymmich/main/docker/unraid-templates/skymmich.xml`
+3. Use template URL: `https://raw.githubusercontent.com/mstelz/Sidereal/main/docker/unraid-templates/sidereal.xml`
 4. Optionally add your Immich and Astrometry.net credentials
 5. Apply and start container
 
@@ -87,7 +87,7 @@ docker compose up -d --build
 
 ```
 ┌─────────────────────────────────────┐
-│        Skymmich Container           │
+│        Sidereal Container           │
 ├─────────────────────────────────────┤
 │  Frontend (React SPA)              │
 │  Backend (Hono API)                │
@@ -99,19 +99,19 @@ docker compose up -d --build
 
 ## Health Monitoring
 
-### Skymmich Health Check
+### Sidereal Health Check
 - Endpoint: `http://localhost:5000/api/health`
 - Checks database connectivity and worker status
 - 30-second intervals with 40-second startup period
 
 ### PostgreSQL Health Check (if using PostgreSQL)
-- Command: `pg_isready -U skymmich -d skymmich`
+- Command: `pg_isready -U sidereal -d sidereal`
 - 10-second intervals with 30-second startup period
 
 ## Data Persistence
 
 ### Volumes
-- **Skymmich Config + Database**: `/app/config` (includes `skymmich.db` when using SQLite)
+- **Sidereal Config + Database**: `/app/config` (includes `sidereal.db` when using SQLite)
 - **Logs**: `/app/logs`
 - **Sidecars**: `/app/sidecars`
 - **Cache**: `/app/cache`
@@ -121,30 +121,30 @@ docker compose up -d --build
 **SQLite (default):**
 ```bash
 # Backup database (just copy the file)
-docker cp skymmich:/app/config/skymmich.db ./skymmich-backup.db
+docker cp sidereal:/app/config/sidereal.db ./sidereal-backup.db
 
 # Backup configuration
-tar -czf skymmich-config-backup.tar.gz /mnt/user/appdata/skymmich/config
+tar -czf sidereal-config-backup.tar.gz /mnt/user/appdata/sidereal/config
 
 # Restore database
-docker cp ./skymmich-backup.db skymmich:/app/config/skymmich.db
-docker restart skymmich
+docker cp ./sidereal-backup.db sidereal:/app/config/sidereal.db
+docker restart sidereal
 ```
 
 **PostgreSQL (if using postgres override):**
 ```bash
 # Backup database
-docker exec skymmich-db pg_dump -U skymmich skymmich > backup.sql
+docker exec sidereal-db pg_dump -U sidereal sidereal > backup.sql
 
 # Restore database
-docker exec -i skymmich-db psql -U skymmich skymmich < backup.sql
+docker exec -i sidereal-db psql -U sidereal sidereal < backup.sql
 ```
 
 ## Migrating Between SQLite and PostgreSQL
 
 A migration script is included for moving data between database engines in either direction.
 
-**Important:** SQLite targets automatically run the bundled Drizzle migrations during the copy. PostgreSQL targets must still have their schema created ahead of time (start Skymmich once with the postgres override so the tables exist).
+**Important:** SQLite targets automatically run the bundled Drizzle migrations during the copy. PostgreSQL targets must still have their schema created ahead of time (start Sidereal once with the postgres override so the tables exist).
 
 ### PostgreSQL → SQLite (switching to the new default)
 ```bash
@@ -153,12 +153,12 @@ docker compose down
 
 # Run migration inside the container
 docker run --rm \
-  -v skymmich-config:/app/config \
-  --network skymmich-network \
-  ghcr.io/mstelz/skymmich:latest \
+  -v sidereal-config:/app/config \
+  --network sidereal-network \
+  ghcr.io/mstelz/sidereal:latest \
   node /app/dist/tools/scripts/migrate-db.js \
-    --from postgresql://skymmich:password@skymmich-db:5432/skymmich \
-    --to sqlite:/app/config/skymmich.db
+    --from postgresql://sidereal:password@sidereal-db:5432/sidereal \
+    --to sqlite:/app/config/sidereal.db
 
 # Then start with the default compose (no PostgreSQL)
 docker compose -f docker-compose.prod.yml up -d
@@ -171,12 +171,12 @@ docker compose down
 
 # Run migration inside the container
 docker run --rm \
-  -v skymmich-config:/app/config \
-  --network skymmich-network \
-  ghcr.io/mstelz/skymmich:latest \
+  -v sidereal-config:/app/config \
+  --network sidereal-network \
+  ghcr.io/mstelz/sidereal:latest \
   node /app/dist/tools/scripts/migrate-db.js \
-    --from sqlite:/app/config/skymmich.db \
-    --to postgresql://skymmich:password@skymmich-db:5432/skymmich
+    --from sqlite:/app/config/sidereal.db \
+    --to postgresql://sidereal:password@sidereal-db:5432/sidereal
 
 # Then start with the postgres override
 docker compose -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d
@@ -186,18 +186,18 @@ docker compose -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d
 ```bash
 node tools/scripts/migrate-db.js \
   --from sqlite:local.db \
-  --to postgresql://skymmich:password@localhost:5432/skymmich
+  --to postgresql://sidereal:password@localhost:5432/sidereal
 ```
 
 ### Automatic Migration During Container Startup
 
-Set the `AUTO_DB_MIGRATE_FROM` environment variable on the Skymmich container to have the startup script run the migration automatically before the application boots. The target defaults to whichever database the container is configured to use (PostgreSQL when `DATABASE_URL` is set, otherwise the built-in SQLite database at `/app/config/skymmich.db`).
+Set the `AUTO_DB_MIGRATE_FROM` environment variable on the Sidereal container to have the startup script run the migration automatically before the application boots. The target defaults to whichever database the container is configured to use (PostgreSQL when `DATABASE_URL` is set, otherwise the built-in SQLite database at `/app/config/sidereal.db`).
 
 Optional environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AUTO_DB_MIGRATE_FROM` | _(required)_ | Source connection string (e.g. `postgresql://...` or `sqlite:/app/config/skymmich.db`). |
+| `AUTO_DB_MIGRATE_FROM` | _(required)_ | Source connection string (e.g. `postgresql://...` or `sqlite:/app/config/sidereal.db`). |
 | `AUTO_DB_MIGRATE_TO` | auto-detected | Override the destination connection string. |
 | `AUTO_DB_MIGRATE_ONCE` | `true` | When `true`, the migration runs only the first time and writes a marker file. |
 | `AUTO_DB_MIGRATE_MARKER` | `/app/config/.auto-db-migrated` | Marker file path used when `AUTO_DB_MIGRATE_ONCE=true`. Remove this file to re-run the automatic migration. |
@@ -207,12 +207,12 @@ Examples:
 
 ```bash
 # Migrate once from PostgreSQL back to the built-in SQLite database
-AUTO_DB_MIGRATE_FROM=postgresql://skymmich:password@skymmich-db:5432/skymmich \
+AUTO_DB_MIGRATE_FROM=postgresql://sidereal:password@sidereal-db:5432/sidereal \
   docker compose -f docker-compose.prod.yml up -d
 
 # Migrate from SQLite to PostgreSQL before switching to the postgres override
-AUTO_DB_MIGRATE_FROM=sqlite:/app/config/skymmich.db \
-  DATABASE_URL=postgresql://skymmich:password@skymmich-db:5432/skymmich \
+AUTO_DB_MIGRATE_FROM=sqlite:/app/config/sidereal.db \
+  DATABASE_URL=postgresql://sidereal:password@sidereal-db:5432/sidereal \
   docker compose -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d
 ```
 
@@ -221,7 +221,7 @@ After the automatic migration completes the container continues starting normall
 ## Troubleshooting
 
 ### Container Won't Start
-1. Check logs: `docker compose logs skymmich`
+1. Check logs: `docker compose logs sidereal`
 2. Check environment variables
 3. Ensure ports aren't in use
 4. Verify volume permissions (check PUID/PGID settings)
@@ -248,7 +248,7 @@ After the automatic migration completes the container continues starting normall
 - **No secrets in images** - Container images contain no embedded secrets
 - **Regular updates** - Keep containers updated with latest security patches
 - **Monitor access** - Review logs for unauthorized access attempts
-- **File permissions** - Containers run as non-root user (`skymmich`)
+- **File permissions** - Containers run as non-root user (`sidereal`)
 - If using PostgreSQL: use a strong password and don't expose the PostgreSQL port externally
 
 **Environment Variables vs Admin Interface:**

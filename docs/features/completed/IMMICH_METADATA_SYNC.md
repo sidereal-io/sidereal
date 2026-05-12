@@ -17,14 +17,14 @@ Only latitude and longitude are synced back to Immich. Users want all available 
 ## Solution
 
 ### Metadata to Sync
-Build a rich description string from all available Skymmich data:
+Build a rich description string from all available Sidereal data:
 - Object name/title
 - Constellation
 - Equipment list (telescope, camera, mount, filters)
 - Acquisition summary (per-filter breakdown, total integration)
 - Plate solving results (RA/Dec, pixel scale, field of view)
 - Coordinates (latitude/longitude) — already implemented
-- Tags — sync Skymmich tags to Immich tags
+- Tags — sync Sidereal tags to Immich tags
 
 ### Admin Settings (`apps/client/src/pages/admin.tsx`)
 Add a "Metadata Sync" section with:

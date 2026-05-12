@@ -11,16 +11,16 @@ test.describe('Home Page', () => {
   });
 
   test('should load with correct page title', async () => {
-    await expect(homePage.page).toHaveTitle('Skymmich');
+    await expect(homePage.page).toHaveTitle('Sidereal');
   });
 
   test('should display header with app title', async () => {
     await expect(homePage.header).toBeVisible();
-    await expect(homePage.appTitle).toHaveText('Skymmich');
+    await expect(homePage.appTitle).toHaveText('Sidereal');
   });
 
   test('should display logo image in header', async () => {
-    const logo = homePage.page.locator('header img[alt="Skymmich Logo"]');
+    const logo = homePage.page.locator('header img[alt="Sidereal Logo"]');
     await expect(logo).toBeVisible();
   });
 
