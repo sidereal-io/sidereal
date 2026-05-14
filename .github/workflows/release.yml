@@ -236,20 +236,11 @@ jobs:
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Get merged image digest
-        id: inspect
-        run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION_CLEAN="${VERSION#v}"
-          DIGEST=$(docker buildx imagetools inspect --format '{{json .}}' \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION_CLEAN} | jq -r '.Manifest.Digest')
-          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
-
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         continue-on-error: true
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.inspect.outputs.digest }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           format: spdx-json
           output-file: release/sbom-${{ github.ref_name }}.spdx.json
 
