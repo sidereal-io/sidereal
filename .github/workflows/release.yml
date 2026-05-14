@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # Semantic versioning tags (e.g., v1.0.0, v2.1.3)
+      - 'v*.*.*'
 
 env:
   REGISTRY: ghcr.io
@@ -11,18 +11,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  release:
+  validate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # For creating releases
-      packages: write  # For pushing to registry
-      security-events: write  # For uploading SARIF files
-      
+      contents: read
+      packages: write
+      security-events: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Get full history for changelog generation
+          fetch-depth: 0
 
       - name: Validate tag format
         run: |
@@ -57,6 +57,157 @@ jobs:
             --exclude=release \
             .
 
+      - name: Upload release archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-archives-${{ github.ref_name }}
+          path: release/sidereal-${{ github.ref_name }}-*.tar.gz
+          retention-days: 1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image (local AMD64 for validation)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: local-scan:${{ github.ref_name }}
+          cache-from: type=gha
+          build-args: |
+            BUILDTIME=${{ github.event.head_commit.timestamp }}
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+
+      - name: Run container smoke test
+        run: ./docker/smoke-test.sh local-scan:${{ github.ref_name }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: local-scan:${{ github.ref_name }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          scan-type: 'image'
+          hide-progress: false
+          ignore-unfixed: true
+          trivyignores: '.trivyignore'
+          limit-severities-for-sarif: true
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-release'
+
+  # Build each platform on a native runner, no QEMU
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Prepare platform tag
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          name: release-archives-${{ github.ref_name }}
+          path: release/
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -78,66 +229,27 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
-      - name: Build Docker image (local)
-        id: build-local
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: local-scan:${{ github.ref_name }}
-          cache-from: type=gha
-          build-args: |
-            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
-            VERSION=${{ github.ref_name }}
-            REVISION=${{ github.sha }}
+      - name: Create and push multi-arch manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Run container smoke test
-        run: ./docker/smoke-test.sh local-scan:${{ github.ref_name }}
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: local-scan:${{ github.ref_name }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'  # Fail the release on critical vulnerabilities
-          scan-type: 'image'
-          hide-progress: false
-          ignore-unfixed: true
-          trivyignores: '.trivyignore'
-          limit-severities-for-sarif: true
-
-      - name: Build and push Docker image (multi-arch)
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
-            VERSION=${{ github.ref_name }}
-            REVISION=${{ github.sha }}
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-results.sarif') != ''
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'trivy-release'
+      - name: Get merged image digest
+        id: inspect
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION_CLEAN="${VERSION#v}"
+          DIGEST=$(docker buildx imagetools inspect --format '{{json .}}' \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION_CLEAN} | jq -r '.Manifest.Digest')
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
-        continue-on-error: true  # Don't fail release if SBOM generation fails
+        continue-on-error: true
         with:
-          image: local-scan:${{ github.ref_name }}  # Use same local image as Trivy scan
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.inspect.outputs.digest }}
           format: spdx-json
           output-file: release/sbom-${{ github.ref_name }}.spdx.json
 
@@ -146,17 +258,15 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           VERSION_CLEAN="${VERSION#v}"
-          
-          # Extract the section for this version from CHANGELOG.md
-          # Starts at the version header and ends before the next version header
+
           sed -n "/## \[$VERSION_CLEAN\]/,/## \[/p" CHANGELOG.md | sed '1d;$d' > changelog.md
-          
+
           echo "" >> changelog.md
           echo "--------" >> changelog.md
           echo "" >> changelog.md
           echo "Docker: \`docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION_CLEAN}\`" >> changelog.md
           echo "" >> changelog.md
-          
+
           PREV_TAG=$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1) 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             echo "Full Changelog: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION}" >> changelog.md
@@ -177,10 +287,12 @@ jobs:
 
       - name: Create deployment summary
         run: |
-          echo "## Release Published 🎉" >> $GITHUB_STEP_SUMMARY
+          VERSION_CLEAN="${{ github.ref_name }}"
+          VERSION_CLEAN="${VERSION_CLEAN#v}"
+          echo "## Release Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION_CLEAN}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Docker Tags" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
@@ -191,7 +303,7 @@ jobs:
           echo "- SBOM: sbom-${{ github.ref_name }}.spdx.json" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Security" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Passed Trivy vulnerability scan" >> $GITHUB_STEP_SUMMARY
+          echo "Passed Trivy vulnerability scan (validated before publish)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
