@@ -11,9 +11,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mstelz/Sidereal/actions/workflows/docker-build-push.yml"><img src="https://github.com/mstelz/Sidereal/actions/workflows/docker-build-push.yml/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/mstelz/Sidereal/actions/workflows/release.yml"><img src="https://github.com/mstelz/Sidereal/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
-  <a href="https://github.com/mstelz/Sidereal/security"><img src="https://img.shields.io/badge/Security-Trivy%20Scanned-brightgreen" alt="Security Scan" /></a>
+  <a href="https://github.com/sidereal-io/sidereal/actions/workflows/docker-build-push.yml"><img src="https://github.com/sidereal-io/sidereal/actions/workflows/docker-build-push.yml/badge.svg" alt="Build Status" /></a>
+  <a href="https://github.com/sidereal-io/sidereal/actions/workflows/release.yml"><img src="https://github.com/sidereal-io/sidereal/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://github.com/sidereal-io/sidereal/security"><img src="https://img.shields.io/badge/Security-Trivy%20Scanned-brightgreen" alt="Security Scan" /></a>
 </p>
 
 **Sidereal** is a self-hosted photo gallery and management system designed specifically for astrophotographers. Built to integrate seamlessly with your [Immich](https://immich.app/) photo library, it provides intelligent plate solving, equipment tracking, and comprehensive metadata management tailored for deep-sky imaging workflows.
