@@ -131,7 +131,14 @@ See `.env.example` and `.env.worker.example` for the full list.
 
 ## Workflow
 
-This repository uses a simple SDD (Spec-Driven-Development) workflow. GitHub Issues are the spec. Every feature or bug fix begins as an issue and ends with a PR that closes it.
+This project strictly adheres to the Jesse Vincent **Superpowers** development methodology. 
+If you are an AI agent or a subagent assisting a human developer, you MUST follow these constraints:
+
+### Workflow Rules
+
+1. **No Vibe Coding:** Do not touch a line of code without activating the `/brainstorm` and `/write-plan` workflows. 
+2. **Mandatory TDD:** Every single feature or bug fix must follow the Red-Green-Refactor loop. You must write a failing test first, watch it fail, write minimal code to make it pass, and commit. Code written without a test baseline will be intentionally discarded.
+
 
 ### Phase 1 — Brainstorm
 
@@ -143,7 +150,7 @@ gh issue create --title "<title>" --label brainstorming --body "<description>"
 gh issue edit <number> --add-label brainstorming
 ```
 
-The human will iterate on the issue, ask questions, and refine it. Do not start planning or implementation until the label changes.
+The human will iterate on the issue, ask questions, and refine it. Do not start planning or implementation until the label changes. Visual mockups must be attached to the issue for review.
 
 ### Phase 2 — Branch
 
