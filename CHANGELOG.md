@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-15
+
 ### Changed
 - **Rebrand**: Renamed project from Skymmich to Sidereal across all code, configuration, documentation, and Docker artifacts. See the [Migration Guide](docs/MIGRATION.md) for upgrade steps.
+- **Dependencies**: Updated production dependencies — @tanstack/react-query 5.100.10, framer-motion 12.38.0, hono 4.12.18, lucide-react 1.14.0, react 19.2.6, react-dom 19.2.6, react-resizable-panels 4.11.0, tailwind-merge 3.6.0, zod 4.4.3, and others.
+- **Dev Dependencies**: Updated development dependencies including drizzle-kit, esbuild, postcss, tailwindcss, tsx, vite, and various @types packages.
+- **CI**: Replaced QEMU ARM64 emulation with native `ubuntu-24.04-arm` runners for faster multi-arch builds.
+- **CI**: Use tag references instead of digests for Trivy and SBOM steps.
+
+### Security
+- **npm**: Bumped to 11.14.1 to resolve CVE-2026-42338.
 
 ### Breaking Changes
 - **Environment variable**: `SKYMMICH_PORT` → `SIDEREAL_PORT`
