@@ -111,5 +111,6 @@ vite.config.ts.*
 *~
 
 # Skills and agent workspaces
-.claude
-.agents
+.agents/*
+.claude/*
+!.claude/settings.json
