@@ -110,5 +110,7 @@ vite.config.ts.*
 *.backup
 *~
 
-# Skills
-.claude
+# Skills and agent workspaces
+.agents/*
+.claude/*
+!.claude/settings.json
