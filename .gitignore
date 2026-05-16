@@ -110,22 +110,9 @@ vite.config.ts.*
 *.backup
 *~
 
-# Agent definitions (skills view, etc.) — keep symlinks, ignore actual files
-.agent/*
-.agent/skills/*
-!.agent/skills/
-!.agent/skills/sidereal-*/
-!.agent/skills/sidereal-*/**
-
 # Working state (plans, caches, scratch) — fully ignored
 .workspace/
 
-# Claude Code project config — track settings, skills, and hooks
-.claude/*
-.claude/skills/*
-!.claude/settings.json
-!.claude/skills/
-!.claude/skills/sidereal-*/
-!.claude/skills/sidereal-*/**
-!.claude/hooks/
-!.claude/hooks/**
+# AI tooling
+.claude/settings.local.json
+.claude/worktrees/

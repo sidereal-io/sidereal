@@ -7,5 +7,27 @@
         "@playwright/mcp@latest"
       ]
     }
+  },
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": "write_file|replace",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$GEMINI_PROJECT_DIR/.agent/hooks/check-edit-prerequisites.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "run_shell_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$GEMINI_PROJECT_DIR/.agent/hooks/check-pr-closes-issue.sh"
+          }
+        ]
+      }
+    ]
   }
 }
