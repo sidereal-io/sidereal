@@ -131,72 +131,20 @@ See `.env.example` and `.env.worker.example` for the full list.
 
 ## Workflow
 
-This project strictly adheres to the Jesse Vincent **Superpowers** development methodology. 
-If you are an AI agent or a subagent assisting a human developer, you MUST follow these constraints:
+This project follows the Jesse Vincent **Superpowers** development methodology, with four sidereal-specific overrides. AI agents MUST use both:
 
-### Workflow Rules
+1. **`superpowers:brainstorming`, `writing-plans`, `executing-plans` (or `subagent-driven-development`), and `finishing-a-development-branch`** — the standard methodology
+2. **`sidereal-workflow-overrides`** — the project's overlay (spec on GitHub issue, plan in `.workspace/plans/`, ADR before PR, `Closes #<n>` in PR body)
 
-1. **No Vibe Coding:** Do not touch a line of code without activating the `/brainstorm` and `/write-plan` workflows. 
-2. **Mandatory TDD:** Every single feature or bug fix must follow the Red-Green-Refactor loop. You must write a failing test first, watch it fail, write minimal code to make it pass, and commit. Code written without a test baseline will be intentionally discarded.
+When the user asks "what's next?" or starts a workflow without naming an issue, use **`sidereal-pick-next-issue`** first.
 
+### Hard rules
 
-### Phase 1 — Brainstorm
+- **No vibe coding.** Never edit code without an `spec/ready` issue and a plan file in `.workspace/plans/`.
+- **Mandatory TDD.** Every feature or bug fix follows Red-Green-Refactor. Code without a test baseline will be discarded.
+- **Never set `spec/ready` yourself.** Only a human applies that label.
 
-When a user asks you to explore or design a feature, open (or update) a GitHub issue and label it **`brainstorming`**. Use the issue to document the problem, proposed approaches, trade-offs, and open questions. The issue is the living spec — write clearly enough that a collaborator reading it cold can understand the intent and constraints.
-
-```bash
-gh issue create --title "<title>" --label brainstorming --body "<description>"
-# or update an existing issue
-gh issue edit <number> --add-label brainstorming
-```
-
-The human will iterate on the issue, ask questions, and refine it. Do not start planning or implementation until the label changes. Visual mockups must be attached to the issue for review.
-
-### Phase 2 — Branch
-
-When an issue is labelled **`implementation-ready`** (applied by a human — do not set this yourself), the spec is locked and you can begin.
-
-```bash
-gh issue list --label implementation-ready
-```
-
-Read the full issue, then create a dedicated branch:
-
-```bash
-git fetch origin
-git checkout -b issue-<number>-<short-slug> origin/main
-```
-
-### Phase 3 — Plan
-
-Write a concrete task list to `.agents/plans/YYYY-MM-DD-issue-<number>-<slug>.md`. Each task must be a single, verifiable action — no vague steps like "add error handling." Include the issue URL at the top of the plan file.
-
-`.agents/` is gitignored — plans are working documents and are never committed.
-
-### Phase 4 — Implement
-
-Work through the plan task by task. After each task:
-
-1. Run `npm run check` — fix type errors before continuing.
-2. Run `npm run test` if the task touched shared code.
-
-Commit frequently with conventional commit messages (`feat:`, `fix:`, etc.). Keep commits focused on a single logical change.
-
-### Phase 5 — ADR review
-
-When implementation is complete and all checks pass, compare the final result to the issue spec. If any significant design decision was made or changed during implementation — something a future contributor would need to understand — write an ADR before opening the PR (see **ADR Workflow** below).
-
-### Phase 6 — Pull request
-
-```bash
-gh pr create \
-  --title "<type>: <short description>" \
-  --body "Closes #<issue-number>
-
-<brief summary of what was done and any notable decisions>"
-```
-
-The `Closes #<number>` line ensures the issue is automatically closed when the PR merges.
+See the `sidereal-workflow-overrides` skill for the full override details.
 
 ## Decision Records
 
