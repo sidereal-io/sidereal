@@ -1,9 +1,23 @@
 import { Hono } from 'hono';
 import { readFile } from 'fs/promises';
+import { stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 import { storage } from '../services/storage';
 import { xmpSidecarService } from '../services/xmp-sidecar';
 import { configService } from '../services/config';
 import { handleRouteError } from './route-utils';
+import { imageStorage, ImageNotFoundError } from '../services/image-storage';
+
+const MIME: Record<string, string> = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  gif: 'image/gif', webp: 'image/webp', tiff: 'image/tiff',
+  fit: 'application/octet-stream', xisf: 'application/octet-stream',
+};
+
+function extMime(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+  return MIME[ext] ?? 'application/octet-stream';
+}
 
 const app = new Hono();
 
@@ -53,6 +67,20 @@ app.get('/', async (c) => {
   } catch (error) {
     return handleRouteError(c, error, 'Failed to fetch images');
   }
+});
+
+// --- Image byte-serving routes ---
+
+app.get('/:id/thumbnail', async (c) => {
+  return serveFile(c, parseInt(c.req.param('id')), 'thumbnail');
+});
+
+app.get('/:id/preview', async (c) => {
+  return serveFile(c, parseInt(c.req.param('id')), 'preview');
+});
+
+app.get('/:id/original', async (c) => {
+  return serveFile(c, parseInt(c.req.param('id')), 'original', true);
 });
 
 // Get a specific image
@@ -364,5 +392,88 @@ app.get('/:id/sidecar', async (c) => {
     return handleRouteError(c, error, 'Failed to fetch sidecar');
   }
 });
+
+async function serveFile(
+  c: any,
+  id: number,
+  size: 'original' | 'preview' | 'thumbnail',
+  rangeSupport = false
+): Promise<Response> {
+  let filePath: string;
+  try {
+    filePath = await imageStorage.readPath(id, size);
+  } catch (e) {
+    if (e instanceof ImageNotFoundError) {
+      return c.json({ message: 'Image file not found', backfillPending: true }, 404, {
+        'X-Sidereal-Backfill': 'pending',
+      });
+    }
+    throw e;
+  }
+
+  let fileStats: { size: number; mtime: Date };
+  try {
+    fileStats = await stat(filePath);
+  } catch {
+    return c.json({ message: 'Image file not found' }, 404);
+  }
+
+  const contentType = extMime(filePath);
+  const etag = `W/"${id}-${size}-${fileStats.mtime.getTime()}"`;
+  const ifNoneMatch = c.req.header('If-None-Match');
+
+  if (ifNoneMatch === etag) {
+    return new Response(null, { status: 304 });
+  }
+
+  const baseHeaders: Record<string, string> = {
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=31536000, immutable',
+    'ETag': etag,
+  };
+
+  if (c.req.query('download') === '1') {
+    const filename = filePath.split('/').pop() ?? `image-${id}`;
+    baseHeaders['Content-Disposition'] = `attachment; filename="${filename}"`;
+  }
+
+  if (rangeSupport) {
+    const rangeHeader = c.req.header('Range');
+    if (rangeHeader) {
+      const match = rangeHeader.match(/^bytes=(\d+)-(\d*)$/);
+      if (!match) {
+        return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStats.size}` } });
+      }
+      const start = parseInt(match[1]);
+      const end = match[2] ? parseInt(match[2]) : fileStats.size - 1;
+
+      if (start >= fileStats.size || end >= fileStats.size || start > end) {
+        return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStats.size}` } });
+      }
+
+      const chunkSize = end - start + 1;
+      const stream = createReadStream(filePath, { start, end });
+      return new Response(stream as any, {
+        status: 206,
+        headers: {
+          ...baseHeaders,
+          'Content-Length': String(chunkSize),
+          'Content-Range': `bytes ${start}-${end}/${fileStats.size}`,
+          'Accept-Ranges': 'bytes',
+        },
+      });
+    }
+  }
+
+  const stream = createReadStream(filePath);
+  return new Response(stream as any, {
+    status: 200,
+    headers: {
+      ...baseHeaders,
+      'Content-Length': String(fileStats.size),
+      'Accept-Ranges': rangeSupport ? 'bytes' : 'none',
+    },
+  });
+}
 
 export default app;
