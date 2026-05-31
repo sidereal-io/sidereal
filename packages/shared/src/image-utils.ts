@@ -68,7 +68,6 @@ export interface ImageInput {
   id: number;
   title: string;
   targetName: string | null;
-  thumbnailUrl: string | null;
   objectType: string | null;
   constellation: string | null;
   captureDate: Date | string | null;
@@ -88,7 +87,7 @@ export interface TargetSummary {
   targetName: string;
   imageCount: number;
   totalIntegrationHours: number;
-  thumbnailUrl: string | null;
+  thumbnailImageId: number | null;
   objectType: string | null;
   constellation: string | null;
   vMag: number | null;
@@ -138,7 +137,7 @@ export function groupAndEnrichTargets(
       targetName,
       imageCount: groupImages.length,
       totalIntegrationHours: Math.round(totalHours * 1000) / 1000,
-      thumbnailUrl: mostRecent.thumbnailUrl || null,
+      thumbnailImageId: mostRecent?.id ?? null,
       objectType: catalogObj?.type || mostRecent.objectType || null,
       constellation: catalogObj?.constellation || mostRecent.constellation || null,
       vMag: catalogObj?.vMag || null,
