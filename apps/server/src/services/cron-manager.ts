@@ -121,9 +121,8 @@ class CronManager {
 
   private setupOrphanSweep() {
     this.scheduleJob('orphan-sweep', 'Orphan Image Sweep', '0 3 * * *', async () => {
-      const storagePath = process.env.STORAGE_PATH ?? (
-        process.env.NODE_ENV === 'production' ? '/app/data/images' : './data/images'
-      );
+      const { imageStorage } = await import('./image-storage');
+      const storagePath = imageStorage.getStoragePath();
       const processedRoot = join(storagePath, 'processed');
 
       let swept = 0;

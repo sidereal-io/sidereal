@@ -17,9 +17,7 @@ export async function runBackfill(): Promise<{ processed: number; failed: number
   }
   backfillRunning = true;
 
-  const storagePath = process.env.STORAGE_PATH ?? (
-    process.env.NODE_ENV === 'production' ? '/app/data/images' : './data/images'
-  );
+  const storagePath = imageStorage.getStoragePath();
 
   let processed = 0;
   let failed = 0;
