@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import { readFile } from 'fs/promises';
 import { stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -72,15 +73,21 @@ app.get('/', async (c) => {
 // --- Image byte-serving routes ---
 
 app.get('/:id/thumbnail', async (c) => {
-  return serveFile(c, parseInt(c.req.param('id')), 'thumbnail');
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ message: 'Invalid image id' }, 400);
+  return serveFile(c, id, 'thumbnail');
 });
 
 app.get('/:id/preview', async (c) => {
-  return serveFile(c, parseInt(c.req.param('id')), 'preview');
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ message: 'Invalid image id' }, 400);
+  return serveFile(c, id, 'preview');
 });
 
 app.get('/:id/original', async (c) => {
-  return serveFile(c, parseInt(c.req.param('id')), 'original', true);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ message: 'Invalid image id' }, 400);
+  return serveFile(c, id, 'original', true);
 });
 
 // Get a specific image
@@ -394,7 +401,7 @@ app.get('/:id/sidecar', async (c) => {
 });
 
 async function serveFile(
-  c: any,
+  c: Context,
   id: number,
   size: 'original' | 'preview' | 'thumbnail',
   rangeSupport = false
@@ -420,9 +427,11 @@ async function serveFile(
 
   const contentType = extMime(filePath);
   const etag = `W/"${id}-${size}-${fileStats.mtime.getTime()}"`;
-  const ifNoneMatch = c.req.header('If-None-Match');
+  const ifNoneMatch = c.req.header('If-None-Match') ?? '';
+  const etagMatch = ifNoneMatch === '*' ||
+    ifNoneMatch.split(',').map((s: string) => s.trim()).includes(etag);
 
-  if (ifNoneMatch === etag) {
+  if (etagMatch) {
     return new Response(null, { status: 304 });
   }
 
@@ -434,7 +443,7 @@ async function serveFile(
 
   if (c.req.query('download') === '1') {
     const filename = filePath.split('/').pop() ?? `image-${id}`;
-    baseHeaders['Content-Disposition'] = `attachment; filename="${filename}"`;
+    baseHeaders['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`;
   }
 
   if (rangeSupport) {
@@ -444,8 +453,8 @@ async function serveFile(
       if (!match) {
         return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStats.size}` } });
       }
-      const start = parseInt(match[1]);
-      const end = match[2] ? parseInt(match[2]) : fileStats.size - 1;
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileStats.size - 1;
 
       if (start >= fileStats.size || end >= fileStats.size || start > end) {
         return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStats.size}` } });
