@@ -1,6 +1,7 @@
 import { configService } from './config';
 import { storage } from './storage';
 import { filterRelevantTags } from './tags-utils';
+import { imageStorage, MAX_ORIGINAL_BYTES } from './image-storage';
 import type { AstroImage } from '@shared/types';
 
 class ImmichSyncService {
@@ -223,6 +224,36 @@ class ImmichSyncService {
     }
   }
 
+  private async getAssetOriginal(
+    immichId: string,
+    config: { host: string; apiKey: string }
+  ): Promise<{ bytes: Buffer; filename: string }> {
+    const url = `${config.host}/api/assets/${encodeURIComponent(immichId)}/original`;
+    const response = await fetch(url, {
+      headers: { 'X-API-Key': config.apiKey },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Immich returned ${response.status} for original of asset ${immichId}`);
+    }
+
+    const contentLength = response.headers.get('content-length');
+    if (contentLength && parseInt(contentLength, 10) > MAX_ORIGINAL_BYTES) {
+      throw new Error(`Original for asset ${immichId} is ${contentLength} bytes — exceeds 500 MB limit, skipping`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_ORIGINAL_BYTES) {
+      throw new Error(`Original for asset ${immichId} is ${arrayBuffer.byteLength} bytes — exceeds 500 MB limit, skipping`);
+    }
+
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = filenameMatch?.[1] ?? `${immichId}.jpg`;
+
+    return { bytes: Buffer.from(arrayBuffer), filename };
+  }
+
   /**
    * Sync images from Immich (import new images, remove deleted ones).
    * Extracted from the /sync-immich route so cron can call it directly.
@@ -333,38 +364,49 @@ class ImmichSyncService {
       }
 
       const exifInfo = asset.exifInfo as Record<string, unknown> | undefined;
+      const originalFileName = String(asset.originalFileName || '');
+      const ext = originalFileName.includes('.')
+        ? (originalFileName.split('.').pop()?.toLowerCase() ?? 'jpg')
+        : 'jpg';
 
-      // Extract EXIF data and create astrophotography image
-      const astroImage = {
-        immichId: String(asset.id),
-        title: String(asset.originalFileName || asset.id),
-        filename: String(asset.originalFileName || ''),
-        thumbnailUrl: `/api/assets/${asset.id}/thumbnail`,
-        fullUrl: `/api/assets/${asset.id}/thumbnail?size=preview`,
-        originalPath: String(asset.originalPath || ''),
-        captureDate: asset.fileCreatedAt ? new Date(asset.fileCreatedAt as string) : null,
-        focalLength: exifInfo?.focalLength ? Number(exifInfo.focalLength) : null,
-        aperture: exifInfo?.fNumber ? `f/${exifInfo.fNumber}` : null,
-        iso: exifInfo?.iso ? Number(exifInfo.iso) : null,
-        exposureTime: exifInfo?.exposureTime ? String(exifInfo.exposureTime) : null,
-        frameCount: 1,
-        totalIntegration: exifInfo?.exposureTime ? parseFloat(String(exifInfo.exposureTime)) / 3600 : null,
-        telescope: exifInfo?.lensModel ? String(exifInfo.lensModel) : '',
-        camera: exifInfo?.make && exifInfo?.model ? `${exifInfo.make} ${exifInfo.model}` : null,
-        mount: '',
-        filters: '',
-        latitude: exifInfo?.latitude ? Number(exifInfo.latitude) : null,
-        longitude: exifInfo?.longitude ? Number(exifInfo.longitude) : null,
-        altitude: exifInfo?.altitude ? Number(exifInfo.altitude) : null,
-        plateSolved: false,
-        tags: ['astrophotography'],
-        objectType: 'Deep Sky',
-        description: String(exifInfo?.description || ''),
-      };
+      // Insert row first to get the auto-increment id, then write to disk
+      try {
+        const { bytes } = await this.getAssetOriginal(String(asset.id), config);
 
-      await storage.createAstroImage(astroImage);
-      syncedCount++;
-      console.log(`Synced asset: ${asset.originalFileName}`);
+        const placeholder = {
+          immichId: String(asset.id),
+          title: originalFileName || String(asset.id),
+          filename: originalFileName,
+          originalPath: null,
+          captureDate: asset.fileCreatedAt ? new Date(asset.fileCreatedAt as string) : null,
+          focalLength: exifInfo?.focalLength ? Number(exifInfo.focalLength) : null,
+          aperture: exifInfo?.fNumber ? `f/${exifInfo.fNumber}` : null,
+          iso: exifInfo?.iso ? Number(exifInfo.iso) : null,
+          exposureTime: exifInfo?.exposureTime ? String(exifInfo.exposureTime) : null,
+          frameCount: 1,
+          totalIntegration: exifInfo?.exposureTime ? parseFloat(String(exifInfo.exposureTime)) / 3600 : null,
+          telescope: exifInfo?.lensModel ? String(exifInfo.lensModel) : '',
+          camera: exifInfo?.make && exifInfo?.model ? `${exifInfo.make} ${exifInfo.model}` : null,
+          mount: '',
+          filters: '',
+          latitude: exifInfo?.latitude ? Number(exifInfo.latitude) : null,
+          longitude: exifInfo?.longitude ? Number(exifInfo.longitude) : null,
+          altitude: exifInfo?.altitude ? Number(exifInfo.altitude) : null,
+          plateSolved: false,
+          tags: ['astrophotography'],
+          objectType: 'Deep Sky',
+          description: String(exifInfo?.description || ''),
+        };
+
+        const created = await storage.createAstroImage(placeholder);
+        const result = await imageStorage.writeImage(created.id, bytes, ext);
+        await storage.updateAstroImage(created.id, { originalPath: result.originalPath });
+        syncedCount++;
+        console.log(`Synced and stored asset: ${originalFileName} (id=${created.id})`);
+      } catch (err: unknown) {
+        const msg = (err as Error).message;
+        console.warn(`Skipping asset ${String(asset.id)} due to storage error: ${msg}`);
+      }
     }
 
     const message = `Successfully synced ${syncedCount} new images from Immich. Removed ${removedCount} images no longer in Immich.`;
