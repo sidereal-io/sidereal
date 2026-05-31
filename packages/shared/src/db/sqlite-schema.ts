@@ -7,8 +7,6 @@ export const astrophotographyImages = sqliteTable('astrophotography_images', {
     immichId: text('immich_id').unique(),
     title: text('title').notNull(),
     filename: text('filename').notNull(),
-    thumbnailUrl: text('thumbnail_url'),
-    fullUrl: text('full_url'),
     originalPath: text('original_path'),
     captureDate: integer('capture_date', { mode: 'timestamp' }),
     focalLength: real('focal_length'),

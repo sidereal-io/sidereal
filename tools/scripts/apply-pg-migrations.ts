@@ -237,6 +237,19 @@ async function runMigrations() {
       END $$;
     `;
 
+    // Drop legacy Immich URL columns (local image storage v1)
+    await connection`
+      DO $$ BEGIN
+        ALTER TABLE astrophotography_images DROP COLUMN IF EXISTS thumbnail_url;
+      END $$;
+    `;
+
+    await connection`
+      DO $$ BEGIN
+        ALTER TABLE astrophotography_images DROP COLUMN IF EXISTS full_url;
+      END $$;
+    `;
+
     console.log('Database tables created successfully');
     
   } catch (error) {
