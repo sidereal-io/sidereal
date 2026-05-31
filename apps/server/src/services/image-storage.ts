@@ -32,13 +32,18 @@ function imageDir(id: number): string {
 
 export const imageStorage = {
   async writeImage(id: number, bytes: Buffer, ext: string): Promise<{ originalPath: string }> {
+    if (bytes.byteLength > MAX_ORIGINAL_BYTES) {
+      throw new Error(`Image ${id} exceeds 500 MB limit (${bytes.byteLength} bytes)`);
+    }
+
     const dir = imageDir(id);
     const tmpDir = dir + '.tmp';
 
     try {
       await mkdir(tmpDir, { recursive: true });
 
-      const origName = `${id}_original.${ext}`;
+      const safeExt = ext.replace(/[^a-z0-9]/gi, '').slice(0, 10) || 'jpg';
+      const origName = `${id}_original.${safeExt}`;
       const origTmp = path.join(tmpDir, origName + '.part');
       const origFinal = path.join(tmpDir, origName);
 
@@ -67,7 +72,8 @@ export const imageStorage = {
         .toFile(thumbTmp);
       await rename(thumbTmp, thumbFinal);
 
-      // Atomically promote tmp dir to final dir
+      // Brief window between rm and rename where readPath for this id throws ImageNotFoundError.
+      // Safe under sequential use; concurrent same-id writes are prevented at the caller level.
       await rm(dir, { recursive: true, force: true });
       await rename(tmpDir, dir);
 
