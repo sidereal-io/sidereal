@@ -14,12 +14,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { CatalogObject } from "../../../../packages/shared/src/types";
 import { computeVisibility } from "../../../../packages/shared/src/visibility";
+import { imageUrl } from "@shared/utils";
 
 interface TargetSummary {
   targetName: string;
   imageCount: number;
   totalIntegrationHours: number;
-  thumbnailUrl: string | null;
+  thumbnailImageId: number | null;
   latestCaptureDate: string | null;
   imageIds: number[];
 }
@@ -129,7 +130,7 @@ export function TargetDetailDialog({
         </DialogHeader>
 
         {/* Survey thumbnail */}
-        {!imagedTarget?.thumbnailUrl && catalogObject.raDeg != null && catalogObject.decDeg != null && (
+        {!imagedTarget && catalogObject.raDeg != null && catalogObject.decDeg != null && (
           <div className="h-48 bg-muted rounded-md overflow-hidden -mt-2">
             <img
               src={`/api/catalog/thumbnail/${encodeURIComponent(catalogObject.name)}`}
@@ -139,10 +140,10 @@ export function TargetDetailDialog({
             />
           </div>
         )}
-        {imagedTarget?.thumbnailUrl && (
+        {imagedTarget && imagedTarget.thumbnailImageId != null && (
           <div className="h-48 bg-muted rounded-md overflow-hidden -mt-2">
             <img
-              src={imagedTarget.thumbnailUrl}
+              src={imageUrl(imagedTarget.thumbnailImageId, 'thumbnail')}
               alt={catalogObject.name}
               className="w-full h-full object-cover"
             />

@@ -4,6 +4,8 @@ import { configService } from './config';
 import { getConstellationFromCoordinates } from './constellation-utils';
 import { filterRelevantTags } from './tags-utils';
 import { catalogService } from './catalog';
+import { imageStorage } from './image-storage';
+import { readFile } from 'node:fs/promises';
 
 import type { WsManager } from './ws-manager';
 
@@ -95,43 +97,15 @@ export class AstrometryService {
     return loginResult.session as string;
   }
 
-  async submitImageForPlateSolving(image: { id: number; fullUrl?: string | null; immichId?: string | null; title?: string | null; filename?: string | null }): Promise<{ submissionId: string; jobId: number }> {
+  async submitImageForPlateSolving(image: { id: number; immichId?: string | null; title?: string | null; filename?: string | null }): Promise<{ submissionId: string; jobId: number }> {
     await this.ensureConfigLoaded();
-
-    if (!image.fullUrl) {
-      throw new Error("Image does not have a fullUrl");
-    }
-
-    if (!this.immichHost) {
-      throw new Error("Immich host not configured");
-    }
-
-    if (!this.immichApiKey) {
-      throw new Error("Immich API key not configured");
-    }
 
     const sessionKey = await this.login();
 
-    // Construct full URL to Immich server
-    let fullImageUrl: string;
-    if (image.fullUrl.startsWith('http')) {
-      fullImageUrl = image.fullUrl;
-    } else {
-      const cleanHost = this.immichHost.endsWith('/') ? this.immichHost.slice(0, -1) : this.immichHost;
-      const cleanPath = image.fullUrl.startsWith('/') ? image.fullUrl : `/${image.fullUrl}`;
-      fullImageUrl = `${cleanHost}${cleanPath}`;
-    }
-
-    // Download image from Immich
-    const imageResponse = await fetch(fullImageUrl, {
-      headers: { 'X-API-Key': this.immichApiKey },
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!imageResponse.ok) {
-      throw new Error(`Failed to download image from Immich: ${imageResponse.status}`);
-    }
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    // Read the preview image from local storage
+    const previewPath = await imageStorage.readPath(image.id, 'preview');
+    const imageBuffer = await readFile(previewPath);
+    const contentType = 'image/jpeg';
 
     // Submit image to Astrometry.net via file upload
     const form = new FormData();
@@ -349,7 +323,7 @@ export class AstrometryService {
     }
   }
 
-  async completePlateSolvingWorkflow(image: { id: number; fullUrl?: string | null; immichId?: string | null; title?: string | null; filename?: string | null }): Promise<PlateSolvingResult> {
+  async completePlateSolvingWorkflow(image: { id: number; immichId?: string | null; title?: string | null; filename?: string | null }): Promise<PlateSolvingResult> {
     const { submissionId, jobId } = await this.submitImageForPlateSolving(image);
 
     const result = await this.pollForPlateSolvingResult(submissionId);

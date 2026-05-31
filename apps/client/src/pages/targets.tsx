@@ -19,12 +19,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { TargetDetailDialog } from "@/components/target-detail-dialog";
 import { computeVisibility } from "../../../../packages/shared/src/visibility";
 import type { CatalogObject, Location } from "../../../../packages/shared/src/types";
+import { imageUrl } from "@shared/utils";
 
 interface TargetSummary {
   targetName: string;
   imageCount: number;
   totalIntegrationHours: number;
-  thumbnailUrl: string | null;
+  thumbnailImageId: number | null;
   objectType: string | null;
   constellation: string | null;
   vMag: number | null;
@@ -471,9 +472,9 @@ export default function TargetsPage() {
                 >
                   {/* Thumbnail */}
                   <div className="h-36 bg-muted overflow-hidden">
-                    {imaged?.thumbnailUrl ? (
+                    {imaged?.thumbnailImageId != null ? (
                       <img
-                        src={imaged.thumbnailUrl}
+                        src={imageUrl(imaged.thumbnailImageId, 'thumbnail')}
                         alt={obj.name}
                         className="w-full h-full object-cover"
                       />

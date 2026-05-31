@@ -14,6 +14,7 @@ import { Loader2, X, ExternalLink, Minimize2, Maximize2, Telescope, Camera, Eye,
 import { Header } from "@/components/header";
 import { Link } from "wouter";
 import type { Equipment } from "@shared/schema";
+import { imageUrl } from "@shared/utils";
 
 declare global {
   interface Window {
@@ -26,7 +27,6 @@ interface SkyMapMarker {
   title: string;
   ra: string;
   dec: string;
-  thumbnailUrl: string | null;
   objectType: string | null;
   constellation: string | null;
   fieldOfView: string | null;
@@ -501,9 +501,9 @@ export default function SkyMapPage() {
                   </Button>
                 </div>
 
-                {selectedMarker.thumbnailUrl && (
+                {selectedMarker.id && (
                   <img
-                    src={selectedMarker.thumbnailUrl}
+                    src={imageUrl(selectedMarker.id, 'thumbnail')}
                     alt={selectedMarker.title}
                     className="w-full h-36 object-cover rounded-md mb-3"
                   />

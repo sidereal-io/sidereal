@@ -161,7 +161,7 @@ export function ImageOverlay({ image, onClose, onFilterByEquipment }: ImageOverl
           {currentImage.immichId ? (
             <div className="relative w-full h-full">
               <DeepZoomViewer
-                imageUrl={currentImage.fullUrl || ""}
+                imageUrl={imageUrl(currentImage.id, 'preview')}
                 annotations={showAnnotations && annotationsData?.annotations ? annotationsData.annotations : []}
                 fullHeight={isExpanded}
                 height={isExpanded ? '100vh' : '100%'}
