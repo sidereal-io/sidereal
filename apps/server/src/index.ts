@@ -10,6 +10,7 @@ import { cronManager, setWsManager as setCronWsManager } from './services/cron-m
 import { setWsManager } from './services/astrometry';
 import { workerManager } from './services/worker-manager';
 import { catalogService } from './services/catalog';
+import { runBackfill, setBackfillWsManager } from './workers/backfill-images';
 
 const app = new Hono();
 
@@ -75,6 +76,14 @@ async function startServer() {
   // Set WebSocket manager in services for real-time updates
   setWsManager(wsManager);
   setCronWsManager(wsManager);
+
+  // Set WebSocket manager for backfill worker
+  setBackfillWsManager(wsManager);
+
+  // Auto-enqueue backfill if any images lack local storage
+  runBackfill().catch(err => {
+    console.warn('[STARTUP] Backfill check failed (non-fatal):', err.message);
+  });
 
   // Start worker manager in production (in development, worker runs separately)
   if (process.env.NODE_ENV === 'production') {
