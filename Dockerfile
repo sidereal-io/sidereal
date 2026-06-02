@@ -74,7 +74,8 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ && \
 COPY --from=builder /build/dist ./dist
 
 # Create directories for runtime
-RUN mkdir -p /app/config /app/logs /app/sidecars /app/cache/thumbnails
+RUN mkdir -p /app/config /app/logs /app/sidecars /app/cache/thumbnails /app/data/images/processed && \
+    chown -R sidereal:nodejs /app/data
 
 # Copy startup script
 COPY docker/startup.sh ./

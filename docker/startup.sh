@@ -68,7 +68,7 @@ usermod -o -u "$PUID" sidereal || true
 
 # Ensure proper ownership of application and data directories
 echo "Setting directory permissions..."
-chown -R sidereal:nodejs /app/config /app/logs /app/sidecars /app/cache /app/dist
+chown -R sidereal:nodejs /app/config /app/logs /app/sidecars /app/cache /app/dist /app/data
 
 echo "Starting Sidereal container..."
 echo "Node.js version: $(node --version)"

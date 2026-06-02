@@ -369,7 +369,7 @@ class ImmichSyncService {
         ? (originalFileName.split('.').pop()?.toLowerCase() ?? 'jpg')
         : 'jpg';
 
-      // Insert row first to get the auto-increment id, then write to disk
+      let created: { id: number } | null = null;
       try {
         const { bytes } = await this.getAssetOriginal(String(asset.id), config);
 
@@ -398,7 +398,7 @@ class ImmichSyncService {
           description: String(exifInfo?.description || ''),
         };
 
-        const created = await storage.createAstroImage(placeholder);
+        created = await storage.createAstroImage(placeholder);
         const result = await imageStorage.writeImage(created.id, bytes, ext);
         await storage.updateAstroImage(created.id, { originalPath: result.originalPath });
         syncedCount++;
@@ -406,6 +406,9 @@ class ImmichSyncService {
       } catch (err: unknown) {
         const msg = (err as Error).message;
         console.warn(`Skipping asset ${String(asset.id)} due to storage error: ${msg}`);
+        if (created) {
+          await storage.deleteAstroImage(created.id).catch(() => {});
+        }
       }
     }
 
