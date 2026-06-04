@@ -116,3 +116,8 @@ vite.config.ts.*
 # AI tooling
 .claude/settings.local.json
 .claude/worktrees/
+docs/superpowers/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+.beads-credential-key
