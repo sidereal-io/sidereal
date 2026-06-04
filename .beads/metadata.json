@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "sidereal",
+  "project_id": "1a02817a-983c-4860-a41b-3bd5b2e88fb6"
+}
