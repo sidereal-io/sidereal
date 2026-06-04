@@ -41,7 +41,7 @@ form — lives in a bd issue's `--design`, not a local file.
 bd create --type=feature --title "<title>" --labels spec/brainstorming --design-file -
 
 # Request human review of the spec, then WAIT:
-bd human <issue-id>            # flags the issue for a human (adds the 'human' label)
+bd label add <issue-id> human   # flag for a human; `bd human list` then shows it
 ```
 
 Do **not** proceed to implementation until a human applies the approval label:
