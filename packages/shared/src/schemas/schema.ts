@@ -7,8 +7,6 @@ export const astrophotographyImages = pgTable("astrophotography_images", {
   immichId: text("immich_id").unique(),
   title: text("title").notNull(),
   filename: text("filename").notNull(),
-  thumbnailUrl: text("thumbnail_url"),
-  fullUrl: text("full_url"),
   captureDate: timestamp("capture_date"),
   
   // Camera settings

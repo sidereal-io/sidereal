@@ -111,6 +111,7 @@ cp .env.example .env.local
 | `PORT` | `5000` | Server port |
 | `NODE_ENV` | `development` | Environment |
 | `DATABASE_URL` | *(unset)* | PostgreSQL connection string; omit to use SQLite |
+| `STORAGE_PATH` | `./data/images` (`/app/data/images` in container) | Root directory for local image storage (`processed/` subtree) |
 
 Runtime configuration (Immich API key, Astrometry.net API key, sync schedules, plate-solving settings) is managed through the admin UI at `/admin` and persisted in the database — it takes precedence over environment variables.
 

@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { X, Crosshair, Loader, Eye } from "lucide-react";
 import type { AstroImage } from "@shared/schema";
+import { imageUrl } from "@shared/utils";
 import { DeepZoomViewer } from "./deep-zoom-viewer";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -117,7 +118,7 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
               {image.immichId ? (
                 <div className="relative w-full h-full">
                   <DeepZoomViewer
-                    imageUrl={image.fullUrl || ""}
+                    imageUrl={imageUrl(image.id, 'preview')}
                     annotations={showAnnotations && annotationsData?.annotations ? annotationsData.annotations : []}
                   />
                   {/* Annotation Toggle Button */}
@@ -239,7 +240,7 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
               {image.immichId ? (
                 <div className="relative">
                   <DeepZoomViewer
-                    imageUrl={image.fullUrl || ""}
+                    imageUrl={imageUrl(image.id, 'preview')}
                     annotations={showAnnotations && annotationsData?.annotations ? annotationsData.annotations : []}
                   />
                   {/* Annotation Toggle Button */}

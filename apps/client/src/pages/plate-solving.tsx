@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Header } from "@/components/header";
 import type { AstroImage, PlateSolvingJob } from "@shared/schema";
+import { imageUrl } from "@shared/utils";
 
 interface PlateSolvingStats {
   totalJobs: number;
@@ -328,9 +329,9 @@ export default function PlateSolvingPage() {
                   <div className="relative">
                     {/* Image */}
                     <div className="aspect-square bg-muted flex items-center justify-center">
-                      {image.thumbnailUrl ? (
-                        <img 
-                          src={image.thumbnailUrl} 
+                      {image.originalPath ? (
+                        <img
+                          src={imageUrl(image.id, 'thumbnail')}
                           alt={image.title}
                           className="w-full h-full object-cover"
                         />

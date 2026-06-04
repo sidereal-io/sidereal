@@ -1,6 +1,7 @@
 import { db, schema, isPostgres } from '../db';
 import { eq, and, inArray, lte, desc, sql } from 'drizzle-orm';
 import { like, or } from 'drizzle-orm';
+import { imageStorage } from './image-storage';
 import type { AstroImage, InsertAstroImage, Equipment, InsertEquipment, ImageEquipment, InsertImageEquipment, PlateSolvingJob, InsertPlateSolvingJob, EquipmentGroup, InsertEquipmentGroup, EquipmentGroupMember, InsertEquipmentGroupMember, Location, InsertLocation, ImageAcquisitionRow, InsertImageAcquisitionRow, CatalogObject, InsertCatalogObject, UserTarget } from "@shared/types";
 import { computeImageSummary, groupAndEnrichTargets } from '@shared/image-utils';
 
@@ -85,6 +86,12 @@ class DbStorage {
     await db.delete(schema.imageEquipment).where(eq(schema.imageEquipment.imageId, id)).execute();
     await db.delete(schema.imageAcquisition).where(eq(schema.imageAcquisition.imageId, id)).execute();
     await db.delete(schema.astrophotographyImages).where(eq(schema.astrophotographyImages.id, id)).execute();
+    // Best-effort local file cleanup — non-fatal if files don't exist
+    try {
+      await imageStorage.deleteImage(id);
+    } catch (err: unknown) {
+      console.warn(`[STORAGE] Failed to delete local files for image ${id}:`, (err as Error).message);
+    }
     return true;
   }
 

@@ -145,14 +145,12 @@ class PlateSolvingWorker {
         }
       }
 
-      if (image.fullUrl) {
-        try {
-          console.log(`Auto-submitting image ${image.id} (${image.title}) for plate solving`);
-          await this.astrometryService.submitImageForPlateSolving(image);
-          submitted++;
-        } catch (err) {
-          console.error(`Failed to auto-submit image ${image.id}:`, err);
-        }
+      try {
+        console.log(`Auto-submitting image ${image.id} (${image.title}) for plate solving`);
+        await this.astrometryService.submitImageForPlateSolving(image);
+        submitted++;
+      } catch (err) {
+        console.error(`Failed to auto-submit image ${image.id}:`, err);
       }
     }
   }

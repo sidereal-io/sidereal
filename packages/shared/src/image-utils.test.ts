@@ -123,7 +123,6 @@ describe('groupAndEnrichTargets', () => {
       id: 1,
       title: 'Test Image',
       targetName: null,
-      thumbnailUrl: null,
       objectType: null,
       constellation: null,
       captureDate: null,
@@ -220,11 +219,11 @@ describe('groupAndEnrichTargets', () => {
 
   it('picks thumbnail from most recent image', () => {
     const images = [
-      makeImage({ id: 1, targetName: 'X', captureDate: '2024-01-01', thumbnailUrl: '/old.jpg' }),
-      makeImage({ id: 2, targetName: 'X', captureDate: '2024-06-01', thumbnailUrl: '/new.jpg' }),
+      makeImage({ id: 1, targetName: 'X', captureDate: '2024-01-01' }),
+      makeImage({ id: 2, targetName: 'X', captureDate: '2024-06-01' }),
     ];
     const result = groupAndEnrichTargets(images, []);
-    assert.equal(result[0].thumbnailUrl, '/new.jpg');
+    assert.equal(result[0].thumbnailImageId, 2);
   });
 
   it('returns latest capture date as ISO string', () => {

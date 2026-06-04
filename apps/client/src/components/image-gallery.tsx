@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Heart, Share, Plus, Settings } from "lucide-react";
 import type { AstroImage, Equipment } from "@shared/schema";
+import { imageUrl } from "@shared/utils";
 import { RemoteImage } from "./remote-image";
 
 interface ImageGalleryProps {
@@ -89,7 +90,7 @@ export function ImageGallery({
           <Card key={image.id} className="group cursor-pointer overflow-hidden" onClick={() => onImageClick(image)}>
             <div className="relative aspect-[4/3]">
               <RemoteImage
-                src={image.thumbnailUrl || image.fullUrl || ""}
+                src={imageUrl(image.id, 'thumbnail')}
                 alt={image.title || "Astronomy image"}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               />

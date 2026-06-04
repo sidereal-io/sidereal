@@ -1,4 +1,6 @@
 import cron, { ScheduledTask } from 'node-cron';
+import { readdir, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { configService } from './config';
 import { storage } from './storage';
 
@@ -34,6 +36,9 @@ class CronManager {
 
     // Clean up old notifications daily
     this.setupNotificationCleanup();
+
+    // Sweep orphaned image directories nightly
+    this.setupOrphanSweep();
 
     this.isInitialized = true;
     console.log('[CRON] Cron manager initialized');
@@ -110,6 +115,37 @@ class CronManager {
         console.log('[CRON] Old notifications cleaned up');
       } catch (error: unknown) {
         console.error('[CRON] Failed to clean up notifications:', (error as Error).message);
+      }
+    });
+  }
+
+  private setupOrphanSweep() {
+    this.scheduleJob('orphan-sweep', 'Orphan Image Sweep', '0 3 * * *', async () => {
+      const { imageStorage } = await import('./image-storage');
+      const storagePath = imageStorage.getStoragePath();
+      const processedRoot = join(storagePath, 'processed');
+
+      let swept = 0;
+
+      try {
+        const buckets = await readdir(processedRoot).catch(() => [] as string[]);
+        for (const bucket of buckets) {
+          const bucketDir = join(processedRoot, bucket);
+          const imageDirs = await readdir(bucketDir).catch(() => [] as string[]);
+          for (const idStr of imageDirs) {
+            const imageId = parseInt(idStr, 10);
+            if (isNaN(imageId)) continue;
+            const row = await storage.getAstroImage(imageId).catch(() => undefined);
+            if (!row) {
+              await rm(join(bucketDir, idStr), { recursive: true, force: true });
+              swept++;
+              console.log(`[ORPHAN-SWEEP] Removed orphan dir for id=${imageId}`);
+            }
+          }
+        }
+        console.log(`[ORPHAN-SWEEP] Done: ${swept} orphans removed`);
+      } catch (err: unknown) {
+        console.error('[ORPHAN-SWEEP] Error during sweep:', (err as Error).message);
       }
     });
   }

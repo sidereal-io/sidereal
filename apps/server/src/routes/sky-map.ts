@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { storage } from '../services/storage';
 import { handleRouteError } from './route-utils';
+import { imageUrl } from '@shared/utils';
 
 const app = new Hono();
 
@@ -16,7 +17,7 @@ app.get('/markers', async (c) => {
         title: img.title,
         ra: img.ra,
         dec: img.dec,
-        thumbnailUrl: img.thumbnailUrl,
+        thumbnailUrl: img.id ? imageUrl(img.id, 'thumbnail') : null,
         objectType: img.objectType,
         constellation: img.constellation,
         fieldOfView: img.fieldOfView,

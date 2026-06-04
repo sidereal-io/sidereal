@@ -152,4 +152,19 @@ app.post('/sync-metadata-all', async (c) => {
   }
 });
 
+// Trigger image backfill manually from admin UI
+app.post('/backfill', async (c) => {
+  try {
+    const { runBackfill, isBackfillRunning } = await import('../workers/backfill-images');
+    if (isBackfillRunning()) {
+      return c.json({ message: 'Backfill already running' }, 409);
+    }
+    // Fire and forget — progress reported over WebSocket
+    runBackfill().catch(err => console.error('[BACKFILL] Error:', err.message));
+    return c.json({ message: 'Backfill started' });
+  } catch (error) {
+    return handleRouteError(c, error, 'Failed to start backfill');
+  }
+});
+
 export default app;

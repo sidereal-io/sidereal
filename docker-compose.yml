@@ -17,6 +17,7 @@ services:
       - XMP_SIDECAR_PATH=/app/sidecars
       - IMMICH_MAPPING_PATH=/usr/src/app/upload
       - LOCAL_MAPPING_PATH=/immich-upload
+      - STORAGE_PATH=/app/data/images
       - AUTO_DB_MIGRATE_FROM=${AUTO_DB_MIGRATE_FROM:-}
       - AUTO_DB_MIGRATE_TO=${AUTO_DB_MIGRATE_TO:-}
       - AUTO_DB_MIGRATE_ONCE=${AUTO_DB_MIGRATE_ONCE:-true}
@@ -27,6 +28,7 @@ services:
       - sidereal-logs:/app/logs
       - sidereal-sidecars:/app/sidecars
       - sidereal-cache:/app/cache
+      - sidereal-images:/app/data/images
       - sidereal_immich-upload:/immich-upload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
@@ -43,6 +45,8 @@ volumes:
   sidereal-sidecars:
     driver: local
   sidereal-cache:
+    driver: local
+  sidereal-images:
     driver: local
   sidereal_immich-upload:
     external: true
