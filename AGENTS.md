@@ -130,23 +130,6 @@ See `.env.example` and `.env.worker.example` for the full list.
 - **Merge to `main`:** Multi-arch Docker build (amd64 + arm64) pushed to GHCR
 - **Semver tag (`v*.*.*`):** Full release — multi-arch image, SBOM, GitHub release with artifacts
 
-## Workflow
-
-This project follows the Jesse Vincent **Superpowers** development methodology, with four sidereal-specific overrides. AI agents MUST use both:
-
-1. **`superpowers:brainstorming`, `writing-plans`, `executing-plans` (or `subagent-driven-development`), and `finishing-a-development-branch`** — the standard methodology
-2. **`sidereal-workflow-overrides`** — the project's overlay (spec on GitHub issue, plan in `.workspace/plans/`, ADR before PR, `Closes #<n>` in PR body)
-
-When the user asks "what's next?" or starts a workflow without naming an issue, use **`sidereal-pick-next-issue`** first.
-
-### Hard rules
-
-- **No vibe coding.** Never edit code without an `spec/ready` issue and a plan file in `.workspace/plans/`.
-- **Mandatory TDD.** Every feature or bug fix follows Red-Green-Refactor. Code without a test baseline will be discarded.
-- **Never set `spec/ready` yourself.** Only a human applies that label.
-
-See the `sidereal-workflow-overrides` skill for the full override details.
-
 ## Decision Records
 
 When you encounter a design decision with multiple valid approaches, create a decision record before implementing. Decision records ensure developers can review trade-offs and make informed choices rather than discovering baked-in assumptions after the fact.
