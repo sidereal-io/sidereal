@@ -14,13 +14,15 @@ STUB
   cat "$tmp/calls.log"
 }
 
+# Normal run: hydrate (import) -> github sync (no --dry-run) -> export mapping
 calls="$(run_case "")"
-grep -qx "dolt pull" <<<"$calls"                              || { echo "FAIL: dolt pull"; exit 1; }
+grep -qx "import" <<<"$calls"                                 || { echo "FAIL: import"; exit 1; }
 grep -qx "github sync --push-only --prefer-local" <<<"$calls" || { echo "FAIL: sync"; exit 1; }
-grep -qx "dolt push" <<<"$calls"                              || { echo "FAIL: dolt push"; exit 1; }
+grep -qx "export -o .beads/issues.jsonl" <<<"$calls"          || { echo "FAIL: export"; exit 1; }
 
+# Dry-run: sync gets --dry-run, and there is NO export (nothing to persist)
 calls="$(run_case "--dry-run")"
 grep -q -- "github sync --push-only --prefer-local --dry-run" <<<"$calls" || { echo "FAIL: dry-run sync"; exit 1; }
-grep -qx "dolt push" <<<"$calls"                              && { echo "FAIL: push ran in dry-run"; exit 1; }
+grep -qx "export -o .beads/issues.jsonl" <<<"$calls"          && { echo "FAIL: export ran in dry-run"; exit 1; }
 
 echo "PASS"

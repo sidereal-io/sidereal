@@ -1,6 +1,6 @@
 # 001: How CI hydrates beads data for the GitHub issue mirror
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-06-04
 **Context:** beads issue sidereal-ehr (mirror beads issues to GitHub); the first run of `.github/workflows/beads-github-sync.yml` failed at `bd dolt pull` with "no beads database found" (Task sidereal-ehr.1.3).
 
@@ -61,4 +61,13 @@ A self-hosted runner (or scheduled job on a machine with the hydrated workspace)
 
 ## Decision
 
-[Filled in by developer after review.]
+**Option B accepted.** CI hydrates with `bd import` from the git-tracked
+`.beads/issues.jsonl` and persists the mapping by re-exporting and committing that
+file. No Dolt remote is used in CI.
+
+**Caveat / outstanding verification:** idempotency depends on `bd github sync`
+writing each created GitHub issue's number to the bead's `external_ref` (which
+round-trips through the JSONL). This is not yet confirmed by a real (mutating)
+sync. The workflow is to remain **disabled** (`gh workflow disable`) until a
+single authorized real `bd github sync --push-only` confirms `external_ref` is
+written; only then re-enable via `gh workflow enable`.
