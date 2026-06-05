@@ -196,6 +196,20 @@ bd close <id>         # Complete work
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 
+## Superpowers × Beads
+
+Superpowers workflow skills (`brainstorming`, `writing-plans`, `executing-plans`, `subagent-driven-development`, `finishing-a-development-branch`) apply as written **except** where this section overrides them — this section wins (superpowers' own `using-superpowers` defers to AGENTS.md). When any of those skills is active, also invoke the **`superpowers-beads-bridge`** skill for the exact bd recipes.
+
+| Superpowers default | Use instead |
+|---|---|
+| "Create a TodoWrite todo per checklist item" | TodoWrite ONLY for a skill's own ephemeral process steps. Every deliverable work unit is a `bd` issue. |
+| Spec → `docs/superpowers/specs/*.md` (committed) | Spec → `bd` issue `--design`. `docs/superpowers/` is gitignored scratch. |
+| Plan → `docs/superpowers/plans/*.md` | Plan → `bd` epic + one child task issue per Task, ordered with `bd dep`. Scratch only: `.workspace/plans/`. |
+| executing-plans / subagent: TodoWrite per task | `bd ready` → `bd update <id> --claim` → work → `bd close <id>`. |
+| finishing-a-development-branch close | Close bd issues, then the Session Completion protocol below. |
+
+**Session close** (supersedes the bare git-push list): `bd close <ids>` → `bd dolt push` (if a Dolt remote is configured) → `git pull --rebase && git push` → confirm `git status` is clean.
+
 ## Session Completion
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
