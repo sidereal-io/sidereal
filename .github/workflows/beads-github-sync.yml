@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Preview without writing to GitHub or Dolt"
+        description: "Preview without writing to GitHub"
         type: boolean
         default: false
 
@@ -50,3 +50,21 @@ jobs:
           else
             tools/scripts/sync-beads-github.sh
           fi
+
+      # Persist the bd<->GitHub mapping (external_ref) captured by the sync so
+      # the next run is idempotent. Only on real (non-dry-run) executions, and
+      # only when the export actually changed. GITHUB_TOKEN pushes do not
+      # retrigger workflows, so this does not loop; [skip ci] is belt-and-suspenders.
+      - name: Persist bd<->GitHub mapping
+        if: ${{ inputs.dry_run != 'true' }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- .beads/issues.jsonl; then
+            echo "No mapping changes to persist."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .beads/issues.jsonl
+          git commit -m "chore(beads): persist GitHub issue mapping [skip ci]"
+          git push origin "HEAD:${{ github.ref_name }}"
