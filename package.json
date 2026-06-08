@@ -116,17 +116,17 @@
     "@types/sharp": "^0.31.1",
     "@types/tmp": "^0.2.6",
     "@types/ws": "^8.5.13",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.5.0",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.0",
     "nodemon": "^3.1.14",
-    "postcss": "^8.5.9",
+    "postcss": "^8.5.15",
     "tailwindcss": "^4.1.11",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.4",
     "typescript": "6.0.3",
-    "vite": "^8.0.12"
+    "vite": "^8.0.16"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
