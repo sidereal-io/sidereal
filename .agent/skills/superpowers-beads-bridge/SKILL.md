@@ -83,15 +83,7 @@ bd close <task-id>
 A skill's **own** internal step list may use TodoWrite as ephemeral process scaffolding.
 The record of deliverable work is always the bd issue — never TodoWrite, never markdown.
 
-## Override 4 — ADR before PR
-
-**Adds** a step before `finishing-a-development-branch`. If a notable design decision was
-made or changed during implementation — a trade-off where a reasonable person could argue
-for a different approach — write an ADR from `docs/decisions/ADR-000-template.md`
-(sequential `ADR-NNN-short-slug.md`, status Proposed unless already Accepted; flip status
-in the same PR if it implements an Accepted ADR). Routine choices don't need one.
-
-## Override 5 — PR body + session close
+## Override 4 — PR body + session close
 
 **Replaces** `finishing-a-development-branch`'s close flow. Use Conventional Commits in
 the PR title; the PR body references the bd issue id for traceability (bd issues close via
