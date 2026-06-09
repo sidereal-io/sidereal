@@ -3,14 +3,14 @@ name: Sync Beads to GitHub Issues
 on:
   push:
     branches: [main]
-  
+
   issues:
-    # Catching these specific types ensures you don't run 
+    # Catching these specific types ensures you don't run
     # the workflow on irrelevant events like 'pinned'
     types: [opened, edited, deleted, closed, reopened, labeled, unlabeled, assigned, unassigned]
-  
+
   issue_comment:
-    # Tracking conversations may look awkward because the 
+    # Tracking conversations may look awkward because the
     # comment will appear to come from the bot user
     types: [created, edited, deleted]
 
@@ -45,7 +45,7 @@ jobs:
       - name: Install bd
         run: |
           curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/install.sh | bash
-      
+
       - name: Setup Git Credentials for Dolt
         run: |
           git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
@@ -58,11 +58,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DRY=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
             bd github sync --dry-run
           else
             bd github sync
             bd dolt push
           fi
-          
