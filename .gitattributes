@@ -1,2 +1,0 @@
-# Configures merge driver for beads data
-.beads/beads.jsonl merge=beads
