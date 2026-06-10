@@ -27,8 +27,8 @@ take precedence over skills.
 | "Create a TodoWrite todo per checklist item" | TodoWrite ONLY for a skill's own ephemeral process steps. Every deliverable work unit is a `bd` issue. |
 | Spec → `docs/superpowers/specs/*.md` (committed) | Spec → `bd` issue `--design`. `docs/superpowers/` is gitignored scratch. |
 | Plan → `docs/superpowers/plans/*.md` | Plan → `bd` epic + one child task issue per Task, ordered with `bd dep`. Scratch only: `.workspace/plans/`. |
-| executing-plans / subagent: TodoWrite per task | `bd ready` → `bd update <id> --claim` → work → `bd close <id>`. |
-| finishing-a-development-branch close | Close bd issues, then the session-close sequence in Override 5. |
+| executing-plans / subagent: TodoWrite per task | `bd ready` → `bd update <id> --claim` → work → when the branch's PR opens, gate the issue (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) — never `bd close`. |
+| finishing-a-development-branch close | Do NOT `bd close` deliverable issues. Gate each finished issue on the open PR (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`); the PR-merge workflow closes them. Then run the session-close sequence in Override 5. |
 
 ## Override 1 — Spec lives on a bd issue
 
@@ -77,7 +77,7 @@ bd ready                       # next unblocked child task
 bd update <task-id> --claim    # sets assignee + status=in_progress
 # ... TDD red → green → refactor → commit (as the superpowers skills define) ...
 npm run check                  # after each task; also `npm run test` if packages/shared/ changed
-bd close <task-id>
+# do NOT `bd close` — issues stay open until the branch's PR opens, then gate them (Override 4)
 ```
 
 A skill's **own** internal step list may use TodoWrite as ephemeral process scaffolding.
@@ -86,11 +86,20 @@ The record of deliverable work is always the bd issue — never TodoWrite, never
 ## Override 4 — PR body + session close
 
 **Replaces** `finishing-a-development-branch`'s close flow. Use Conventional Commits in
-the PR title; the PR body references the bd issue id for traceability (bd issues close via
-`bd close`, not GitHub auto-close). Then run the session-close sequence:
+the PR title; the PR body references the bd issue id for traceability.
+
+Do NOT `bd close` deliverable issues. After opening the PR, gate each finished issue on it:
 
 ```bash
-bd close <ids>                 # close the finished issues
+bd gate create --type=gh:pr --blocks <issue-id> --await-id=<PR-number>
+```
+
+The PR-merge workflow (`.github/workflows/bd-gate-check.yml`) closes the issue when the PR merges.
+Humans may still `bd close` manually.
+
+Then run the session-close sequence:
+
+```bash
 bd dolt push                   # if a Dolt remote is configured
 git pull --rebase && git push
 git status                     # MUST show up to date with origin

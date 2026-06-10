@@ -188,6 +188,22 @@ bd update <id> --claim  # Claim work
 bd close <id>         # Complete work
 ```
 
+### Issue Closing Policy
+
+- **Local agents MUST NEVER close issues** (`bd close`) for deliverable work.
+- When an issue's work is in an open PR, **gate** the issue on that PR instead of closing:
+
+  ```bash
+  bd gate create --type=gh:pr --blocks <issue-id> --await-id=<PR-number>
+  ```
+
+- Issues are closed only by:
+  1. a **human** running `bd close` manually, or
+  2. the **PR-merge gate workflow** (`.github/workflows/bd-gate-check.yml`), which runs
+     `bd gate check` on merge and closes the gated issue.
+- The beads→GitHub sync never changes a bead's open/closed state; GitHub issue state is a
+  pure mirror of the bead.
+
 ### Rules
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
@@ -205,10 +221,10 @@ Superpowers workflow skills (`brainstorming`, `writing-plans`, `executing-plans`
 | "Create a TodoWrite todo per checklist item" | TodoWrite ONLY for a skill's own ephemeral process steps. Every deliverable work unit is a `bd` issue. |
 | Spec → `docs/superpowers/specs/*.md` (committed) | Spec → `bd` issue `--design`. `docs/superpowers/` is gitignored scratch. |
 | Plan → `docs/superpowers/plans/*.md` | Plan → `bd` epic + one child task issue per Task, ordered with `bd dep`. Scratch only: `.workspace/plans/`. |
-| executing-plans / subagent: TodoWrite per task | `bd ready` → `bd update <id> --claim` → work → `bd close <id>`. |
-| finishing-a-development-branch close | Close bd issues, then the Session Completion protocol below. |
+| executing-plans / subagent: TodoWrite per task | `bd ready` → `bd update <id> --claim` → work → when the branch's PR opens, gate the issue (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) — never `bd close`. |
+| finishing-a-development-branch close | Open the PR, gate each finished issue on it (never `bd close`), then the Session Completion protocol below. |
 
-**Session close** (supersedes the bare git-push list): `bd close <ids>` → `bd dolt push` (if a Dolt remote is configured) → `git pull --rebase && git push` → confirm `git status` is clean.
+**Session close** (supersedes the bare git-push list): gate each finished issue on its PR (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) — never `bd close` — → `bd dolt push` (if a Dolt remote is configured) → `git pull --rebase && git push` → confirm `git status` is clean. The PR-merge workflow (`.github/workflows/bd-gate-check.yml`) closes the gated issues once the PR merges.
 
 ## Session Completion
 
