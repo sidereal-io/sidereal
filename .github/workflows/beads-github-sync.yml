@@ -54,13 +54,25 @@ jobs:
         run: |
           bd bootstrap --yes
 
-      - name: Sync Beads <-> GitHub Issues
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Beads -> GitHub Issues
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
+          set -euo pipefail
+          export BD_NON_INTERACTIVE=1
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
-            bd github sync --dry-run
+            npm run sync:github -- --dry-run
           else
-            bd github sync
-            bd dolt push
+            bd dolt push || true
           fi
