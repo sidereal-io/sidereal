@@ -17,31 +17,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: '9.0.0'
-
       - name: Setup Node.js 24.x
         uses: actions/setup-node@v4
         with:
           node-version: '24.x'
-          cache: 'pnpm'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run linting
-        run: pnpm lint
+        run: npm install
 
       - name: Run type checking
-        run: pnpm type-check
+        run: npm run check
 
       - name: Run unit tests
-        run: pnpm test
+        run: npm run test
 
       - name: Build all packages
-        run: pnpm build
+        run: npm run build
 
   codeql:
     runs-on: ubuntu-latest
