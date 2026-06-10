@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-06-10
+
+### Security
+- **hono**: Updated 4.12.18 → 4.12.25 to fix four medium CVEs: cookie `sameSite`/`priority` injection (CVE-2026-47675), `app.mount()` percent-encoded path routing (CVE-2026-47676), IPv6 non-canonical address bypass in IP restriction (CVE-2026-47674), JWT middleware accepting non-Bearer schemes (CVE-2026-47673).
+- **ws**: Updated 8.20.0 → 8.21.0 to fix uninitialized memory disclosure (CVE-2026-45736).
+- **tmp**: Updated 0.2.5 → 0.2.7 to fix path traversal via unsanitized prefix/postfix (CVE-2026-44705).
+- **concurrently**: Updated 9.2.1 → 10.0.3 to resolve critical shell-quote newline injection vulnerability (CVE) via transitive dependency.
+
+### Changed
+- **Dependencies**: Updated all production and development dependencies within semver ranges.
+- **GitHub Actions**: Bumped `actions/download-artifact` v4 → v8 in release and Docker build workflows.
+
 ## [0.10.0] - 2026-05-15
 
 ### Changed
