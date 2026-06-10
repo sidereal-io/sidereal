@@ -1,0 +1,53 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - v0.x
+  pull_request:
+    branches:
+      - main
+      - v0.x
+
+jobs:
+  ci-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run type checking
+        run: npm run check
+
+      - name: Run unit tests
+        run: npm run test
+
+      - name: Build all packages
+        run: npm run build
+
+  codeql:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
