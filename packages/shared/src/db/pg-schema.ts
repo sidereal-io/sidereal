@@ -7,6 +7,8 @@ import { z } from 'zod';
 export const astrophotographyImages = pgTable('astrophotography_images', {
   id: serial('id').primaryKey(),
   immichId: text('immich_id').unique(),
+  sourceType: text('source_type').notNull().default('immich'),
+  sourceId: text('source_id'),
   title: text('title').notNull(),
   filename: text('filename').notNull(),
   originalPath: text('original_path'),
