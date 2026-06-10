@@ -146,10 +146,10 @@ jobs:
           echo "### Security Scan" >> $GITHUB_STEP_SUMMARY
           echo "Trivy results uploaded to GitHub Security tab" >> $GITHUB_STEP_SUMMARY
 
-  # Stable branch: build each platform on a native runner, no QEMU
+  # Main branch: build each platform on a native runner, no QEMU
   build:
     needs: typecheck
-    if: github.event_name != 'pull_request' && github.ref_name == 'v0.x'
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
