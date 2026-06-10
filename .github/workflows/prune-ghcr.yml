@@ -31,7 +31,7 @@ jobs:
             const packageName = process.env.PACKAGE_NAME;
 
             // Protected tag patterns — never delete versions that carry these
-            const protectedPattern = /^(v?\d+(\.\d+)*|latest|main)$/;
+            const protectedPattern = /^(v?\d+(\.\d+)*|latest|main|v0\.x)$/;
 
             // Fetch all versions (paginated)
             const versions = await github.paginate(
