@@ -95,7 +95,8 @@ bd gate create --type=gh:pr --blocks <issue-id> --await-id=<PR-number>
 ```
 
 The PR-merge workflow (`.github/workflows/bd-gate-check.yml`) closes the issue when the PR merges.
-Humans may still `bd close` manually.
+Humans may still close manually — via `bd close` or by closing the issue in the GitHub UI
+(the reverse-sync reflects that).
 
 Then run the session-close sequence:
 

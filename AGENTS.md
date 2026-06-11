@@ -198,11 +198,12 @@ bd close <id>         # Complete work
   ```
 
 - Issues are closed only by:
-  1. a **human** running `bd close` manually, or
+  1. a **human** — running `bd close` manually, or closing/reopening the issue in the GitHub UI (the reverse-sync reflects that explicit human action), or
   2. the **PR-merge gate workflow** (`.github/workflows/bd-gate-check.yml`), which runs
      `bd gate check` on merge and closes the gated issue.
-- The beads→GitHub sync never changes a bead's open/closed state; GitHub issue state is a
-  pure mirror of the bead.
+- The forward sync never *autonomously* changes a bead's open/closed state; GitHub issue
+  state mirrors the bead. A human's GitHub-UI close/reopen flows back to the bead via the
+  event-driven reverse-sync.
 
 ### Rules
 
