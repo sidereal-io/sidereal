@@ -20,6 +20,29 @@ export interface BeadsStore {
   create(input: CreateBeadInput): Promise<string>; // returns new bead id
 }
 
+export interface BeadUpdate {
+  title?: string;
+  description?: string;
+  design?: string;
+  owner?: string | null; // null clears the assignee
+  priority?: number;
+  issueType?: string;
+  status?: string;
+  labels?: string[]; // full free-form label set (replaces existing)
+}
+
+/**
+ * Reverse-sync store: extends the forward store with the mutations a human's
+ * GitHub action maps to. The forward sync depends only on `BeadsStore`, so it
+ * cannot close/reopen beads (autonomous-close guarantee). Only the human-event
+ * reverse path uses these.
+ */
+export interface ReverseBeadsStore extends BeadsStore {
+  update(beadId: string, fields: BeadUpdate): Promise<void>;
+  close(beadId: string): Promise<void>;
+  reopen(beadId: string): Promise<void>;
+}
+
 async function bd(args: string[]): Promise<string> {
   const { stdout } = await exec('bd', args, {
     env: { ...process.env, BD_NON_INTERACTIVE: '1' },
@@ -28,7 +51,7 @@ async function bd(args: string[]): Promise<string> {
   return stdout;
 }
 
-export class BdCliStore implements BeadsStore {
+export class BdCliStore implements ReverseBeadsStore {
   async list(): Promise<Bead[]> {
     // --all: include closed beads (needed to mirror closed state to GitHub).
     // --include-gates: gates are hidden by default; the sync needs them to
@@ -49,5 +72,27 @@ export class BdCliStore implements BeadsStore {
     if (!id) throw new Error(`bd create did not return an id: ${out}`);
     await this.setExternalRef(id, input.externalRef);
     return id;
+  }
+
+  async update(beadId: string, fields: BeadUpdate): Promise<void> {
+    const args = ['update', beadId];
+    if (fields.title !== undefined) args.push('--title', fields.title);
+    if (fields.description !== undefined) args.push('--description', fields.description);
+    if (fields.design !== undefined) args.push('--design', fields.design);
+    if (fields.issueType !== undefined) args.push('--type', fields.issueType);
+    if (fields.priority !== undefined) args.push('--priority', String(fields.priority));
+    if (fields.status !== undefined) args.push('--status', fields.status);
+    if (fields.owner !== undefined) args.push('--assignee', fields.owner ?? '');
+    if (fields.labels !== undefined) args.push('--set-labels', fields.labels.join(','));
+    if (args.length === 2) return; // nothing to change
+    await bd(args);
+  }
+
+  async close(beadId: string): Promise<void> {
+    await bd(['close', beadId, '--reason', 'closed on GitHub']);
+  }
+
+  async reopen(beadId: string): Promise<void> {
+    await bd(['update', beadId, '--status', 'open']);
   }
 }
