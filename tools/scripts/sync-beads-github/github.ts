@@ -153,18 +153,34 @@ export class OctokitGithubClient implements GithubClient {
 
   async setAssignees(num: number, logins: string[]): Promise<void> {
     try {
-      // Replace the assignee set: clear then add (update with assignees does a full set).
-      await this.octokit.issues.update({
-        owner: this.owner,
-        repo: this.repo,
-        issue_number: num,
-        assignees: logins,
-      });
+      // Use the dedicated assignees endpoints (add/remove) — passing `assignees`
+      // to the issue PATCH endpoint is deprecated by GitHub. Diff against the
+      // current set so we end up with exactly `logins`.
+      const issue = await this.getIssue(num);
+      const current = issue?.assignees ?? [];
+      const toRemove = current.filter((l) => !logins.includes(l));
+      const toAdd = logins.filter((l) => !current.includes(l));
+      if (toRemove.length > 0) {
+        await this.octokit.issues.removeAssignees({
+          owner: this.owner,
+          repo: this.repo,
+          issue_number: num,
+          assignees: toRemove,
+        });
+      }
+      if (toAdd.length > 0) {
+        await this.octokit.issues.addAssignees({
+          owner: this.owner,
+          repo: this.repo,
+          issue_number: num,
+          assignees: toAdd,
+        });
+      }
     } catch (err: unknown) {
       this.logger(
         `warn: could not set assignees ${JSON.stringify(logins)} on #${num}: ${
           (err as Error).message
-        } (see assignee-map seam in sync.ts)`,
+        } (see assignee-map seam in push.ts)`,
       );
     }
   }
