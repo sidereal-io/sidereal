@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseBody, splitLabels, issueNumberFromRef } from './from-github.ts';
 import { renderBody } from './to-github.ts';
-import type { Bead } from './bead.ts';
+import type { Bead } from './beads.ts';
 
 // --- body ------------------------------------------------------------------
 

@@ -2,7 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { OctokitGithubClient } from './sync-beads-github/github.ts';
-import { BdCliStore } from './sync-beads-github/beads-store.ts';
+import { BdCliStore } from './sync-beads-github/beads.ts';
 import { reconcileIssueToBead } from './sync-beads-github/pull.ts';
 import { trackLabel, botLogin } from './sync-beads-github/config.ts';
 

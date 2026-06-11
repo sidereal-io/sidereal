@@ -1,7 +1,7 @@
 // beads -> GitHub field transforms: render a bead into the title/body/labels/
 // state/external-ref a GitHub issue should carry. The inverse lives in
 // `from-github.ts`.
-import type { Bead } from './bead.ts';
+import type { Bead } from './beads.ts';
 
 // --- managed body marker ---------------------------------------------------
 

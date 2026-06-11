@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 import { execFileSync } from 'node:child_process';
 import { OctokitGithubClient } from './sync-beads-github/github.ts';
-import { BdCliStore } from './sync-beads-github/beads-store.ts';
+import { BdCliStore } from './sync-beads-github/beads.ts';
 import { syncBeadsToGithub } from './sync-beads-github/push.ts';
 import { trackLabel } from './sync-beads-github/config.ts';
 

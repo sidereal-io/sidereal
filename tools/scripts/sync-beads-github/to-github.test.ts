@@ -10,7 +10,7 @@ import {
   githubStateForBead,
   refUrlForNumber,
 } from './to-github.ts';
-import type { Bead } from './bead.ts';
+import type { Bead } from './beads.ts';
 
 // --- body ------------------------------------------------------------------
 

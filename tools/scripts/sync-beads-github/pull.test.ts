@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reconcileIssueToBead } from './pull.ts';
-import type { Bead } from './bead.ts';
+import type { Bead, ReverseBeadsStore, BeadUpdate, CreateBeadInput } from './beads.ts';
 import type { GithubIssue } from './github.ts';
-import type { ReverseBeadsStore, BeadUpdate, CreateBeadInput } from './beads-store.ts';
 
 const REPO = 'sidereal-io/sidereal';
 

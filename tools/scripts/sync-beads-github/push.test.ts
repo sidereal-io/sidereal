@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { syncBeadsToGithub } from './push.ts';
-import type { Bead } from './bead.ts';
+import type { Bead, BeadsStore, CreateBeadInput } from './beads.ts';
 import type { GithubClient, GithubIssue, CreateIssueInput, UpdateIssueInput } from './github.ts';
-import type { BeadsStore, CreateBeadInput } from './beads-store.ts';
 
 class FakeGithub implements GithubClient {
   issues = new Map<number, GithubIssue>();

@@ -1,6 +1,4 @@
-import type { Bead } from './bead.ts';
-import { blockerBeadIds, parentBeadId } from './bead.ts';
-import type { BeadsStore } from './beads-store.ts';
+import { blockerBeadIds, parentBeadId, type Bead, type BeadsStore } from './beads.ts';
 import type { GithubClient } from './github.ts';
 import {
   renderBody,

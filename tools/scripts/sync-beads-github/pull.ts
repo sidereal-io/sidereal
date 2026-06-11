@@ -1,6 +1,5 @@
-import type { Bead } from './bead.ts';
+import type { Bead, ReverseBeadsStore, BeadUpdate } from './beads.ts';
 import type { GithubIssue } from './github.ts';
-import type { ReverseBeadsStore, BeadUpdate } from './beads-store.ts';
 import { refUrlForNumber } from './to-github.ts';
 import { parseBody, splitLabels, issueNumberFromRef } from './from-github.ts';
 

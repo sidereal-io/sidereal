@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseBeads, blockerBeadIds, parentBeadId } from './bead.ts';
+import { parseBeads, blockerBeadIds, parentBeadId } from './beads.ts';
 
 const sample = JSON.stringify([
   {
