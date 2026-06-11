@@ -7,8 +7,8 @@ import {
   reconcileLabels,
   refUrlForNumber,
   githubStateForBead,
-} from './to-github.ts';
-import { issueNumberFromRef } from './from-github.ts';
+  issueNumberFromRef,
+} from './transform.ts';
 
 export interface SyncOptions {
   beads: BeadsStore;
