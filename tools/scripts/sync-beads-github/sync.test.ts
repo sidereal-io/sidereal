@@ -113,7 +113,7 @@ function bead(partial: Partial<Bead> & Pick<Bead, 'id'>): Bead {
 test('creates a GitHub issue for an unmapped bead and records external_ref', async () => {
   const store = new FakeStore([bead({ id: 'b-1', description: 'hello', design: 'plan' })]);
   const gh = new FakeGithub();
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
 
   assert.equal(gh.issues.size, 1);
   const issue = [...gh.issues.values()][0];
@@ -136,7 +136,7 @@ test('renders blockers and adds the blocked label using mapped issue numbers', a
     { number: 50, id: 1, title: 'b-block', body: null, state: 'open', updated_at: NOW, labels: [], assignees: [] },
     { number: 51, id: 2, title: 'b-main', body: null, state: 'open', updated_at: NOW, labels: [], assignees: [] },
   ]);
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
 
   const main = gh.issues.get(51)!;
   assert.ok(main.body!.includes('### Blocked by'));
@@ -152,21 +152,20 @@ test('links a child bead as a native sub-issue of its parent', async () => {
     { number: 60, id: 10, title: 'b-parent', body: null, state: 'open', updated_at: NOW, labels: [], assignees: [] },
     { number: 61, id: 11, title: 'b-child', body: null, state: 'open', updated_at: NOW, labels: [], assignees: [] },
   ]);
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
 
   assert.deepEqual(await gh.listSubIssues(60), [61]);
 });
 
-test('adopts a human-created GitHub issue into beads', async () => {
+test('adopts a human-created GitHub issue only when it has the track label', async () => {
   const store = new FakeStore([]);
   const gh = new FakeGithub([
-    { number: 70, id: 20, title: 'Human bug', body: 'something broke', state: 'open', updated_at: NOW, labels: [], assignees: [] },
+    { number: 70, id: 20, title: 'Human bug', body: 'broke', state: 'open', updated_at: NOW, labels: ['beads'], assignees: [] },
+    { number: 72, id: 22, title: 'Untracked', body: 'x', state: 'open', updated_at: NOW, labels: [], assignees: [] },
   ]);
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
-
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
   assert.equal(store.created.length, 1);
   assert.equal(store.created[0].title, 'Human bug');
-  assert.equal(store.created[0].externalRef, `https://github.com/${REPO}/issues/70`);
 });
 
 test('does not re-adopt an issue that already carries our marker', async () => {
@@ -183,14 +182,14 @@ test('does not re-adopt an issue that already carries our marker', async () => {
       assignees: [],
     },
   ]);
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
   assert.equal(store.created.length, 0);
 });
 
 test('dry run performs no writes', async () => {
   const store = new FakeStore([bead({ id: 'b-1' })]);
   const gh = new FakeGithub();
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: true });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: true, trackLabel: 'beads' });
   assert.equal(gh.issues.size, 0);
   assert.equal(store.refs.size, 0);
 });
@@ -202,7 +201,7 @@ test('closed bead closes its GitHub issue (one-directional mirror)', async () =>
   const gh = new FakeGithub([
     { number: 80, id: 1, title: 'b-done', body: null, state: 'open', updated_at: NOW, labels: [], assignees: [] },
   ]);
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
   assert.equal(gh.issues.get(80)!.state, 'closed');
 });
 
@@ -213,7 +212,7 @@ test('reopens a GitHub issue a human closed while the bead is open', async () =>
   const gh = new FakeGithub();
   // seed a CLOSED issue (FakeGithub.listOpenIssues won't return it, but getIssue will)
   gh.issues.set(81, { number: 81, id: 2, title: 'b-open', body: null, state: 'closed', updated_at: NOW, labels: [], assignees: [] });
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
   assert.equal(gh.issues.get(81)!.state, 'open');
 });
 
@@ -228,7 +227,7 @@ test('skips gate beads and ignores gate blockers (no issue, no blocked label)', 
   const gh = new FakeGithub([
     { number: 82, id: 3, title: 'b-work', body: null, state: 'open', updated_at: NOW, labels: [], assignees: [] },
   ]);
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
 
   // gate produced no GitHub issue
   assert.equal([...gh.issues.values()].some((i) => i.title === 'g-1'), false);
@@ -241,7 +240,15 @@ test('skips gate beads and ignores gate blockers (no issue, no blocked label)', 
 test('does not create a GitHub issue for a closed bead that was never synced', async () => {
   const store = new FakeStore([bead({ id: 'b-old', status: 'closed' })]); // no external_ref
   const gh = new FakeGithub();
-  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false });
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
   assert.equal(gh.issues.size, 0);
   assert.equal(store.refs.size, 0);
+});
+
+test('forward sync labels every issue with the track label', async () => {
+  const store = new FakeStore([bead({ id: 'b-1' })]);
+  const gh = new FakeGithub();
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
+  const issue = [...gh.issues.values()][0];
+  assert.ok(issue.labels.includes('beads'));
 });

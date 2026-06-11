@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { OctokitGithubClient } from './sync-beads-github/github.ts';
 import { BdCliStore } from './sync-beads-github/beads-store.ts';
 import { syncBeadsToGithub } from './sync-beads-github/sync.ts';
+import { trackLabel } from './sync-beads-github/config.ts';
 
 function resolveRepo(): string {
   // GitHub Actions sets GITHUB_REPOSITORY="owner/name".
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   const beads = new BdCliStore();
 
   console.error(`==> Syncing beads -> GitHub (${repo})${dryRun ? ' [dry-run]' : ''}`);
-  await syncBeadsToGithub({ beads, github, repo, dryRun });
+  await syncBeadsToGithub({ beads, github, repo, dryRun, trackLabel: trackLabel() });
 
   if (!dryRun) {
     console.error('==> Capturing bd<->GitHub mapping into .beads/issues.jsonl');

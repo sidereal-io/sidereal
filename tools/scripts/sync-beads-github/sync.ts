@@ -12,6 +12,7 @@ export interface SyncOptions {
   github: GithubClient;
   repo: string; // "owner/name"
   dryRun: boolean;
+  trackLabel: string;
   logger?: (msg: string) => void;
 }
 
@@ -24,7 +25,7 @@ function ownerToLogins(owner: string | undefined): string[] {
 }
 
 export async function syncBeadsToGithub(opts: SyncOptions): Promise<void> {
-  const { github, beads, repo, dryRun } = opts;
+  const { github, beads, repo, dryRun, trackLabel } = opts;
   const log = opts.logger ?? console.error;
   const ref = (n: number) => refUrlForNumber(repo, n);
 
@@ -38,6 +39,7 @@ export async function syncBeadsToGithub(opts: SyncOptions): Promise<void> {
   for (const issue of await github.listOpenIssues()) {
     if (referencedNumbers.has(issue.number)) continue;
     if (extractMarkerId(issue.body)) continue; // ours, but bead lost its ref — don't duplicate
+    if (!issue.labels.includes(trackLabel)) continue; // opt-in: only adopt labeled issues
     log(`intake: adopting GitHub #${issue.number} "${issue.title}" into beads`);
     if (!dryRun) {
       await beads.create({
@@ -100,7 +102,7 @@ export async function syncBeadsToGithub(opts: SyncOptions): Promise<void> {
     const body = renderBody(bead, blockerNums);
     const desiredLabels = reconcileLabels(
       issue.labels,
-      computeManagedLabels(bead, hasOpenBlocker),
+      [...computeManagedLabels(bead, hasOpenBlocker), trackLabel],
       bead.labels ?? [],
     );
     await github.ensureLabelsExist(desiredLabels);
