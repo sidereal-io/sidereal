@@ -9,11 +9,6 @@ on:
     # the workflow on irrelevant events like 'pinned'
     types: [opened, edited, deleted, closed, reopened, labeled, unlabeled, assigned, unassigned]
 
-  issue_comment:
-    # Tracking conversations may look awkward because the
-    # comment will appear to come from the bot user
-    types: [created, edited, deleted]
-
   # Manual run, with an optional dry-run preview.
   workflow_dispatch:
     inputs:
@@ -54,13 +49,33 @@ jobs:
         run: |
           bd bootstrap --yes
 
-      - name: Sync Beads <-> GitHub Issues
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Beads -> GitHub Issues
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
-            bd github sync --dry-run
+          set -euo pipefail
+          export BD_NON_INTERACTIVE=1
+
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            npm run pull:github
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            npm run push:github -- --dry-run
           else
-            bd github sync
-            bd dolt push
+            npm run push:github
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .beads/issues.jsonl
+            git commit -m "chore(beads): refresh GitHub sync mapping" || echo "no mapping changes"
+            git push
+            bd dolt push || true
           fi
