@@ -5,6 +5,8 @@ import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 export const astrophotographyImages = sqliteTable('astrophotography_images', {
     id: integer('id').primaryKey(),
     immichId: text('immich_id').unique(),
+    sourceType: text('source_type').notNull().default('immich'),
+    sourceId: text('source_id'),
     title: text('title').notNull(),
     filename: text('filename').notNull(),
     originalPath: text('original_path'),

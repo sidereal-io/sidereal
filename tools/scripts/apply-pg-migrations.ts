@@ -250,6 +250,27 @@ async function runMigrations() {
       END $$;
     `;
 
+    // Add source_type / source_id columns for multi-source support
+    await connection`
+      DO $$ BEGIN
+        ALTER TABLE astrophotography_images ADD COLUMN source_type TEXT NOT NULL DEFAULT 'immich';
+      EXCEPTION
+        WHEN duplicate_column THEN NULL;
+      END $$;
+    `;
+
+    await connection`
+      DO $$ BEGIN
+        ALTER TABLE astrophotography_images ADD COLUMN source_id TEXT;
+      EXCEPTION
+        WHEN duplicate_column THEN NULL;
+      END $$;
+    `;
+
+    await connection`
+      UPDATE astrophotography_images SET source_id = immich_id WHERE source_id IS NULL AND immich_id IS NOT NULL;
+    `;
+
     console.log('Database tables created successfully');
     
   } catch (error) {
