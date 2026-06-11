@@ -52,7 +52,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -72,10 +72,5 @@ jobs:
             npm run push:github -- --dry-run
           else
             npm run push:github
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add .beads/issues.jsonl
-            git commit -m "chore(beads): refresh GitHub sync mapping" || echo "no mapping changes"
-            git push
             bd dolt push || true
           fi
