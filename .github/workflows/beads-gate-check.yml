@@ -4,6 +4,14 @@ on:
   pull_request:
     types: [closed]
 
+  # Manual re-run for a specific PR (e.g. if the merge event was missed).
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Merged PR number whose gated beads should be closed"
+        required: true
+        type: string
+
 # Share the sync lock so we never race the beads<->GitHub sync.
 concurrency:
   group: beads-github-sync
@@ -13,7 +21,7 @@ jobs:
   gate-check:
     name: Resolve gh:pr gates and close gated beads
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     permissions:
       contents: write # push refs/dolt/data
       pull-requests: read # bd gate check queries PR merge status via gh
@@ -36,7 +44,7 @@ jobs:
       - name: Close beads gated on this merged PR, then resolve the gate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
         run: |
           set -euo pipefail
           export BD_NON_INTERACTIVE=1
