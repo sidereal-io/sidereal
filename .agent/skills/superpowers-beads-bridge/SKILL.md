@@ -37,11 +37,20 @@ Step 8 (user reviews the spec file). The spec — dialogue output, design, and f
 form — lives in a bd issue's `--design`, not a local file.
 
 ```bash
+# Pull remote changes
+bd dolt pull
+
 # New spec (design body piped in on stdin):
 bd create --type=feature --title "<title>" --labels spec/brainstorming --design-file -
 
 # Request human review of the spec, then WAIT:
 bd label add <issue-id> human   # flag for a human; `bd human list` then shows it
+
+# Push new bead
+bd dolt push
+
+# Sync GitHub Issues
+gh workflow run beads-sync.yml
 ```
 
 Do **not** proceed to implementation until a human applies the approval label:
@@ -54,6 +63,9 @@ brainstorming "user reviews the spec" gate becomes "a human applies `spec/ready`
 handoff. The plan becomes a bd epic whose children are the individual tasks.
 
 ```bash
+# Pull remote changes
+bd dolt pull
+
 # Epic holds the goal/architecture/tech-stack overview:
 bd create --type=epic --parent <spec-issue-id> --title "<feature> plan" --design-file -
 
@@ -62,6 +74,12 @@ bd create --type=task --parent <epic-id> --title "Task N: <name>" --design-file 
 
 # Order the tasks (later depends on earlier):
 bd dep add <task-N+1-id> <task-N-id>
+
+# Push new bead
+bd dolt push
+
+# Sync GitHub Issues
+gh workflow run beads-sync.yml
 ```
 
 A local `.workspace/plans/YYYY-MM-DD-<slug>.md` (gitignored) is allowed as scratch only;
@@ -73,11 +91,17 @@ the bd epic and its children are the source of truth.
 `subagent-driven-development`.
 
 ```bash
-bd ready                       # next unblocked child task
-bd update <task-id> --claim    # sets assignee + status=in_progress
+# Pull remote changes
+bd dolt pull
+
+# next unblocked child task
+bd ready
+
+# sets assignee + status=in_progress
+bd update <task-id> --claim
+
 # ... TDD red → green → refactor → commit (as the superpowers skills define) ...
 npm run check                  # after each task; also `npm run test` if packages/shared/ changed
-# do NOT `bd close` — issues stay open until the branch's PR opens, then gate them (Override 4)
 ```
 
 A skill's **own** internal step list may use TodoWrite as ephemeral process scaffolding.
@@ -90,17 +114,17 @@ the PR title; the PR body references the bd issue id for traceability.
 
 Do NOT `bd close` deliverable issues. After opening the PR, gate each finished issue on it:
 
-```bash
-bd gate create --type=gh:pr --blocks <issue-id> --await-id=<PR-number>
-```
-
 The PR-merge workflow (`.github/workflows/bd-gate-check.yml`) closes the issue when the PR merges.
 Humans may still close manually — via `bd close` or by closing the issue in the GitHub UI
 (the reverse-sync reflects that).
 
-Then run the session-close sequence:
-
 ```bash
+# Pull remote changes
+bd dolt pull
+
+# Create a gate for the bead
+bd gate create --type=gh:pr --blocks <issue-id> --await-id=<PR-number>
+
 bd dolt push                   # if a Dolt remote is configured
 git pull --rebase && git push
 git status                     # MUST show up to date with origin
