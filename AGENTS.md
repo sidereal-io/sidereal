@@ -132,33 +132,18 @@ See `.env.example` and `.env.worker.example` for the full list.
 
 ## Decision Records
 
-When you encounter a design decision with multiple valid approaches, create a decision record before implementing. Decision records ensure developers can review trade-offs and make informed choices rather than discovering baked-in assumptions after the fact.
+When you encounter a design decision with multiple valid approaches, suggest a decision record. They're most useful when a reasonable person could argue for a different approach.
 
-### When to create a decision record
-
-- Trade-offs between simplicity and flexibility (e.g., hardcoded defaults vs. config)
-- Anything where a reasonable person could argue for a different approach
-
-### Decision record format
-
-New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`) and keep the slug terse.
-
-### Rules
-- Do NOT implement a decision before it's recorded. Write the record, set status to Proposed, and let a developer accept it.
-- Number sequentially: 001, 002, etc.
-- Keep options concrete — include code snippets, interface sketches, or config examples where they clarify trade-offs.
-- If a decision is later reversed, set status to Superseded by NNN and create a new record explaining why.
+New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`). Keep options concrete — include code snippets or config examples where they clarify trade-offs.
 
 ### Lifecycle
 
-Every DR moves through these states:
+- **Proposed** — authored, not yet reviewed.
+- **Accepted** — approved; implementation may proceed.
+- **Superseded by NNN** — reversed or replaced; keep the original file, add a pointer to the replacement.
+- **Archived** — no longer applies; prefix title with [Archived], add a one-line note under Status.
 
-- **Proposed** — authored but not reviewed. Do not implement.
-- **Accepted** — reviewed and approved. Implementation may proceed (or has).
-- **Superseded** by NNN — the decision has been reversed or replaced. Keep the original file; add a pointer line at the top to the replacement.
-- **Archived** — the decision no longer applies (feature removed, approach abandoned without replacement). Leave the file in place; prefix the title with [Archived] and add a one-line note under Status.
-
-When you open a PR that implements an Accepted DR, flip its status in the same PR. When you supersede a DR, do it in the PR that introduces the replacement. A DR should never linger in Proposed once the corresponding code ships — treat a mismatched status as a correctness bug on par with stale docs.
+When a PR implements an Accepted DR, flip its status in the same PR. A DR should never linger in Proposed once the corresponding code ships.
 
 ## Release Process
 
@@ -213,19 +198,15 @@ bd close <id>         # Complete work
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 
-## Superpowers × Beads
+## Spec-Driven Development
 
-Superpowers workflow skills (`brainstorming`, `writing-plans`, `executing-plans`, `subagent-driven-development`, `finishing-a-development-branch`) apply as written **except** where this section overrides them — this section wins (superpowers' own `using-superpowers` defers to AGENTS.md). When any of those skills is active, also invoke the **`superpowers-beads-bridge`** skill for the exact bd recipes.
+In any workflow that produces specs, plans, or task lists (Superpowers, BMAD, speckit, GSD, etc.), use `bd` as the system of record — never local files, markdown, or TodoWrite:
 
-| Superpowers default | Use instead |
-|---|---|
-| "Create a TodoWrite todo per checklist item" | TodoWrite ONLY for a skill's own ephemeral process steps. Every deliverable work unit is a `bd` issue. |
-| Spec → `docs/superpowers/specs/*.md` (committed) | Spec → `bd` issue `--design`. `docs/superpowers/` is gitignored scratch. |
-| Plan → `docs/superpowers/plans/*.md` | Plan → `bd` epic + one child task issue per Task, ordered with `bd dep`. Scratch only: `.workspace/plans/`. |
-| executing-plans / subagent: TodoWrite per task | `bd ready` → `bd update <id> --claim` → work → when the branch's PR opens, gate the issue (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) — never `bd close`. |
-| finishing-a-development-branch close | Open the PR, gate each finished issue on it (never `bd close`), then the Session Completion protocol below. |
-
-**Session close** (supersedes the bare git-push list): gate each finished issue on its PR (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) — never `bd close` — → `bd dolt push` (if a Dolt remote is configured) → `git pull --rebase && git push` → confirm `git status` is clean. The PR-merge workflow (`.github/workflows/bd-gate-check.yml`) closes the gated issues once the PR merges.
+- **Sync** → `bd dolt pull` at session start and before creating issues; `bd dolt push` after any beads mutation.
+- **Specs** → `bd create --design-file -`. After creating, `bd label add <id> human`; do NOT proceed to implementation until a human applies `spec/ready`. Local scratch dirs (`.workspace/`, `docs/superpowers/`) are gitignored.
+- **Plans** → `bd` epic + one child task issue per task, ordered with `bd dep`.
+- **Tasks** → `bd ready` → `bd update <id> --claim` → work → gate on PR; never `bd close`.
+- **Session close** → gate each finished issue (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) → `bd dolt push` → `git pull --rebase && git push`.
 
 ## Session Completion
 
