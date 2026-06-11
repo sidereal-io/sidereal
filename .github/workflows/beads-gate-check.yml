@@ -52,14 +52,14 @@ jobs:
           # Gate id(s) that were waiting on THIS PR (await_id == PR number).
           gates=$(bd gate list --all --json \
             | jq -c --arg pr "$PR_NUMBER" \
-                '[.[] | select(.await_type == "gh:pr" and (.await_id | tostring) == $pr) | .id]')
+                '[(. // [])[] | select(.await_type == "gh:pr" and (.await_id | tostring) == $pr) | .id]')
 
           # Close the bead each of those gates was blocking — the work has merged.
           # (GitHub closes the mirrored issue itself via the PR's closing keyword;
           #  this only cleans up the beads side. bd gate check does NOT close beads.)
           bd list --json \
             | jq -r --argjson gates "$gates" \
-                '.[] | select(any((.dependencies // [])[];
+                '(. // [])[] | select(any((.dependencies // [])[];
                                   .dependency_type == "blocks" and (.id | IN($gates[])))) | .id' \
             | while read -r bead; do
                 echo "Closing $bead (PR #$PR_NUMBER merged)"
