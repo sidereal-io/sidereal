@@ -72,5 +72,10 @@ jobs:
             npm run sync:github -- --dry-run
           else
             npm run sync:github
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .beads/issues.jsonl
+            git commit -m "chore(beads): refresh GitHub sync mapping" || echo "no mapping changes"
+            git push
             bd dolt push || true
           fi
