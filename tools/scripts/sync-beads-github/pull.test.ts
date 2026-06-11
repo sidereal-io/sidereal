@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconcileIssueToBead } from './reverse-sync.ts';
+import { reconcileIssueToBead } from './pull.ts';
 import type { Bead } from './bead.ts';
 import type { GithubIssue } from './github.ts';
 import type { ReverseBeadsStore, BeadUpdate, CreateBeadInput } from './beads-store.ts';

@@ -67,11 +67,11 @@ jobs:
           export BD_NON_INTERACTIVE=1
 
           if [ "${{ github.event_name }}" = "issues" ]; then
-            npm run sync:github:reverse
+            npm run pull:github
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
-            npm run sync:github -- --dry-run
+            npm run push:github -- --dry-run
           else
-            npm run sync:github
+            npm run push:github
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add .beads/issues.jsonl

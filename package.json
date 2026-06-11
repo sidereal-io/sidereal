@@ -30,8 +30,8 @@
     "db:migrate": "node tools/scripts/migrate-db.js",
     "seed": "tsx tools/scripts/seed.ts",
     "seed:reset": "tsx tools/scripts/seed.ts --reset",
-    "sync:github": "tsx tools/scripts/sync-beads-github.ts",
-    "sync:github:reverse": "tsx tools/scripts/reverse-sync-github.ts"
+    "push:github": "tsx tools/scripts/push-github.ts",
+    "pull:github": "tsx tools/scripts/pull-github.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.2",

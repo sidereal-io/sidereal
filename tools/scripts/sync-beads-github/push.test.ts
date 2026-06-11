@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncBeadsToGithub } from './sync.ts';
+import { syncBeadsToGithub } from './push.ts';
 import type { Bead } from './bead.ts';
 import type { GithubClient, GithubIssue, CreateIssueInput, UpdateIssueInput } from './github.ts';
 import type { BeadsStore, CreateBeadInput } from './beads-store.ts';

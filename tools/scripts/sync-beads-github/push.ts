@@ -2,10 +2,15 @@ import type { Bead } from './bead.ts';
 import { blockerBeadIds, parentBeadId } from './bead.ts';
 import type { BeadsStore } from './beads-store.ts';
 import type { GithubClient } from './github.ts';
-import { renderBody, extractMarkerId } from './body.ts';
-import { computeManagedLabels, reconcileLabels } from './labels.ts';
-import { issueNumberFromRef, refUrlForNumber } from './refs.ts';
-import { githubStateForBead } from './state.ts';
+import {
+  renderBody,
+  extractMarkerId,
+  computeManagedLabels,
+  reconcileLabels,
+  refUrlForNumber,
+  githubStateForBead,
+} from './to-github.ts';
+import { issueNumberFromRef } from './from-github.ts';
 
 export interface SyncOptions {
   beads: BeadsStore;
