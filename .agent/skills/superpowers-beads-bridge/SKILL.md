@@ -50,7 +50,7 @@ bd label add <issue-id> human   # flag for a human; `bd human list` then shows i
 bd dolt push
 
 # Sync GitHub Issues
-gh workflow run beads-sync.yml
+gh workflow run beads.yml
 ```
 
 Do **not** proceed to implementation until a human applies the approval label:
@@ -79,7 +79,7 @@ bd dep add <task-N+1-id> <task-N-id>
 bd dolt push
 
 # Sync GitHub Issues
-gh workflow run beads-sync.yml
+gh workflow run beads.yml
 ```
 
 A local `.workspace/plans/YYYY-MM-DD-<slug>.md` (gitignored) is allowed as scratch only;

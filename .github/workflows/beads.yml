@@ -1,0 +1,112 @@
+name: Beads Sync & Gate
+
+on:
+  issues:
+    # NOTE: we're explicitly skipping "closed" here. It creates 
+    # a race condition when a merged PR happens that closes an issue.
+    types: [opened, edited, deleted, reopened, labeled, unlabeled, assigned, unassigned]
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+
+# Never let two runs overlap — concurrent runs can race on the same issues.
+concurrency:
+  group: beads-github-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: "Beads: Sync Beads ↔ Issues"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install bd
+        run: curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/install.sh | bash
+
+      - name: Setup Git credentials for Dolt
+        run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Hydrate beads from Dolt remote
+        run: bd bootstrap --yes
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync Beads <-> GitHub Issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          export BD_NON_INTERACTIVE=1
+
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            npm run pull:github
+          else
+            npm run push:github
+            bd dolt push || true
+          fi
+
+  gate:
+    name: "Beads: Resolve Gates"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    permissions:
+      contents: write
+      pull-requests: read
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install bd
+        run: curl -fsSL https://raw.githubusercontent.com/gastownhall/beads/main/scripts/install.sh | bash
+
+      - name: Setup Git credentials for Dolt
+        run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Hydrate beads from Dolt remote
+        run: bd bootstrap --yes
+
+      - name: Close beads gated on this merged PR, then resolve the gate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          export BD_NON_INTERACTIVE=1
+
+          gates=$(bd gate list --all --json \
+            | jq -c --arg pr "$PR_NUMBER" \
+                '[(. // [])[] | select(.await_type == "gh:pr" and (.await_id | tostring) == $pr) | .id]')
+
+          bd list --json \
+            | jq -r --argjson gates "$gates" \
+                '(. // [])[] | select(any((.dependencies // [])[];
+                                  .dependency_type == "blocks" and (.id | IN($gates[])))) | .id' \
+            | while read -r bead; do
+                echo "Closing $bead (PR #$PR_NUMBER merged)"
+                bd close "$bead" --reason "PR #$PR_NUMBER merged"
+              done
+
+          bd gate check --type=gh:pr
+
+      - name: Push beads state to Dolt
+        run: bd dolt push || true
