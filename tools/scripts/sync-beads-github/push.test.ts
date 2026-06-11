@@ -251,3 +251,20 @@ test('forward sync labels every issue with the track label', async () => {
   const issue = [...gh.issues.values()][0];
   assert.ok(issue.labels.includes('beads'));
 });
+
+test('recreates the issue when a bead references a deleted (gone) GitHub issue', async () => {
+  // bead points at #154, which no longer exists (getIssue returns null on 404/410)
+  const store = new FakeStore([
+    bead({ id: 'b-1', external_ref: `https://github.com/${REPO}/issues/154` }),
+  ]);
+  const gh = new FakeGithub(); // #154 is absent
+  await syncBeadsToGithub({ beads: store, github: gh, repo: REPO, dryRun: false, trackLabel: 'beads' });
+
+  assert.equal(gh.issues.size, 1);
+  const recreated = [...gh.issues.values()][0];
+  assert.notEqual(recreated.number, 154); // a brand-new issue, not the deleted one
+  assert.equal(
+    store.refs.get('b-1'),
+    `https://github.com/${REPO}/issues/${recreated.number}`,
+  );
+});

@@ -87,12 +87,17 @@ export async function syncBeadsToGithub(opts: SyncOptions): Promise<void> {
 
   // --- Phase 2: full content sync (body, labels, assignee, state) ---
   for (const bead of syncable) {
-    const num = numberByBead.get(bead.id);
+    let num = numberByBead.get(bead.id);
     if (num == null) continue;
-    const issue = await github.getIssue(num);
+    let issue = await github.getIssue(num);
     if (!issue) {
-      log(`warn: bead ${bead.id} references missing issue #${num}; skipping`);
-      continue;
+      // The mirrored issue was deleted on GitHub (404/410) — recreate it and
+      // repoint the bead's external_ref so the mapping self-heals.
+      log(`recreate: bead ${bead.id} issue #${num} is gone; creating a new issue`);
+      issue = await github.createIssue({ title: bead.title });
+      num = issue.number;
+      await beads.setExternalRef(bead.id, ref(num));
+      numberByBead.set(bead.id, num);
     }
 
     const blockerNums = realBlockerIds(bead)

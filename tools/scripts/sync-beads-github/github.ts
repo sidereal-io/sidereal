@@ -99,7 +99,9 @@ export class OctokitGithubClient implements GithubClient {
       });
       return toGithubIssue(data);
     } catch (err: unknown) {
-      if ((err as { status?: number }).status === 404) return null;
+      // 404 = never existed; 410 = deleted ("Gone"). Both mean "no issue here".
+      const status = (err as { status?: number }).status;
+      if (status === 404 || status === 410) return null;
       throw err;
     }
   }
