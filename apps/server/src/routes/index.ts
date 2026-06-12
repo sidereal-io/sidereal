@@ -11,6 +11,7 @@ import locationRoutes from './locations';
 import targetRoutes from './targets';
 import catalogRoutes from './catalog';
 import userTargetRoutes from './user-targets';
+import sourcesRoutes from './sources';
 import type { WsManager } from '../services/ws-manager';
 
 export function registerRoutes(app: Hono, wsManager?: WsManager) {
@@ -25,5 +26,6 @@ export function registerRoutes(app: Hono, wsManager?: WsManager) {
   app.route('/api/targets', targetRoutes);
   app.route('/api/catalog', catalogRoutes);
   app.route('/api/user-targets', userTargetRoutes);
+  app.route('/api/sources', sourcesRoutes);
   app.route('/api', systemRoutes(wsManager));
 }
