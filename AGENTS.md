@@ -157,12 +157,12 @@ Releases are driven by git tags. Do not create releases manually with `gh releas
 
 The `docker-build-push.yml` workflow runs on every push to main and publishes intermediate Docker images (`main`, `sha-*`, timestamp tags). It prunes old non-release images automatically after each build. The weekly `prune-ghcr.yml` workflow handles any remaining cleanup.
 
-
-
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker
 
 This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+**ALWAYS USE `.agent/skills/beads-sdd-orchestrator`**
 
 ### Quick Reference
 
@@ -173,23 +173,6 @@ bd update <id> --claim  # Claim work
 bd close <id>         # Complete work
 ```
 
-### Issue Closing Policy
-
-- **Local agents MUST NEVER close issues** (`bd close`) for deliverable work.
-- When an issue's work is in an open PR, **gate** the issue on that PR instead of closing:
-
-  ```bash
-  bd gate create --type=gh:pr --blocks <issue-id> --await-id=<PR-number>
-  ```
-
-- Issues are closed only by:
-  1. a **human** — running `bd close` manually, or closing/reopening the issue in the GitHub UI (the reverse-sync reflects that explicit human action), or
-  2. the **PR-merge gate workflow** (`.github/workflows/bd-gate-check.yml`), which runs
-     `bd gate check` on merge and closes the gated issue.
-- The forward sync never *autonomously* changes a bead's open/closed state; GitHub issue
-  state mirrors the bead. A human's GitHub-UI close/reopen flows back to the bead via the
-  event-driven reverse-sync.
-
 ### Rules
 
 - Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
@@ -198,15 +181,6 @@ bd close <id>         # Complete work
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 
-## Spec-Driven Development
-
-In any workflow that produces specs, plans, or task lists (Superpowers, BMAD, speckit, GSD, etc.), use `bd` as the system of record — never local files, markdown, or TodoWrite:
-
-- **Sync** → `bd dolt pull` at session start and before creating issues; `bd dolt push` after any beads mutation.
-- **Specs** → `bd create --design-file -`. After creating, `bd label add <id> human`; do NOT proceed to implementation until a human applies `spec/ready`. Local scratch dirs (`.workspace/`, `docs/superpowers/`) are gitignored.
-- **Plans** → `bd` epic + one child task issue per task, ordered with `bd dep`.
-- **Tasks** → `bd ready` → `bd update <id> --claim` → work → gate on PR; never `bd close`.
-- **Session close** → gate each finished issue (`bd gate create --type=gh:pr --blocks <id> --await-id=<PR#>`) → `bd dolt push` → `git pull --rebase && git push`.
 
 ## Session Completion
 
