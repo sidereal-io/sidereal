@@ -1,9 +1,11 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import mock from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { LocalUploadSource } from './local-upload.js';
 
 describe('LocalUploadSource', () => {
   let tmpDir: string;
@@ -27,10 +29,10 @@ describe('LocalUploadSource', () => {
       getImageBySource: async () => undefined,
       createAstroImage: async (img: Record<string, unknown>) => ({ ...img, id: 99, createdAt: new Date(), updatedAt: new Date() }),
       updateAstroImage: async () => undefined,
+      deleteAstroImage: async () => undefined,
       getAstroImages: async () => [],
     };
 
-    const { LocalUploadSource } = await import('./local-upload.js');
     const source = new LocalUploadSource(mockStorage as never);
 
     const result = await source.ingest(bytes, 'test.jpg');
@@ -49,10 +51,10 @@ describe('LocalUploadSource', () => {
       getImageBySource: async () => existing,
       createAstroImage: async () => { throw new Error('should not be called'); },
       updateAstroImage: async () => undefined,
+      deleteAstroImage: async () => undefined,
       getAstroImages: async () => [],
     };
 
-    const { LocalUploadSource } = await import('./local-upload.js');
     const source = new LocalUploadSource(mockStorage as never);
 
     const result = await source.ingest(bytes, 'anything.jpg');
@@ -62,9 +64,28 @@ describe('LocalUploadSource', () => {
   });
 
   it('testConnection returns ok: true', async () => {
-    const { LocalUploadSource } = await import('./local-upload.js');
     const source = new LocalUploadSource({} as never);
     const result = await source.testConnection();
     assert.equal(result.ok, true);
+  });
+
+  it('ingest cleans up DB record if writeImage fails', async () => {
+    const deleteAstroImage = mock.mock.fn(async () => {});
+
+    const mockStorage = {
+      getImageBySource: async () => undefined,
+      createAstroImage: async (img: Record<string, unknown>) => ({ ...img, id: 42, createdAt: new Date(), updatedAt: new Date() }),
+      updateAstroImage: async () => undefined,
+      deleteAstroImage,
+      getAstroImages: async () => [],
+    };
+    const mockImgStorage = {
+      writeImage: async () => { throw new Error('disk full'); },
+    };
+
+    const source = new LocalUploadSource(mockStorage as never, mockImgStorage as never);
+
+    await assert.rejects(() => source.ingest(Buffer.from('bytes'), 'test.jpg'), /disk full/);
+    assert.equal(deleteAstroImage.mock.calls.length, 1, 'deleteAstroImage should be called');
   });
 });

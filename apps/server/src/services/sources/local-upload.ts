@@ -4,13 +4,16 @@ import type { ImageSourcePlugin, IngestResult, SourceMetadata, ConnectionResult,
 import { storage } from '../storage.js';
 import { imageStorage } from '../image-storage.js';
 
-type StorageService = Pick<typeof storage, 'getImageBySource' | 'createAstroImage' | 'updateAstroImage' | 'getAstroImages'>;
+type StorageService = Pick<typeof storage, 'getImageBySource' | 'createAstroImage' | 'updateAstroImage' | 'deleteAstroImage' | 'getAstroImages'>;
 
 export class LocalUploadSource implements ImageSourcePlugin {
   readonly sourceType = 'local';
   readonly displayName = 'Local Upload';
 
-  constructor(private readonly db: StorageService = storage) {}
+  constructor(
+    private readonly db: StorageService = storage,
+    private readonly imgStorage: Pick<typeof imageStorage, 'writeImage'> = imageStorage,
+  ) {}
 
   async ingest(bytes: Buffer, filename: string, metadata?: Partial<SourceMetadata>): Promise<IngestResult> {
     const ext = path.extname(filename).replace('.', '') || 'jpg';
@@ -47,8 +50,13 @@ export class LocalUploadSource implements ImageSourcePlugin {
       description: metadata?.description ?? '',
     });
 
-    const written = await imageStorage.writeImage(created.id, bytes, ext);
-    await this.db.updateAstroImage(created.id, { originalPath: written.originalPath });
+    try {
+      const written = await this.imgStorage.writeImage(created.id, bytes, ext);
+      await this.db.updateAstroImage(created.id, { originalPath: written.originalPath });
+    } catch (err) {
+      await this.db.deleteAstroImage(created.id).catch(() => {});
+      throw err;
+    }
 
     return { imageId: created.id, filename, sourceType: 'local', sourceId };
   }
