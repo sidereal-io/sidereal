@@ -3,6 +3,7 @@ import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { configService } from './config';
 import { storage } from './storage';
+import { sourceRegistry } from './source-registry';
 
 import type { WsManager } from './ws-manager';
 
@@ -51,17 +52,21 @@ class CronManager {
     this.scheduleJob('immich-sync', 'Immich Sync', cronExpr, async () => {
       try {
         console.log('[CRON] Starting Immich sync...');
-        const { immichSyncService } = await import('./immich-sync');
-        const result = await immichSyncService.syncImagesFromImmich();
+        const immich = sourceRegistry.get('immich');
+        if (!immich || typeof (immich as { sync?: unknown }).sync !== 'function') {
+          throw new Error('Immich source plugin is not registered');
+        }
+        const result = await (immich as unknown as { sync(): Promise<{ syncedCount: number; removedCount: number; message: string }> }).sync();
 
         console.log(`[CRON] Immich sync completed: ${result.message}`);
 
         if (wsManager) {
-          wsManager.broadcast('immich-sync-complete', {
+          wsManager.broadcast('source-sync-complete', {
+            sourceType: 'immich',
             success: true,
             message: result.message,
             syncedCount: result.syncedCount,
-            removedCount: result.removedCount
+            removedCount: result.removedCount,
           });
         }
 
@@ -77,9 +82,10 @@ class CronManager {
         console.error('[CRON] Immich sync failed:', errorMessage);
 
         if (wsManager) {
-          wsManager.broadcast('immich-sync-complete', {
+          wsManager.broadcast('source-sync-complete', {
+            sourceType: 'immich',
             success: false,
-            message: errorMessage
+            message: errorMessage,
           });
         }
 

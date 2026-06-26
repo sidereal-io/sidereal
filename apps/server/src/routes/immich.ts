@@ -8,8 +8,12 @@ const app = new Hono();
 // Sync images from Immich
 app.post('/sync-immich', async (c) => {
   try {
-    const { immichSyncService } = await import('../services/immich-sync');
-    const result = await immichSyncService.syncImagesFromImmich();
+    const { sourceRegistry } = await import('../services/source-registry');
+    const immich = sourceRegistry.get('immich') as unknown as { sync(): Promise<{ syncedCount: number; removedCount: number; message: string }> } | undefined;
+    if (!immich?.sync) {
+      return c.json({ message: 'Immich source is not available' }, 503);
+    }
+    const result = await immich.sync();
     return c.json(result);
   } catch (error) {
     return handleRouteError(c, error, 'Failed to sync with Immich');
