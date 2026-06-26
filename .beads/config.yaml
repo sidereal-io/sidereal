@@ -57,4 +57,4 @@
 export.auto: false
 export.git-add: false
 
-sync.remote: "git+ssh://git@github.com/sidereal-io/sidereal.git"
+sync.remote: "https://github.com/sidereal-io/sidereal.git"
