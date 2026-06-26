@@ -115,7 +115,7 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
           // MOBILE LAYOUT: image on top, details below
           <div className="flex flex-col gap-4">
             <div className="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden">
-              {image.immichId ? (
+              {image.originalPath ? (
                 <div className="relative w-full h-full">
                   <DeepZoomViewer
                     imageUrl={imageUrl(image.id, 'preview')}
@@ -237,7 +237,7 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
           // DESKTOP/TABLET LAYOUT (unchanged)
           <div className="bg-card rounded-xl p-4">
             <div className="relative mb-4">
-              {image.immichId ? (
+              {image.originalPath ? (
                 <div className="relative">
                   <DeepZoomViewer
                     imageUrl={imageUrl(image.id, 'preview')}
