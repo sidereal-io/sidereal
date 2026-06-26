@@ -22,6 +22,7 @@
     "docker:logs": "docker compose logs -f",
     "check": "tsc",
     "test": "tsx --test packages/shared/src/**/*.test.ts",
+    "test:server": "SKIP_DB_INIT=1 tsx --test \"apps/server/src/**/*.test.ts\"",
     "test:scripts": "tsx --test \"tools/scripts/sync-beads-github/**/*.test.ts\"",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

@@ -69,7 +69,9 @@ async function initializeDatabase() {
   initialized = true;
 }
 
-// Initialize immediately
-await initializeDatabase();
+// Initialize immediately (skipped when SKIP_DB_INIT=1, e.g. during unit tests)
+if (process.env.SKIP_DB_INIT !== '1') {
+  await initializeDatabase();
+}
 
 export { db, schema, sqliteDbPath };
