@@ -19,4 +19,10 @@ describe('SourceRegistry', () => {
   it('get returns undefined for unknown sourceType', () => {
     assert.equal(sourceRegistry.get('unknown'), undefined);
   });
+
+  it('registers the immich source', () => {
+    const plugin = sourceRegistry.get('immich');
+    assert.ok(plugin, 'immich source should be registered');
+    assert.equal(plugin?.sourceType, 'immich');
+  });
 });
