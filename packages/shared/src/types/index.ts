@@ -103,3 +103,12 @@ export const EQUIPMENT_SPEC_FIELDS: Record<EquipmentType, SpecFieldDefinition[]>
   accessory: [],
   software: [],
 };
+
+// Image source plugin types
+export type {
+  ImageSourcePlugin,
+  SourceMetadata,
+  IngestResult,
+  ConnectionResult,
+  SourceStatus,
+} from './image-source.js';
