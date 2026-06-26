@@ -48,10 +48,10 @@ export async function runBackfill(): Promise<{ processed: number; failed: number
       const batch = pending.slice(i, i + CONCURRENCY);
       await Promise.all(batch.map(async (img) => {
         if (skipSet.has(img.id)) { skipped++; return; }
-        if (!img.immichId) { skipped++; return; }
+        if (img.sourceType !== 'immich' || !img.sourceId) { skipped++; return; }
 
         try {
-          const url = `${config.host}/api/assets/${encodeURIComponent(img.immichId)}/original`;
+          const url = `${config.host}/api/assets/${encodeURIComponent(img.sourceId)}/original`;
           const response = await fetch(url, { headers: { 'X-API-Key': config.apiKey! } });
 
           if (!response.ok) {
@@ -60,7 +60,7 @@ export async function runBackfill(): Promise<{ processed: number; failed: number
 
           const ab = await response.arrayBuffer();
           if (ab.byteLength > MAX_ORIGINAL_BYTES) {
-            console.warn(`[BACKFILL] Image ${img.id} (${img.immichId}) exceeds 500 MB — skipping`);
+            console.warn(`[BACKFILL] Image ${img.id} (${img.sourceId}) exceeds 500 MB — skipping`);
             skipSet.add(img.id);
             skipped++;
             return;

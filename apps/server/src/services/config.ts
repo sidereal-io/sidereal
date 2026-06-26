@@ -12,8 +12,6 @@ export interface AppConfig {
     syncDescription: boolean;
     syncCoordinates: boolean;
     syncTags: boolean;
-    immichMapping: string; // The path Immich uses internally (e.g., /usr/src/app/upload)
-    localMapping: string;  // The path where that same volume is mounted in Sidereal (e.g., /immich-upload)
   };
   astrometry: {
     apiKey: string;
@@ -61,8 +59,6 @@ class ConfigService {
         syncDescription: adminSettings.immich?.syncDescription ?? defaultConfig.immich.syncDescription,
         syncCoordinates: adminSettings.immich?.syncCoordinates ?? defaultConfig.immich.syncCoordinates,
         syncTags: adminSettings.immich?.syncTags ?? defaultConfig.immich.syncTags,
-        immichMapping: process.env.IMMICH_MAPPING_PATH || adminSettings.immich?.immichMapping || defaultConfig.immich.immichMapping,
-        localMapping: process.env.LOCAL_MAPPING_PATH || adminSettings.immich?.localMapping || defaultConfig.immich.localMapping,
       },
       astrometry: {
         apiKey: adminSettings.astrometry?.apiKey || defaultConfig.astrometry.apiKey,
@@ -111,8 +107,6 @@ class ConfigService {
         syncDescription: true,
         syncCoordinates: true,
         syncTags: true,
-        immichMapping: '/usr/src/app/upload',
-        localMapping: '/immich-upload',
       },
       astrometry: {
         apiKey: "",  // Empty - user must configure

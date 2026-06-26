@@ -1,7 +1,5 @@
 import { existsSync, mkdirSync } from 'fs';
 import { writeFile, unlink } from 'fs/promises';
-import { dirname } from 'path';
-import { configService } from './config';
 import { filterRelevantTags } from './tags-utils';
 import { AstrometryCalibration, AstrometryAnnotation } from './astrometry';
 import type { Equipment } from '@shared/types';
@@ -186,30 +184,15 @@ export class XmpSidecarService {
 
       // Determine the sidecar file path
       let sidecarDir: string;
-      const config = await configService.getImmichConfig();
+      const baseDir = sidecarConfig?.outputPath || process.env.XMP_SIDECAR_PATH || './sidecars';
+      sidecarDir = baseDir;
 
-      if (image.originalPath && config.immichMapping && config.localMapping) {
-        // Map the Immich internal path to our local mount point
-        // Example: /usr/src/app/upload/library/image.jpg -> /immich-upload/library/image.jpg
-        const relativePath = image.originalPath.startsWith(config.immichMapping)
-          ? image.originalPath.substring(config.immichMapping.length)
-          : image.originalPath;
-
-        const localPath = `${config.localMapping}${relativePath}`;
-        sidecarDir = dirname(localPath);
-        console.log(`Mapped Immich path ${image.originalPath} to local path ${localPath}`);
-      } else {
-        // Fallback to the configured XMP_SIDECAR_PATH
-        const baseDir = sidecarConfig?.outputPath || process.env.XMP_SIDECAR_PATH || './sidecars';
-        sidecarDir = baseDir;
-
-        // Organize by capture date if enabled
-        if (sidecarConfig?.organizeByDate && image.captureDate) {
-          const date = new Date(image.captureDate);
-          const yyyy = date.getFullYear();
-          const mm = String(date.getMonth() + 1).padStart(2, '0');
-          sidecarDir = `${baseDir}/${yyyy}-${mm}`;
-        }
+      // Organize by capture date if enabled
+      if (sidecarConfig?.organizeByDate && image.captureDate) {
+        const date = new Date(image.captureDate);
+        const yyyy = date.getFullYear();
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
+        sidecarDir = `${baseDir}/${yyyy}-${mm}`;
       }
 
       const sidecarPath = `${sidecarDir}/${image.filename}.xmp`;
@@ -255,18 +238,6 @@ export class XmpSidecarService {
     image: any,
     sidecarConfig?: { outputPath: string; organizeByDate: boolean },
   ): Promise<string | null> {
-    const config = await configService.getImmichConfig();
-
-    // Check mapped path first (where Immich stores its files)
-    if (image.originalPath && config.immichMapping && config.localMapping) {
-      const relativePath = image.originalPath.startsWith(config.immichMapping)
-        ? image.originalPath.substring(config.immichMapping.length)
-        : image.originalPath;
-
-      const mappedPath = `${config.localMapping}${relativePath}.xmp`;
-      if (existsSync(mappedPath)) return mappedPath;
-    }
-
     const baseDir = sidecarConfig?.outputPath || process.env.XMP_SIDECAR_PATH || './sidecars';
 
     // Check date-organized path first
