@@ -116,7 +116,7 @@ export class ImmichImageSource implements ImageSourcePlugin {
     for (const asset of allAssets) uniqueAssetsMap.set(asset.id, asset);
     allAssets = Array.from(uniqueAssetsMap.values());
 
-    const immichAssetIds = new Set(allAssets.map((asset) => asset.id));
+    const immichAssetIds = new Set(allAssets.map((asset) => String(asset.id)));
     const allAppImages = await this.db.getAstroImages();
     let removedCount = 0;
     for (const img of allAppImages) {

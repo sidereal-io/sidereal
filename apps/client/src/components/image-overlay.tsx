@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Eye, Loader, Telescope, Camera, Settings, Edit3, Maximize2, Minimize2, Star, MapPin, Monitor, ChevronDown, ChevronRight, Upload, Target } from "lucide-react";
+import { X, Eye, Loader, Telescope, Camera, Settings, Edit3, Maximize2, Minimize2, Star, MapPin, Monitor, ChevronDown, ChevronRight, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DeepZoomViewer } from "./deep-zoom-viewer";
@@ -37,8 +37,7 @@ export function ImageOverlay({ image, onClose, onFilterByEquipment }: ImageOverl
   const [showTargetPicker, setShowTargetPicker] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
-  const [immichSyncing, setImmichSyncing] = useState(false);
-  const [immichSyncMessage, setImmichSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   const isMobile = useIsMobile();
 
   // Fetch the latest image data to ensure we have the most up-to-date information
@@ -808,52 +807,6 @@ export function ImageOverlay({ image, onClose, onFilterByEquipment }: ImageOverl
               </section>
             )}
 
-            {/* Sync to Immich Button */}
-            {currentImage.immichId && (
-              <div className="mt-2 mb-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full bg-black/30 border-black/40 text-gray-300 hover:text-white hover:bg-black/50"
-                  disabled={immichSyncing}
-                  onClick={async () => {
-                    setImmichSyncing(true);
-                    setImmichSyncMessage(null);
-                    try {
-                      const response = await apiRequest("POST", `/api/immich/sync-metadata/${currentImage.id}`);
-                      const data = await response.json();
-                      if (data.success) {
-                        setImmichSyncMessage({ type: 'success', text: 'Metadata synced to Immich' });
-                      } else {
-                        setImmichSyncMessage({ type: 'error', text: data.message || 'Sync failed' });
-                      }
-                    } catch (error: unknown) {
-                      let errorText = 'Failed to sync metadata';
-                      try {
-                        const body = (error as Error).message?.replace(/^\d+:\s*/, '');
-                        const parsed = JSON.parse(body);
-                        if (parsed.message) errorText = parsed.message;
-                      } catch { /* use default */ }
-                      setImmichSyncMessage({ type: 'error', text: errorText });
-                    } finally {
-                      setImmichSyncing(false);
-                    }
-                  }}
-                >
-                  {immichSyncing ? (
-                    <Loader className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="mr-2 h-4 w-4" />
-                  )}
-                  Sync to Immich
-                </Button>
-                {immichSyncMessage && (
-                  <p className={`text-xs mt-1 ${immichSyncMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                    {immichSyncMessage.text}
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         </aside>
       )}
