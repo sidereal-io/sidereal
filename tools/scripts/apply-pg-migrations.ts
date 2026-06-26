@@ -271,6 +271,11 @@ async function runMigrations() {
       UPDATE astrophotography_images SET source_id = immich_id WHERE source_id IS NULL AND immich_id IS NOT NULL;
     `;
 
+    // Drop legacy immich_id column (superseded by source_id)
+    await connection`
+      ALTER TABLE astrophotography_images DROP COLUMN IF EXISTS immich_id;
+    `;
+
     console.log('Database tables created successfully');
     
   } catch (error) {

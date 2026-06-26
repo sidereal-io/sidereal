@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a8916ebd-da9e-4709-b5ce-66782f6f5755",
-  "prevId": "9da83b4c-a714-4fca-a651-85e9fa2dd533",
+  "id": "7dd29101-bd13-4ffe-9164-a3c0ec510ec4",
+  "prevId": "a8916ebd-da9e-4709-b5ce-66782f6f5755",
   "tables": {
     "admin_settings": {
       "name": "admin_settings",
@@ -72,20 +72,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "thumbnail_url": {
-          "name": "thumbnail_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "full_url": {
-          "name": "full_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "original_path": {
