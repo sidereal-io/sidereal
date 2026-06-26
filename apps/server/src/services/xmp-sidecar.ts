@@ -173,7 +173,7 @@ export class XmpSidecarService {
         calibration: plateSolvingResult.calibration,
         annotations: plateSolvingResult.annotations,
         machineTags: filterRelevantTags(plateSolvingResult.machineTags),
-        imageId: image.immichId,
+        imageId: image.sourceId ?? String(image.id),
         filename: image.filename,
         astrometryJobId,
         plateSolvedAt: new Date(),
