@@ -22,31 +22,6 @@ function extMime(filePath: string): string {
 
 const app = new Hono();
 
-// Helper to update Immich asset metadata
-async function updateImmichAssetMetadata(immichId: string, metadata: { latitude?: number; longitude?: number }) {
-  try {
-    const config = await configService.getImmichConfig();
-    if (!config.host || !config.apiKey) {
-      console.warn('Immich config missing, skipping metadata sync');
-      return;
-    }
-
-    await fetch(`${config.host}/api/assets`, {
-      method: 'PUT',
-      headers: { 'X-API-Key': config.apiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ids: [immichId],
-        latitude: metadata.latitude,
-        longitude: metadata.longitude,
-      }),
-    });
-    console.log(`Synced metadata to Immich for asset ${immichId}`);
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error(`Failed to sync metadata to Immich for asset ${immichId}:`, err.message);
-  }
-}
-
 // Get all astrophotography images with optional filters
 app.get('/', async (c) => {
   try {
@@ -113,14 +88,6 @@ app.patch('/:id', async (c) => {
     const updatedImage = await storage.updateAstroImage(id, updates);
     if (!updatedImage) {
       return c.json({ message: 'Image not found' }, 404);
-    }
-
-    // Sync to Immich if coordinates were updated
-    if (updatedImage.immichId && (updates.latitude !== undefined || updates.longitude !== undefined)) {
-      await updateImmichAssetMetadata(updatedImage.immichId, {
-        latitude: updatedImage.latitude || undefined,
-        longitude: updatedImage.longitude || undefined,
-      });
     }
 
     return c.json(updatedImage);

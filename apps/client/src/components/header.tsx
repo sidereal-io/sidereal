@@ -39,11 +39,11 @@ export function Header() {
     if (!socket) return;
 
     socket.on('plate-solving-update', refreshNotifications);
-    socket.on('immich-sync-complete', refreshNotifications);
+    socket.on('source-sync-complete', refreshNotifications);
 
     return () => {
       socket.off('plate-solving-update', refreshNotifications);
-      socket.off('immich-sync-complete', refreshNotifications);
+      socket.off('source-sync-complete', refreshNotifications);
     };
   }, [socket]);
 

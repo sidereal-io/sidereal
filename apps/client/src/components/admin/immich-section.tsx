@@ -294,30 +294,6 @@ export function ImmichSection({
                 <Label htmlFor="syncTags" className="text-sm font-normal">Sync tags to Immich (includes object type, constellation, equipment names)</Label>
               </div>
 
-              <div className="pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      toast({ title: "Syncing...", description: "Syncing all metadata to Immich" });
-                      const response = await fetch('/api/immich/sync-metadata-all', { method: 'POST' });
-                      const data = await response.json();
-                      if (response.ok) {
-                        toast({ title: "Sync Complete", description: data.message });
-                      } else {
-                        toast({ title: "Sync Failed", description: data.message, variant: "destructive" });
-                      }
-                    } catch {
-                      toast({ title: "Error", description: "Failed to sync metadata", variant: "destructive" });
-                    }
-                  }}
-                  disabled={!settings.immich.host.trim() || !settings.immich.apiKey.trim()}
-                >
-                  Sync All Metadata to Immich
-                </Button>
-              </div>
             </div>
           )}
         </div>

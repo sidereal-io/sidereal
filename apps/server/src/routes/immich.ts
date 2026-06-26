@@ -8,8 +8,12 @@ const app = new Hono();
 // Sync images from Immich
 app.post('/sync-immich', async (c) => {
   try {
-    const { immichSyncService } = await import('../services/immich-sync');
-    const result = await immichSyncService.syncImagesFromImmich();
+    const { sourceRegistry } = await import('../services/source-registry');
+    const immich = sourceRegistry.get('immich') as unknown as { sync(): Promise<{ syncedCount: number; removedCount: number; message: string }> } | undefined;
+    if (!immich?.sync) {
+      return c.json({ message: 'Immich source is not available' }, 503);
+    }
+    const result = await immich.sync();
     return c.json(result);
   } catch (error) {
     return handleRouteError(c, error, 'Failed to sync with Immich');
@@ -116,39 +120,6 @@ app.post('/albums', async (c) => {
     }
   } catch (error) {
     return handleRouteError(c, error, 'Failed to fetch albums');
-  }
-});
-
-// Sync metadata for a single image to Immich
-app.post('/sync-metadata/:imageId', async (c) => {
-  try {
-    const { immichSyncService } = await import('../services/immich-sync');
-    const imageId = parseInt(c.req.param('imageId'));
-    if (isNaN(imageId)) {
-      return c.json({ message: 'Invalid image ID' }, 400);
-    }
-    const result = await immichSyncService.syncImageMetadata(imageId);
-    if (result.success) {
-      return c.json({ message: 'Metadata synced to Immich' });
-    } else {
-      return c.json({ message: result.error }, 400);
-    }
-  } catch (error) {
-    return handleRouteError(c, error, 'Failed to sync metadata');
-  }
-});
-
-// Sync metadata for all images to Immich
-app.post('/sync-metadata-all', async (c) => {
-  try {
-    const { immichSyncService } = await import('../services/immich-sync');
-    const result = await immichSyncService.syncAllImages();
-    return c.json({
-      message: `Synced ${result.synced} images, ${result.failed} failed`,
-      ...result,
-    });
-  } catch (error) {
-    return handleRouteError(c, error, 'Failed to sync all metadata');
   }
 });
 

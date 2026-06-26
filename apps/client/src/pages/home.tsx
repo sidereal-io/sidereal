@@ -5,7 +5,7 @@ import { SearchFilters } from "@/components/search-filters";
 import { ImageGallery } from "@/components/image-gallery";
 import { Sidebar } from "@/components/sidebar";
 import { ImageOverlay } from "@/components/image-overlay";
-import { usePlateSolvingUpdates, useImmichSyncUpdates } from "@/hooks/use-socket";
+import { usePlateSolvingUpdates, useSourceSyncUpdates } from "@/hooks/use-socket";
 import { useSearch, useLocation } from "wouter";
 import type { AstroImage, Equipment } from "@shared/schema";
 
@@ -70,10 +70,10 @@ export default function Home() {
     refetchStats();
   });
 
-  // Listen for real-time Immich sync updates
-  useImmichSyncUpdates((update) => {
-    console.log('Received Immich sync update:', update);
-    // Refresh data when Immich sync completes
+  // Listen for real-time source sync updates
+  useSourceSyncUpdates((update) => {
+    console.log('Received source sync update:', update);
+    // Refresh data when source sync completes
     refetchImages();
     refetchStats();
   });

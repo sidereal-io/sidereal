@@ -116,16 +116,16 @@ export function usePlateSolvingUpdates(callback: (data: any) => void) {
   }, [socket, callback]);
 }
 
-export function useImmichSyncUpdates(callback: (data: any) => void) {
+export function useSourceSyncUpdates(callback: (data: any) => void) {
   const socket = useSocket();
 
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('immich-sync-complete', callback);
+    socket.on('source-sync-complete', callback);
 
     return () => {
-      socket.off('immich-sync-complete', callback);
+      socket.off('source-sync-complete', callback);
     };
   }, [socket, callback]);
 }
