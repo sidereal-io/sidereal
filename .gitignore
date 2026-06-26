@@ -119,5 +119,7 @@ vite.config.ts.*
 docs/superpowers/
 
 # Beads / Dolt files (added by bd init)
+.beads/interactions.jsonl
+.beads/issues.jsonl
 .dolt/
 .beads-credential-key

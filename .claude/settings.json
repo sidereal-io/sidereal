@@ -3,6 +3,18 @@
     "superpowers@claude-plugins-official": true
   },
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/beads-sync.sh",
+            "if": "Bash(bd *)"
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [
@@ -14,11 +26,25 @@
         "matcher": ""
       }
     ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/beads-sync.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
           {
             "command": "bd prime",
+            "type": "command"
+          },{
+            "command": ".claude/hooks/beads-sync.sh",
             "type": "command"
           }
         ],
