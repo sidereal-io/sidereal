@@ -82,4 +82,43 @@ describe('ImmichImageSource.testConnection', () => {
     assert.equal(result.ok, false, 'should return ok:false');
     assert.equal(result.message, 'Immich returned status 401', 'should include status in message');
   });
+
+  it('returns ok:true on 200', async () => {
+    const fetchFn = mock.mock.fn(async () => jsonResponse([]));
+    const src = new ImmichImageSource(makeDb() as never, { writeImage: mock.mock.fn() } as never, cfg as never, fetchFn as never);
+    assert.deepEqual(await src.testConnection(), { ok: true });
+  });
+});
+
+describe('ImmichImageSource.getStatus', () => {
+  it('counts only immich-sourced images', async () => {
+    const db = makeDb([
+      { id: 1, sourceType: 'immich', sourceId: 'a1', filename: 'x', originalPath: '/p/1' },
+      { id: 2, sourceType: 'local',  sourceId: 'l1', filename: 'y', originalPath: '/p/2' },
+      { id: 3, sourceType: 'immich', sourceId: 'a2', filename: 'z', originalPath: '/p/3' },
+    ]);
+    const src = new ImmichImageSource(db as never, { writeImage: mock.mock.fn() } as never, cfg as never, mock.mock.fn() as never);
+    const status = await src.getStatus();
+    assert.equal(status.sourceType, 'immich');
+    assert.equal(status.imageCount, 2);
+  });
+});
+
+describe('ImmichImageSource.sync (album mode)', () => {
+  it('ingests assets from selected albums', async () => {
+    const albumCfg = { getImmichConfig: mock.mock.fn(async () => ({ host: 'http://immich.test', apiKey: 'k', syncByAlbum: true, selectedAlbumIds: ['alb1'] })) };
+    const db = makeDb();
+    const imgStorage = { writeImage: mock.mock.fn(async (id: number) => ({ originalPath: `/p/${id}.fit` })) };
+    const fetchFn = mock.mock.fn(async (url: string) => {
+      if (url === 'http://immich.test/api/albums') return jsonResponse([{ id: 'alb1', albumName: 'A', assetCount: 1 }]);
+      if (url === 'http://immich.test/api/albums/alb1') return jsonResponse({ assets: [{ id: 'a1', originalFileName: 'a1.fit', exifInfo: {} }] });
+      if (url.includes('/api/assets/')) return bytesResponse(new Uint8Array([1, 2, 3]).buffer);
+      return jsonResponse({});
+    });
+    const src = new ImmichImageSource(db as never, imgStorage as never, albumCfg as never, fetchFn as never);
+    const r = await src.sync();
+    assert.equal(r.syncedCount, 1);
+    assert.equal(db.rows[0]?.sourceType, 'immich');
+    assert.equal(db.rows[0]?.sourceId, 'a1');
+  });
 });

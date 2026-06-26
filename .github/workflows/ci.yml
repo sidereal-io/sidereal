@@ -32,6 +32,9 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      - name: Run server tests
+        run: npm run test:server
+
       - name: Build all packages
         run: npm run build
 
