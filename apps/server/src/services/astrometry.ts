@@ -49,23 +49,17 @@ const HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; Sidereal/1.0)' };
 
 export class AstrometryService {
   private astrometryApiKey: string;
-  private immichApiKey: string;
-  private immichHost: string;
   private useConfigService: boolean;
 
   constructor(useConfigService: boolean = true) {
     this.useConfigService = useConfigService;
     this.astrometryApiKey = "";
-    this.immichApiKey = "";
-    this.immichHost = "";
   }
 
   private async ensureConfigLoaded() {
-    if (this.useConfigService && (!this.astrometryApiKey || !this.immichApiKey || !this.immichHost)) {
+    if (this.useConfigService && !this.astrometryApiKey) {
       const config = await configService.getConfig();
       this.astrometryApiKey = config.astrometry.apiKey;
-      this.immichApiKey = config.immich.apiKey;
-      this.immichHost = config.immich.host;
     }
   }
 
@@ -97,7 +91,7 @@ export class AstrometryService {
     return loginResult.session as string;
   }
 
-  async submitImageForPlateSolving(image: { id: number; immichId?: string | null; title?: string | null; filename?: string | null }): Promise<{ submissionId: string; jobId: number }> {
+  async submitImageForPlateSolving(image: { id: number; title?: string | null; filename?: string | null }): Promise<{ submissionId: string; jobId: number }> {
     await this.ensureConfigLoaded();
 
     const sessionKey = await this.login();
@@ -323,7 +317,7 @@ export class AstrometryService {
     }
   }
 
-  async completePlateSolvingWorkflow(image: { id: number; immichId?: string | null; title?: string | null; filename?: string | null }): Promise<PlateSolvingResult> {
+  async completePlateSolvingWorkflow(image: { id: number; title?: string | null; filename?: string | null }): Promise<PlateSolvingResult> {
     const { submissionId, jobId } = await this.submitImageForPlateSolving(image);
 
     const result = await this.pollForPlateSolvingResult(submissionId);

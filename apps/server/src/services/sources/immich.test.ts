@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import mock from 'node:test';
 import { ImmichImageSource } from './immich.js';
 
-type Row = { id: number; sourceType: string; sourceId: string; immichId?: string | null; filename: string; originalPath: string | null };
+type Row = { id: number; sourceType: string; sourceId: string; filename: string; originalPath: string | null };
 
 function makeDb(initial: Row[] = []) {
   const rows = [...initial];
@@ -42,7 +42,6 @@ describe('ImmichImageSource.sync', () => {
     assert.equal(r1.syncedCount, 1, 'first sync should create 1 image');
     assert.equal(db.rows[0]?.sourceType, 'immich', 'sourceType should be immich');
     assert.equal(db.rows[0]?.sourceId, 'a1', 'sourceId should be a1');
-    assert.equal(db.rows[0]?.immichId, 'a1', 'immichId should be a1');
     assert.equal(db.rows[0]?.originalPath, '/p/1.fit', 'originalPath should be set');
 
     const r2 = await src.sync(); // second pass: dedup, nothing new
@@ -64,7 +63,7 @@ describe('ImmichImageSource.sync', () => {
   });
 
   it('removes images absent from the Immich response', async () => {
-    const db = makeDb([{ id: 1, sourceType: 'immich', sourceId: 'gone', immichId: 'gone', filename: 'x', originalPath: '/p/1' }]);
+    const db = makeDb([{ id: 1, sourceType: 'immich', sourceId: 'gone', filename: 'x', originalPath: '/p/1' }]);
     const imgStorage = { writeImage: mock.mock.fn(async (id: number) => ({ originalPath: `/p/${id}` })) };
     const fetchFn = mock.mock.fn(async (url: string) => url.includes('/api/search/metadata') ? jsonResponse({ assets: { items: [], nextPage: null } }) : jsonResponse({}));
     const src = new ImmichImageSource(db as never, imgStorage as never, cfg as never, fetchFn as never);

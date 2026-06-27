@@ -142,7 +142,6 @@ export class ImmichImageSource implements ImageSourcePlugin {
         created = await this.db.createAstroImage({
           sourceType: 'immich',
           sourceId: assetId,
-          immichId: assetId,
           title: originalFileName || assetId,
           filename: originalFileName,
           originalPath: null,

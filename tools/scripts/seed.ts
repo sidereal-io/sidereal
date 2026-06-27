@@ -20,7 +20,8 @@ const RESET = process.argv.includes('--reset');
 
 const images = [
   {
-    immichId: 'seed-001',
+    sourceType: 'immich',
+    sourceId: 'seed-001',
     title: 'Orion Nebula (M42)',
     filename: 'orion_nebula.fits',
     thumbnailUrl: '/api/placeholder/400/300',
@@ -52,7 +53,8 @@ const images = [
     description: 'The Great Orion Nebula, one of the brightest nebulae visible to the naked eye.',
   },
   {
-    immichId: 'seed-002',
+    sourceType: 'immich',
+    sourceId: 'seed-002',
     title: 'Andromeda Galaxy (M31)',
     filename: 'andromeda.fits',
     thumbnailUrl: '/api/placeholder/400/300',
@@ -84,7 +86,8 @@ const images = [
     description: null,
   },
   {
-    immichId: 'seed-003',
+    sourceType: 'immich',
+    sourceId: 'seed-003',
     title: 'Ring Nebula (M57)',
     filename: 'ring_nebula.fits',
     thumbnailUrl: '/api/placeholder/400/300',
@@ -116,7 +119,8 @@ const images = [
     description: 'The Ring Nebula, a well-known planetary nebula in the constellation Lyra.',
   },
   {
-    immichId: 'seed-004',
+    sourceType: 'immich',
+    sourceId: 'seed-004',
     title: 'Pleiades (M45)',
     filename: 'pleiades.fits',
     thumbnailUrl: '/api/placeholder/400/300',

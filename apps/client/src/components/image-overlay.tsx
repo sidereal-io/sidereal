@@ -157,7 +157,7 @@ export function ImageOverlay({ image, onClose, onFilterByEquipment }: ImageOverl
           </div>
         </div>
         <div className="relative w-full max-w-md mx-auto bg-black rounded-b-xl overflow-hidden flex items-center justify-center mt-4" style={{ height: isExpanded ? '100vh' : 'min(50vh, 60vw)' }}>
-          {currentImage.immichId ? (
+          {currentImage.originalPath ? (
             <div className="relative w-full h-full">
               <DeepZoomViewer
                 imageUrl={imageUrl(currentImage.id, 'preview')}
@@ -811,7 +811,7 @@ export function ImageOverlay({ image, onClose, onFilterByEquipment }: ImageOverl
         </aside>
       )}
       <main className={`flex items-center justify-center bg-black flex-1`}>
-        {image.immichId ? (
+        {image.originalPath ? (
           <div className="relative w-full h-full flex items-center justify-center">
             <DeepZoomViewer
               imageUrl={imageUrl(image.id, 'preview')}

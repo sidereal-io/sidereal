@@ -4,7 +4,6 @@ import { like, or } from 'drizzle-orm';
 import { imageStorage } from './image-storage';
 import type { AstroImage, InsertAstroImage, Equipment, InsertEquipment, ImageEquipment, InsertImageEquipment, PlateSolvingJob, InsertPlateSolvingJob, EquipmentGroup, InsertEquipmentGroup, EquipmentGroupMember, InsertEquipmentGroupMember, Location, InsertLocation, ImageAcquisitionRow, InsertImageAcquisitionRow, CatalogObject, InsertCatalogObject, UserTarget } from "@shared/types";
 import { computeImageSummary, groupAndEnrichTargets } from '@shared/image-utils';
-import { withSourceDefaults } from '@shared/utils/source';
 
 class DbStorage {
   // Astrophotography images
@@ -59,11 +58,6 @@ class DbStorage {
     return result[0] || undefined;
   }
 
-  async getAstroImageByImmichId(immichId: string): Promise<AstroImage | undefined> {
-    const result = await db.select().from(schema.astrophotographyImages).where(eq(schema.astrophotographyImages.immichId, immichId)).execute();
-    return result[0] || undefined;
-  }
-
   async getImageBySource(sourceType: string, sourceId: string): Promise<AstroImage | undefined> {
     const result = await db.select().from(schema.astrophotographyImages)
       .where(and(
@@ -75,8 +69,7 @@ class DbStorage {
   }
 
   async createAstroImage(image: InsertAstroImage): Promise<AstroImage> {
-    const values = withSourceDefaults(image);
-    const result = await db.insert(schema.astrophotographyImages).values(values).returning().execute();
+    const result = await db.insert(schema.astrophotographyImages).values(image).returning().execute();
     if (!result[0]) {
       throw new Error('Failed to create astro image');
     }

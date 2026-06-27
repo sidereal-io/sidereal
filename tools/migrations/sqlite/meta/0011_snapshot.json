@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a8916ebd-da9e-4709-b5ce-66782f6f5755",
-  "prevId": "9da83b4c-a714-4fca-a651-85e9fa2dd533",
+  "id": "68fcf100-571f-4067-93a5-c0958e2cf030",
+  "prevId": "81d9a76a-2351-4295-ab03-4c09ac5ad60f",
   "tables": {
     "admin_settings": {
       "name": "admin_settings",
@@ -53,8 +53,16 @@
           "notNull": true,
           "autoincrement": false
         },
-        "immich_id": {
-          "name": "immich_id",
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'immich'"
+        },
+        "source_id": {
+          "name": "source_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -72,20 +80,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "thumbnail_url": {
-          "name": "thumbnail_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "full_url": {
-          "name": "full_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         },
         "original_path": {
@@ -293,15 +287,7 @@
           "autoincrement": false
         }
       },
-      "indexes": {
-        "astrophotography_images_immich_id_unique": {
-          "name": "astrophotography_images_immich_id_unique",
-          "columns": [
-            "immich_id"
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -578,7 +564,34 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "equipment_group_members_group_id_equipment_groups_id_fk": {
+          "name": "equipment_group_members_group_id_equipment_groups_id_fk",
+          "tableFrom": "equipment_group_members",
+          "tableTo": "equipment_groups",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "equipment_group_members_equipment_id_equipment_id_fk": {
+          "name": "equipment_group_members_equipment_id_equipment_id_fk",
+          "tableFrom": "equipment_group_members",
+          "tableTo": "equipment",
+          "columnsFrom": [
+            "equipment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -724,7 +737,34 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "image_acquisition_image_id_astrophotography_images_id_fk": {
+          "name": "image_acquisition_image_id_astrophotography_images_id_fk",
+          "tableFrom": "image_acquisition",
+          "tableTo": "astrophotography_images",
+          "columnsFrom": [
+            "image_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "image_acquisition_filter_id_equipment_id_fk": {
+          "name": "image_acquisition_filter_id_equipment_id_fk",
+          "tableFrom": "image_acquisition",
+          "tableTo": "equipment",
+          "columnsFrom": [
+            "filter_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -776,7 +816,34 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "image_equipment_image_id_astrophotography_images_id_fk": {
+          "name": "image_equipment_image_id_astrophotography_images_id_fk",
+          "tableFrom": "image_equipment",
+          "tableTo": "astrophotography_images",
+          "columnsFrom": [
+            "image_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "image_equipment_equipment_id_equipment_id_fk": {
+          "name": "image_equipment_equipment_id_equipment_id_fk",
+          "tableFrom": "image_equipment",
+          "tableTo": "equipment",
+          "columnsFrom": [
+            "equipment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -969,7 +1036,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "plate_solving_jobs_image_id_astrophotography_images_id_fk": {
+          "name": "plate_solving_jobs_image_id_astrophotography_images_id_fk",
+          "tableFrom": "plate_solving_jobs",
+          "tableTo": "astrophotography_images",
+          "columnsFrom": [
+            "image_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
