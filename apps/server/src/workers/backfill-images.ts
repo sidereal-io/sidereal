@@ -26,8 +26,13 @@ export async function runBackfill(): Promise<{ processed: number; failed: number
 
   try {
     const allImages = await storage.getAstroImages();
+    // Backfill candidates: Immich-sourced images whose original isn't in local storage yet.
+    // Backfill re-fetches originals from the Immich API, and only `sourceType === 'immich'` rows
+    // carry a real Immich asset id in `sourceId` (local/url sources store a content/url hash there),
+    // so non-Immich images are never candidates.
     const pending = allImages.filter(img =>
-      !img.originalPath || !img.originalPath.startsWith(`${storagePath}/processed/`)
+      img.sourceType === 'immich' && !!img.sourceId &&
+      (!img.originalPath || !img.originalPath.startsWith(`${storagePath}/processed/`))
     );
 
     if (pending.length === 0) {
@@ -48,10 +53,9 @@ export async function runBackfill(): Promise<{ processed: number; failed: number
       const batch = pending.slice(i, i + CONCURRENCY);
       await Promise.all(batch.map(async (img) => {
         if (skipSet.has(img.id)) { skipped++; return; }
-        if (img.sourceType !== 'immich' || !img.sourceId) { skipped++; return; }
 
         try {
-          const url = `${config.host}/api/assets/${encodeURIComponent(img.sourceId)}/original`;
+          const url = `${config.host}/api/assets/${encodeURIComponent(img.sourceId!)}/original`;
           const response = await fetch(url, { headers: { 'X-API-Key': config.apiKey! } });
 
           if (!response.ok) {
