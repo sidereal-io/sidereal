@@ -127,7 +127,7 @@
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.1",
     "nodemon": "^3.1.14",
-    "postcss": "^8.5.9",
+    "postcss": "^8.5.16",
     "tailwindcss": "^4.1.11",
     "tsx": "^4.21.0",
     "typescript": "6.0.3",
