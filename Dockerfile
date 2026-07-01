@@ -8,9 +8,15 @@ RUN npm install -g npm@11.14.1 && \
     npm pack minimatch@10.2.4 && \
     tar -xzf minimatch-10.2.4.tgz -C /usr/local/lib/node_modules/npm/node_modules/minimatch --strip-components=1 && \
     rm minimatch-10.2.4.tgz && \
-    npm pack tar@7.5.11 && \
-    tar -xzf tar-7.5.11.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
-    rm tar-7.5.11.tgz && \
+    npm pack tar@7.5.16 && \
+    tar -xzf tar-7.5.16.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
+    rm tar-7.5.16.tgz && \
+    npm pack undici@6.27.0 && \
+    tar -xzf undici-6.27.0.tgz -C /usr/local/lib/node_modules/npm/node_modules/undici --strip-components=1 && \
+    rm undici-6.27.0.tgz && \
+    npm pack @sigstore/core@3.2.1 && \
+    tar -xzf sigstore-core-3.2.1.tgz -C /usr/local/lib/node_modules/npm/node_modules/@sigstore/core --strip-components=1 && \
+    rm sigstore-core-3.2.1.tgz && \
     npm cache clean --force
 
 # Set working directory
@@ -44,9 +50,15 @@ RUN npm install -g npm@11.14.1 && \
     npm pack minimatch@10.2.4 && \
     tar -xzf minimatch-10.2.4.tgz -C /usr/local/lib/node_modules/npm/node_modules/minimatch --strip-components=1 && \
     rm minimatch-10.2.4.tgz && \
-    npm pack tar@7.5.11 && \
-    tar -xzf tar-7.5.11.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
-    rm tar-7.5.11.tgz && \
+    npm pack tar@7.5.16 && \
+    tar -xzf tar-7.5.16.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
+    rm tar-7.5.16.tgz && \
+    npm pack undici@6.27.0 && \
+    tar -xzf undici-6.27.0.tgz -C /usr/local/lib/node_modules/npm/node_modules/undici --strip-components=1 && \
+    rm undici-6.27.0.tgz && \
+    npm pack @sigstore/core@3.2.1 && \
+    tar -xzf sigstore-core-3.2.1.tgz -C /usr/local/lib/node_modules/npm/node_modules/@sigstore/core --strip-components=1 && \
+    rm sigstore-core-3.2.1.tgz && \
     npm cache clean --force
 
 # Upgrade base packages (fixes zlib CVEs) and install runtime dependencies
