@@ -5,7 +5,7 @@
 - **Repository**: `sidereal` monorepo (working directory root)
 - **Commit analyzed**: `75e675d91e81187911311455072f5e6bed858eca` (branch `main`, merge of PR #194 "Immich legacy removal")
 - **Application version**: `0.10.0` (`package.json`)
-- **Working-tree deviation**: `apps/server/src/db.ts` has an uncommitted local edit that comments out a try/catch around SQLite initialization. Behavioral difference: at HEAD, any SQLite init failure is masked as a generic "No database configuration found" error; in the analyzed working tree the underlying error propagates. All other analysis matches HEAD. (`package-lock.json` also modified; not behaviorally relevant.)
+- **Working-tree deviation**: at analysis time, `apps/server/src/db.ts` had an uncommitted local edit that commented out a try/catch around SQLite initialization (so the underlying init error propagated instead of being masked as a generic "No database configuration found" error). That edit has since been reverted — the working tree now matches HEAD, and HEAD's error-masking behavior is what this package describes. (`package-lock.json` was also transiently modified; not behaviorally relevant.)
 
 ## Runtime environment used for observations
 
