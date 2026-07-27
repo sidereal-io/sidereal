@@ -117,9 +117,3 @@ vite.config.ts.*
 .claude/settings.local.json
 .claude/worktrees/
 docs/superpowers/
-
-# Beads / Dolt files (added by bd init)
-.beads/interactions.jsonl
-.beads/issues.jsonl
-.dolt/
-.beads-credential-key

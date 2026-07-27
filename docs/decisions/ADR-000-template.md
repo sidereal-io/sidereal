@@ -2,7 +2,7 @@
 
 **Status:** Proposed | Accepted | Superseded by NNN
 **Date:** YYYY-MM-DD
-**Context:** What beads issue or work prompted this decision?
+**Context:** What work or context prompted this decision?
 
 ## Problem
 
