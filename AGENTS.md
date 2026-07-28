@@ -145,6 +145,65 @@ New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-
 
 When a PR implements an Accepted DR, flip its status in the same PR. A DR should never linger in Proposed once the corresponding code ships.
 
+## Feature & Bug Workflow
+
+Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task's primary reference key — put it in the branch name, the commit trailer, and the PR body. Designs live in the issue body, not in the repo tree.
+
+**What each part is for**
+
+- **Issue body** — the design spec; the single source of truth.
+- **Labels** — one `type/{feature,bug,chore}` and one `status/*` lifecycle label.
+- **Sub-issues** — the implementation plan, one per step. Create them with `gh issue create --parent <n>` (or link an existing issue with `gh issue edit`); their open/closed state drives the parent's progress bar. Requires a recent `gh` with Issues 2.0 support (verified on gh 2.96.0).
+- **Comments** — status updates. Post one when you start a sub-issue and one (with the commit or PR reference) when you finish it.
+- **Closed** — done.
+
+**Lifecycle**
+
+1. **`status/design`** — create the parent issue and write the design into the body using the template below. No sub-issues or code yet.
+2. **Approval gate** — a human reviews the design in the issue body. On approval, move `status/design` → `status/ready`.
+3. **`status/ready`** — create a sub-issue per plan step and start implementation. Move the parent to `status/in-progress`.
+4. **Per sub-issue** — comment that you've started, do the work on a branch, comment the commit/PR reference, then close the sub-issue.
+5. **`status/review`** — when every sub-issue is closed, open a PR with `Closes #<parent>` and move the parent to `status/review`.
+6. Merging the PR closes the parent. Done.
+
+**Issue body template**
+
+```
+## Problem
+## Goal / Non-goals
+## Approach
+## Implementation plan   <!-- each bullet becomes a sub-issue -->
+- [ ] step one
+## Testing
+## Risks / rollback
+```
+
+**Commands**
+
+```bash
+# Create the parent issue (design stage)
+gh issue create --title "<title>" --label type/feature,status/design --body-file design.md
+
+# Advance the lifecycle
+gh issue edit <n> --remove-label status/design --add-label status/ready
+
+# Create a sub-issue directly under the parent
+gh issue create --title "<step>" --label type/feature --parent <parent#>
+
+# ...or link/unlink an existing issue
+gh issue edit <parent#> --add-sub-issue <child#>
+gh issue edit <parent#> --remove-sub-issue <child#>
+
+# See the plan and its progress
+gh issue view <parent#> --json subIssuesSummary --jq '.subIssuesSummary | "\(.completed)/\(.total) done"'
+gh issue view <parent#> --json subIssues --jq '.subIssues.nodes[] | "#\(.number) [\(.state)] \(.title)"'
+
+# Post status updates and close
+gh issue comment <n> --body "Started."
+gh issue comment <n> --body "Done in <commit-sha>."
+gh issue close <n>
+```
+
 ## Release Process
 
 Releases are driven by git tags. Do not create releases manually with `gh release create`.
