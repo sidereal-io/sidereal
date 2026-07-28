@@ -153,30 +153,22 @@ Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task
 
 - **Issue body** — the design spec; the single source of truth.
 - **Labels** — one `type/{feature,bug,chore}` and one `status/*` lifecycle label.
-- **Sub-issues** — the implementation plan, one per step. Create them with `gh issue create --parent <n>` (or link an existing issue with `gh issue edit`); their open/closed state drives the parent's progress bar. Requires a recent `gh` with Issues 2.0 support (verified on gh 2.96.0).
+- **Sub-issues** — the implementation plan, one per step. Create them with `gh issue create --parent <n>` (or link an existing issue with `gh issue edit`); their open/closed state drives the parent's progress bar.
 - **Comments** — status updates. Post one when you start a sub-issue and one (with the commit or PR reference) when you finish it.
 - **Closed** — done.
 
 **Lifecycle**
 
-1. **`status/design`** — create the parent issue and write the design into the body using the template below. No sub-issues or code yet.
+1. **`status/design`** — create the parent issue from the Feature or Bug template and write the design into the body. No sub-issues or code yet.
 2. **Approval gate** — a human reviews the design in the issue body. On approval, move `status/design` → `status/ready`.
 3. **`status/ready`** — create a sub-issue per plan step and start implementation. Move the parent to `status/in-progress`.
 4. **Per sub-issue** — comment that you've started, do the work on a branch, comment the commit/PR reference, then close the sub-issue.
 5. **`status/review`** — when every sub-issue is closed, open a PR with `Closes #<parent>` and move the parent to `status/review`.
 6. Merging the PR closes the parent. Done.
 
-**Issue body template**
+**Issue templates**
 
-```
-## Problem
-## Goal / Non-goals
-## Approach
-## Implementation plan   <!-- each bullet becomes a sub-issue -->
-- [ ] step one
-## Testing
-## Risks / rollback
-```
+The spec structure lives in `.github/ISSUE_TEMPLATE/` (`feature.md`, `bug.md`). Opening an issue from the GitHub **New issue** page seeds the headings and applies the `type/*` + `status/design` labels automatically. From the CLI, fill the same headings and pass the labels explicitly (below).
 
 **Commands**
 
