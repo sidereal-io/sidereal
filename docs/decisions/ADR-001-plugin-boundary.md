@@ -1,77 +1,111 @@
-# 001: Plugin Process Boundary
+# 001: Plugin Contract and Execution Profiles
 
 **Status:** Proposed
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The plugin contract in [docs/architecture/plugins.md](../architecture/plugins.md) is deliberately mechanism-independent; this ADR chooses the mechanism. Largest architectural call in M0.
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The plugin contract in [docs/architecture/plugins.md](../architecture/plugins.md) defines the common semantics; this ADR chooses how different classes of plugin execute and are installed.
 
 ## Problem
 
-Every Sidereal v2 pipeline action is a plugin, including built-ins. How does a plugin execute relative to the core process?
+Every Sidereal v2 pipeline action uses the plugin contract, including built-ins. The original proposal
+treated "plugin contract" and "process boundary" as one decision, but the workloads do not share one
+useful boundary:
 
-The choice trades three things against each other:
+- FITS/XISF parsing and other hot paths need low overhead.
+- User-authored rename, tag, metadata, and API orchestration should be easy to install and tightly
+  capability-limited.
+- Python ML, Siril, PixInsight, and ASTAP may require large native runtimes, another operating
+  system, or process isolation.
 
-- **Crash isolation** — a plugin invoking Siril or running Python ML code will eventually segfault, OOM, or hang. Does that take the server with it?
-- **Per-asset latency** — operations run across thousands of frames per session. Boundary-crossing cost multiplies by asset count.
-- **Authorship reach** — Rust-only plugin authorship is a much smaller contributor pool than "any language that can speak a protocol."
+Forcing all three through one runtime either makes the default install operationally complex or gives
+third-party code more authority than it needs. The contract and its execution transport therefore
+need separate decisions.
 
-## Options
+## Decision drivers
 
-### Option A: Out-of-process (subprocess / gRPC)
-
-**Pros:**
-- Full crash and memory isolation; a dying plugin is a failed run, not an outage.
-- Plugins authorable in any language — directly relevant, since AI/ML plugins will want Python and Siril orchestration is shelling out anyway.
-- Resource limits and timeouts per plugin are straightforward.
-- Natural fit for plugins that are already external processes.
-
-**Cons:**
-- Per-call IPC and serialization cost, multiplied across thousands of assets.
-- Byte access needs a story that isn't "copy the FITS file across a socket" — shared filesystem paths or memory mapping.
-- More operational surface: process supervision, lifecycle, zombie handling.
-
-### Option B: In-process WASM
-
-**Pros:**
-- Strong sandboxing with much lower call overhead than IPC.
-- Single-process deployment; no supervision.
-- Capability-based security is natural.
-
-**Cons:**
-- Host-function plumbing needed for anything real (filesystem, network, subprocess).
-- WASM cannot invoke Siril or a native ML runtime — the exact plugins the north star cares about.
-- Language reach is nominally broad, practically narrow for numeric/imaging work.
-- Large-file handling inside a WASM memory model is a research project.
-
-### Option C: Native Rust dylib
-
-**Pros:**
-- Effectively zero call overhead; direct memory access to asset buffers.
-- Simplest thing that could work for built-ins.
-
-**Cons:**
-- Zero isolation — a plugin bug is a server crash, and the north star explicitly anticipates third-party plugins.
-- Rust-only authorship.
-- Rust ABI stability across compiler versions makes a published third-party ABI painful.
-
-### Option D: Hybrid — in-process for built-ins, out-of-process for third-party
-
-**Pros:**
-- Fast path for the operations that run per-asset at volume; isolation where untrusted code runs.
-
-**Cons:**
-- **Violates the rule that keeps the interface honest** — built-ins would consume a different path from third parties, which is precisely the drift approach C in the RFC exists to prevent.
-- Two boundary implementations to maintain and test.
+- **One semantic contract.** Source, Operator, and Sink results mean the same thing under every
+  execution profile and run through the same conformance suite.
+- **Core retains authority.** Plugins request effects through an `AssetContext`; they do not receive
+  ambient write access to the asset store, arbitrary secrets, or an unrestricted process launcher.
+- **Simple default deployment.** Installing a normal plugin must not require another container or
+  language runtime.
+- **Isolation where it matters.** A third-party native runtime may fail without taking down core.
+- **No published Rust dynamic ABI.** Rust compiler ABI stability makes dylibs unsuitable as the
+  third-party contract.
 
 ## Recommendation
 
-**Leaning Option A (out-of-process).** A crashing Python AI plugin should not take down the server, and opening authorship beyond Rust is a stated goal. The RFC records this leaning without deciding it.
+Adopt a **capability-oriented hybrid** with three execution profiles.
 
-Two things to resolve before accepting:
+| Profile | Intended use | Packaging and installation |
+|---|---|---|
+| **Built-in Rust** | Trusted, performance-sensitive first-party behavior: FITS/XISF readers, storage adapters, core astro operations | Compiled into the Sidereal binary as crates |
+| **Embedded script** | Default public extension surface for lightweight Operators, Sources, and Sinks | Manifest plus Rhai source in a plugin bundle loaded by Sidereal |
+| **External provider** | Python ML, Siril/PixInsight/ASTAP integration, hardware or OS-specific tools | Separately installed service or agent; the manifest configures its endpoint |
 
-1. **Latency.** Benchmark per-asset IPC across a realistic session (500+ frames). If per-call overhead dominates, the answer may be batching at the interface — pass asset *sets* rather than single assets — rather than changing the boundary.
-2. **Byte access.** Decide how a plugin reads a 200 MB FITS file. Passing filesystem paths for co-located plugins, with copies only when a plugin is genuinely remote, is the obvious candidate and keeps [core's ownership of the filesystem](../architecture/plugins.md#what-core-owns) intact.
+The initial scripting engine is **Rhai**, subject to an M0 spike proving cancellation, operation and
+memory limits, async host calls, manifest loading, and the `AssetContext` API. Rune and Lua remain
+alternatives if that spike fails. WASM is deferred until a concrete plugin demonstrates a need for
+portable compiled components that the script profile cannot meet.
 
-Option D should be rejected explicitly rather than left as a tempting later shortcut.
+Sidereal v0.1 does **not** orchestrate arbitrary plugin containers, install Python environments, or
+manage external-provider upgrades. An external provider is an explicit, user-managed dependency.
+For a Windows-only PixInsight integration, for example, Sidereal calls a separately installed Windows
+agent; from core's perspective it is an authenticated provider endpoint.
+
+This is not the rejected form of "hybrid" where built-ins get an unconstrained private API. All
+profiles implement the same request/result semantics and capability-specific conformance tests.
+Transport adapters differ. At least two built-ins must also ship through the embedded-script profile
+before that profile is declared stable; the initial candidates are tag/rename and API-based plate
+solving.
+
+## AssetContext
+
+Every invocation receives a run-scoped `AssetContext`. It is the only route from plugin code to core
+capabilities:
+
+- read approved asset metadata and facets;
+- request byte access as a read-only stream, descriptor, read-only mount, or disposable copy;
+- emit new assets and proposed facet values;
+- request core-managed rename, move, tag, and publish intents;
+- perform allowlisted HTTP requests;
+- access only manifest-declared, run-scoped secrets;
+- report logs and progress and observe cancellation.
+
+No profile receives a normal writable path into the asset store. If a legacy external tool requires a
+path, core supplies a read-only mount or disposable workspace and verifies input hashes after the run.
+Produced files are imported and hashed by core before becoming `AssetVersion` records.
+
+Host functions must cooperate with cancellation and resource limits. Script operation limits alone do
+not constrain a blocking native host call, so every host capability must have its own timeout and
+cancellation behavior.
+
+## Performance
+
+The interface is batch-oriented: an Operator receives an asset set, not one IPC call per asset.
+M0 benchmarks a representative 500+ frame session across the script and external-provider adapters.
+The benchmark informs batch sizing and streaming; it does not reopen the semantic contract.
+
+Large file bytes never cross a JSON or gRPC boundary by default. Co-located providers receive
+read-only handles or disposable paths. Remote providers use explicit streaming or provider-managed
+object transfer.
+
+## Security and trust
+
+Execution profile is not a trust level by itself. Built-in code is trusted first-party code; script
+bundles and external providers receive explicit capabilities from their manifests and installation
+approval. Authentication, endpoint trust, secret delivery, capability grants, and admin exposure are
+defined by [ADR-007](ADR-007-security-and-plugin-trust.md).
+
+## Consequences
+
+- The default Sidereal deployment remains one binary/container for built-ins and script plugins.
+- Lightweight extensions get a small, stable toolkit instead of host-language crate access.
+- Heavy integrations retain language and operating-system freedom without becoming the universal
+  plugin tax.
+- The team maintains multiple transport adapters, but one semantic contract and conformance suite.
+- A compiled built-in can still panic with core; only trusted first-party code belongs in that
+  profile.
+- WASM and container orchestration remain reversible additions rather than M0 prerequisites.
 
 ## Decision
 

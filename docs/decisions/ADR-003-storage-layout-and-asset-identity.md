@@ -1,77 +1,100 @@
-# 003: Storage Layout and Asset Identity
+# 003: Storage Layout, Asset Identity, and Content Revisions
 
 **Status:** Proposed
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Not purely a mechanism choice — the outcome constrains the [Lineage](../architecture/README.md#lineage) model and determines whether an Operation may mutate bytes in place. Decide before M1 builds the core spine.
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The outcome constrains the [Lineage](../architecture/README.md#lineage) model and must be decided before M1 builds the core spine.
 
 ## Problem
 
-Two coupled questions.
+Sidereal v2 becomes the system of record for files it renames, moves, and organises. Identity cannot
+be path-derived. A single mutable Asset record is also insufficient: if an operation rewrites bytes
+under a stable ID, the previous hash and state disappear and lineage cannot distinguish before from
+after.
 
-**1. What is an Asset's identity?** v2 makes Sidereal the system of record for files on disk — it renames and moves them. So identity cannot be path-derived, or the system reorganising a tree destroys its own references. Beyond that, the choice is content hash vs. surrogate ID.
+The model must separately answer:
 
-**2. What is the on-disk tree shape?** v0.10.x uses `{STORAGE_PATH}/processed/{id % 1000}/{id}/{id}_{size}.jpg` — a sharded surrogate-ID layout holding three fixed renditions. v2 assets are FITS/XISF originals with derived renditions, in user-meaningful arrangements, so the layout is open.
+1. What is the stable identity users, collections, and external mappings refer to?
+2. How are immutable byte states identified and retained for lineage and audit?
+3. Which changes create a new content revision?
+4. What is the user-visible and internal on-disk layout?
 
-### The tension that makes this load-bearing
+## Options considered
 
-Lineage edges point at asset identities. If identity **is** the content hash, any operation that rewrites an asset's bytes changes its identity and silently orphans every edge pointing at it. `stacked ← [187 lights] + [master_dark_v3]` becomes a dangling reference the moment something touches `master_dark_v3`.
+### Option A: Mutable Asset with a surrogate ID
 
-That is not a bug to fix later; it is a property of the choice. Whichever option wins must state explicitly whether in-place byte mutation is legal.
+An Asset has a stable ID and one current hash. Byte rewrites update the row.
 
-## Options
+This keeps paths and references stable but destroys byte history. An edge from an Asset to itself
+cannot say which pre- and post-operation bytes participated.
 
-### Option A: Surrogate identity, content hash as a property
+### Option B: Content hash as Asset identity
 
-Assets get a stable opaque ID. The content hash is recorded for dedup and integrity checking but is not the primary key.
+Every byte change creates a new Asset.
 
-**Pros:**
-- Lineage edges survive any byte-level change; no orphaning.
-- In-place mutation is legal, so rename/retag/metadata-write operations stay cheap.
-- Matches what already works in v0.10.x, and what the importer must map onto.
-- Dedup still available via a hash index.
+This gives strong integrity but makes logical identity unstable, mixes mechanical revisions with
+scientifically meaningful assets, and forces collections and external mappings to chase replacements.
 
-**Cons:**
-- Identity is not verifiable from the file alone — a moved-out-of-band file needs reconciliation to re-associate.
-- Two identity-ish concepts to keep straight in the model.
+### Option C: Stable Asset plus immutable AssetVersion
 
-### Option B: Content-hash identity plus strict immutability
+An Asset is the logical file identity. Each byte state is an immutable AssetVersion with a content
+hash. The Asset points to its current version; lineage and Operation Run inputs/outputs point to
+versions.
 
-The hash *is* the identity. Operations never mutate bytes; any byte-level change produces a new asset with a lineage edge to its predecessor.
-
-**Pros:**
-- Content-addressed integrity for free; verification is recomputing a hash.
-- Dedup is structural, not a separate index.
-- Full history of every byte-level change, expressed in the lineage graph the model already has.
-
-**Cons:**
-- Every metadata-embedding operation (FITS header write, XMP, tagging into the file) forks a full copy — expensive at FITS sizes.
-- Disk growth on operations users think of as edits.
-- Lineage graphs fill with mechanical fork edges alongside the scientifically meaningful ones, which is a UX problem as much as a storage one.
-- The importer must synthesise identities for existing rows, so v0.10.x IDs stop being stable references.
-
-### Option C: Surrogate identity with content-addressed blob storage
-
-Assets have surrogate IDs; bytes live in a content-addressed store that assets point into.
-
-**Pros:**
-- Both properties: stable lineage plus structural dedup and verifiable bytes.
-- Cheap "same bytes, two logical assets."
-
-**Cons:**
-- **Directly conflicts with a north-star goal** — a content-addressed blob store is not a user-meaningful tree, and "Sidereal renames, moves, and organises your files" is the point. Would need a projection layer (symlinks or an export view), and now there are two trees to keep consistent.
-- Most complex option; heaviest migration.
+This adds one level to the model but preserves both stable user identity and exact byte provenance.
 
 ## Recommendation
 
-**Leaning Option A**, primarily because Option B's cost lands on the most common operations and Option C fights the north star.
+Choose **Option C**.
 
-Explicitly decide and record:
+### Identity and revision rules
 
-- **Is in-place byte mutation legal?** Under A it can be, but "operations that rewrite bytes must declare it, and core records a lineage edge" is a defensible middle ground worth considering.
-- **Reconciliation behaviour** for files changed out of band — v0.10.x has an orphan sweep; v2 needs a documented answer since it owns the tree.
-- **Tree shape.** User-meaningful arrangement (by target, by session, by date) is the north-star direction, but that is a *layout* decision separable from identity, and derived renditions may want a separate internal tree from originals.
+- `Asset.id` is a stable opaque surrogate independent of path and content.
+- `AssetVersion.id` is an opaque identifier with a mandatory content hash, byte size, format, and
+  creation provenance. The hash has a unique/indexed role for dedup and integrity but is not the
+  user-facing primary key.
+- Lineage edges point from produced AssetVersions to the exact consumed AssetVersions.
+- Operation Run inputs and outputs also reference versions, making replay and audit unambiguous.
+- A rename or move changes an Asset path/location event and does not create a version because bytes
+  did not change.
+- Any byte change — including embedded FITS metadata or an XMP rewrite — creates a new immutable
+  AssetVersion. It may advance the current version of the same Asset or create a new Asset depending
+  on Operator intent, but the previous version remains addressable by history.
+- New scientific products such as thumbnails, masters, stacks, and exports are normally new Assets,
+  not merely versions of their inputs.
+- Core, not plugins, mints identities, computes hashes, advances current-version pointers, and writes
+  lineage.
 
-Also worth deciding here: whether the content hash is recorded for **every** asset regardless of option. Dedup and integrity both want it, and it is cheap at ingest.
+The retention policy for superseded versions is explicit and lineage-aware. A version referenced by
+lineage, an Operation Run, a hold, or migration audit cannot be garbage-collected. A later storage
+policy may prune unreferenced mechanical revisions after warning and backup checks.
+
+### Reconciliation
+
+Core hashes every asset version at ingest. If bytes change outside Sidereal, reconciliation does not
+silently update the known version. It records an integrity mismatch and requires an explicit adopt,
+restore, or ignore decision. Adopting creates a new version with out-of-band provenance.
+
+Missing paths mark an Asset unavailable; they do not delete identity, versions, or lineage. A found
+file can be re-associated by hash and additional safety checks.
+
+### Storage layout
+
+Identity does not prescribe layout. Originals may appear in a user-meaningful tree by target, session,
+and date, while derived renditions and superseded versions may live in a protected internal subtree.
+ADR-003 must choose the exact tree and cross-filesystem move behavior before M1, with these invariants:
+
+- database and filesystem updates are recoverable after interruption;
+- a user-visible move never rewrites content;
+- internal historical versions are not presented as duplicate current assets;
+- path traversal and symlink escape are rejected;
+- every stored file can be reconciled to an AssetVersion and hash.
+
+## Consequences
+
+- Stable links, collections, and source mappings survive moves and byte revisions.
+- Lineage records exact content rather than a mutable logical placeholder.
+- Byte-editing operations consume additional storage until retention safely reclaims old revisions.
+- Queries that only need the current state join Asset to its current AssetVersion.
 
 ## Decision
 

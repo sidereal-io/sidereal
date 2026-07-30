@@ -15,7 +15,9 @@ The principle is settled: `kind` must not be a Rust enum containing `light | dar
 
 Several of those are genuinely ambiguous. **Equipment** is arguably general (any camera-based hobby has gear) but its spec fields are astro-shaped. **Sessions** are a Collection specialisation — does core know the concept and the pack fill it in, or does the pack define it wholesale? **Visibility math** is pure astronomy but drives generic UI sorting.
 
-**2. Are packs compiled in or loaded at runtime?** This interacts with [ADR-001](ADR-001-plugin-boundary.md): a pack that is a plugin under the chosen boundary gets that boundary's costs, and a pack containing the FITS reader is on the hot path for every ingest.
+**2. Are packs compiled in or loaded at runtime?** [ADR-001](ADR-001-plugin-boundary.md) separates
+semantic contracts from execution profiles. A pack containing a FITS reader is on the hot path for
+every ingest and may use the built-in Rust profile without receiving a different semantic contract.
 
 ## Options
 
@@ -38,8 +40,9 @@ Several of those are genuinely ambiguous. **Equipment** is arguably general (any
 - Users install only what they use.
 
 **Cons:**
-- Boundary cost on every ingest, which under an out-of-process ADR-001 may be significant for large FITS files.
-- Packs need to contribute UI, not just backend behaviour — a much larger contract than an Operation plugin.
+- A dynamically loaded pack using the script or external-provider profile adds boundary cost on every
+  ingest, which may be significant for large FITS files.
+- Packs need to contribute UI, not just backend behaviour — a much larger contract than an Operator plugin.
 - More moving parts in the default install.
 
 ### Option C: Thin core with facets only; everything else a pack
@@ -53,9 +56,14 @@ Several of those are genuinely ambiguous. **Equipment** is arguably general (any
 
 ## Recommendation
 
-Left open pending [ADR-001](ADR-001-plugin-boundary.md), since the boundary's cost profile changes the answer.
+Working position: **decide the seam now and compile the first-party astro pack into v2.0.** It uses
+the built-in Rust execution profile from ADR-001 and implements the same semantic contracts and
+conformance fixtures. User-installed Rhai plugins and external providers can extend its schemas and
+Operators through explicit grants; dynamically replacing the entire domain pack is deferred.
 
-Working position: **decide the seam now, defer the delivery mechanism.** Coding the astro pack against a public pack interface captures most of the architectural benefit; whether it is dynamically loaded is reversible later, whereas a wrong seam is a migration.
+This keeps FITS/XISF parsing and the initial UI contribution in the shipped artifact without making
+astro vocabulary part of core. Whether a later domain pack can be dynamically installed remains
+reversible; putting astro fields into core does not.
 
 Specific calls to make explicit:
 
