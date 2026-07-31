@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/design`) · **Last updated:** 2026-07-29
+**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/design`) · **Last updated:** 2026-07-31
 
 > **Why this lives in the repo.** The [Feature & Bug Workflow](../../CLAUDE.md) says designs live in the
 > issue body, not the repo tree. That rule is right for features — a feature design is scaffolding
@@ -9,13 +9,14 @@
 > Issue #213 is the *proposal*; this is the *reference*. Keep them in sync while #213 is open; after
 > it closes, this file is the surviving record.
 >
-> **Nothing here is accepted yet.** #213 is in `status/design` and has not passed its approval gate.
+> **The architecture as a whole is not accepted yet.** #213 remains in `status/design`; individual
+> ADRs may record decisions approved during review.
 
 ## Contents
 
 - [Where we are](#where-we-are) — v0.10.x, honestly
 - [Where we're going](#where-were-going) — the north star
-- [Core concepts](#core-concepts) — Asset · Collection · Lineage · Operation Run
+- [Core concepts](#core-concepts) — Asset · Collection · Lineage · Processing Goal · Operation Run
 - [Plugin model](#plugin-model) — the summary; full contract in [plugins.md](plugins.md)
 - [Core and domain packs](#core-and-domain-packs) — the facet mechanism
 - [Open seams](#open-seams) — what is deliberately undecided
@@ -71,20 +72,20 @@ modelled at all.
 
 ## Where we're going
 
-**Product:** an astrophotography imaging pipeline that manages photos at *all* stages of the hobby —
+**Product:** an astrophotography processing system that manages photos at *all* stages of the hobby —
 calibration frames, raw lights, stacked results, annotated finals.
 
 **Codebase:** a rewrite with a Rust backend, a plugin system for input/output formats and operations,
-and a web frontend for managing the pipeline and its metadata.
+and a web frontend for managing assets, processing, and metadata.
 
 Three commitments shape everything below:
 
 1. **Sidereal becomes the system of record for files on disk.** It renames, moves, and organises
    them. Today it mirrors someone else's tree; in v2 it owns one.
 2. **Sidereal does not do the math.** Calibration, registration, and integration stay in
-   Siril / PixInsight / APP. Sidereal may *orchestrate* them through plugins. It does not
+   Siril / PixInsight / APP. Sidereal may invoke them through plugins. It does not
    reimplement them.
-3. **Every pipeline action is a plugin, including the built-in ones.** This is what keeps the
+3. **Every processing action is a plugin, including the built-in ones.** This is what keeps the
    plugin interface honest — see [plugins.md](plugins.md).
 
 **Not an Immich replacement.** The core is built so it doesn't *forbid* general media management,
@@ -96,7 +97,7 @@ would eat a year.
 
 ## Core concepts
 
-Four concepts that do not exist today. These are the load-bearing additions; everything else in v2
+Five concepts that do not exist today. These are the load-bearing additions; everything else in v2
 is a consequence of them.
 
 ```mermaid
@@ -108,6 +109,11 @@ graph TD
     OR[Operation Run] -->|consumes| AV
     OR -->|produces| AV
     OR -->|records| L[Lineage edges]
+    E[State-change event] -->|prompts| R[Reconciler]
+    P[Processing Policy] -->|declares| G[Processing Goal]
+    R -->|reevaluates| G
+    G -->|dispatches eligible| OR
+    OR -->|satisfies| G
     L -.->|between| AV
     A -->|published by| K[Sink plugin]
     A -->|carries| F[Facets]
@@ -159,10 +165,32 @@ byte-level rewrite cannot erase history. Path-only moves remain Asset events; by
 new version. [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) fixes the complete
 identity, revision, reconciliation, and retention rules.
 
+### Processing Goal
+
+A durable statement of an outcome that must become true for a specific AssetVersion or immutable
+Collection snapshot — for example `metadata.extracted`, `astro.plate_solved`,
+`thumbnail.available`, or `published:immich`. A versioned **Processing Policy** declares the desired
+outcomes for matching assets and collections; it does not prescribe an Operator sequence.
+
+The reconciler compares desired outcomes with recorded facets, artifacts, lineage, and external
+receipts. It dispatches any eligible Operator capable of satisfying a missing goal, then reevaluates.
+Operators declare their prerequisites and outcomes, so only real data dependencies impose ordering;
+independent work may run concurrently. Completion means every applicable goal is satisfied, not that
+a workflow cursor reached its final step.
+
+State-change events such as asset ingestion prompt reconciliation, but they are not the source of
+truth. A periodic sweep repairs missed events and resumes after crashes. Manual actions use the same
+model by adding an explicit goal. Before cutover, domain packs supply built-in policies; user-authored
+policy rules and their editor arrive later.
+
+An unsatisfied goal is always inspectable as `pending`, `running`, `blocked`, or `needs_attention`,
+with the missing prerequisite, active attempt, retry budget, or ambiguous external effect recorded.
+There is no long-lived Pipeline Run to become opaquely stuck.
+
 ### Operation Run
 
-A job record: which Operator and version ran, exact input and output AssetVersions, params, causal and
-idempotency keys, side-effect state, status, and log output.
+A job record: which Operator and version ran, which Processing Goals it attempted, exact input and
+output AssetVersions, params, causal and idempotency keys, side-effect state, status, and log output.
 
 History is exact because intent and content versions are recorded rather than reconstructed from side
 effects. Re-run eligibility is determined by the Operator's side-effect class and idempotency
@@ -202,8 +230,8 @@ If Sidereal could plausibly become a general media manager one day, `kind` must 
 containing `light | dark | flat`. Splitting this now costs almost nothing. Splitting it later is a
 migration.
 
-**Core (domain-agnostic):** Asset, Collection, Lineage, Operation Run, plugin registry, storage
-layout, search/index, job queue, web shell.
+**Core (domain-agnostic):** Asset, Collection, Lineage, Processing Goal, Operation Run, processing
+policy registry, plugin registry, storage layout, search/index, job queue, web shell.
 
 **Domain packs (plugins):** the astro pack contributes the `light/dark/flat/master/stacked`
 vocabulary, FITS/XISF readers, the OpenNGC catalog, plate solving, sky map, equipment, acquisitions,
@@ -226,10 +254,10 @@ exclusively owns each schema, but compatible producer plugins can receive write 
 producer and version provenance; [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)
 defines the namespace and evolution rules.
 
-This is also what makes **per-kind pipelines** natural later. A routing rule matches on kind and
-facets, so `kind = light` routes to one pipeline and `kind = dark` to another, with no core changes.
-Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100, 300 s,
-bin 1×1" — is a facet query, not bespoke schema.
+This is also what makes **per-kind processing policies** natural later. A policy matches on kind and
+facets, so `kind = light` requires one set of outcomes and `kind = dark` another, with no core
+changes. Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100,
+300 s, bin 1×1" — is a facet query, not bespoke schema.
 
 **What this requires of the storage engine** (input to ADR-004, which is otherwise open):
 
@@ -254,7 +282,7 @@ work.
 | [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | Stable Asset plus immutable versions |
 | [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | Keep SQLite-default / Postgres-optional |
 | [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | None stated |
-| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Rule engine deferral** — confirm per-kind pipelines land post-cutover | Whether M2's Operator engine needs routing hooks now or later | Defer to M7 |
+| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing and policy deferral** — reconcile desired outcomes; defer user-authored policy rules | Whether M2 needs workflows, fixed chains, or convergent goal processing | Reconciliation in M2; policy editor in M7 |
 | [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | Built-in single-user auth and explicit grants |
 | [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Facet schema and write authority** | Cross-plugin interoperability and schema evolution | Exclusive schema owner with producer grants |
 
@@ -285,12 +313,12 @@ graph LR
 |---|---|---|
 | **M0** Contracts & scaffolding | S–M | Eight ADRs accepted, including security and plugin grants; Rhai/AssetContext spike complete; CI green; a contributor goes zero-to-running in one command |
 | **M1** Core spine & first plugins | L | In a disposable root, drop a file in a watched folder → it appears in the UI with extracted metadata entirely through plugin contracts |
-| **M2** Operator engine & Operator API v0.1 | M–L | Operator API, `AssetContext`, side-effect protocol, and author guide published; four built-ins consume it, at least two through Rhai; durable causal events proven |
-| **M3** Astro domain pack | L | A full session ingests — lights + darks + flats → session grouped, masters matched, lineage recorded |
+| **M2** Operator engine & Operator API v0.1 | M–L | Operator API, `AssetContext`, side-effect protocol, and author guide published; four built-ins consume it, at least two through Rhai; durable goals, reconciliation, and recovery after missed events proven |
+| **M3** Astro domain pack | L | A built-in policy converges a full session from ingest — lights + darks + flats → session grouped, masters matched, lineage recorded |
 | **M4** Sources, sinks & importer | M | A real v0.10.1 install imports cleanly and reports what didn't map |
 | **M5** Frontend parity | L | Every non-negotiable cutover item green |
 | **M6** Cutover | M | Docker parity, migration guide, beta with real users, `v2.0.0` |
-| **M7+** North star proper | — | Per-kind rule pipelines · Siril/PixInsight orchestration · AI plugins · general-media pack exploration |
+| **M7+** North star proper | — | User-authored processing policies · Siril/PixInsight integration · AI plugins · general-media pack exploration |
 
 ### Parallelism
 

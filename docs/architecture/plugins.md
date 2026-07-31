@@ -62,6 +62,12 @@ without colliding.
 An **Operator** is an implementation that takes assets plus params and proposes mutations, new assets,
 or both. An **Operation Run** is one recorded invocation of an Operator.
 
+Each Operator also declares the semantic Processing Goals it can satisfy, the facet, artifact, or
+receipt prerequisites for those goals, and which prior outcomes its mutations may invalidate. Core's
+reconciler uses those declarations to select eligible work; the Operator does not choose what runs
+before or after it. See
+[ADR-006](../decisions/ADR-006-rule-engine-deferral.md).
+
 Examples today: plate solve, rename, move, tag, and extract metadata. Later: Siril invocation, AI
 detection, and dedup.
 
@@ -92,6 +98,7 @@ A plugin ships a manifest declaring:
 | `execution` | `built_in`, `script`, or `external`, plus the entry point required by that profile. |
 | `config_schema` | JSON Schema for configuration. Core renders admin UI and validates before delivery. |
 | `facets` | Facet schemas declared and/or write grants requested, with types and index hints. |
+| `processing` | Goal outcomes provided, prerequisite predicates, and invalidations declared by each Operator. |
 | `capability_grants` | Requested host functions, allowlisted network destinations, byte-access mode, and secret names. Installation requires explicit approval. |
 | `requires` | Declared external dependencies or provider endpoints so unmet requirements surface before a run. |
 
@@ -114,6 +121,8 @@ The division of responsibility matters more than any individual signature.
   and outputs; core mints records and edges.
 - **The job queue** — scheduling, concurrency, durable events, retries, cancellation, and progress
   fan-out.
+- **Processing Goals and reconciliation** — policy evaluation, provider selection, prerequisite and
+  cycle checks, missed-event recovery, and durable satisfaction evidence.
 - **Config and capability validation** — against the manifest and installation grants.
 - **Secrets.** A plugin receives only declared, run-scoped credentials.
 
@@ -132,11 +141,11 @@ Every invocation receives a run-scoped `AssetContext`. It exposes only approved 
   HTTP, scoped secrets, logging, progress, and cancellation.
 
 An Operator returns status, proposed core-managed mutations, zero or more new assets, lineage
-declarations, and log output. Core validates the complete result before committing core-managed
-effects.
+declarations, external receipts, goal-satisfaction evidence, and log output. Core validates the
+complete result before committing core-managed effects.
 
-Every run is recorded as an [Operation Run](README.md#operation-run): Operator and version, inputs and
-input versions, params, outputs, status, side-effect state, and logs.
+Every run is recorded as an [Operation Run](README.md#operation-run): Operator and version, addressed
+Processing Goals, inputs and input versions, params, outputs, status, side-effect state, and logs.
 
 The execution profiles differ only in how requests and results cross the adapter. Built-in Rust uses
 an in-process trait, Rhai uses registered host functions, and external providers use an authenticated
@@ -211,6 +220,8 @@ Published per capability version. It asserts, at minimum:
 - No direct writes to the asset store.
 - Only schema-compatible, authorised facets are emitted, with producer provenance.
 - Inputs are not mutated behind core's back.
+- Declared prerequisites, outcomes, and invalidations match observed results.
+- A repeated reconciliation pass does not duplicate a satisfied external effect.
 
 Built-ins and transport adapters are the suite's first subjects. A built-in that cannot pass the
 semantic suite is a bug in the built-in or interface — never an exemption.
@@ -233,6 +244,8 @@ freeze buys a stable target, not permanent immutability.
 - **[ADR-002](../decisions/ADR-002-core-domain-pack-split.md)** — the core/domain-pack seam.
 - **[ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md)** — stable Assets and immutable
   AssetVersions.
+- **[ADR-006](../decisions/ADR-006-rule-engine-deferral.md)** — declarative Processing Goals,
+  reconciliation, and policy deferral.
 - **[ADR-007](../decisions/ADR-007-security-and-plugin-trust.md)** — authentication, capability
   grants, endpoint trust, and secret delivery.
 - **[ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)** — facet schema ownership,

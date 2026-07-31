@@ -1,73 +1,122 @@
-# 006: Rule-Engine Deferral
+# 006: Declarative Processing and Policy Deferral
 
-**Status:** Proposed
-**Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Confirms that user-defined per-kind pipelines land post-cutover (M7+), and fixes what M2's Operator engine must provide now so that remains true.
+**Status:** Accepted
+**Date:** 2026-07-31
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Establishes
+declarative, convergent processing in M2 while deferring user-authored policy rules until
+post-cutover (M7+).
 
 ## Problem
 
-The north star includes per-kind pipelines: `kind = light` routes to one chain of Operators, `kind = dark` to another, driven by user-defined rules. The RFC scopes this to M7+, after cutover — in v2.0 Operators are invoked individually.
+The product needs to react when an asset is ingested, a collection becomes ready, a user clicks a
+button, an API request arrives, or a schedule fires. Several Operators may need to succeed before the
+asset or collection is fully processed.
 
-Deferring is only safe if the engine built at M2 does not have to be *rebuilt* to accept rules later. So the real question is not "defer or not" but **which hooks must exist at M2** for the deferral to be free.
+The user intent is not normally “run A, then B, then C.” It is “make all of these outcomes true.” For
+example, a stacked image may need extracted metadata, a plate solution, a canonical name, a
+thumbnail, and an Immich publication receipt. Ordering matters only where one outcome is a genuine
+prerequisite for another.
 
-The architecture argues this is naturally cheap: a routing rule matches on kind and facets, and both are core concepts being built anyway, so routing is a query plus a dispatch — not new infrastructure.
+A workflow or pipeline makes the execution path the durable abstraction. That creates a second
+problem: when execution stops, the user must diagnose where a workflow cursor is stuck and decide
+how to move it. It also bakes an ordering into policy even when the order is incidental.
+
+An `Operation Run` remains the exact historical record of one Operator attempt. M2 needs a model for
+the desired state above those attempts without becoming a general-purpose workflow engine.
 
 ## Options
 
-### Option A: Defer, with matching and dispatch built as separable pieces
+### Option A: Reconcile declarative Processing Goals
 
-Ship individual invocation in v2.0, but build M2's engine so dispatch takes a resolved set of
-`(operator, params)` rather than being hard-wired to a user action.
+A versioned Processing Policy declares outcomes required for matching AssetVersions or immutable
+Collection snapshots. The reconciler materializes durable Processing Goals, compares them with
+recorded state, and dispatches eligible Operators until every applicable goal is satisfied.
 
-**Pros:**
-- No user-facing rule surface to design, document, or support before cutover.
-- The hook is small: dispatch already needs to accept a list of runs; a rule engine just becomes another producer of that list.
-- Facet queries are being built for calibration-master matching regardless, so the matching half already exists.
-
-**Cons:**
-- Requires discipline at M2 — an engine wired directly to "user clicked solve" is cheaper short-term and would need rework.
-
-### Option B: Defer entirely, accept rework later
+Operators declare semantic prerequisites and outcomes. The scheduler chooses any suitable Operator
+and imposes only the ordering implied by unmet prerequisites. Events prompt reconciliation, while a
+periodic sweep guarantees convergence after missed events or process crashes.
 
 **Pros:**
-- Simplest M2.
+
+- Models the user's desired result instead of an incidental execution sequence.
+- Independent work can run concurrently and alternative Operators can satisfy the same outcome.
+- Recovery is transparent: an unsatisfied goal records why it remains unsatisfied.
+- Events, manual actions, schedules, and later user policies share one execution model.
+- Requires no separate workflow runtime or opaque workflow state.
 
 **Cons:**
-- Rule support then touches the engine's core dispatch path after third-party plugins depend on its behaviour — a worse time to change it.
 
-### Option C: Build rules in v2.0
+- Operators need precise prerequisite, outcome, invalidation, and idempotency declarations.
+- Planning must detect missing providers and dependency cycles.
+- External effects require durable receipts and explicit ambiguous-completion handling.
+- Some inherently ordered processes may still need a purpose-built coordinating Operator.
+
+### Option B: Execute versioned workflows or pipelines
+
+Triggers start a durable dependency graph of Operator steps. A Pipeline Run records the selected
+definition, current position, child runs, and aggregate status.
 
 **Pros:**
-- Delivers a north-star capability at cutover.
+
+- Familiar model with explicit control flow.
+- Natural fit for processes where order itself is meaningful.
+- Established workflow engines can supply durable waits, signals, retries, and graph scheduling.
 
 **Cons:**
-- Adds a substantial design surface (rule language, conflict resolution, dry-run, debugging why a rule didn't fire) to a milestone set already carrying a language switch and a data-model change.
-- Rules over an unproven plugin interface will encode assumptions that ABI v0.2 breaks.
-- Cutover is already gated on eleven non-negotiables; this is not one of them.
 
-## Recommendation
+- Makes users reason about stuck execution rather than unsatisfied outcomes.
+- Encodes unnecessary ordering and requires workflow-version migration semantics.
+- Adds a second operational state model and potentially another self-hosted runtime.
+- User-authored workflows create a substantially larger product and debugging surface.
 
-**Option A.** Confirm the user-facing rule-language and editor deferral, and record the execution
-primitives M2 owes it:
+### Option C: Dispatch individual Operators only
 
-1. **Dispatch takes a resolved run graph**, not a single user-triggered Operator.
-2. **Facet and kind matching is a queryable core capability**, not logic embedded in the
-   calibration-matching path.
-3. **State changes publish through a durable event/outbox model** in the same transaction as the
-   change they describe.
-4. **Every derived run carries causal metadata**: root event, parent run, depth, triggering rule
-   revision, and a deterministic evaluation/idempotency key.
-5. **Evaluation is once-only per event and rule revision**, with cycle/depth protection and explicit
-   ordering for competing dispatches.
-6. **Operation Run records retain the resolved inputs and params**, so later rule edits do not alter
-   the meaning of historical runs.
+Every trigger or button directly invokes one Operator; compound processing is coordinated by callers.
 
-These are not the deferred rule product. They are the durable causality and idempotency primitives
-also needed for bulk work, retries, progress, and reliable external side effects in v2.0. The rule
-language, conflict-resolution UI, dry-run experience, and user-authored routing remain M7 work.
+**Pros:**
 
-Worth confirming during review: does anything on the [non-negotiable cutover list](../architecture/README.md#non-negotiable-before-cutover) implicitly need rules? Bulk plate solving is the closest, and it needs bulk dispatch rather than rule evaluation — but it should be checked rather than assumed.
+- Smallest M2 implementation.
+
+**Cons:**
+
+- Sources, API handlers, and UI actions acquire duplicated sequencing logic.
+- Automatic processing cannot recover reliably from missed events or partial completion.
+- Adding policy later requires replacing the core dispatch path after plugins depend on it.
 
 ## Decision
 
-[Filled in after review.]
+**Accepted Option A.** M2 implements declarative Processing Goals and reconciliation. It does not
+introduce a general-purpose workflow engine or a first-class Pipeline Run.
+
+The following semantics are part of the decision:
+
+1. **Policies declare outcomes, not steps.** A versioned Processing Policy matches asset or
+   collection state and declares the goals that must be satisfied.
+2. **Goals bind to immutable inputs.** Each Processing Goal targets an AssetVersion or an immutable
+   Collection snapshot, plus the policy revision that required it.
+3. **Operators declare prerequisites and outcomes.** Core can select any installed, authorised
+   Operator capable of satisfying a goal. If exact execution matters, a policy may require an
+   explicit `operator.completed` outcome.
+4. **Reconciliation is level-triggered.** Durable events request prompt evaluation, but periodic
+   sweeps and startup recovery recompute missing work from source-of-truth state.
+5. **Only data dependencies impose order.** Eligible goals may run concurrently. The planner rejects
+   dependency cycles and reports missing providers rather than waiting indefinitely.
+6. **Operation Runs are attempts.** Each attempt records the goals it addresses, resolved inputs and
+   params, outputs, side-effect state, idempotency key, status, and logs.
+7. **Success is durable evidence.** Facets, artifacts, lineage, and external publication receipts
+   satisfy goals. A process restart never discards that evidence or repeats a completed external
+   effect blindly.
+8. **Invalidation is explicit.** Operators declare which outcomes a new AssetVersion or mutation may
+   invalidate. Reconciliation then creates or reopens goals for the new immutable input.
+9. **Failure is visible at the goal.** Goals progress through `pending`, `running`, `blocked`,
+   `satisfied`, and `needs_attention`. Bounded retry policy, the missing prerequisite, active
+   attempt, or ambiguous external effect is always inspectable.
+10. **Manual actions add goals.** Button clicks and API requests use the same machinery rather than
+    bypassing reconciliation with a separate execution path.
+
+M3 must prove convergence with a built-in astro policy covering a realistic ingest flow. The system
+must recover after a deliberately dropped event and a process crash, avoid duplicating a successful
+external effect, and identify an impossible goal without leaving opaque “stuck” work.
+
+User-authored policy matching, conflict resolution, simulation, explanation UI, and policy editing
+remain deferred to M7+. Built-in domain-pack policies provide the required pre-cutover behaviour.
