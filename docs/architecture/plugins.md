@@ -50,6 +50,12 @@ Source and a Sink.
 Given its configuration, a Source discovers files and hands them to core for ingestion. It reports
 what it found; it does not write to the asset store itself.
 
+A Source configuration may assign a default `kind` and fixed namespaced labels to each ingested
+asset. A Source may propose detected labels and facets only within its installation grants. These are
+classification inputs to Core's Selectors; a Source never selects or invokes downstream Operators.
+Mixed-kind Sources may leave the default `kind` unset and classify individual assets from their
+ingested metadata.
+
 Examples: watch folder, Immich import, NINA/SGP session output, manual upload.
 
 A Source is responsible for **stable external identity**, scoped to the configured source instance.
@@ -62,9 +68,10 @@ without colliding.
 An **Operator** is an implementation that takes assets plus params and proposes mutations, new assets,
 or both. An **Operation Run** is one recorded invocation of an Operator.
 
-Each Operator also declares the semantic Processing Goals it can satisfy, the facet, artifact, or
-receipt prerequisites for those goals, and which prior outcomes its mutations may invalidate. Core's
-reconciler uses those declarations to select eligible work; the Operator does not choose what runs
+Each Operator also declares an `accepts` Selector, the semantic Processing Goals it can satisfy, the
+facet, artifact, or receipt prerequisites for those goals, and which prior outcomes its mutations may
+invalidate. Core's reconciler intersects policy selection, provided outcomes, `accepts`, grants, and
+prerequisites to select eligible work. The Operator neither scans for assets nor chooses what runs
 before or after it. See
 [ADR-006](../decisions/ADR-006-rule-engine-deferral.md).
 
@@ -98,7 +105,7 @@ A plugin ships a manifest declaring:
 | `execution` | `built_in`, `script`, or `external`, plus the entry point required by that profile. |
 | `config_schema` | JSON Schema for configuration. Core renders admin UI and validates before delivery. |
 | `facets` | Facet schemas declared and/or write grants requested, with types and index hints. |
-| `processing` | Goal outcomes provided, prerequisite predicates, and invalidations declared by each Operator. |
+| `processing` | `accepts` Selector, goal outcomes provided, prerequisite predicates, and invalidations declared by each Operator. |
 | `capability_grants` | Requested host functions, allowlisted network destinations, byte-access mode, and secret names. Installation requires explicit approval. |
 | `requires` | Declared external dependencies or provider endpoints so unmet requirements surface before a run. |
 
@@ -119,6 +126,8 @@ The division of responsibility matters more than any individual signature.
   import is validated and performed by core.
 - **Asset identity, immutable versions, and lineage.** Plugins reference handles and declare inputs
   and outputs; core mints records and edges.
+- **Labels and Selectors** — storage, indexing, deterministic evaluation, provenance, change events,
+  and human-readable match explanations.
 - **The job queue** — scheduling, concurrency, durable events, retries, cancellation, and progress
   fan-out.
 - **Processing Goals and reconciliation** — policy evaluation, provider selection, prerequisite and
@@ -221,6 +230,7 @@ Published per capability version. It asserts, at minimum:
 - Only schema-compatible, authorised facets are emitted, with producer provenance.
 - Inputs are not mutated behind core's back.
 - Declared prerequisites, outcomes, and invalidations match observed results.
+- `accepts` Selectors are deterministic and every selected or rejected subject can be explained.
 - A repeated reconciliation pass does not duplicate a satisfied external effect.
 
 Built-ins and transport adapters are the suite's first subjects. A built-in that cannot pass the

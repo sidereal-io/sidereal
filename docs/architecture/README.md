@@ -16,7 +16,7 @@
 
 - [Where we are](#where-we-are) — v0.10.x, honestly
 - [Where we're going](#where-were-going) — the north star
-- [Core concepts](#core-concepts) — Asset · Collection · Lineage · Processing Goal · Operation Run
+- [Core concepts](#core-concepts) — Asset · Collection · Selector · Lineage · Processing Goal · Operation Run
 - [Plugin model](#plugin-model) — the summary; full contract in [plugins.md](plugins.md)
 - [Core and domain packs](#core-and-domain-packs) — the facet mechanism
 - [Open seams](#open-seams) — what is deliberately undecided
@@ -97,7 +97,7 @@ would eat a year.
 
 ## Core concepts
 
-Five concepts that do not exist today. These are the load-bearing additions; everything else in v2
+Six concepts that do not exist today. These are the load-bearing additions; everything else in v2
 is a consequence of them.
 
 ```mermaid
@@ -109,8 +109,11 @@ graph TD
     OR[Operation Run] -->|consumes| AV
     OR -->|produces| AV
     OR -->|records| L[Lineage edges]
-    E[State-change event] -->|prompts| R[Reconciler]
+    E["State-change event"] -->|prompts| R[Reconciler]
+    X[Selector] -->|matches| A
+    X -->|defines membership| C
     P[Processing Policy] -->|declares| G[Processing Goal]
+    P -->|matches with| X
     R -->|reevaluates| G
     G -->|dispatches eligible| OR
     OR -->|satisfies| G
@@ -121,9 +124,9 @@ graph TD
 
 ### Asset
 
-One logical file managed by Sidereal. It has a stable opaque identity, a path, a `kind`, extracted
-metadata (as [facets](#core-and-domain-packs)), and one or more immutable `AssetVersion` records.
-Each version identifies an exact byte state by content hash.
+One logical file managed by Sidereal. It has a stable opaque identity, a path, a `kind`, labels,
+extracted metadata (as [facets](#core-and-domain-packs)), and one or more immutable `AssetVersion`
+records. Each version identifies an exact byte state by content hash.
 
 **Identity is immutable and independent of path.** Renaming or moving a file changes the path, not
 the asset. This is the invariant that makes Sidereal safe to let loose on a user's filesystem: if
@@ -140,12 +143,58 @@ contributed by the astro domain pack, not core vocabulary. See
 ### Collection
 
 A generic grouping of assets. A **session** — target, date, location, rig, frames — is one
-specialisation; an album is another.
+specialisation; an album is another. A Collection may have explicit membership or a Selector that
+defines dynamic membership. Processing always binds a specific immutable membership snapshot, so a
+Collection changing underneath a run cannot change its inputs retroactively.
 
 Derived values are always derived. Integration totals are computed from member assets and their
 facets; they are never typed in and never denormalised onto a row that can drift. (v0.10.x does
 denormalise them onto the `Image` row, which is why a manual edit to `frameCount` survives until the
 next recompute silently overwrites it.)
+
+### Selector and labels
+
+A **Selector** is the shared, deterministic predicate for deciding what applies to an AssetVersion or
+Collection. The common selector vocabulary covers `kind`, labels, source instance, typed facets, and
+Collection membership. Core owns evaluation, indexing, and a match explanation; plugins and domain
+packs supply selector data and definitions, not custom matching code.
+
+**Labels** are namespaced string key/value classification intended for selection — cheap to index,
+easy to configure, and safe to show in the UI. Facets are typed, schema-owned facts such as exposure
+or sensor temperature. `kind` remains the domain pack's distinguished type discriminator. Selectors
+may combine all three rather than forcing rich metadata into strings.
+
+A Source configuration may assign an initial `kind` and fixed labels to every asset it ingests. The
+Source may also propose detected labels or facets within its grants, but it never chooses Operators.
+Changing labels, kind, facets, or selector-backed Collection membership prompts reconciliation.
+Source types and domain packs may offer label defaults; the configured Source instance owns the
+final defaults. A mixed-kind Source may leave `kind` unset initially or classify each asset from
+ingested metadata.
+
+Selectors serve three related purposes:
+
+1. A Processing Policy selector decides **which goals apply** to a subject.
+2. An Operator `accepts` selector decides **whether that implementation can satisfy** a goal for the
+   subject.
+3. A Collection selector decides **which assets are members** of a dynamic Collection.
+
+Conceptually, without fixing the manifest syntax:
+
+```
+Source defaults:       kind=astro.stacked, label processing.sidereal.io/mode=auto
+Policy selector:       kind=astro.stacked + processing.sidereal.io/mode=auto
+                       → require metadata, solve, thumbnail
+Plate-solve Operator:  provides solve; accepts astro image kinds with readable bytes
+Collection selector:   label astro.sidereal.io/target=M31 + kind=astro.light
+```
+
+Core dispatches an Operator only when the policy selected the subject, the Operator provides the
+missing outcome, its `accepts` selector matches, and its prerequisites are satisfied. The selector
+and the evidence used to match it are recorded so “why did this run?” remains answerable.
+
+The selector language is deliberately bounded: boolean composition plus existence, equality, set,
+and typed facet comparisons. It is data, not arbitrary plugin code, so matching remains indexable and
+explainable. Core rejects dependency cycles between selector-backed Collections.
 
 ### Lineage
 
@@ -169,8 +218,9 @@ identity, revision, reconciliation, and retention rules.
 
 A durable statement of an outcome that must become true for a specific AssetVersion or immutable
 Collection snapshot — for example `metadata.extracted`, `astro.plate_solved`,
-`thumbnail.available`, or `published:immich`. A versioned **Processing Policy** declares the desired
-outcomes for matching assets and collections; it does not prescribe an Operator sequence.
+`thumbnail.available`, or `published:immich`. A versioned **Processing Policy** uses a Selector to
+declare the desired outcomes for matching assets and collections; it does not prescribe an Operator
+sequence.
 
 The reconciler compares desired outcomes with recorded facets, artifacts, lineage, and external
 receipts. It dispatches any eligible Operator capable of satisfying a missing goal, then reevaluates.
@@ -230,8 +280,8 @@ If Sidereal could plausibly become a general media manager one day, `kind` must 
 containing `light | dark | flat`. Splitting this now costs almost nothing. Splitting it later is a
 migration.
 
-**Core (domain-agnostic):** Asset, Collection, Lineage, Processing Goal, Operation Run, processing
-policy registry, plugin registry, storage layout, search/index, job queue, web shell.
+**Core (domain-agnostic):** Asset, Collection, Selector, labels, Lineage, Processing Goal, Operation
+Run, processing policy registry, plugin registry, storage layout, search/index, job queue, web shell.
 
 **Domain packs (plugins):** the astro pack contributes the `light/dark/flat/master/stacked`
 vocabulary, FITS/XISF readers, the OpenNGC catalog, plate solving, sky map, equipment, acquisitions,
@@ -254,9 +304,14 @@ exclusively owns each schema, but compatible producer plugins can receive write 
 producer and version provenance; [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)
 defines the namespace and evolution rules.
 
-This is also what makes **per-kind processing policies** natural later. A policy matches on kind and
-facets, so `kind = light` requires one set of outcomes and `kind = dark` another, with no core
-changes. Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100,
+Labels and facets are deliberately distinct. Labels are small string classifications used heavily by
+Selectors; facets are typed metadata with schema evolution and producer provenance. A label such as
+`processing.sidereal.io/mode=auto` can opt an asset into a policy, while
+`astro.fits.ccd_temp=-10.2` remains a numeric facet available to a range predicate.
+
+This is also what makes **per-kind processing policies** natural later. A policy matches on kind,
+labels, and facets, so `kind = light` requires one set of outcomes and `kind = dark` another, with no
+core changes. Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100,
 300 s, bin 1×1" — is a facet query, not bespoke schema.
 
 **What this requires of the storage engine** (input to ADR-004, which is otherwise open):
@@ -282,7 +337,7 @@ work.
 | [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | Stable Asset plus immutable versions |
 | [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | Keep SQLite-default / Postgres-optional |
 | [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | None stated |
-| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing and policy deferral** — reconcile desired outcomes; defer user-authored policy rules | Whether M2 needs workflows, fixed chains, or convergent goal processing | Reconciliation in M2; policy editor in M7 |
+| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing, selectors, and policy deferral** — match subjects and reconcile desired outcomes; defer user-authored policy rules | Applicability, Collection membership, and whether M2 needs workflows or convergent goal processing | Shared selectors and reconciliation in M2; policy editor in M7 |
 | [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | Built-in single-user auth and explicit grants |
 | [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Facet schema and write authority** | Cross-plugin interoperability and schema evolution | Exclusive schema owner with producer grants |
 
@@ -313,8 +368,8 @@ graph LR
 |---|---|---|
 | **M0** Contracts & scaffolding | S–M | Eight ADRs accepted, including security and plugin grants; Rhai/AssetContext spike complete; CI green; a contributor goes zero-to-running in one command |
 | **M1** Core spine & first plugins | L | In a disposable root, drop a file in a watched folder → it appears in the UI with extracted metadata entirely through plugin contracts |
-| **M2** Operator engine & Operator API v0.1 | M–L | Operator API, `AssetContext`, side-effect protocol, and author guide published; four built-ins consume it, at least two through Rhai; durable goals, reconciliation, and recovery after missed events proven |
-| **M3** Astro domain pack | L | A built-in policy converges a full session from ingest — lights + darks + flats → session grouped, masters matched, lineage recorded |
+| **M2** Operator engine & Operator API v0.1 | M–L | Operator API, `AssetContext`, selector contract, side-effect protocol, and author guide published; four built-ins consume it, at least two through Rhai; applicability explanations, durable goals, reconciliation, and recovery after missed events proven |
+| **M3** Astro domain pack | L | Source labels and built-in policy selectors converge a full session from ingest — lights + darks + flats → session grouped, masters matched, lineage recorded |
 | **M4** Sources, sinks & importer | M | A real v0.10.1 install imports cleanly and reports what didn't map |
 | **M5** Frontend parity | L | Every non-negotiable cutover item green |
 | **M6** Cutover | M | Docker parity, migration guide, beta with real users, `v2.0.0` |

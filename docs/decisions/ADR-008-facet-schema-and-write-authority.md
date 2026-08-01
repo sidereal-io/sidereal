@@ -2,7 +2,8 @@
 
 **Status:** Proposed
 **Date:** 2026-07-30
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Facets are the cross-plugin metadata contract used by search, calibration matching, and future routing rules.
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Facets are the
+cross-plugin typed-metadata contract used by search, calibration matching, and shared Selectors.
 
 ## Problem
 

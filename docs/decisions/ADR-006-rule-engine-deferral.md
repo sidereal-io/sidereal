@@ -1,4 +1,4 @@
-# 006: Declarative Processing and Policy Deferral
+# 006: Declarative Processing, Selectors, and Policy Deferral
 
 **Status:** Accepted
 **Date:** 2026-07-31
@@ -22,19 +22,23 @@ problem: when execution stops, the user must diagnose where a workflow cursor is
 how to move it. It also bakes an ordering into policy even when the order is incidental.
 
 An `Operation Run` remains the exact historical record of one Operator attempt. M2 needs a model for
-the desired state above those attempts without becoming a general-purpose workflow engine.
+the desired state above those attempts without becoming a general-purpose workflow engine. It also
+needs one answer to three applicability questions: which subjects receive a policy, which Operators
+can process a subject, and which assets belong to a dynamic Collection.
 
 ## Options
 
 ### Option A: Reconcile declarative Processing Goals
 
-A versioned Processing Policy declares outcomes required for matching AssetVersions or immutable
-Collection snapshots. The reconciler materializes durable Processing Goals, compares them with
-recorded state, and dispatches eligible Operators until every applicable goal is satisfied.
+A versioned Processing Policy uses a shared Selector to declare outcomes required for matching
+AssetVersions or immutable Collection snapshots. The reconciler materializes durable Processing
+Goals, compares them with recorded state, and dispatches eligible Operators until every applicable
+goal is satisfied.
 
-Operators declare semantic prerequisites and outcomes. The scheduler chooses any suitable Operator
-and imposes only the ordering implied by unmet prerequisites. Events prompt reconciliation, while a
-periodic sweep guarantees convergence after missed events or process crashes.
+Operators declare an `accepts` Selector, semantic prerequisites, and outcomes. The scheduler chooses
+any suitable Operator whose selector matches and imposes only the ordering implied by unmet
+prerequisites. Events prompt reconciliation, while a periodic sweep guarantees convergence after
+missed events or process crashes.
 
 **Pros:**
 
@@ -47,6 +51,7 @@ periodic sweep guarantees convergence after missed events or process crashes.
 **Cons:**
 
 - Operators need precise prerequisite, outcome, invalidation, and idempotency declarations.
+- Selector changes can fan out widely and require indexed evaluation plus clear match explanations.
 - Planning must detect missing providers and dependency cycles.
 - External effects require durable receipts and explicit ambiguous-completion handling.
 - Some inherently ordered processes may still need a purpose-built coordinating Operator.
@@ -85,38 +90,54 @@ Every trigger or button directly invokes one Operator; compound processing is co
 
 ## Decision
 
-**Accepted Option A.** M2 implements declarative Processing Goals and reconciliation. It does not
-introduce a general-purpose workflow engine or a first-class Pipeline Run.
+**Accepted Option A.** M2 implements shared Selectors, declarative Processing Goals, and
+reconciliation. It does not introduce a general-purpose workflow engine or a first-class Pipeline
+Run.
 
 The following semantics are part of the decision:
 
-1. **Policies declare outcomes, not steps.** A versioned Processing Policy matches asset or
-   collection state and declares the goals that must be satisfied.
-2. **Goals bind to immutable inputs.** Each Processing Goal targets an AssetVersion or an immutable
+1. **Selectors are a shared core primitive.** The deterministic selector vocabulary covers `kind`,
+   namespaced labels, source instance, typed facets, and Collection membership. Core owns indexed
+   evaluation and records a human-readable match explanation. The language is bounded to boolean
+   composition plus existence, equality, set, and typed comparison predicates; it cannot invoke
+   arbitrary plugin code.
+2. **Labels are selection metadata.** Labels are namespaced string key/value pairs, distinct from
+   typed, schema-owned facets. Label writes retain origin and are subject to grants.
+3. **Sources classify; they do not orchestrate.** Source configuration may assign an initial `kind`
+   and fixed labels. A Source may propose detected labels or facets within its grants, but never
+   selects or invokes Operators. Mixed-kind Sources may classify per asset rather than declaring one
+   fixed kind.
+4. **Policies declare outcomes, not steps.** A versioned Processing Policy uses a Selector to match
+   asset or Collection state and declares the goals that must be satisfied.
+5. **Operators declare applicability.** Each Operator declares an `accepts` Selector plus the goals
+   it provides. Core dispatches it only when the policy selected the subject, the Operator provides
+   the missing goal, `accepts` matches, its grants permit the run, and prerequisites are satisfied.
+6. **Collections support explicit or selected membership.** A selector-backed Collection is a
+   dynamic view. Processing binds an immutable membership snapshot so later selector results cannot
+   alter an in-flight or historical input set.
+7. **Goals bind to immutable inputs.** Each Processing Goal targets an AssetVersion or an immutable
    Collection snapshot, plus the policy revision that required it.
-3. **Operators declare prerequisites and outcomes.** Core can select any installed, authorised
-   Operator capable of satisfying a goal. If exact execution matters, a policy may require an
-   explicit `operator.completed` outcome.
-4. **Reconciliation is level-triggered.** Durable events request prompt evaluation, but periodic
+8. **Reconciliation is level-triggered.** Durable events request prompt evaluation, but periodic
    sweeps and startup recovery recompute missing work from source-of-truth state.
-5. **Only data dependencies impose order.** Eligible goals may run concurrently. The planner rejects
+9. **Only data dependencies impose order.** Eligible goals may run concurrently. The planner rejects
    dependency cycles and reports missing providers rather than waiting indefinitely.
-6. **Operation Runs are attempts.** Each attempt records the goals it addresses, resolved inputs and
+10. **Operation Runs are attempts.** Each attempt records the goals it addresses, resolved inputs and
    params, outputs, side-effect state, idempotency key, status, and logs.
-7. **Success is durable evidence.** Facets, artifacts, lineage, and external publication receipts
+11. **Success is durable evidence.** Facets, artifacts, lineage, and external publication receipts
    satisfy goals. A process restart never discards that evidence or repeats a completed external
    effect blindly.
-8. **Invalidation is explicit.** Operators declare which outcomes a new AssetVersion or mutation may
+12. **Invalidation is explicit.** Operators declare which outcomes a new AssetVersion or mutation may
    invalidate. Reconciliation then creates or reopens goals for the new immutable input.
-9. **Failure is visible at the goal.** Goals progress through `pending`, `running`, `blocked`,
+13. **Failure is visible at the goal.** Goals progress through `pending`, `running`, `blocked`,
    `satisfied`, and `needs_attention`. Bounded retry policy, the missing prerequisite, active
    attempt, or ambiguous external effect is always inspectable.
-10. **Manual actions add goals.** Button clicks and API requests use the same machinery rather than
+14. **Manual actions add goals.** Button clicks and API requests use the same machinery rather than
     bypassing reconciliation with a separate execution path.
 
-M3 must prove convergence with a built-in astro policy covering a realistic ingest flow. The system
-must recover after a deliberately dropped event and a process crash, avoid duplicating a successful
-external effect, and identify an impossible goal without leaving opaque “stuck” work.
+M3 must prove convergence with configured Source labels and a built-in astro policy covering a
+realistic ingest flow. The system must explain policy and Operator matches, recover after a
+deliberately dropped event and a process crash, avoid duplicating a successful external effect, and
+identify an impossible goal without leaving opaque “stuck” work.
 
 User-authored policy matching, conflict resolution, simulation, explanation UI, and policy editing
 remain deferred to M7+. Built-in domain-pack policies provide the required pre-cutover behaviour.
