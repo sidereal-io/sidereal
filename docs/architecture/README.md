@@ -124,9 +124,9 @@ graph TD
 
 ### Asset
 
-One logical file managed by Sidereal. It has a stable opaque identity, a path, a `kind`, labels,
-extracted metadata (as [facets](#core-and-domain-packs)), and one or more immutable `AssetVersion`
-records. Each version identifies an exact byte state by content hash.
+One logical file managed by Sidereal. It has a stable opaque identity, a path, a `kind`, typed
+metadata (as [facets](#core-and-domain-packs)), and one or more immutable `AssetVersion` records.
+Each version identifies an exact byte state by content hash.
 
 Every Asset has a small core-owned **metadata envelope**:
 
@@ -135,7 +135,6 @@ Every Asset has a small core-owned **metadata envelope**:
 | `id` | Stable opaque identity; never derived from name or path. |
 | `kind` | Pack-defined normalized discriminator such as `astro.light` or `astro.stacked`. |
 | `name` | Mutable human-facing display name; not required to be unique and not the filesystem path. |
-| `labels` | Namespaced string key/value classification used primarily by Selectors. |
 
 This borrows Backstage's useful envelope/type-specific-data boundary without copying its entity
 identity model. Sidereal does not add `namespace` until a concrete scoping requirement exists;
@@ -167,26 +166,24 @@ facets; they are never typed in and never denormalised onto a row that can drift
 denormalise them onto the `Image` row, which is why a manual edit to `frameCount` survives until the
 next recompute silently overwrites it.)
 
-### Selector and labels
+### Selector
 
 A **Selector** is the shared, deterministic predicate for deciding what applies to an AssetVersion or
-Collection. The common selector vocabulary covers `kind`, labels, source instance, typed facets, and
+Collection. The common selector vocabulary covers `kind`, source instance, typed facets, and
 Collection membership. Core owns evaluation, indexing, and a match explanation; plugins and domain
-packs supply selector data and definitions, not custom matching code.
+packs supply facet schemas and values, not custom matching code.
 
-**Labels** are Asset-scoped namespaced string key/value classification intended for selection — cheap
-to index, easy to configure, and safe to show in the UI. They express intent or coarse grouping, not
-observed file metadata. Facets are typed, schema-owned facts such as exposure or sensor temperature
-and declare whether they apply to an AssetVersion or Collection snapshot. `kind` remains the domain
-pack's distinguished type discriminator. Selectors may combine all three rather than forcing rich
-metadata into strings.
+Facets are the only extensible selection metadata in M0. A facet schema declares its type, scope,
+mutability, ownership, and indexing: `core.processing.mode=auto` can be an Asset-scoped mutable
+string, while `astro.fits.ccd_temp=-10.2` is an AssetVersion-scoped numeric observation. `kind`
+remains the domain pack's distinguished type discriminator.
 
-A Source configuration may assign an initial `kind` and fixed labels to every asset it ingests. The
-Source may also propose detected labels or facets within its grants, but it never chooses Operators.
-Changing labels, kind, facets, or selector-backed Collection membership prompts reconciliation.
-Source types and domain packs may offer label defaults; the configured Source instance owns the
-final defaults. A mixed-kind Source may leave `kind` unset initially or classify each asset from
-ingested metadata.
+A Source configuration may assign an initial `kind` and configured facet values to every asset it
+ingests. The Source may also propose detected facets within its grants, but it never chooses
+Operators. Changing kind, facets, or selector-backed Collection membership prompts reconciliation.
+Source types and domain packs may offer defaults; the configured Source instance owns the final
+values. A mixed-kind Source may leave `kind` unset initially or classify each asset from ingested
+metadata.
 
 Selectors serve three related purposes:
 
@@ -198,8 +195,8 @@ Selectors serve three related purposes:
 Conceptually, without fixing the manifest syntax:
 
 ```
-Source defaults:       kind=astro.stacked, label processing.sidereal.io/mode=auto
-Policy selector:       kind=astro.stacked + processing.sidereal.io/mode=auto
+Source defaults:       kind=astro.stacked, facet core.processing.mode=auto
+Policy selector:       kind=astro.stacked + core.processing.mode=auto
                        → require metadata, solve, thumbnail
 Plate-solve Operator:  provides solve; accepts astro image kinds with readable bytes
 Collection selector:   facet astro.target.catalog_id=M31 + kind=astro.light
@@ -322,17 +319,22 @@ exclusively owns each schema, but compatible producer plugins can receive write 
 producer and version provenance; [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)
 defines the namespace and evolution rules.
 
-Labels and facets are deliberately distinct. Labels are mutable Asset-level intent and coarse
-classification; facets are typed facts with declared scope, schema evolution, units, and producer
-provenance. A label such as `processing.sidereal.io/mode=auto` can opt an asset into a policy, while
-`astro.fits.ccd_temp=-10.2` remains an AssetVersion-scoped numeric facet available to a range
-predicate. The same semantic fact must not be stored in both. Raw source evidence and a normalized
-decision are different facts — for example, `astro.fits.image_type=LIGHT` may be the evidence used to
-classify the envelope as `kind=astro.light`.
+Facets cover both mutable intent and observed or derived facts. Their schemas make the distinction
+explicit through type, scope, mutability, units, and provenance rather than through a second metadata
+mechanism. `core.processing.mode=auto` can opt an Asset into a policy, while
+`astro.fits.ccd_temp=-10.2` remains an AssetVersion-scoped numeric observation available to a range
+predicate. Raw source evidence and a normalized decision are different facts — for example,
+`astro.fits.image_type=LIGHT` may be the evidence used to classify the envelope as
+`kind=astro.light`.
 
-This is also what makes **per-kind processing policies** natural later. A policy matches on kind,
-labels, and facets, so `kind = light` requires one set of outcomes and `kind = dark` another, with no
-core changes. Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100,
+Selectors depend on canonical facet schema names, not producer plugins. Built-in policies may
+reference only schemas owned by core or the relevant domain pack; alternative plugins receive grants
+to produce those schemas. A user may deliberately select a plugin-owned facet, but the UI must expose
+that portability dependency.
+
+This is also what makes **per-kind processing policies** natural later. A policy matches on kind and
+facets, so `kind = light` requires one set of outcomes and `kind = dark` another, with no core
+changes. Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100,
 300 s, bin 1×1" — is a facet query, not bespoke schema.
 
 **What this requires of the storage engine** (input to ADR-004, which is otherwise open):
@@ -360,7 +362,7 @@ work.
 | [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | None stated |
 | [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing, selectors, and policy deferral** — match subjects and reconcile desired outcomes; defer user-authored policy rules | Applicability, Collection membership, and whether M2 needs workflows or convergent goal processing | Shared selectors and reconciliation in M2; policy editor in M7 |
 | [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | Built-in single-user auth and explicit grants |
-| [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Metadata envelope, labels, facets, and write authority** | Canonical placement, selector semantics, cross-plugin interoperability, and schema evolution | Small core envelope plus labels and typed facets |
+| [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Metadata envelope, facets, and write authority** | Canonical placement, selector portability, cross-plugin interoperability, and schema evolution | Small core envelope plus typed, scoped facets |
 
 **ADR-001 and ADR-007 are coupled.** The execution profile says how code runs; grants and
 `AssetContext` say what it is allowed to do. Neither decision is complete without the other.
@@ -390,7 +392,7 @@ graph LR
 | **M0** Contracts & scaffolding | S–M | Eight ADRs accepted, including security and plugin grants; Rhai/AssetContext spike complete; CI green; a contributor goes zero-to-running in one command |
 | **M1** Core spine & first plugins | L | In a disposable root, drop a file in a watched folder → it appears in the UI with extracted metadata entirely through plugin contracts |
 | **M2** Operator engine & Operator API v0.1 | M–L | Operator API, `AssetContext`, selector contract, side-effect protocol, and author guide published; four built-ins consume it, at least two through Rhai; applicability explanations, durable goals, reconciliation, and recovery after missed events proven |
-| **M3** Astro domain pack | L | Source labels and built-in policy selectors converge a full session from ingest — lights + darks + flats → session grouped, masters matched, lineage recorded |
+| **M3** Astro domain pack | L | Source facets and built-in policy selectors converge a full session from ingest — lights + darks + flats → session grouped, masters matched, lineage recorded |
 | **M4** Sources, sinks & importer | M | A real v0.10.1 install imports cleanly and reports what didn't map |
 | **M5** Frontend parity | L | Every non-negotiable cutover item green |
 | **M6** Cutover | M | Docker parity, migration guide, beta with real users, `v2.0.0` |

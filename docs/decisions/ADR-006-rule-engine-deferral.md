@@ -97,18 +97,18 @@ Run.
 The following semantics are part of the decision:
 
 1. **Selectors are a shared core primitive.** The deterministic selector vocabulary covers `kind`,
-   namespaced labels, source instance, typed facets, and Collection membership. Core owns indexed
+   source instance, typed facets, and Collection membership. Core owns indexed
    evaluation and records a human-readable match explanation. The language is bounded to boolean
    composition plus existence, equality, set, and typed comparison predicates; it cannot invoke
    arbitrary plugin code.
-2. **Labels are selection metadata.** Labels are namespaced string key/value pairs, distinct from
-   typed, schema-owned facets. Labels express mutable Asset-level intent or coarse classification;
-   facets express typed facts with declared scope and provenance. Label writes retain origin and are
-   subject to grants. [ADR-008](ADR-008-facet-schema-and-write-authority.md) owns the full boundary.
+2. **Facets are the extensible selection metadata.** Facet schemas declare type, scope, mutability,
+   indexing, ownership, and provenance. Built-in policies reference canonical core or domain-pack
+   schemas rather than producer-specific fields. [ADR-008](ADR-008-facet-schema-and-write-authority.md)
+   owns the full contract.
 3. **Sources classify; they do not orchestrate.** Source configuration may assign an initial `kind`
-   and fixed labels. A Source may propose detected labels or facets within its grants, but never
-   selects or invokes Operators. Mixed-kind Sources may classify per asset rather than declaring one
-   fixed kind.
+   and configured facets. A Source may propose detected facets within its grants, but never selects
+   or invokes Operators. Mixed-kind Sources may classify per asset rather than declaring one fixed
+   kind.
 4. **Policies declare outcomes, not steps.** A versioned Processing Policy uses a Selector to match
    asset or Collection state and declares the goals that must be satisfied.
 5. **Operators declare applicability.** Each Operator declares an `accepts` Selector plus the goals
@@ -136,7 +136,7 @@ The following semantics are part of the decision:
 14. **Manual actions add goals.** Button clicks and API requests use the same machinery rather than
     bypassing reconciliation with a separate execution path.
 
-M3 must prove convergence with configured Source labels and a built-in astro policy covering a
+M3 must prove convergence with configured Source facets and a built-in astro policy covering a
 realistic ingest flow. The system must explain policy and Operator matches, recover after a
 deliberately dropped event and a process crash, avoid duplicating a successful external effect, and
 identify an impossible goal without leaving opaque “stuck” work.

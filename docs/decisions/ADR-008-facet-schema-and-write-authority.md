@@ -1,25 +1,25 @@
-# 008: Metadata Envelope, Labels, Facets, and Write Authority
+# 008: Metadata Envelope, Facets, and Write Authority
 
 **Status:** Proposed
 **Date:** 2026-08-01
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Selectors need a
-small common classification model, while domain packs and alternative plugins need an interoperable
-typed-metadata contract.
+portable metadata contract, while domain packs and alternative plugins need interoperable typed
+values.
 
 ## Problem
 
-Sidereal needs both simple selection metadata and rich astrophotography facts. Treating everything as
-an untyped label loses units, validation, range queries, revision scope, and producer provenance.
-Treating everything as a schema-owned facet makes ordinary user and Source classification expensive
-and forces operational intent into domain schemas.
+Sidereal needs simple operational classification, rich astrophotography facts, and a small set of
+fields shared by every Asset. Maintaining both untyped labels and typed facets creates two ways to
+represent selectable metadata, requires rules for choosing between them, and invites duplication.
 
-The architecture therefore needs a canonical boundary: which fields every Asset has, what belongs in
-a label, what belongs in a facet, where each value is scoped, and who may write it. Without that
-boundary, the same fact will drift into several representations and Selectors will become ambiguous.
+The architecture therefore needs one canonical boundary: which fields every Asset has, what belongs
+in an extensible facet, where each value is scoped, and who may write it. It must also prevent
+Selectors from becoming unnecessarily coupled to whichever plugin produced a value.
 
 Backstage usefully separates a common entity envelope (`apiVersion`, `kind`, and common metadata such
 as `name`, optional `namespace`, UID, and labels) from kind-specific `spec` and `status`. Sidereal
-borrows that separation, not Backstage's name/namespace identity semantics. See the
+borrows the envelope/type-specific-data separation, not every field: facets are its single extension
+mechanism in M0, so it does not also add labels. See the
 [Backstage descriptor format](https://backstage.io/docs/features/software-catalog/descriptor-format/).
 
 ## Common Asset envelope
@@ -31,35 +31,51 @@ Every Asset has a small core-owned envelope:
 | `id` | Stable opaque Asset identity. Names, paths, Sources, and external IDs never determine it. |
 | `kind` | One normalized discriminator from a domain pack vocabulary, such as `astro.light`. |
 | `name` | Mutable display name. It is not required to be unique and is not the filesystem path. |
-| `labels` | Mutable namespaced string key/value map for intent and coarse classification. |
 
 `namespace` is deliberately omitted until Sidereal has a concrete ownership or tenancy boundary that
-Sources, Collections, and labels cannot express. Adding it later does not change opaque Asset IDs.
-Sidereal also does not need a descriptor `apiVersion`: database migrations and the independently
-versioned plugin/facet contracts own schema evolution.
+Sources and Collections cannot express. Adding it later does not change opaque Asset IDs. Sidereal
+also does not need a descriptor `apiVersion`: database migrations and independently versioned plugin
+and facet contracts own schema evolution.
 
 Paths are mutable storage state. External IDs are scoped Source relationships. Neither belongs in the
 identity envelope.
 
-## Labels versus facets
+## Facets are the extension metadata
 
-| Dimension | Label | Facet |
+Every additional selectable value is a namespaced facet. A facet schema declares:
+
+- scalar or structured type, units, nullability, and validation constraints;
+- scope: Asset, AssetVersion, or immutable Collection snapshot;
+- mutability and invalidation rules;
+- schema owner and producer grant requirements;
+- index and query hints;
+- schema version and compatible migration rules.
+
+Facets may express mutable intent as well as observed or derived facts. The schema keeps those uses
+precise:
+
+| Example | Scope | Semantics |
 |---|---|---|
-| Purpose | Intent, opt-in/out, and coarse grouping | Observed, extracted, or derived domain facts |
-| Type | String key and string value | Schema-defined scalar or structure with units and constraints |
-| Typical scope | Stable Asset | Declared by schema; usually AssetVersion or Collection snapshot |
-| Ownership | Namespaced key prefix plus write grant | Exclusive schema owner plus producer write grants |
-| Provenance | Origin and last mutation retained | Producer, version, Operation Run, schema version, and observation time |
-| Queries | Exists, equals, in/not-in | Typed equality, range, structure-aware predicates |
-| Examples | `processing.sidereal.io/mode=auto` | `astro.fits.exptime=300 s`, `astro.solve.ra=10.6847°` |
+| `core.processing.mode=auto` | Asset, mutable | User or Source-configured processing intent |
+| `astro.fits.exptime=300 s` | AssetVersion, observed | Typed value extracted from exact bytes |
+| `astro.solve.ra=10.6847°` | AssetVersion, derived | Typed result produced by a solver |
+| `astro.session.integration=12 h` | Collection snapshot, derived | Aggregate over fixed membership |
 
-Facts have one canonical home. The system must not mirror a value into a label merely to make it
-selectable because Selectors can query typed facets directly. Raw evidence and a normalized decision
-are different facts: `astro.fits.image_type=LIGHT` may be retained as an observed facet while the
-classifier sets the envelope `kind=astro.light`.
+Raw evidence and a normalized decision remain different facts: `astro.fits.image_type=LIGHT` may be
+retained as an observed facet while the classifier sets the envelope `kind=astro.light`.
 
-Label cardinality should remain low enough for indexing and UI comprehension. File paths, content
-hashes, timestamps, coordinates, and arbitrary extracted headers are facets or core state, not labels.
+## Selector portability
+
+Selectors reference facet schema names, not producer plugins. To keep built-in behavior portable:
+
+- schemas used by built-in policies are owned by core or the relevant domain pack;
+- alternative plugins receive grants to produce the same canonical schemas;
+- plugin-owned schemas remain selectable for deliberate plugin-specific policies, but the UI exposes
+  the dependency and a missing schema makes the policy explicitly `blocked`;
+- values are never copied into a second metadata mechanism merely to make them selectable.
+
+This means an Astrometry.net and an ASTAP Operator can both satisfy a policy selecting or requiring
+`astro.solve.*`; the policy does not depend on either implementation.
 
 ## Write authority
 
@@ -68,8 +84,8 @@ their capability-limited `AssetContext`:
 
 - A domain pack owns its `kind` vocabulary. Sources may set a configured default or propose a
   detected kind within their grants.
-- Users and Source configuration may write labels. Plugins request write access to explicit label
-  key prefixes; origin is retained for audit and selector explanations.
+- Users and Source configuration may set mutable facets through the same schema validation and audit
+  path as plugins.
 - One pack owns each facet schema. Compatible producer plugins request grants to write values that
   conform to it.
 
@@ -102,23 +118,16 @@ This preserves canonical queries while allowing competing implementations.
 
 ## Recommendation
 
-Choose **Option C** together with the envelope and label/facet boundary above.
-
-The facet registry stores, per schema:
-
-- fully qualified name, scope, and schema owner;
-- scalar or structured type, units, nullability, and validation constraints;
-- index and query hints;
-- schema version and compatible migration rules;
-- producer grant requirements.
+Use the small envelope plus facets only, and choose **Option C** for facet ownership.
 
 A producer manifest requests write access to named facets or an explicitly grantable namespace
 pattern. Core approves the request during installation, validates every emitted value, and stores:
 
-- producer plugin and version;
-- producing Operation Run;
+- producer or configuring actor;
+- producer plugin and version where applicable;
+- producing Operation Run where applicable;
 - schema version;
-- observation time where applicable.
+- observation or mutation time.
 
 Two plugins cannot declare the same schema. Multiple authorised plugins may write values under that
 schema. When concurrent or contradictory values are possible, core preserves observations rather

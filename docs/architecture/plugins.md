@@ -50,8 +50,8 @@ Source and a Sink.
 Given its configuration, a Source discovers files and hands them to core for ingestion. It reports
 what it found; it does not write to the asset store itself.
 
-A Source configuration may assign a default `kind` and fixed namespaced labels to each ingested
-asset. A Source may propose detected labels and facets only within its installation grants. These are
+A Source configuration may assign a default `kind` and configured facet values to each ingested
+asset. A Source may propose detected facets only within its installation grants. These are
 classification inputs to Core's Selectors; a Source never selects or invokes downstream Operators.
 Mixed-kind Sources may leave the default `kind` unset and classify individual assets from their
 ingested metadata.
@@ -104,7 +104,6 @@ A plugin ships a manifest declaring:
 | `capabilities` | Which of `source` / `operator` / `sink` it implements, and the named Operators it exposes. |
 | `execution` | `built_in`, `script`, or `external`, plus the entry point required by that profile. |
 | `config_schema` | JSON Schema for configuration. Core renders admin UI and validates before delivery. |
-| `labels` | Namespaced label prefixes the plugin requests permission to propose or mutate. |
 | `facets` | Facet schemas declared and/or write grants requested, with types and index hints. |
 | `processing` | `accepts` Selector, goal outcomes provided, prerequisite predicates, and invalidations declared by each Operator. |
 | `capability_grants` | Requested host functions, allowlisted network destinations, byte-access mode, and secret names. Installation requires explicit approval. |
@@ -128,7 +127,7 @@ The division of responsibility matters more than any individual signature.
 - **Asset identity, the metadata envelope, immutable versions, and lineage.** Plugins reference
   handles and propose authorised envelope mutations, inputs, and outputs; core validates and mints
   records and edges.
-- **Labels and Selectors** — storage, indexing, deterministic evaluation, provenance, change events,
+- **Facets and Selectors** — storage, indexing, deterministic evaluation, provenance, change events,
   and human-readable match explanations.
 - **The job queue** — scheduling, concurrency, durable events, retries, cancellation, and progress
   fan-out.
@@ -137,8 +136,8 @@ The division of responsibility matters more than any individual signature.
 - **Config and capability validation** — against the manifest and installation grants.
 - **Secrets.** A plugin receives only declared, run-scoped credentials.
 
-**Plugins own:** domain logic, external protocols, declared vocabulary, and the label or facet values
-they are authorised to propose. Core owns validation and persistence.
+**Plugins own:** domain logic, external protocols, declared vocabulary, and the facet values they are
+authorised to propose. Core owns validation and persistence.
 
 ## AssetContext and execution model
 
@@ -230,7 +229,6 @@ Published per capability version. It asserts, at minimum:
 - Failure is reported as failure rather than silent success.
 - No direct writes to the asset store.
 - Only schema-compatible, authorised facets are emitted, with producer provenance.
-- Only authorised label namespaces are mutated, with origin retained.
 - Inputs are not mutated behind core's back.
 - Declared prerequisites, outcomes, and invalidations match observed results.
 - `accepts` Selectors are deterministic and every selected or rejected subject can be explained.
