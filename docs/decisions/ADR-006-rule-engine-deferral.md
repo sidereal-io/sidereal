@@ -102,7 +102,9 @@ The following semantics are part of the decision:
    composition plus existence, equality, set, and typed comparison predicates; it cannot invoke
    arbitrary plugin code.
 2. **Labels are selection metadata.** Labels are namespaced string key/value pairs, distinct from
-   typed, schema-owned facets. Label writes retain origin and are subject to grants.
+   typed, schema-owned facets. Labels express mutable Asset-level intent or coarse classification;
+   facets express typed facts with declared scope and provenance. Label writes retain origin and are
+   subject to grants. [ADR-008](ADR-008-facet-schema-and-write-authority.md) owns the full boundary.
 3. **Sources classify; they do not orchestrate.** Source configuration may assign an initial `kind`
    and fixed labels. A Source may propose detected labels or facets within its grants, but never
    selects or invokes Operators. Mixed-kind Sources may classify per asset rather than declaring one

@@ -1,29 +1,90 @@
-# 008: Facet Schema and Write Authority
+# 008: Metadata Envelope, Labels, Facets, and Write Authority
 
 **Status:** Proposed
-**Date:** 2026-07-30
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Facets are the
-cross-plugin typed-metadata contract used by search, calibration matching, and shared Selectors.
+**Date:** 2026-08-01
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Selectors need a
+small common classification model, while domain packs and alternative plugins need an interoperable
+typed-metadata contract.
 
 ## Problem
 
-The architecture originally made namespace ownership exclusive and allowed plugins to emit only their
-own facets. That prevents interoperable alternative implementations: if the astro pack owns
-`astro.solve.ra`, an ASTAP Operator cannot publish canonical solve results without either claiming the
-same schema or inventing an incompatible namespace.
+Sidereal needs both simple selection metadata and rich astrophotography facts. Treating everything as
+an untyped label loses units, validation, range queries, revision scope, and producer provenance.
+Treating everything as a schema-owned facet makes ordinary user and Source classification expensive
+and forces operational intent into domain schemas.
 
-Schema definition and write authority are different concerns:
+The architecture therefore needs a canonical boundary: which fields every Asset has, what belongs in
+a label, what belongs in a facet, where each value is scoped, and who may write it. Without that
+boundary, the same fact will drift into several representations and Selectors will become ambiguous.
 
-- **Schema ownership** decides the canonical name, type, constraints, indexing, and evolution.
-- **Write authority** decides which producer implementations may emit values conforming to it.
+Backstage usefully separates a common entity envelope (`apiVersion`, `kind`, and common metadata such
+as `name`, optional `namespace`, UID, and labels) from kind-specific `spec` and `status`. Sidereal
+borrows that separation, not Backstage's name/namespace identity semantics. See the
+[Backstage descriptor format](https://backstage.io/docs/features/software-catalog/descriptor-format/).
 
-## Options
+## Common Asset envelope
+
+Every Asset has a small core-owned envelope:
+
+| Field | Scope and semantics |
+|---|---|
+| `id` | Stable opaque Asset identity. Names, paths, Sources, and external IDs never determine it. |
+| `kind` | One normalized discriminator from a domain pack vocabulary, such as `astro.light`. |
+| `name` | Mutable display name. It is not required to be unique and is not the filesystem path. |
+| `labels` | Mutable namespaced string key/value map for intent and coarse classification. |
+
+`namespace` is deliberately omitted until Sidereal has a concrete ownership or tenancy boundary that
+Sources, Collections, and labels cannot express. Adding it later does not change opaque Asset IDs.
+Sidereal also does not need a descriptor `apiVersion`: database migrations and the independently
+versioned plugin/facet contracts own schema evolution.
+
+Paths are mutable storage state. External IDs are scoped Source relationships. Neither belongs in the
+identity envelope.
+
+## Labels versus facets
+
+| Dimension | Label | Facet |
+|---|---|---|
+| Purpose | Intent, opt-in/out, and coarse grouping | Observed, extracted, or derived domain facts |
+| Type | String key and string value | Schema-defined scalar or structure with units and constraints |
+| Typical scope | Stable Asset | Declared by schema; usually AssetVersion or Collection snapshot |
+| Ownership | Namespaced key prefix plus write grant | Exclusive schema owner plus producer write grants |
+| Provenance | Origin and last mutation retained | Producer, version, Operation Run, schema version, and observation time |
+| Queries | Exists, equals, in/not-in | Typed equality, range, structure-aware predicates |
+| Examples | `processing.sidereal.io/mode=auto` | `astro.fits.exptime=300 s`, `astro.solve.ra=10.6847°` |
+
+Facts have one canonical home. The system must not mirror a value into a label merely to make it
+selectable because Selectors can query typed facets directly. Raw evidence and a normalized decision
+are different facts: `astro.fits.image_type=LIGHT` may be retained as an observed facet while the
+classifier sets the envelope `kind=astro.light`.
+
+Label cardinality should remain low enough for indexing and UI comprehension. File paths, content
+hashes, timestamps, coordinates, and arbitrary extracted headers are facets or core state, not labels.
+
+## Write authority
+
+Core is the only component that persists envelope or facet changes. Plugins propose changes through
+their capability-limited `AssetContext`:
+
+- A domain pack owns its `kind` vocabulary. Sources may set a configured default or propose a
+  detected kind within their grants.
+- Users and Source configuration may write labels. Plugins request write access to explicit label
+  key prefixes; origin is retained for audit and selector explanations.
+- One pack owns each facet schema. Compatible producer plugins request grants to write values that
+  conform to it.
+
+Schema definition and facet write authority are separate concerns. If the astro pack owns
+`astro.solve.ra`, an ASTAP Operator must be able to publish canonical solve results without either
+claiming the schema or inventing an incompatible namespace.
+
+## Facet schema options
 
 ### Option A: Producer-owned namespaces
 
 Every producer defines its own values, such as `astrometry.ra` and `astap.ra`.
 
-This avoids grants but forces every query and UI to understand provider-specific alternatives.
+This avoids grants but forces every Selector, query, and UI to understand provider-specific
+alternatives.
 
 ### Option B: Shared declaration by convention
 
@@ -41,11 +102,11 @@ This preserves canonical queries while allowing competing implementations.
 
 ## Recommendation
 
-Choose **Option C**.
+Choose **Option C** together with the envelope and label/facet boundary above.
 
-The registry stores, per facet:
+The facet registry stores, per schema:
 
-- fully qualified name and schema owner;
+- fully qualified name, scope, and schema owner;
 - scalar or structured type, units, nullability, and validation constraints;
 - index and query hints;
 - schema version and compatible migration rules;
