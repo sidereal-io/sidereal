@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/design`) · **Last updated:** 2026-08-04
+**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/ready`) · **Last updated:** 2026-08-04
 
 > **Why this lives in the repo.** The [Feature & Bug Workflow](../../CLAUDE.md) says designs live in the
 > issue body, not the repo tree. That rule is right for features — a feature design is scaffolding
@@ -9,8 +9,9 @@
 > Issue #213 is the *proposal*; this is the *reference*. Keep them in sync while #213 is open; after
 > it closes, this file is the surviving record.
 >
-> **The architecture as a whole is not accepted yet.** #213 remains in `status/design`; individual
-> ADRs may record decisions approved during review.
+> **#213 has passed its design approval gate and is `status/ready`; the individual ADRs have not.**
+> Seven of the eight still carry an empty Decision section and are resolved during M0. Treat any
+> statement marked ◇ or listed under [Open seams](#open-seams) as a leaning, not a commitment.
 
 ## Contents
 
@@ -474,8 +475,9 @@ before import. After cutover, rollback restores that backup. The importer remain
 
 ## What this document is not
 
-- **Not a plan.** Milestones become sub-issues under #213; the plan lives there.
-- **Not accepted.** #213 has not passed its approval gate. Until it does, this describes a proposal.
+- **Not a plan.** Milestones are sub-issues under #213; the plan lives there.
+- **Not fully accepted.** #213 is `status/ready`, but seven of the eight ADRs are still Proposed.
+  Until each Decision section is filled in, the seams they cover describe a leaning.
 - **Not a v0.10.x reference.** [Where we are](#where-we-are) is a summary; the authoritative record of
   current behaviour is the [analysis package](https://github.com/sidereal-io/sidereal-analysis).
 
