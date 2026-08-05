@@ -81,7 +81,8 @@ file can be re-associated by hash and additional safety checks.
 
 Identity does not prescribe layout. Originals may appear in a user-meaningful tree by target, session,
 and date, while derived renditions and superseded versions may live in a protected internal subtree.
-ADR-003 must choose the exact tree and cross-filesystem move behavior before M1, with these invariants:
+The exact tree and cross-filesystem move behavior remain open within this ADR and must be settled
+before M1, with these invariants:
 
 - database and filesystem updates are recoverable after interruption;
 - a user-visible move never rewrites content;

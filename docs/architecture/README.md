@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/design`) · **Last updated:** 2026-07-31
+**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/design`) · **Last updated:** 2026-08-04
 
 > **Why this lives in the repo.** The [Feature & Bug Workflow](../../CLAUDE.md) says designs live in the
 > issue body, not the repo tree. That rule is right for features — a feature design is scaffolding
@@ -350,17 +350,18 @@ force the choice. ADR-004 picks on other grounds.
 
 ## Open seams
 
-Points where a reader would otherwise assume something is settled. Each has a stub ADR; all are M0
-work.
+Points where a reader would otherwise assume something is settled. Each has an ADR; all are M0 work.
+ADR-006 was accepted during review; the rest record a leaning and fill in their Decision section when
+approved.
 
-| # | Seam | Affects | Leaning |
+| # | Seam | Affects | Status / leaning |
 |---|---|---|---|
 | [ADR-001](../decisions/ADR-001-plugin-boundary.md) | **Plugin contract and execution profiles** — built-in Rust · embedded Rhai · external provider | Installation, capability isolation, performance, non-Rust authorship | Capability-oriented hybrid |
 | [ADR-002](../decisions/ADR-002-core-domain-pack-split.md) | **Core / domain-pack seam** — where exactly it falls, and whether packs are compiled in or loaded | How much of the astro feature set is separable work | None stated |
 | [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | Stable Asset plus immutable versions |
 | [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | Keep SQLite-default / Postgres-optional |
 | [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | None stated |
-| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing, selectors, and policy deferral** — match subjects and reconcile desired outcomes; defer user-authored policy rules | Applicability, Collection membership, and whether M2 needs workflows or convergent goal processing | Shared selectors and reconciliation in M2; policy editor in M7 |
+| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing, selectors, and policy deferral** — match subjects and reconcile desired outcomes; defer user-authored policy rules | Applicability, Collection membership, and whether M2 needs workflows or convergent goal processing | **Accepted** — shared selectors and reconciliation in M2; policy editor in M7+ |
 | [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | Built-in single-user auth and explicit grants |
 | [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Metadata envelope, facets, and write authority** | Canonical placement, selector portability, cross-plugin interoperability, and schema evolution | Small core envelope plus typed, scoped facets |
 
