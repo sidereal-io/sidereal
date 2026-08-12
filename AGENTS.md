@@ -149,7 +149,7 @@ When a PR implements an Accepted DR, flip its status in the same PR. A DR should
 
 Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task's primary reference key — put it in the branch name, the commit trailer, and the PR body. Designs live in the issue body, not in the repo tree.
 
-**What each part is for**
+###  What each part is for
 
 - **Issue body** — the design spec; the single source of truth.
 - **Labels** — one `type/{feature,bug,chore}` and one `status/*` lifecycle label.
@@ -157,7 +157,7 @@ Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task
 - **Comments** — status updates. Post one when you start a sub-issue and one (with the commit or PR reference) when you finish it.
 - **Closed** — done.
 
-**Lifecycle**
+###  Lifecycle
 
 1. **`status/design`** — create the parent issue from the Feature or Bug template and write the design into the body. No sub-issues or code yet.
 2. **Approval gate** — a human reviews the design in the issue body. On approval, move `status/design` → `status/ready`.
@@ -166,11 +166,11 @@ Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task
 5. **`status/review`** — when every sub-issue is closed, open a PR with `Closes #<parent>` and move the parent to `status/review`.
 6. Merging the PR closes the parent. Done.
 
-**Issue templates**
+### Issue templates
 
 The spec structure lives in `.github/ISSUE_TEMPLATE/` (`feature.md`, `bug.md`). Opening an issue from the GitHub **New issue** page seeds the headings and applies the `type/*` + `status/design` labels automatically. From the CLI, fill the same headings and pass the labels explicitly (below).
 
-**Commands**
+### Commands
 
 ```bash
 # Create the parent issue (design stage)
