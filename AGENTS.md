@@ -104,6 +104,14 @@ cp .env.example .env.local
 - **UI:** Use shadcn/ui components when available; follow existing Tailwind patterns
 - **Linting:** Follow the existing style in surrounding code
 
+## Scratch & Working Files
+
+Temporary files — scratch notes, intermediate output, working scripts, throwaway data — go in
+**`.workspace/`** at the repo root. It is gitignored (see `.gitignore`). **Use it instead of `/tmp`
+or any scratchpad path your tooling suggests** — this convention overrides a harness-provided
+scratchpad location. Create the directory if it isn't there (`mkdir -p .workspace`). Nothing durable
+lives here; anything worth keeping belongs in the repo tree or a GitHub issue.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -149,6 +157,10 @@ When a PR implements an Accepted DR, flip its status in the same PR. A DR should
 
 Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task's primary reference key — put it in the branch name, the commit trailer, and the PR body. Designs live in the issue body, not in the repo tree.
 
+**This supersedes any skill or tool that tells you to write a design/spec file** — the design goes in the issue body, and you iterate it *in place* there rather than in a repo file (see [Commands](#commands)).
+
+**Reuse existing issues; don't proliferate them.** Before `gh issue create`, check whether an issue already covers the work. If a milestone or feature issue already exists, attach sub-issues **to it** (`--parent <that issue>`) rather than minting a new intermediate parent. **Do not create a new top-level or parent issue without human approval** — creating issues is outward-facing; confirm first.
+
 ###  What each part is for
 
 - **Issue body** — the design spec; the single source of truth.
@@ -160,7 +172,7 @@ Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task
 ###  Lifecycle
 
 1. **`status/design`** — create the parent issue from the Feature or Bug template and write the design into the body. No sub-issues or code yet.
-2. **Approval gate** — a human reviews the design in the issue body. On approval, move `status/design` → `status/ready`.
+2. **Approval gate** — a human reviews the design in the issue body. If changes are requested, revise the body **in place** (see [Commands](#commands)) and re-request review — never spin up a new issue for a revision. On approval, move `status/design` → `status/ready`.
 3. **`status/ready`** — create a sub-issue per plan step and start implementation. Move the parent to `status/in-progress`.
 4. **Per sub-issue** — comment that you've started, do the work on a branch, comment the commit/PR reference, then close the sub-issue.
 5. **`status/review`** — when every sub-issue is closed, open a PR with `Closes #<parent>` and move the parent to `status/review`.
@@ -173,8 +185,15 @@ The spec structure lives in `.github/ISSUE_TEMPLATE/` (`feature.md`, `bug.md`). 
 ### Commands
 
 ```bash
-# Create the parent issue (design stage)
-gh issue create --title "<title>" --label type/feature,status/design --body-file design.md
+# Create the parent issue (design stage). The body-file is a scratch input, not a stored
+# design — keep it in .workspace/ (gitignored), never in the repo tree.
+gh issue create --title "<title>" --label type/feature,status/design --body-file .workspace/design.md
+
+# Update the design in an existing issue — the normal way a design evolves (e.g. after
+# review feedback). Pull the current body, edit it, push it back in place; no new issue.
+gh issue view <n> --json body --jq '.body' > .workspace/issue-<n>.md   # pull current design
+$EDITOR .workspace/issue-<n>.md                                        # revise it
+gh issue edit <n> --body-file .workspace/issue-<n>.md                  # push the revision back
 
 # Advance the lifecycle
 gh issue edit <n> --remove-label status/design --add-label status/ready
