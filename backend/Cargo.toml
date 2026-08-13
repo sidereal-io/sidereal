@@ -20,8 +20,15 @@ edition = "2021"
 license = "MIT"
 rust-version = "1.85"
 
-# Shared internal dependencies, referenced by member crates via `{ workspace = true }`.
+# Shared dependencies, referenced by member crates via `{ workspace = true }`.
 [workspace.dependencies]
+# Internal crates.
 sidereal-core = { path = "crates/core" }
 sidereal-plugin-abi = { path = "crates/plugin-abi" }
 sidereal-pack-astro = { path = "crates/packs/astro" }
+
+# External crates.
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde_json = "1"
+tower = { version = "0.5", features = ["util"] }
