@@ -15,7 +15,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 # Unprivileged user.
-RUN useradd --system --uid 10001 --user-group --no-create-home app
+RUN useradd --uid 10001 --user-group --no-create-home app
 COPY --from=builder /build/target/release/sidereal-server /usr/local/bin/sidereal-server
 USER app
 ENV PORT=5000
