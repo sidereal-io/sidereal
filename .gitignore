@@ -11,6 +11,10 @@ build/
 .next/
 *.tsbuildinfo
 
+# Rust build outputs
+backend/target/
+target/
+
 # Environment files (keep .env.example)
 .env
 .env.local

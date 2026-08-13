@@ -1,0 +1,9 @@
+[package]
+name = "sidereal-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sidereal-plugin-abi = { workspace = true }

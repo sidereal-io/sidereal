@@ -1,0 +1,12 @@
+[package]
+name = "sidereal-pack-astro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# The astro pack codes against the public contract ONLY. It must NOT depend on
+# `sidereal-core` — that dependency direction is forbidden by ADR-002 and
+# enforced by backend/scripts/check-arch.sh.
+[dependencies]
+sidereal-plugin-abi = { workspace = true }
