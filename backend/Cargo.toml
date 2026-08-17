@@ -1,0 +1,27 @@
+# Sidereal v2 backend — cargo workspace.
+# Crate seams mirror the architecture (see docs/architecture/README.md and ADR-002):
+#   plugin-abi  — public contracts a third-party pack would also code against
+#   core        — domain-agnostic engine, built on plugin-abi
+#   packs/astro — first-party pack; depends on plugin-abi ONLY, never core internals
+#                 (enforced by scripts/check-arch.sh)
+#   server      — thin axum binary that wires core + packs
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/plugin-abi",
+    "crates/server",
+    "crates/packs/astro",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.85"
+
+# Shared internal dependencies, referenced by member crates via `{ workspace = true }`.
+[workspace.dependencies]
+sidereal-core = { path = "crates/core" }
+sidereal-plugin-abi = { path = "crates/plugin-abi" }
+sidereal-pack-astro = { path = "crates/packs/astro" }
