@@ -1,6 +1,6 @@
 # 002: Core / Domain-Pack Seam
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-29
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The [architecture](../architecture/README.md#core-and-domain-packs) commits to a domain-agnostic core with astrophotography as the first domain pack. This ADR fixes where the seam actually falls and how packs are delivered.
 
@@ -73,4 +73,37 @@ Specific calls to make explicit:
 
 ## Decision
 
-[Filled in after review.]
+The concrete crate skeleton (#228–#233) makes this seam physical, so ADR-002 is
+decided now rather than deferred. All four calls below are taken in the
+reversible-safe direction — compiled-in → loadable, pack-owned → core, and
+API-only → UI-ABI are each additive later, while the reverse would be a
+migration.
+
+**1. Seam = Option A.** The first-party astro pack is compiled into v2.0 as the
+`packs/astro` crate. It codes against the public `plugin-abi` contract — the same
+Source/Operator/Sink traits and registry a third-party pack would use — and never
+against `core` internals; that direction is enforced structurally (astro depends on
+`plugin-abi` only) and by a dependency-direction lint. The pack uses ADR-001's
+built-in Rust execution profile and implements the same semantic contracts and
+conformance fixtures a third party would. Dynamically replacing the whole domain
+pack is **deferred, not designed out**: the contract boundary exists today; only the
+dynamic loader is absent.
+
+**2. Session = core concept, pack vocabulary.** Core knows the generic notion of a
+time-bounded, subject-bearing Collection. The astro pack supplies the "session"
+vocabulary and its facet values. Core does not hardcode astronomy, and the pack does
+not reinvent Collections.
+
+**3. Equipment = pack-owned.** Every equipment field is astro-shaped, so equipment
+lives entirely in the astro pack and core stays domain-free. Promoting a concept to
+core later is cheap and additive; pushing astro fields into core now would be a
+migration to undo.
+
+**4. Frontend = API + descriptive facet schemas only.** Packs contribute backend
+behaviour and facet schemas carrying render metadata (type, unit, label,
+filterability, render hint). The single TypeScript frontend renders facets
+generically; first-party astro views (sky map, visibility) live in the shared React
+app. There is **no dynamic frontend plugin ABI in v2.0**; dynamic UI contribution is
+deferred to M7+. This keeps M5 an independently-moving React app and is consistent
+with ADR-001's caution against a published dynamic ABI. Adding a UI-contribution
+mechanism later is purely additive.
