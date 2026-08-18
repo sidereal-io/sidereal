@@ -352,13 +352,13 @@ force the choice. ADR-004 picks on other grounds.
 ## Open seams
 
 Points where a reader would otherwise assume something is settled. Each has an ADR; all are M0 work.
-ADR-006 was accepted during review; the rest record a leaning and fill in their Decision section when
+ADR-002 and ADR-006 are accepted; the rest record a leaning and fill in their Decision section when
 approved.
 
 | # | Seam | Affects | Status / leaning |
 |---|---|---|---|
 | [ADR-001](../decisions/ADR-001-plugin-boundary.md) | **Plugin contract and execution profiles** — built-in Rust · embedded Rhai · external provider | Installation, capability isolation, performance, non-Rust authorship | Capability-oriented hybrid |
-| [ADR-002](../decisions/ADR-002-core-domain-pack-split.md) | **Core / domain-pack seam** — where exactly it falls, and whether packs are compiled in or loaded | How much of the astro feature set is separable work | None stated |
+| [ADR-002](../decisions/ADR-002-core-domain-pack-split.md) | **Core / domain-pack seam** — where exactly it falls, and whether packs are compiled in or loaded | How much of the astro feature set is separable work | **Accepted** — astro compiled in as `packs/astro` coding against `plugin-abi` (Option A; dynamic whole-pack swap deferred); session a core concept with pack vocabulary; equipment pack-owned; frontend API + facet schemas only (no dynamic frontend ABI in v2.0) |
 | [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | Stable Asset plus immutable versions |
 | [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | Keep SQLite-default / Postgres-optional |
 | [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | None stated |
@@ -476,7 +476,7 @@ before import. After cutover, rollback restores that backup. The importer remain
 ## What this document is not
 
 - **Not a plan.** Milestones are sub-issues under #213; the plan lives there.
-- **Not fully accepted.** #213 is `status/ready`, but seven of the eight ADRs are still Proposed.
+- **Not fully accepted.** #213 is `status/ready`, but six of the eight ADRs are still Proposed.
   Until each Decision section is filled in, the seams they cover describe a leaning.
 - **Not a v0.10.x reference.** [Where we are](#where-we-are) is a summary; the authoritative record of
   current behaviour is the [analysis package](https://github.com/sidereal-io/sidereal-analysis).
