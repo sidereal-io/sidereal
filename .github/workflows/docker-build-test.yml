@@ -51,7 +51,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Lint Dockerfile
-        uses: hadolint/hadolint-action@v3.3.0
+        uses: hadolint/hadolint-action@v3.4.0
         with:
           dockerfile: Dockerfile
           ignore: DL3008,DL3009,DL3018  # DL3018: Pin versions in Alpine (not always practical)
