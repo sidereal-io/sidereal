@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The outcome constrains the [Lineage](../architecture/README.md#lineage) model and must be decided before M1 builds the core spine.
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The outcome constrains the [Lineage](../architecture/README.md#core-concepts) model and must be decided before M1 builds the core spine.
 
 ## Problem
 
@@ -117,37 +117,21 @@ this Decision is filled in:
 
 ## Decision
 
-Accepted 2026-08-18 (M0 of RFC #213). Adopt **Option C — a stable Asset plus immutable
-AssetVersion** — with the identity, revision, reconciliation, and layout rules in the Recommendation
-above. Option A (mutable surrogate) is rejected because it destroys byte history and cannot say which
-pre/post-operation bytes a self-edge used; Option B (content-hash identity) is rejected because it
-makes logical identity unstable and forces collections and external mappings to chase replacements.
+Accepted 2026-08-18 (M0 of RFC #213). Adopt **Option C — a stable Asset plus immutable AssetVersion** —
+with the identity, revision, reconciliation, and layout rules in the Recommendation, and the #217 /
+DataHub refinements in the Note, both now part of this Decision. Option A (mutable surrogate) is
+rejected because it destroys byte history and cannot say which pre/post-operation bytes a self-edge
+used; Option B (content-hash identity) is rejected because it makes logical identity unstable and forces
+collections and external mappings to chase replacements.
 
-The identity model is settled:
-
-- `Asset.id` is a stable opaque surrogate, independent of path and content.
-- `AssetVersion.id` is an opaque identifier with a mandatory content hash (unique/indexed for
-  dedup and integrity, but not the user-facing key), byte size, format, and creation provenance.
-- Lineage edges and Operation Run inputs/outputs reference exact **AssetVersions**, not Assets.
-- Rename/move is a path event and does **not** create a version; any byte change creates a new
-  immutable version; new scientific products (thumbnails, masters, stacks, exports) are normally new
-  Assets. Core — not plugins — mints identities, hashes bytes, advances current-version pointers, and
-  writes lineage. Retention is lineage-aware: anything referenced by lineage, a run, a hold, or
-  migration audit cannot be GC'd.
-
-**Folding in the #217 / DataHub comparison** (the note above is now part of this Decision):
+Settled specifics beyond the Recommendation:
 
 - The "current" selection is a separate `Asset.current_version_id` pointer, **not** a moving `v0`
-  latest sentinel; `AssetVersion.id` is immutable so a lineage edge always denotes a fixed byte-state.
-  `isLatest` is **computed**, never a stored per-version boolean.
-- Versions carry navigation aids that are **metadata, not identity**: a dense per-Asset ordinal
-  `version_seq` plus optional curated `label` / `aliases` / `note`. Byte revisions have a canonical
-  temporal order, so no ordering-scheme abstraction is introduced.
+  sentinel; `isLatest` is **computed**, never a stored per-version boolean.
+- Navigation aids that are **metadata, not identity**: a dense per-Asset `version_seq` ordinal plus
+  optional curated `label` / `aliases` / `note`.
 - Advancing the current pointer uses **optimistic concurrency** — compare-and-swap guarded by an
-  `Asset.revision` counter — adopting DataHub's lost-update discipline.
+  `Asset.revision` counter.
 
-**Still open within this ADR, to settle before M1 (not blocking acceptance):** the exact on-disk tree
-shape and cross-filesystem move behavior, bound by the invariants listed under *Storage layout*
-(recoverable DB+FS updates, user-visible moves never rewrite content, internal historical versions
-never surface as duplicate current assets, path-traversal/symlink-escape rejected, every stored file
-reconcilable to an AssetVersion + hash).
+**Still open, to settle before M1 (not blocking acceptance):** the exact on-disk tree shape and
+cross-filesystem move behavior, bound by the *Storage layout* invariants above.

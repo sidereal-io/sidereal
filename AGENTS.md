@@ -140,9 +140,17 @@ See `.env.example` and `.env.worker.example` for the full list.
 
 ## Decision Records
 
-When you encounter a design decision with multiple valid approaches, suggest a decision record. They're most useful when a reasonable person could argue for a different approach.
+An ADR captures the **why** — the context, constraints, and trade-offs behind a decision. Code shows
+what was built; the ADR explains why it was built this way and what alternatives were rejected. Write to
+that purpose, not to log every change.
 
-New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`). Keep options concrete — include code snippets or config examples where they clarify trade-offs.
+**Write one at most for:** a framework, library, or major dependency; a data model or database schema;
+an authentication strategy; an API architecture (REST vs. GraphQL vs. tRPC); a build tool, hosting
+platform, or infrastructure choice; or anything that would be **expensive to reverse**. If none of those
+fit and a reasonable person wouldn't argue for a different approach, don't write one.
+
+New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`). Keep
+it concise and the options concrete — code or config snippets where they clarify a trade-off.
 
 ### Lifecycle
 
@@ -155,23 +163,14 @@ When a PR implements an Accepted DR, flip its status in the same PR. A DR should
 
 ### Open ADRs block design — STOP and decide first
 
-A **Proposed** ADR is a decision that has *not* been made. It is fine for an ADR to sit in Proposed
-indefinitely — until its subject matter actually comes up.
+A **Proposed** ADR is a decision that has *not* been made. Sitting in Proposed indefinitely is fine —
+until its subject matter comes up in a design.
 
-**Before designing any feature or sub-issue, check `docs/decisions/` for a Proposed ADR whose scope
-touches the design. If one exists, STOP.** Do not design around it, do not pick a plausible default,
-do not leave the choice implicit for later. **Work through the decision with the operator and get the
-ADR Accepted first**, then continue the design on top of the accepted decision.
-
-Concretely, when you start a design:
-
-1. Scan `docs/decisions/` and list every ADR still marked **Proposed**.
-2. For each, ask: *would this design have to assume an answer this ADR is meant to decide?* If yes,
-   the ADR is in scope.
-3. If any in-scope ADR is still Proposed, **halt the design**, surface it to the operator, and drive
-   it to Accepted (write the Decision, flip the status) **before** writing any design that depends on
-   it. An open-ended design that silently assumes an undecided ADR is the exact failure this rule
-   exists to prevent.
+**Before designing any feature or sub-issue, scan `docs/decisions/` for a Proposed ADR whose scope
+touches the design** — i.e. one the design would have to assume an answer to. If one exists, **STOP.**
+Don't design around it, pick a default, or leave the choice implicit. Work through it with the operator,
+get it Accepted (write the Decision, flip the status), *then* design on top. An open-ended design that
+silently assumes an undecided ADR is the exact failure this rule prevents.
 
 ## Feature & Bug Workflow
 

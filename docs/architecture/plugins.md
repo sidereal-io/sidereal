@@ -154,7 +154,7 @@ An Operator returns status, proposed core-managed mutations, zero or more new as
 declarations, external receipts, goal-satisfaction evidence, and log output. Core validates the
 complete result before committing core-managed effects.
 
-Every run is recorded as an [Operation Run](README.md#operation-run): Operator and version, addressed
+Every run is recorded as an [Operation Run](README.md#core-concepts): Operator and version, addressed
 Processing Goals, inputs and input versions, params, outputs, status, side-effect state, and logs.
 
 The execution profiles differ only in how requests and results cross the adapter. Built-in Rust uses
