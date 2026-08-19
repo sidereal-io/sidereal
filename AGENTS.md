@@ -153,6 +153,26 @@ New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-
 
 When a PR implements an Accepted DR, flip its status in the same PR. A DR should never linger in Proposed once the corresponding code ships.
 
+### Open ADRs block design — STOP and decide first
+
+A **Proposed** ADR is a decision that has *not* been made. It is fine for an ADR to sit in Proposed
+indefinitely — until its subject matter actually comes up.
+
+**Before designing any feature or sub-issue, check `docs/decisions/` for a Proposed ADR whose scope
+touches the design. If one exists, STOP.** Do not design around it, do not pick a plausible default,
+do not leave the choice implicit for later. **Work through the decision with the operator and get the
+ADR Accepted first**, then continue the design on top of the accepted decision.
+
+Concretely, when you start a design:
+
+1. Scan `docs/decisions/` and list every ADR still marked **Proposed**.
+2. For each, ask: *would this design have to assume an answer this ADR is meant to decide?* If yes,
+   the ADR is in scope.
+3. If any in-scope ADR is still Proposed, **halt the design**, surface it to the operator, and drive
+   it to Accepted (write the Decision, flip the status) **before** writing any design that depends on
+   it. An open-ended design that silently assumes an undecided ADR is the exact failure this rule
+   exists to prevent.
+
 ## Feature & Bug Workflow
 
 Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task's primary reference key — put it in the branch name, the commit trailer, and the PR body. Designs live in the issue body, not in the repo tree.
