@@ -1,6 +1,6 @@
 # 004: Database Engine and Schema Strategy
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-29
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The [facet mechanism](../architecture/README.md#the-mechanism-metadata-facets) imposes concrete requirements on the store; this ADR picks the engine and schema approach that satisfy them.
 
@@ -64,4 +64,39 @@ Also decide here:
 
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-18 (M0 of RFC #213). **Option C — PostgreSQL-only.**
+
+This **reverses both** the RFC's original leaning (Option B) and this ADR's own Recommendation (which
+argued for Option A). The reversal is deliberate. A single server-grade engine gives the strongest
+facet indexing (JSONB + GIN over the semi-structured facet values calibration-master matching depends
+on), the best recursive-CTE performance for lineage traversal, and real concurrency under bursty
+ingest. Committing to one dialect also eliminates the entire class of problems the analysis package
+flagged — unverified SQLite/Postgres parity (`Q1`), silent dialect divergence, a drifted migration
+snapshot chain, and doubled facet-indexing work where JSON1 and JSONB/GIN diverge most. Neither a
+dual-dialect matrix (B) nor a SQLite feature-set ceiling (A) is carried into v2.
+
+**Deployment trade-off, and its mitigation.** Option C's rejection ground was that it "forces every
+single-user self-hoster to run a database server, directly against the deployment story that makes
+Sidereal easy to adopt." We accept that cost and neutralize it at the packaging layer rather than the
+schema layer: v2 ships an **all-in-one Docker image** (Postgres provisioned and managed inside the
+container) and/or a **docker-compose bundle** that stands Postgres up alongside the app. The
+single-user install stays effectively one command, and the M6 cutover requirements — port 5000, volume
+mounts, PUID/PGID, healthcheck — are preserved, with the data volume now backing Postgres rather than a
+SQLite file. Backup documentation must cover the Postgres volume (and `pg_dump` guidance) in place of
+the old file copy.
+
+**Coupled calls settled here** (the ADR flagged these for the same decision):
+
+- **Facet storage:** facets live in **JSONB columns with GIN indexes**, not a key-value side table.
+  The JSON-column approach reads better and leans on dialect-specific features — which the ADR noted is
+  "only safe once the dialect question above is settled," and it now is.
+- **ORM / query layer:** **`sqlx`.** Facet queries are dynamic, which argues against compile-time
+  query builders (`diesel`, `SeaORM`); `sqlx` provides async Postgres access with runtime-composed SQL
+  and optional compile-time query checking where the query is static.
+- **Migrations:** **forward-only.** Downgrade is explicitly **unsupported** and guarded against (a
+  newer schema version refuses to start against an older binary), removing v0.10.x's undefined
+  downgrade behavior (`U2`). A single canonical migration chain replaces the two hand-maintained schema
+  files.
+
+**Existing Postgres and SQLite users** both reach v2 through the one-way v0.10.x importer (RFC / ADR-003
+reconciliation), not through in-place dialect migration.

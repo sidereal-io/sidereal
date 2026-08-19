@@ -1,6 +1,6 @@
 # 008: Metadata Envelope, Facets, and Write Authority
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-08-01
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Selectors need a
 portable metadata contract, while domain packs and alternative plugins need interoperable typed
@@ -137,6 +137,49 @@ Breaking schema changes require a new facet version or a declared migration. Rem
 does not delete stored values; it makes the schema unavailable for new writes until ownership is
 restored or migrated.
 
+## Open question: audit history for mutable facets (input from #217 / DataHub comparison)
+
+DataHub versions *every* aspect update immutably (v0 latest + a positive-number audit trail). Our facet
+values carry producer/version/time provenance but keep no value **history**: a new value for a mutable
+*intent* facet (e.g. `core.processing.mode`) overwrites the prior value. For observation facets this is
+fine (they are effectively write-once). For mutable intent facets, an audit trail ("was `auto`, set to
+`manual` by user X at T") may be worth keeping. This is **not** required before cutover and is out of
+scope for M1 (whose facets are write-once observations); flagged here so the Decision can state whether
+mutable-facet history is in or out, and if in, whether it reuses the immutable-version pattern.
+
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-18 (M0 of RFC #213). Adopt the **small core-owned envelope plus facets as the single
+extension mechanism**, and **Option C — exclusive schema owner with explicit producer grants** — for
+facet ownership. Option A (producer-owned namespaces) is rejected because it forces every Selector,
+query, and UI to understand provider-specific alternatives; Option B (shared declaration by
+convention) is rejected because it cannot establish a canonical definition under schema evolution.
+
+- **Envelope:** every Asset has `id` (stable opaque identity), `kind` (one normalized discriminator
+  from a domain-pack vocabulary, e.g. `astro.light`), and `name` (mutable, non-unique display name).
+  `namespace` and a descriptor `apiVersion` are deliberately omitted; paths and external IDs are
+  mutable/scoped state and stay out of identity.
+- **Facets** are the only extension metadata. A schema declares type/units/nullability/validation,
+  scope (Asset / AssetVersion / immutable Collection snapshot), mutability and invalidation, owner and
+  producer-grant requirements, index/query hints, and version/migration rules. Raw evidence and a
+  normalized decision stay distinct facts (`astro.fits.image_type=LIGHT` observed vs. envelope
+  `kind=astro.light`).
+- **Selector portability:** selectors reference schema names, not producer plugins. Built-in policies
+  use core- or pack-owned schemas; competing producers (e.g. Astrometry.net and ASTAP) receive grants
+  to write the same canonical `astro.solve.*`. Values are never copied into a second mechanism just to
+  be selectable.
+- **Write authority:** core is the only writer of envelope/facet state; plugins propose through a
+  capability-limited `AssetContext`. One pack owns each `kind` vocabulary and each facet schema; two
+  plugins cannot declare the same schema, but multiple authorized producers may write values under it,
+  retaining producer provenance. Core preserves observations rather than overwriting provenance;
+  domain policy selects the current value. Breaking changes require a new facet version or declared
+  migration; removing a schema owner makes it unavailable for new writes without deleting stored
+  values.
+
+**Resolving the #217 audit-history open question:** mutable-facet value **history is out of scope for
+v2.0 / M1.** M1's facets are write-once observations, and a mutable *intent* facet (e.g.
+`core.processing.mode`) overwrites in place, retaining only last-write provenance (actor, plugin,
+version, run, schema version, time) — not a value trail. A full immutable audit trail for mutable
+intent facets is deferred to **post-cutover**; if adopted then, it reuses the immutable-version
+pattern from [ADR-003](ADR-003-storage-layout-and-asset-identity.md) rather than inventing a second
+mechanism.

@@ -1,6 +1,6 @@
 # 007: Security and Plugin Trust Model
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-30
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). v2 adds filesystem mutation, plugin execution, external providers, and scoped secret delivery. The current unauthenticated/CORS-open deployment posture cannot be carried forward implicitly.
 
@@ -98,4 +98,37 @@ M1 cannot begin until:
 
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-18 (M0 of RFC #213). Adopt **Option B — built-in single-user authentication and
+explicit plugin grants** — as specified in the Recommendation. The trusted-network model (Option A) is
+rejected because file mutation and plugin management cannot be handed to any network caller; full
+multi-user RBAC (Option C) is deferred as an Immich-like sharing surface the architecture does not
+fund for v2.0.
+
+**Application boundary.** Initial setup creates or imports one administrator credential; there is no
+unauthenticated mutation mode. Browser access uses secure, HTTP-only, same-site sessions; state-changing
+HTTP requests carry a CSRF token. CORS is deny-by-default with exact-match configured origins, never a
+credentialed wildcard. WebSocket auth derives from the same session and rechecks expiry/revocation. A
+read-only public gallery, if added, is a separate explicitly-enabled surface with no admin API
+reachability. Reverse-proxy trusted-header auth may come later as an explicit mode with a configured
+proxy allowlist — never by accepting arbitrary identity headers.
+
+**Plugin trust and capabilities.** Built-in Rust is trusted first-party code under the release threat
+model. Script bundles and external providers are untrusted by default; installation displays and
+records requested capabilities (byte access, facet writes, network destinations, secret names,
+core-managed mutations). Grant changes require administrator confirmation and invalidate active plugin
+sessions. Plugins have no ambient environment, process, network, database, or asset-store access.
+External providers authenticate with a plugin-instance credential over TLS, mTLS, or a protected local
+transport, with identity pinned to the configured instance; callbacks carry the run ID and are rejected
+on any run/provider/grant mismatch.
+
+**Secrets and audit.** Secrets are encrypted at rest with deployment-managed key material and are never
+returned through read APIs after creation. A run receives only its declared secrets, scoped to the
+plugin instance, redacted from logs, errors, progress payloads, and history. Plugin install, grant,
+revoke, secret access, provider connection, file mutation, and publish events are auditable. Backup and
+migration docs state how encrypted secrets and key material are handled.
+
+The **M0 exit criteria** above are binding: M1 cannot begin until the authentication mode and setup
+flow are selected; HTTP/WebSocket/CORS/CSRF behavior is specified and integration-tested; the manifest
+grant vocabulary and approval flow are defined; external-provider auth and secret redaction have
+testable fixtures; and the threat model covers a malicious script, a compromised provider, and an
+unauthenticated network caller.

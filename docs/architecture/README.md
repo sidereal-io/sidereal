@@ -338,33 +338,35 @@ facets, so `kind = light` requires one set of outcomes and `kind = dark` another
 changes. Calibration-master matching — "find a master dark for this camera at -10 °C, gain 100,
 300 s, bin 1×1" — is a facet query, not bespoke schema.
 
-**What this requires of the storage engine** (input to ADR-004, which is otherwise open):
+**What this requires of the storage engine** (input to ADR-004):
 
 - Indexed lookup on semi-structured facet values.
 - Recursive traversal for lineage graphs ("everything derived from this master, transitively").
-- No hard dependency on a server database for single-user installs.
+- A zero-config single-user install experience.
 
-SQLite (JSON1 + recursive CTEs) and PostgreSQL both satisfy all three, so the architecture does not
-force the choice. ADR-004 picks on other grounds.
+SQLite (JSON1 + recursive CTEs) and PostgreSQL both satisfy the first two. **ADR-004 is accepted as
+PostgreSQL-only** (JSONB + GIN for facets, best recursive-CTE performance, one dialect); the
+zero-config requirement is met at the packaging layer — an all-in-one image / compose bundle — rather
+than by a serverless engine.
 
 ---
 
 ## Open seams
 
 Points where a reader would otherwise assume something is settled. Each has an ADR; all are M0 work.
-ADR-002 and ADR-006 are accepted; the rest record a leaning and fill in their Decision section when
-approved.
+All except ADR-005 are now **accepted**; ADR-005 remains Proposed, gated on a contributor conversation
+and a green E2E baseline before its Decision is filled in.
 
 | # | Seam | Affects | Status / leaning |
 |---|---|---|---|
-| [ADR-001](../decisions/ADR-001-plugin-boundary.md) | **Plugin contract and execution profiles** — built-in Rust · embedded Rhai · external provider | Installation, capability isolation, performance, non-Rust authorship | Capability-oriented hybrid |
+| [ADR-001](../decisions/ADR-001-plugin-boundary.md) | **Plugin contract and execution profiles** — built-in Rust · embedded Rhai · external provider | Installation, capability isolation, performance, non-Rust authorship | **Accepted** — capability-oriented hybrid, one semantic contract across three profiles; Rhai initial script engine (M0 spike, Rune/Lua fallback); WASM deferred |
 | [ADR-002](../decisions/ADR-002-core-domain-pack-split.md) | **Core / domain-pack seam** — where exactly it falls, and whether packs are compiled in or loaded | How much of the astro feature set is separable work | **Accepted** — astro compiled in as `packs/astro` coding against `plugin-abi` (Option A; dynamic whole-pack swap deferred); session a core concept with pack vocabulary; equipment pack-owned; frontend API + facet schemas only (no dynamic frontend ABI in v2.0) |
-| [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | Stable Asset plus immutable versions |
-| [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | Keep SQLite-default / Postgres-optional |
-| [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | None stated |
+| [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | **Accepted** — Option C: stable Asset + immutable AssetVersion; `current_version_id` pointer (computed `isLatest`); `version_seq`/label navigation; optimistic-concurrency advance; on-disk tree still to settle before M1 |
+| [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | **Accepted** — **PostgreSQL-only** (reverses the SQLite-default leaning); facets in JSONB + GIN; `sqlx`; forward-only migrations; zero-config preserved via all-in-one image / compose bundle |
+| [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | _Proposed_ — leaning Option C (new shell, port components), gated on the contributor conversation + a green v0.10.x E2E baseline |
 | [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing, selectors, and policy deferral** — match subjects and reconcile desired outcomes; defer user-authored policy rules | Applicability, Collection membership, and whether M2 needs workflows or convergent goal processing | **Accepted** — shared selectors and reconciliation in M2; policy editor in M7+ |
-| [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | Built-in single-user auth and explicit grants |
-| [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Metadata envelope, facets, and write authority** | Canonical placement, selector portability, cross-plugin interoperability, and schema evolution | Small core envelope plus typed, scoped facets |
+| [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | **Accepted** — Option B: built-in single-user auth, CSRF, deny-by-default CORS, explicit plugin grants; multi-user RBAC deferred |
+| [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Metadata envelope, facets, and write authority** | Canonical placement, selector portability, cross-plugin interoperability, and schema evolution | **Accepted** — small core envelope + facets; Option C exclusive schema owner with producer grants; mutable-facet audit history deferred post-cutover |
 
 **ADR-001 and ADR-007 are coupled.** The execution profile says how code runs; grants and
 `AssetContext` say what it is allowed to do. Neither decision is complete without the other.

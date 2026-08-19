@@ -1,6 +1,6 @@
 # 001: Plugin Contract and Execution Profiles
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-29
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The plugin contract in [docs/architecture/plugins.md](../architecture/plugins.md) defines the common semantics; this ADR chooses how different classes of plugin execute and are installed.
 
@@ -109,4 +109,30 @@ defined by [ADR-007](ADR-007-security-and-plugin-trust.md).
 
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-18 (M0 of RFC #213). Adopt the **capability-oriented hybrid** from the
+Recommendation, with three execution profiles behind one semantic contract:
+
+- **Built-in Rust** — trusted, first-party, performance-sensitive behavior (FITS/XISF readers,
+  storage adapters, core astro Operators), compiled into the binary as crates.
+- **Embedded script** — the default public extension surface for lightweight Operators, Sources, and
+  Sinks; a manifest plus script source in a plugin bundle loaded by Sidereal.
+- **External provider** — a separately installed, user-managed service or agent for Python ML,
+  Siril/PixInsight/ASTAP, and hardware- or OS-specific tools; the manifest configures its endpoint.
+
+All three implement identical Source/Operator/Sink request-and-result semantics and pass the same
+capability-specific conformance suite; only the transport adapter differs. This is explicitly **not**
+the rejected "hybrid" in which built-ins get an unconstrained private API. Core retains authority:
+plugins request effects through a capability-limited `AssetContext` and never receive ambient asset,
+secret, process, or network access.
+
+**No published Rust dynamic ABI** — compiler ABI instability rules out third-party dylibs.
+
+The initial scripting engine is **Rhai**, contingent on an M0 spike proving cancellation, operation
+and memory limits, async host calls, manifest loading, and the `AssetContext` API; **Rune and Lua are
+the fallbacks if that spike fails.** **WASM is deferred** until a concrete plugin needs portable
+compiled components the script profile cannot provide.
+
+Sidereal v0.1 does **not** orchestrate arbitrary plugin containers, provision Python environments, or
+manage external-provider upgrades; an external provider is an explicit, user-managed dependency. The
+embedded-script profile is declared stable only after **at least two built-ins also ship through it** —
+the initial candidates are tag/rename and API-based plate solving.
