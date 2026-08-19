@@ -149,6 +149,12 @@ an authentication strategy; an API architecture (REST vs. GraphQL vs. tRPC); a b
 platform, or infrastructure choice; or anything that would be **expensive to reverse**. If none of those
 fit and a reasonable person wouldn't argue for a different approach, don't write one.
 
+Three tiers keep decisions out of prose without over-writing ADRs: a real fork or an expensive-to-reverse
+call is an **ADR**; a settled call with no significant alternative goes as a one-line **design fact**
+under *Key design decisions* in [`docs/architecture/README.md`](docs/architecture/README.md); product
+scope and premises live in the **RFC/issue**. A design fact that grows a contested *why* gets promoted to
+an ADR.
+
 New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`). Keep
 it concise and the options concrete — code or config snippets where they clarify a trade-off.
 

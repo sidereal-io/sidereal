@@ -4,8 +4,9 @@
 Part of the [architecture reference](README.md).
 
 v2 is a new data model. The strategy is a **clean break with a one-way importer**, gated on a
-non-negotiable feature set. The TypeScript app moves to maintenance (security and critical fixes only)
-and is retired at cutover. The importer reads an existing SQLite/Postgres database and storage tree and
+non-negotiable feature set — the decision and its rationale are
+[ADR-010](../decisions/ADR-010-migration-strategy.md); this doc owns the execution. The TypeScript app
+moves to maintenance (security and critical fixes only) and is retired at cutover. The importer reads an existing SQLite/Postgres database and storage tree and
 produces v2 assets — best-effort, lossy where the models genuinely differ, and it **emits a report of
 exactly what didn't map**.
 

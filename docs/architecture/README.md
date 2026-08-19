@@ -4,9 +4,9 @@
 
 > **Why this lives in the repo.** Feature designs live in issue bodies; this is different. It is the
 > standing answer to "what is this system and where is it going," and it must outlive the issue that
-> produced it. #213 is the *proposal*; this is the *reference*. Seven of the eight M0 ADRs are
-> accepted; only [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend continuity) is still
-> Proposed, so the frontend approach here is a leaning, not a commitment.
+> produced it. #213 is the *proposal*; this is the *reference*. Every M0 ADR is accepted except
+> [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend continuity), so the frontend approach
+> here is a leaning, not a commitment.
 
 This document is a **map**: the north star, a glossary of the load-bearing concepts, and pointers to
 the ADRs and specs that own each decision. It does not restate them — [`docs/decisions/`](../decisions/)
@@ -32,9 +32,9 @@ What this model **cannot** express, and v2 must:
 ## Where we're going
 
 **Product:** an astrophotography system that manages photos at *every* stage — calibration frames, raw
-lights, stacked results, annotated finals. **Codebase:** a Rust backend, a plugin system for
-input/output formats and operations, and a TypeScript/React frontend. Three commitments shape
-everything below:
+lights, stacked results, annotated finals. **Codebase:** a
+[Rust backend](../decisions/ADR-009-backend-language.md), a plugin system for input/output formats and
+operations, and a TypeScript/React frontend. Three commitments shape everything below:
 
 1. **Sidereal becomes the system of record for files on disk** — it renames, moves, and organises them.
 2. **Sidereal does not do the math.** Calibration, registration, and integration stay in
@@ -81,8 +81,7 @@ at versions, never at the mutable Asset. → [ADR-003](../decisions/ADR-003-stor
 
 **Collection** — a generic grouping (a session, an album). Membership is explicit or defined by a
 Selector. Processing binds an immutable membership snapshot, so a Collection changing underneath a run
-cannot alter its inputs. Derived values (integration totals) are always computed, never denormalised
-onto a row that can drift.
+cannot alter its inputs.
 
 **Selector** — the shared, deterministic predicate for "what does this apply to." A bounded language
 (boolean composition + existence/equality/set/typed-facet comparisons) over `kind`, source, facets, and
@@ -154,9 +153,26 @@ rationale. All are M0 work. **ADR-005 is still open**; the rest are accepted.
 | [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
 | [007](../decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
 | [008](../decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
+| [009](../decisions/ADR-009-backend-language.md) | Backend language & runtime | Accepted (Rust) |
+| [010](../decisions/ADR-010-migration-strategy.md) | Migration strategy | Accepted (clean break + one-way importer) |
 
 **ADR-001 and ADR-007 are coupled** — the execution profile says how code runs; grants and
 `AssetContext` say what it may do. Neither is complete without the other.
+
+## Key design decisions
+
+Settled calls that don't warrant an ADR — no significant alternative to weigh, or cheap to reverse.
+Anything with real trade-offs is an ADR (table above); product scope lives in RFC #213. If a fact grows
+a contested *why*, promote it to an ADR and it becomes a row above.
+
+- **The frontend stays TypeScript/React** through the backend's move to Rust — the deliberate continuity
+  that keeps current contributors productive. (Evolve-vs-start-fresh is
+  [ADR-005](../decisions/ADR-005-frontend-continuity.md)'s separate, still-open call.)
+- **Derived values are always computed, never stored** — integration totals and the like are recomputed
+  from member assets and their facets, never denormalised onto a row that can drift (a v0.10.x mistake
+  we don't repeat).
+- **A plugin may implement multiple capabilities** — Immich is both a Source and a Sink; the
+  registration mechanism is one.
 
 ## Milestone map
 
@@ -177,7 +193,7 @@ graph LR
 
 | Milestone | Exit criterion |
 |---|---|
-| **M0** Contracts & scaffolding | Eight ADRs accepted; Rhai/`AssetContext` spike complete; CI green; a contributor goes zero-to-running in one command |
+| **M0** Contracts & scaffolding | All M0 ADRs accepted (ADR-005 the last open one), including security and plugin grants; Rhai/`AssetContext` spike complete; CI green; a contributor goes zero-to-running in one command |
 | **M1** Core spine & first plugins | Drop a file in a watched folder → it appears in the UI with extracted metadata, entirely through plugin contracts |
 | **M2** Operator engine & API v0.1 | Operator API, `AssetContext`, selector contract, side-effect protocol published; four built-ins consume it, ≥2 through Rhai; durable goals, reconciliation, and recovery-after-missed-events proven |
 | **M3** Astro domain pack | Source facets + built-in policy converge a full session — lights + darks + flats → grouped, masters matched, lineage recorded |
@@ -192,15 +208,16 @@ frontend contributors productive through a backend language switch.
 
 ## Migration & cutover
 
-A **clean break with a one-way importer**, gated on a non-negotiable feature set. The full cutover gate —
-the required-before-cutover checklist, compatibility breaks, filesystem-safety invariants, and rollback —
+A **clean break with a one-way importer**, gated on a non-negotiable feature set
+([ADR-010](../decisions/ADR-010-migration-strategy.md)). The full cutover gate — the
+required-before-cutover checklist, compatibility breaks, filesystem-safety invariants, and rollback —
 lives in **[migration.md](migration.md)**.
 
 ## What this document is not
 
 - **Not a plan.** Milestones are sub-issues under #213.
-- **Not fully accepted.** #213 is `status/ready`; ADR-005 is still Proposed, so the frontend approach is
-  a leaning.
+- **Not fully accepted.** #213 is `status/ready`; every M0 ADR is accepted except ADR-005 (frontend
+  continuity), so the frontend approach is a leaning.
 - **Not a v0.10.x reference.** The authoritative record of current behaviour is the
   [analysis package](https://github.com/sidereal-io/sidereal-analysis).
 
