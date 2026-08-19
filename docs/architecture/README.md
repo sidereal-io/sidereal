@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/ready`) · **Last updated:** 2026-08-04
+**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/ready`) · **Last updated:** 2026-08-18
 
 > **Why this lives in the repo.** The [Feature & Bug Workflow](../../CLAUDE.md) says designs live in the
 > issue body, not the repo tree. That rule is right for features — a feature design is scaffolding
@@ -9,9 +9,9 @@
 > Issue #213 is the *proposal*; this is the *reference*. Keep them in sync while #213 is open; after
 > it closes, this file is the surviving record.
 >
-> **#213 has passed its design approval gate and is `status/ready`; the individual ADRs have not.**
-> Seven of the eight still carry an empty Decision section and are resolved during M0. Treat any
-> statement marked ◇ or listed under [Open seams](#open-seams) as a leaning, not a commitment.
+> **#213 has passed its design approval gate and is `status/ready`.** Seven of the eight M0 ADRs are
+> now accepted; only [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend continuity)
+> remains Proposed, so the frontend approach below is a leaning, not a commitment.
 
 ## Contents
 
@@ -20,7 +20,7 @@
 - [Core concepts](#core-concepts) — Asset · Collection · Selector · Lineage · Processing Goal · Operation Run
 - [Plugin model](#plugin-model) — the summary; full contract in [plugins.md](plugins.md)
 - [Core and domain packs](#core-and-domain-packs) — the facet mechanism
-- [Open seams](#open-seams) — what is deliberately undecided
+- [Architecture decisions](#architecture-decisions) — the ADR index
 - [Milestone map](#milestone-map) — M0 → M7
 
 ---
@@ -151,9 +151,9 @@ identity were path-derived, the system reorganising a tree would destroy its own
 contributed by the astro domain pack, not core vocabulary. See
 [Core and domain packs](#core-and-domain-packs).
 
-> ◇ **Proposed — [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md):** stable
+> **[ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) — accepted:** stable
 > surrogate Asset identity plus immutable content-addressed AssetVersions. The exact on-disk tree and
-> retention policy remain part of the decision.
+> retention policy are still to be settled before M1.
 
 ### Collection
 
@@ -351,22 +351,22 @@ than by a serverless engine.
 
 ---
 
-## Open seams
+## Architecture decisions
 
-Points where a reader would otherwise assume something is settled. Each has an ADR; all are M0 work.
-All except ADR-005 are now **accepted**; ADR-005 remains Proposed, gated on a contributor conversation
-and a green E2E baseline before its Decision is filled in.
+Every architectural decision has an ADR in [`docs/decisions/`](../decisions/) — read those for the
+full context, options, and rationale. All are M0 work. **ADR-005 is still open**; the rest are
+accepted.
 
-| # | Seam | Affects | Status / leaning |
-|---|---|---|---|
-| [ADR-001](../decisions/ADR-001-plugin-boundary.md) | **Plugin contract and execution profiles** — built-in Rust · embedded Rhai · external provider | Installation, capability isolation, performance, non-Rust authorship | **Accepted** — capability-oriented hybrid, one semantic contract across three profiles; Rhai initial script engine (M0 spike, Rune/Lua fallback); WASM deferred |
-| [ADR-002](../decisions/ADR-002-core-domain-pack-split.md) | **Core / domain-pack seam** — where exactly it falls, and whether packs are compiled in or loaded | How much of the astro feature set is separable work | **Accepted** — astro compiled in as `packs/astro` coding against `plugin-abi` (Option A; dynamic whole-pack swap deferred); session a core concept with pack vocabulary; equipment pack-owned; frontend API + facet schemas only (no dynamic frontend ABI in v2.0) |
-| [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | **Storage layout and identity** — stable Assets, immutable AssetVersions, on-disk tree | Lineage integrity, dedup, revision retention, rename cost | **Accepted** — Option C: stable Asset + immutable AssetVersion; `current_version_id` pointer (computed `isLatest`); `version_seq`/label navigation; optimistic-concurrency advance; on-disk tree still to settle before M1 |
-| [ADR-004](../decisions/ADR-004-database-engine-and-schema.md) | **Database engine and schema strategy** | Deployment story, facet indexing, migration tooling | **Accepted** — **PostgreSQL-only** (reverses the SQLite-default leaning); facets in JSONB + GIN; `sqlx`; forward-only migrations; zero-config preserved via all-in-one image / compose bundle |
-| [ADR-005](../decisions/ADR-005-frontend-continuity.md) | **Frontend continuity** — evolve the existing React app against the new API, or start fresh | Whether M5 begins from a working codebase; contributor continuity | _Proposed_ — leaning Option C (new shell, port components), gated on the contributor conversation + a green v0.10.x E2E baseline |
-| [ADR-006](../decisions/ADR-006-rule-engine-deferral.md) | **Declarative processing, selectors, and policy deferral** — match subjects and reconcile desired outcomes; defer user-authored policy rules | Applicability, Collection membership, and whether M2 needs workflows or convergent goal processing | **Accepted** — shared selectors and reconciliation in M2; policy editor in M7+ |
-| [ADR-007](../decisions/ADR-007-security-and-plugin-trust.md) | **Security and plugin trust** | Authentication, CORS/CSRF, grants, provider trust, secrets | **Accepted** — Option B: built-in single-user auth, CSRF, deny-by-default CORS, explicit plugin grants; multi-user RBAC deferred |
-| [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md) | **Metadata envelope, facets, and write authority** | Canonical placement, selector portability, cross-plugin interoperability, and schema evolution | **Accepted** — small core envelope + facets; Option C exclusive schema owner with producer grants; mutable-facet audit history deferred post-cutover |
+| ADR | Decision | Status |
+|---|---|---|
+| [001](../decisions/ADR-001-plugin-boundary.md) | Plugin contract & execution profiles | Accepted |
+| [002](../decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
+| [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Storage layout & asset identity | Accepted |
+| [004](../decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted |
+| [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | **Proposed** — gated on the contributor conversation + a green v0.10.x E2E baseline |
+| [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
+| [007](../decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
+| [008](../decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
 
 **ADR-001 and ADR-007 are coupled.** The execution profile says how code runs; grants and
 `AssetContext` say what it is allowed to do. Neither decision is complete without the other.
@@ -478,14 +478,15 @@ before import. After cutover, rollback restores that backup. The importer remain
 ## What this document is not
 
 - **Not a plan.** Milestones are sub-issues under #213; the plan lives there.
-- **Not fully accepted.** #213 is `status/ready`, but six of the eight ADRs are still Proposed.
-  Until each Decision section is filled in, the seams they cover describe a leaning.
+- **Not fully accepted.** #213 is `status/ready`, and seven of the eight M0 ADRs are accepted;
+  [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend continuity) is still Proposed.
+  Until its Decision is filled in, the frontend approach is a leaning.
 - **Not a v0.10.x reference.** [Where we are](#where-we-are) is a summary; the authoritative record of
   current behaviour is the [analysis package](https://github.com/sidereal-io/sidereal-analysis).
 
 ### Changing it
 
 Architectural changes go through an ADR in [`docs/decisions/`](../decisions/), then this document is
-updated in the same PR. If you are resolving one of the [open seams](#open-seams), fill in the stub
-ADR's Decision section, flip its status to Accepted, and replace the ◇ marker here with what was
-decided.
+updated in the same PR. If you are resolving the remaining open ADR, fill in its Decision section,
+flip its status to Accepted, and update the [decision index](#architecture-decisions) and any
+provisional statement it settles.
