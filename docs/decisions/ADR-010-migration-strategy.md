@@ -66,18 +66,11 @@ Run v2 alongside v0.10.x and migrate incrementally, resource by resource.
 
 ## Recommendation
 
-**Option B — clean break with a one-way importer.** The MUST-preserve-compatibility requirements are not
-a neutral constraint; they encode the exact architecture v2 replaces, so honouring them (A) forecloses
-the rewrite, and a strangler (C) pays dual-stack cost indefinitely for a product with one user and one
+**Option B — clean break with a one-way importer**, gated on the non-negotiable cutover feature set in
+[migration.md](../architecture/migration.md). The MUST-preserve-compatibility requirements are not a
+neutral constraint; they encode the exact architecture v2 replaces, so honouring them (A) forecloses the
+rewrite, and a strangler (C) pays dual-stack cost indefinitely for a product with one user and one
 maintainer. A bounded importer that is honest about what it drops is the proportionate path.
-
-## Decision
-
-Accepted 2026-08-19 (M0 of RFC #213). **Clean break with a one-way importer**, gated on the
-non-negotiable cutover feature set in [migration.md](../architecture/migration.md). Option A
-(backward-compatible/in-place) is rejected because preserving the legacy IDs, layout, and API surface
-re-imposes the premises v2 exists to change; Option C (dual-run/strangler) is rejected as an
-indefinite two-model, two-frontend cost unjustified for a single-user product.
 
 - **The analysis package's compatibility MUSTs are explicitly overridden**, not overlooked. It remains
   valuable as a behavioural inventory and as the source of the cutover gate, but v2 is not bound by its
@@ -93,3 +86,7 @@ indefinite two-model, two-frontend cost unjustified for a single-user product.
 
 The full checklist, compatibility-break list, filesystem-safety rules, and rollback detail live in
 [migration.md](../architecture/migration.md); this ADR owns the decision, that doc owns the execution.
+
+## Decision
+
+Accepted 2026-08-19 (M0 of RFC #213) — **clean break with a one-way importer**, as recommended.

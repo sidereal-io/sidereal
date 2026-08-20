@@ -37,15 +37,9 @@ broadest design, but funds an Immich-like sharing surface the architecture expli
 
 ## Recommendation
 
-**Option B** — it fits the single-user product and establishes an enforceable boundary, where A hands
-file-mutation authority to any network caller and C funds a multi-user sharing surface v2.0 does not
-need.
-
-## Decision
-
-Accepted 2026-08-18 (M0 of RFC #213). Adopt **Option B — built-in single-user authentication and
-explicit plugin grants**. Option A is rejected because file mutation and plugin management cannot be
-handed to any network caller; Option C is deferred as an Immich-like sharing surface v2.0 does not fund.
+**Option B — built-in single-user authentication and explicit plugin grants.** It fits the single-user
+product and establishes an enforceable boundary, where A hands file-mutation authority to any network
+caller and C funds a multi-user sharing surface v2.0 does not need. The requirements:
 
 **Application boundary.**
 
@@ -80,6 +74,11 @@ handed to any network caller; Option C is deferred as an Immich-like sharing sur
   progress payloads, and history.
 - Plugin install, grant, revoke, secret access, provider connection, file mutation, and publish events
   are auditable. Backup and migration docs state how encrypted secrets and key material are handled.
+
+## Decision
+
+Accepted 2026-08-18 (M0 of RFC #213) — **Option B**, as recommended. The M0 exit criteria below are
+binding.
 
 ## M0 exit criteria
 

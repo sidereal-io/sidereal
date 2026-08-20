@@ -38,14 +38,9 @@ provenance. Preserves canonical queries while allowing competing implementations
 
 ## Recommendation
 
-Small envelope plus facets only, and **Option C** for ownership.
-
-## Decision
-
-Accepted 2026-08-18 (M0 of RFC #213). Adopt the **small core-owned envelope plus facets as the single
-extension mechanism** and **Option C — exclusive schema owner with explicit producer grants**. Option A
-is rejected because provider-specific alternatives leak into every Selector, query, and UI; Option B is
-rejected because it cannot establish a canonical definition under schema evolution.
+Small core-owned envelope plus facets as the single extension mechanism, and **Option C** for ownership —
+Option A leaks provider-specific alternatives into every Selector, query, and UI; Option B cannot
+establish a canonical definition under schema evolution. The contract:
 
 **Envelope.** Every Asset has exactly three core-owned fields: `id` (stable opaque identity, never
 derived from name, path, Source, or external ID), `kind` (one normalized discriminator from a
@@ -91,3 +86,8 @@ write-once observations; a mutable intent facet (`core.processing.mode`) overwri
 only last-write provenance — not a value trail. A full immutable audit trail is deferred post-cutover
 and, if adopted, reuses [ADR-003](ADR-003-storage-layout-and-asset-identity.md)'s immutable-version
 pattern rather than inventing a second mechanism.
+
+## Decision
+
+Accepted 2026-08-18 (M0 of RFC #213) — **small core-owned envelope plus facets, Option C**, as
+recommended.

@@ -66,20 +66,14 @@ with an embedded untrusted-plugin surface — precisely where Rust's safety, thr
 maturity pay off and where Node's strengths do not apply. Go is closer than Node but gives up numeric
 performance and type expressiveness for a domain model that leans on both.
 
+The language switch is the RFC's top risk, mitigated deliberately: **the frontend stays TypeScript/React**
+and moves as an independent workstream from M1, so existing contributors stay productive through the
+switch ([ADR-005](ADR-005-frontend-continuity.md)); and **heavy or OS-specific work stays out of the Rust
+core** — Python ML, Siril/PixInsight/ASTAP run as external providers behind the plugin contract
+([ADR-001](ADR-001-plugin-boundary.md)), so choosing Rust for core does not force every integration into
+Rust. This decision fixes the language, not the framework/crate stack (web server, async runtime, image
+libraries); those are ordinary implementation choices settled in code.
+
 ## Decision
 
-Accepted 2026-08-19 (M0 of RFC #213). **The v2 backend is written in Rust.** Option A (stay on
-TypeScript) is rejected because the hot path degrades to native addons anyway and GC tail latency and a
-weaker capability story are the wrong trade on a system of record; Option C (Go) is rejected for weaker
-CPU-bound performance and a less expressive type system for the core model.
-
-The language switch is the RFC's top risk, mitigated deliberately:
-
-- **The frontend stays TypeScript/React** and moves as an independent workstream from M1, so existing
-  contributors stay productive through the switch ([ADR-005](ADR-005-frontend-continuity.md)).
-- **Heavy or OS-specific work stays out of the Rust core** — Python ML, Siril/PixInsight/ASTAP run as
-  external providers behind the plugin contract ([ADR-001](ADR-001-plugin-boundary.md)), so choosing
-  Rust for core does not force every integration into Rust.
-
-This ADR fixes the language, not the framework/crate stack (web server, async runtime, image libraries);
-those are ordinary implementation choices settled in code.
+Accepted 2026-08-19 (M0 of RFC #213) — **Rust**, as recommended.

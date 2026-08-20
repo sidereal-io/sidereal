@@ -85,17 +85,10 @@ invariants (recoverable DB+FS updates, moves never rewrite content, historical v
 duplicate current assets, path-traversal/symlink escape rejected, every file reconcilable to an
 AssetVersion + hash) and must be Accepted before M1 storage design.
 
-## Decision
+### Version navigation and concurrency (input from #217 / DataHub)
 
-Accepted 2026-08-18 (M0 of RFC #213). Adopt **Option C — a stable Asset plus immutable AssetVersion** —
-with the identity, revision, reconciliation, and layout rules in the Recommendation. Option A (mutable
-surrogate) is rejected because it destroys byte history and cannot say which pre/post-operation bytes a
-self-edge used; Option B (content-hash identity) is rejected because it makes logical identity unstable
-and forces collections and external mappings to chase replacements.
-
-Settled specifics beyond the Recommendation (a [#217](https://github.com/sidereal-io/sidereal/issues/217)
-/ DataHub comparison confirmed the Option C shape and these deliberate divergences from DataHub's moving
-`v0` sentinel):
+A [#217](https://github.com/sidereal-io/sidereal/issues/217) / DataHub comparison confirmed the Option C
+shape, with these deliberate divergences from DataHub's moving `v0` sentinel:
 
 - The "current" selection is a separate `Asset.current_version_id` pointer, **not** a moving `v0`
   sentinel; `isLatest` is **computed**, never a stored per-version boolean.
@@ -104,6 +97,8 @@ Settled specifics beyond the Recommendation (a [#217](https://github.com/siderea
 - Advancing the current pointer uses **optimistic concurrency** — compare-and-swap guarded by an
   `Asset.revision` counter.
 
-**On-disk tree layout and cross-filesystem moves are decided separately in
-[ADR-011](ADR-011-storage-tree-layout.md) (Proposed), which gates M1.** This ADR's acceptance covers
-Asset/AssetVersion identity and versioning only.
+## Decision
+
+Accepted 2026-08-18 (M0 of RFC #213) — **Option C**, as recommended (identity and versioning only).
+On-disk tree layout and cross-filesystem moves are decided separately in
+[ADR-011](ADR-011-storage-tree-layout.md) (Proposed), which gates M1.
