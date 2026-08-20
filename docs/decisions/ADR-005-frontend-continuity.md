@@ -61,21 +61,8 @@ Two conditions:
 
 ## Decision
 
-Accepted 2026-08-20 (M0 of RFC #213) — **Option C: new shell, port components.** The data layer is
-rewritten under every option, so the real question is only what happens to the presentational
-components. C keeps the expensive, working pieces (deep-zoom viewer, Aladin sky map, admin forms) and
-takes structural freedom in the routing, data layer, and information architecture — the layer where the
-asset/collection/lineage model actually reshapes the UI. A and B are both dominated: A contorts the new
-model into an Immich-mirror shell; B rebuilds working UI for no product gain.
+Accepted 2026-08-20 (M0 of RFC #213) — **Option C, as recommended**, including its two conditions
+(contributor conversation; green v0.10.x E2E baseline) as gates on the M5 build, not on this decision.
 
-**Two conditions bind the M5 *build*, not this direction-setting call:**
-
-1. **The contributor conversation happens before M5 frontend work starts in earnest** — this is the
-   most visible decision to the frontend workstream and the RFC's named mitigation for its top risk.
-2. **A green v0.10.x Playwright baseline is established first** (`Q14`, `OQ-16`), so per-component
-   "port vs. rewrite" judgments rest on a runnable parity harness.
-
-**Consequence for M1:** the minimal read-only view M1 needs for its exit criterion is built as the
-**first screen of this new Option-C shell** (a fresh Vite/React/Tailwind app scaffold, read-only asset
-list + detail), not throwaway work — M5 grows the same shell. The two conditions above still gate the
-broader M5 parity build, not this minimal first screen.
+Consequence for M1 (#217): the minimal read-only view is the first screen of the new shell, not
+throwaway work.
