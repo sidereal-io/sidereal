@@ -79,16 +79,11 @@ file can be re-associated by hash and additional safety checks.
 
 ### Storage layout
 
-Identity does not prescribe layout. Originals may appear in a user-meaningful tree by target, session,
-and date, while derived renditions and superseded versions may live in a protected internal subtree.
-The exact tree and cross-filesystem move behavior remain open within this ADR and must be settled
-before M1, with these invariants:
-
-- database and filesystem updates are recoverable after interruption;
-- a user-visible move never rewrites content;
-- internal historical versions are not presented as duplicate current assets;
-- path traversal and symlink escape are rejected;
-- every stored file can be reconciled to an AssetVersion and hash.
+Identity does not prescribe layout. The exact on-disk tree and cross-filesystem move behavior are a
+separate decision — split out to [ADR-011](ADR-011-storage-tree-layout.md), which carries the binding
+invariants (recoverable DB+FS updates, moves never rewrite content, historical versions never surface as
+duplicate current assets, path-traversal/symlink escape rejected, every file reconcilable to an
+AssetVersion + hash) and must be Accepted before M1 storage design.
 
 ## Decision
 
@@ -109,5 +104,6 @@ Settled specifics beyond the Recommendation (a [#217](https://github.com/siderea
 - Advancing the current pointer uses **optimistic concurrency** — compare-and-swap guarded by an
   `Asset.revision` counter.
 
-**Still open, to settle before M1 (not blocking acceptance):** the exact on-disk tree shape and
-cross-filesystem move behavior, bound by the *Storage layout* invariants above.
+**On-disk tree layout and cross-filesystem moves are decided separately in
+[ADR-011](ADR-011-storage-tree-layout.md) (Proposed), which gates M1.** This ADR's acceptance covers
+Asset/AssetVersion identity and versioning only.

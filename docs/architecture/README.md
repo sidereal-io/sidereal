@@ -4,9 +4,9 @@
 
 > **Why this lives in the repo.** Feature designs live in issue bodies; this is different. It is the
 > standing answer to "what is this system and where is it going," and it must outlive the issue that
-> produced it. #213 is the *proposal*; this is the *reference*. Every M0 ADR is accepted except
-> [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend continuity), so the frontend approach
-> here is a leaning, not a commitment.
+> produced it. #213 is the *proposal*; this is the *reference*. Where the [decision
+> index](#architecture-decisions) below marks an ADR **Proposed**, the corresponding approach here is a
+> leaning, not a commitment.
 
 This document is a **map**: the north star, a glossary of the load-bearing concepts, and pointers to
 the ADRs and specs that own each decision. It does not restate them — [`docs/decisions/`](../decisions/)
@@ -48,7 +48,7 @@ astro product.
 
 ## Core concepts
 
-Six load-bearing additions that do not exist today; everything else in v2 is a consequence of them.
+Seven load-bearing additions that do not exist today; everything else in v2 is a consequence of them.
 
 ```mermaid
 graph TD
@@ -118,7 +118,7 @@ Source and Sink).
 | **Sink** | Publishes assets outward | Immich · static gallery · Astrobin · S3 |
 
 All profiles implement the same semantic contract and conformance suite; only the transport differs
-(built-in Rust, embedded Rhai script, or external provider), and every profile receives the same
+(built-in Rust, embedded script, or external provider), and every profile receives the same
 capability-limited `AssetContext` — no filesystem back door. The full contract is in
 **[plugins.md](plugins.md)**; the execution profiles and trust model are
 [ADR-001](../decisions/ADR-001-plugin-boundary.md) and
@@ -141,7 +141,8 @@ facet query rather than bespoke schema. → [ADR-008](../decisions/ADR-008-facet
 ## Architecture decisions
 
 Each decision has an ADR in [`docs/decisions/`](../decisions/) with the full context, options, and
-rationale. All are M0 work. **ADR-005 is still open**; the rest are accepted.
+rationale. Two remain **Proposed** — ADR-005 (frontend) and ADR-011 (storage tree, which gates M1); the
+rest are accepted.
 
 | ADR | Decision | Status |
 |---|---|---|
@@ -155,6 +156,7 @@ rationale. All are M0 work. **ADR-005 is still open**; the rest are accepted.
 | [008](../decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
 | [009](../decisions/ADR-009-backend-language.md) | Backend language & runtime | Accepted (Rust) |
 | [010](../decisions/ADR-010-migration-strategy.md) | Migration strategy | Accepted (clean break + one-way importer) |
+| [011](../decisions/ADR-011-storage-tree-layout.md) | Storage tree layout & cross-filesystem moves | **Proposed** — split from ADR-003; gates M1 |
 
 **ADR-001 and ADR-007 are coupled** — the execution profile says how code runs; grants and
 `AssetContext` say what it may do. Neither is complete without the other.
@@ -188,11 +190,11 @@ compatibility breaks, filesystem-safety invariants, and rollback — in **[migra
 ## What this document is not
 
 - **Not a plan.** Milestones are sub-issues under #213.
-- **Not fully accepted.** #213 is `status/ready`; every M0 ADR is accepted except ADR-005 (frontend
-  continuity), so the frontend approach is a leaning.
+- **Not fully accepted.** #213 is `status/ready`, but some ADRs are still Proposed — the
+  [decision index](#architecture-decisions) is canonical, and anything it marks Proposed is a leaning.
 - **Not a v0.10.x reference.** The authoritative record of current behaviour is the
   [analysis package](https://github.com/sidereal-io/sidereal-analysis).
 
 **Changing it:** an architectural change goes through an ADR in [`docs/decisions/`](../decisions/), then
-this map is updated in the same PR. Resolving ADR-005 means filling in its Decision, flipping its status,
-and updating the [decision index](#architecture-decisions) above.
+this map is updated in the same PR. Resolving an open ADR means filling in its Decision, flipping its
+status, and updating the [decision index](#architecture-decisions) above.

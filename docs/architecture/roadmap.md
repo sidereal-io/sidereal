@@ -25,7 +25,7 @@ graph LR
 |---|---|
 | **M0** Contracts & scaffolding | All M0 ADRs accepted (ADR-005 the last open one), including security and plugin grants; Rhai/`AssetContext` spike complete; CI green; a contributor goes zero-to-running in one command |
 | **M1** Core spine & first plugins | Drop a file in a watched folder → it appears in the UI with extracted metadata, entirely through plugin contracts |
-| **M2** Operator engine & API v0.1 | Operator API, `AssetContext`, selector contract, side-effect protocol published; four built-ins consume it, ≥2 through Rhai; durable goals, reconciliation, and recovery-after-missed-events proven |
+| **M2** Operator engine & API v0.1 | Operator API, `AssetContext`, selector contract, side-effect protocol published; four built-ins consume it, ≥2 through the embedded script profile; durable goals, reconciliation, and recovery-after-missed-events proven |
 | **M3** Astro domain pack | Source facets + built-in policy converge a full session — lights + darks + flats → grouped, masters matched, lineage recorded |
 | **M4** Sources, sinks & importer | A real v0.10.x install imports cleanly and reports what didn't map |
 | **M5** Frontend parity | Every non-negotiable cutover item green (starts at M1, parallel to backend) |

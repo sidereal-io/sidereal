@@ -63,5 +63,6 @@ failure report — an unaccounted original blocks cutover.
 - **At M6:** the migration guide requires a verified database and storage backup before import.
 - **After cutover:** rollback restores that backup. The importer is one-way by design.
 
-Because ADR-004 accepts PostgreSQL-only, backup guidance covers the Postgres volume (and `pg_dump`) in
-place of the old SQLite-file copy.
+A verified backup covers **both** stores: the PostgreSQL database (via `pg_dump` or a volume snapshot —
+ADR-004 makes Postgres the only engine) **and** the v2 asset-storage root on disk. Neither alone is
+complete, and the SQLite-era file-copy guidance no longer covers the database.
