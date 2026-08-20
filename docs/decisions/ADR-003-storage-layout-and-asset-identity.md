@@ -90,41 +90,17 @@ before M1, with these invariants:
 - path traversal and symlink escape are rejected;
 - every stored file can be reconciled to an AssetVersion and hash.
 
-## Consequences
-
-- Stable links, collections, and source mappings survive moves and byte revisions.
-- Lineage records exact content rather than a mutable logical placeholder.
-- Byte-editing operations consume additional storage until retention safely reclaims old revisions.
-- Queries that only need the current state join Asset to its current AssetVersion.
-
-## Note: version identity and navigation (input from #217 / DataHub comparison)
-
-A comparison against DataHub's aspect-versioning and VersionSet models (see [#217](https://github.com/sidereal-io/sidereal/issues/217))
-confirms the Option C shape — a grouping identity (Asset ≈ VersionSet) plus stable-identity versioned
-members (AssetVersion ≈ versioned entity). Two divergences are deliberate and should be reflected when
-this Decision is filled in:
-
-- **Stable opaque `AssetVersion.id`, not a moving "latest" sentinel.** DataHub's `v0` re-points to new
-  content on each write, which is fine for "GET latest" but unsafe for a lineage edge that must denote a
-  fixed byte-state. Our version id is immutable; the "current" selection is a separate
-  `Asset.current_version_id` pointer, and `isLatest` is computed, never a stored per-version boolean.
-- **Navigation aids that are not identity:** a dense per-Asset ordinal (`version_seq`) plus optional
-  curated `label`/`aliases`/`note` on a version. These make versions human-navigable without exposing
-  UUIDs; they are metadata, not identity, and carry no ordering-scheme abstraction (byte revisions have a
-  canonical temporal order).
-- **Optimistic concurrency on current-pointer advance** (compare-and-swap via an `Asset.revision` guard),
-  adopting DataHub's lost-update discipline.
-
 ## Decision
 
 Accepted 2026-08-18 (M0 of RFC #213). Adopt **Option C — a stable Asset plus immutable AssetVersion** —
-with the identity, revision, reconciliation, and layout rules in the Recommendation, and the #217 /
-DataHub refinements in the Note, both now part of this Decision. Option A (mutable surrogate) is
-rejected because it destroys byte history and cannot say which pre/post-operation bytes a self-edge
-used; Option B (content-hash identity) is rejected because it makes logical identity unstable and forces
-collections and external mappings to chase replacements.
+with the identity, revision, reconciliation, and layout rules in the Recommendation. Option A (mutable
+surrogate) is rejected because it destroys byte history and cannot say which pre/post-operation bytes a
+self-edge used; Option B (content-hash identity) is rejected because it makes logical identity unstable
+and forces collections and external mappings to chase replacements.
 
-Settled specifics beyond the Recommendation:
+Settled specifics beyond the Recommendation (a [#217](https://github.com/sidereal-io/sidereal/issues/217)
+/ DataHub comparison confirmed the Option C shape and these deliberate divergences from DataHub's moving
+`v0` sentinel):
 
 - The "current" selection is a separate `Asset.current_version_id` pointer, **not** a moving `v0`
   sentinel; `isLatest` is **computed**, never a stored per-version boolean.
