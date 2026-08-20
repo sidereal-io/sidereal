@@ -154,7 +154,7 @@ alternatives. It is not a changelog. Three tiers keep decisions out of prose wit
 their options concrete. 
 
 **Each ADR stands alone:** options → recommendation → decision, with at most **one** link to another ADR 
-(in Context, with number + title). They DO NOT reference ephemerial  materials (issues, milestones, or RFC).
+(in Context, with number + title). They DO NOT reference ephemeral materials (issues, milestones, or RFC).
 
 ### Lifecycle
 
