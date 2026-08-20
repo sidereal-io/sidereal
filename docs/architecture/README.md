@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Architecture reference:** current · **Open architecture decisions:** [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend), [ADR-011](../decisions/ADR-011-storage-tree-layout.md) (storage tree) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-19
+**Architecture reference:** current · **Open architecture decisions:** [ADR-011](../decisions/ADR-011-storage-tree-layout.md) (storage tree) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-20
 
 > **How to use this map.** This file owns the **architectural map** — the north star and a glossary of
 > the load-bearing concepts — and points to, without restating, the documents that own each thing:
@@ -145,8 +145,7 @@ facet query rather than bespoke schema. → [ADR-008](../decisions/ADR-008-facet
 ## Architecture decisions
 
 Each decision has an ADR in [`docs/decisions/`](../decisions/) with the full context, options, and
-rationale. Two remain **Proposed** — ADR-005 (frontend) and ADR-011 (storage tree, which gates M1); the
-rest are accepted.
+rationale. One remains **Proposed** — ADR-011 (storage tree, which gates M1); the rest are accepted.
 
 | ADR | Decision | Status |
 |---|---|---|
@@ -154,7 +153,7 @@ rest are accepted.
 | [002](../decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
 | [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Storage layout & asset identity | Accepted |
 | [004](../decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
-| [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | **Proposed** — gated on the contributor conversation + a green v0.10.x E2E baseline |
+| [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | Accepted (Option C — new shell, port components) |
 | [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
 | [007](../decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
 | [008](../decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
@@ -172,8 +171,8 @@ Anything with real trade-offs is an ADR (table above); product scope lives in RF
 a contested *why*, promote it to an ADR and it becomes a row above.
 
 - **The frontend stays TypeScript/React** through the backend's move to Rust — the deliberate continuity
-  that keeps current contributors productive. (Evolve-vs-start-fresh is
-  [ADR-005](../decisions/ADR-005-frontend-continuity.md)'s separate, still-open call.)
+  that keeps current contributors productive. (How M5 starts from it — a new shell with ported
+  components — is settled in [ADR-005](../decisions/ADR-005-frontend-continuity.md).)
 - **Derived values are always computed, never stored** — integration totals and the like are recomputed
   from member assets and their facets, never denormalised onto a row that can drift (a v0.10.x mistake
   we don't repeat).

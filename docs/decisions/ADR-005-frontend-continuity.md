@@ -1,6 +1,6 @@
 # 005: Frontend Continuity
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-29
 **Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). M5 (frontend parity) starts at M1 and runs in parallel with the backend rewrite — the RFC calls this "the single most important scheduling decision in the plan." This ADR decides what M5 starts *from*.
 
@@ -61,4 +61,21 @@ Two conditions:
 
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-20 (M0 of RFC #213) — **Option C: new shell, port components.** The data layer is
+rewritten under every option, so the real question is only what happens to the presentational
+components. C keeps the expensive, working pieces (deep-zoom viewer, Aladin sky map, admin forms) and
+takes structural freedom in the routing, data layer, and information architecture — the layer where the
+asset/collection/lineage model actually reshapes the UI. A and B are both dominated: A contorts the new
+model into an Immich-mirror shell; B rebuilds working UI for no product gain.
+
+**Two conditions bind the M5 *build*, not this direction-setting call:**
+
+1. **The contributor conversation happens before M5 frontend work starts in earnest** — this is the
+   most visible decision to the frontend workstream and the RFC's named mitigation for its top risk.
+2. **A green v0.10.x Playwright baseline is established first** (`Q14`, `OQ-16`), so per-component
+   "port vs. rewrite" judgments rest on a runnable parity harness.
+
+**Consequence for M1:** the minimal read-only view M1 needs for its exit criterion is built as the
+**first screen of this new Option-C shell** (a fresh Vite/React/Tailwind app scaffold, read-only asset
+list + detail), not throwaway work — M5 grows the same shell. The two conditions above still gate the
+broader M5 parity build, not this minimal first screen.
