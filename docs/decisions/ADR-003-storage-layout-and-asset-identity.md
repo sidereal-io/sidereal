@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The outcome constrains the [Lineage](../architecture/README.md#core-concepts) model and must be decided before M1 builds the core spine.
+**Context:** This ADR settles the identity and versioning model that Lineage and Operation Runs depend on; it must be decided before the core spine is built.
 
 ## Problem
 
@@ -80,15 +80,16 @@ file can be re-associated by hash and additional safety checks.
 ### Storage layout
 
 Identity does not prescribe layout. The exact on-disk tree and cross-filesystem move behavior are a
-separate decision — split out to [ADR-011](ADR-011-storage-tree-layout.md), which carries the binding
-invariants (recoverable DB+FS updates, moves never rewrite content, historical versions never surface as
-duplicate current assets, path-traversal/symlink escape rejected, every file reconcilable to an
-AssetVersion + hash) and must be Accepted before M1 storage design.
+separate decision — split out to [ADR-011 — Storage tree layout & cross-filesystem
+moves](ADR-011-storage-tree-layout.md), which carries the binding invariants (recoverable DB+FS updates,
+moves never rewrite content, historical versions never surface as duplicate current assets,
+path-traversal/symlink escape rejected, every file reconcilable to an AssetVersion + hash) and must be
+Accepted before storage code is written.
 
-### Version navigation and concurrency (input from #217 / DataHub)
+### Version navigation and concurrency (DataHub comparison)
 
-A [#217](https://github.com/sidereal-io/sidereal/issues/217) / DataHub comparison confirmed the Option C
-shape, with these deliberate divergences from DataHub's moving `v0` sentinel:
+A comparison against DataHub's aspect-versioning model confirmed the Option C shape, with these
+deliberate divergences from DataHub's moving `v0` sentinel:
 
 - The "current" selection is a separate `Asset.current_version_id` pointer, **not** a moving `v0`
   sentinel; `isLatest` is **computed**, never a stored per-version boolean.
@@ -99,6 +100,5 @@ shape, with these deliberate divergences from DataHub's moving `v0` sentinel:
 
 ## Decision
 
-Accepted 2026-08-18 (M0 of RFC #213) — **Option C**, as recommended (identity and versioning only).
-On-disk tree layout and cross-filesystem moves are decided separately in
-[ADR-011](ADR-011-storage-tree-layout.md) (Proposed), which gates M1.
+Accepted 2026-08-18 — **Option C**, as recommended (identity and versioning only). On-disk tree layout
+and cross-filesystem moves are decided separately in the storage-tree decision above.

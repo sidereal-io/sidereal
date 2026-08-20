@@ -2,15 +2,15 @@
 
 **Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). M5 (frontend parity) starts at M1 and runs in parallel with the backend rewrite — the RFC calls this "the single most important scheduling decision in the plan." This ADR decides what M5 starts *from*.
+**Context:** The frontend workstream runs in parallel with the backend rewrite — the single most important scheduling decision in the plan. This ADR decides what that workstream starts *from*.
 
 ## Problem
 
-The frontend stays TypeScript/React either way; that is settled and is what keeps existing frontend contributors productive through a backend language switch. The question is whether M5 evolves `apps/client` against the new API or starts fresh.
+The frontend stays TypeScript/React either way; that is settled and is what keeps existing frontend contributors productive through a backend language switch. The question is whether the frontend workstream evolves `apps/client` against the new API or starts fresh.
 
 The v2 API is not compatible with v0.10.x — different data model, different resources. So "evolve" does not mean "keep working throughout"; it means "keep the codebase, rewrite the data layer." The existing client is React 19 + Vite + Tailwind 4 + shadcn/ui + TanStack Query + Wouter, with pages for gallery, targets, equipment, plate solving, sky map, locations, and admin.
 
-This decision is also entangled with a **human** factor the RFC names as its top risk: the project's second-largest contributor works in TypeScript. Whichever option is chosen should be chosen *with* them, not for them.
+This decision is also entangled with a **human** factor that is the project's top risk: the project's second-largest contributor works in TypeScript. Whichever option is chosen should be chosen *with* them, not for them.
 
 ## Options
 
@@ -18,7 +18,7 @@ This decision is also entangled with a **human** factor the RFC names as its top
 
 **Pros:**
 - Keeps the component library, styling system, deep-zoom viewer, Aladin sky-map integration, and form patterns — genuinely expensive, working pieces.
-- Contributors keep working in a codebase they know from day one of M1.
+- Contributors keep working in a codebase they know from day one of the frontend build.
 - Cutover parity is a diff against something real rather than a from-scratch build.
 - The existing Playwright suite stays meaningfully runnable against it.
 
@@ -36,7 +36,7 @@ This decision is also entangled with a **human** factor the RFC names as its top
 **Cons:**
 - Rebuilds working, non-trivial UI (deep zoom, Aladin, admin forms) for no product gain.
 - Two frontends during the transition, or a long gap with nothing demoable.
-- The RFC's parallelism benefit shrinks — M5 becomes a bigger effort with a later first demo.
+- The parallelism benefit shrinks — the frontend becomes a bigger effort with a later first demo.
 
 ### Option C: New shell, port components
 
@@ -56,13 +56,12 @@ Fresh application shell, routing, and data layer; migrate presentational compone
 
 Two conditions:
 
-1. **Have the contributor conversation first.** This decision is the most visible one to the frontend workstream, and the RFC's own mitigation for its top risk is to talk before M0 starts.
+1. **Have the contributor conversation first.** This decision is the most visible one to the frontend workstream, and the mitigation for that top risk is to talk before the rewrite starts.
 2. **Get a green E2E baseline on v0.10.x before deciding.** The analysis package notes the Playwright suite was never executed (`Q14`, `OQ-16`), and no CI workflow references it. Whether the existing suite is a usable parity harness materially affects A vs. C, and right now nobody knows.
 
 ## Decision
 
-Accepted 2026-08-20 (M0 of RFC #213) — **Option C, as recommended**, including its two conditions
-(contributor conversation; green v0.10.x E2E baseline) as gates on the M5 build, not on this decision.
+Accepted 2026-08-20 — **Option C, as recommended**, including its two conditions (contributor
+conversation; green v0.10.x E2E baseline) as gates on the frontend build, not on this decision.
 
-Consequence for M1 (#217): the minimal read-only view is the first screen of the new shell, not
-throwaway work.
+Consequence: the first minimal read-only view is the first screen of the new shell, not throwaway work.
