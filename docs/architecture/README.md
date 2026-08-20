@@ -208,10 +208,8 @@ frontend contributors productive through a backend language switch.
 
 ## Migration & cutover
 
-A **clean break with a one-way importer**, gated on a non-negotiable feature set
-([ADR-010](../decisions/ADR-010-migration-strategy.md)). The full cutover gate — the
-required-before-cutover checklist, compatibility breaks, filesystem-safety invariants, and rollback —
-lives in **[migration.md](migration.md)**.
+Decision in [ADR-010](../decisions/ADR-010-migration-strategy.md); the cutover gate — checklist,
+compatibility breaks, filesystem-safety invariants, and rollback — in **[migration.md](migration.md)**.
 
 ## What this document is not
 
