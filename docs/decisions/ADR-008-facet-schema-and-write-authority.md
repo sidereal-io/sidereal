@@ -2,8 +2,8 @@
 
 **Status:** Accepted
 **Date:** 2026-08-01
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Selectors need a
-portable metadata contract, while domain packs and alternative plugins need interoperable typed values.
+**Context:** Selectors need a portable metadata contract, while domain packs and alternative plugins
+need interoperable typed values.
 
 ## Problem
 
@@ -81,13 +81,13 @@ provenance; domain policy selects the current value. Breaking changes need a new
 declared migration; removing a schema owner makes it unavailable for new writes without deleting stored
 values.
 
-**Mutable-facet audit history (#217 / DataHub) is out of scope for v2.0 / M1.** M1's facets are
-write-once observations; a mutable intent facet (`core.processing.mode`) overwrites in place, keeping
-only last-write provenance — not a value trail. A full immutable audit trail is deferred post-cutover
-and, if adopted, reuses [ADR-003](ADR-003-storage-layout-and-asset-identity.md)'s immutable-version
-pattern rather than inventing a second mechanism.
+**Mutable-facet audit history is out of scope for v2.0.** The first release's facets are write-once
+observations; a mutable intent facet (`core.processing.mode`) overwrites in place, keeping only
+last-write provenance — not a value trail. A full immutable audit trail is deferred until after cutover
+and, if adopted, reuses [ADR-003 — Storage layout & asset
+identity](ADR-003-storage-layout-and-asset-identity.md)'s immutable-version pattern rather than inventing
+a second mechanism.
 
 ## Decision
 
-Accepted 2026-08-18 (M0 of RFC #213) — **small core-owned envelope plus facets, Option C**, as
-recommended.
+Accepted 2026-08-18 — **small core-owned envelope plus facets, Option C**, as recommended.

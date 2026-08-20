@@ -2,18 +2,17 @@
 
 **Status:** Accepted
 **Date:** 2026-08-19
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). v2 is a new data
-model; existing v0.10.x users have live data and files. This ADR records *how they reach v2*, and why
-that path knowingly overrides the analysis package's compatibility requirements. The operational detail
-lives in [migration.md](../architecture/migration.md).
+**Context:** v2 is a new data model; existing v0.10.x users have live data and files. This ADR records
+*how they reach v2*, and why that path knowingly overrides the analysis package's compatibility
+requirements. It coordinates with the PostgreSQL-only engine decision ([ADR-004 — Database engine &
+schema strategy](ADR-004-database-engine-and-schema.md)).
 
 ## Problem
 
 v0.10.x users hold real data — Immich-mirrored images, plate solves, equipment, acquisitions, saved
 locations — in a SQLite/Postgres database and a storage tree laid out as
 `{STORAGE_PATH}/processed/{id % 1000}/{id}/…`. v2's model is fundamentally different: stable Assets with
-immutable content-addressed Versions, Collections, facets, lineage, on Postgres only
-([ADR-003](ADR-003-storage-layout-and-asset-identity.md), [ADR-004](ADR-004-database-engine-and-schema.md)).
+immutable content-addressed Versions, Collections, facets, and lineage, on Postgres only.
 
 The analysis package (`13-compatibility-requirements.md`) states a replacement **MUST** preserve image
 IDs, that storage layout, every API path and shape, and reconciling-sync semantics. Those requirements
@@ -66,8 +65,8 @@ Run v2 alongside v0.10.x and migrate incrementally, resource by resource.
 
 ## Recommendation
 
-**Option B — clean break with a one-way importer**, gated on the non-negotiable cutover feature set in
-[migration.md](../architecture/migration.md). The MUST-preserve-compatibility requirements are not a
+**Option B — clean break with a one-way importer**, gated on a non-negotiable cutover feature set. The
+MUST-preserve-compatibility requirements are not a
 neutral constraint; they encode the exact architecture v2 replaces, so honouring them (A) forecloses the
 rewrite, and a strangler (C) pays dual-stack cost indefinitely for a product with one user and one
 maintainer. A bounded importer that is honest about what it drops is the proportionate path.
@@ -76,17 +75,17 @@ maintainer. A bounded importer that is honest about what it drops is the proport
   valuable as a behavioural inventory and as the source of the cutover gate, but v2 is not bound by its
   ID/layout/API-shape preservation requirements.
 - **Both SQLite and Postgres v0.10.x installs** reach v2 through the importer, not in-place dialect
-  migration ([ADR-004](ADR-004-database-engine-and-schema.md)).
+  migration.
 - **The importer is read-only against the source tree**, supports dry-run and resumable execution,
   records legacy-ID mappings, verifies checksums, and reconciles counts. Its hard invariant: every
   irreplaceable original is either imported and verified or named in the failure report — an unaccounted
   original blocks cutover.
-- **Rollback** is disposable-root discard before M6 and restore-from-verified-backup after; the importer
-  stays one-way by design.
+- **Rollback** is disposable-root discard before cutover and restore-from-verified-backup after; the
+  importer stays one-way by design.
 
-The full checklist, compatibility-break list, filesystem-safety rules, and rollback detail live in
-[migration.md](../architecture/migration.md); this ADR owns the decision, that doc owns the execution.
+The full checklist, compatibility-break list, filesystem-safety rules, and rollback detail are
+maintained separately as cutover execution; this ADR owns the decision.
 
 ## Decision
 
-Accepted 2026-08-19 (M0 of RFC #213) — **clean break with a one-way importer**, as recommended.
+Accepted 2026-08-19 — **clean break with a one-way importer**, as recommended.

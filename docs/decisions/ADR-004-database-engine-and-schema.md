@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The [facet mechanism](../architecture/README.md#core-and-domain-packs) imposes concrete requirements on the store; this ADR picks the engine and schema approach that satisfy them.
+**Context:** The facet mechanism imposes concrete requirements on the store — indexed lookup on semi-structured facet values and recursive lineage traversal; this ADR picks the engine and schema approach that satisfy them.
 
 ## Problem
 
@@ -64,7 +64,7 @@ Also decide here:
 
 ## Decision
 
-Accepted 2026-08-18 (M0 of RFC #213). **Option C — PostgreSQL-only.** This **reverses both** the RFC's
+Accepted 2026-08-18. **Option C — PostgreSQL-only.** This **reverses both** the RFC's
 leaning (B) and this ADR's own Recommendation (A) — deliberately. One server-grade engine gives the
 strongest facet indexing (JSONB + GIN), the best recursive-CTE performance for lineage, and real
 concurrency under bursty ingest, and it eliminates the whole class of problems the analysis package
@@ -75,8 +75,8 @@ into v2.
 **Deployment trade-off, mitigated at the packaging layer.** Option C's rejection ground was that it
 forces every self-hoster to run a database server. We accept that and neutralize it in packaging, not
 schema: v2 ships an **all-in-one Docker image** and/or a **docker-compose bundle** that stands Postgres
-up alongside the app. The install stays effectively one command; M6 requirements (port 5000, volume
-mounts, PUID/PGID, healthcheck) are preserved, with the data volume now backing Postgres. Backup docs
+up alongside the app. The install stays effectively one command; the cutover requirements (port 5000,
+volume mounts, PUID/PGID, healthcheck) are preserved, with the data volume now backing Postgres. Backup docs
 cover the Postgres volume and `pg_dump` in place of the old file copy.
 
 **Coupled calls settled here:**

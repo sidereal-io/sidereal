@@ -2,9 +2,10 @@
 
 **Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The plugin contract in
-[plugins.md](../architecture/plugins.md) defines the common semantics; this ADR chooses how different
-classes of plugin execute and are installed.
+**Context:** This ADR chooses how different classes of plugin execute and are installed, behind one
+common semantic contract. It is coupled with [ADR-007 — Security & plugin
+trust](ADR-007-security-and-plugin-trust.md): execution profile says how code runs; that decision says
+what it may do.
 
 ## Problem
 
@@ -38,7 +39,7 @@ A **capability-oriented hybrid** with three execution profiles behind one semant
 | **Embedded script** | Default public extension surface for lightweight Operators, Sources, Sinks | Manifest + Rhai source in a plugin bundle |
 | **External provider** | Python ML, Siril/PixInsight/ASTAP, hardware- or OS-specific tools | Separately installed service; manifest configures its endpoint |
 
-The initial scripting engine is **Rhai**, subject to an M0 spike proving cancellation, operation/memory
+The initial scripting engine is **Rhai**, subject to a spike proving cancellation, operation/memory
 limits, async host calls, manifest loading, and the `AssetContext` API; Rune and Lua remain fallbacks.
 WASM is deferred until a concrete plugin needs portable compiled components the script profile cannot
 meet. This is **not** the rejected "hybrid" where built-ins get an unconstrained private API — all
@@ -47,7 +48,7 @@ the transport adapter differs.
 
 The interface is batch-oriented (an Operator receives an asset set, not one call per asset) and large
 file bytes never cross a JSON/gRPC boundary — co-located providers get read-only handles or disposable
-paths, remote providers use explicit streaming. An M0 benchmark on a 500+ frame session sizes batching
+paths, remote providers use explicit streaming. A benchmark on a 500+ frame session sizes batching
 without reopening the semantic contract.
 
 **`AssetContext` is the only route from plugin code to core** — approved metadata/facets, mediated byte
@@ -55,19 +56,18 @@ access (read-only stream, descriptor, mount, or disposable copy), emitting new a
 facets, core-managed rename/move/tag/publish intents, allowlisted HTTP, manifest-declared run-scoped
 secrets, and logs/progress/cancellation. No profile gets a writable path into the store; core imports
 and hashes produced files into `AssetVersion` records. Host capabilities each carry their own timeout
-and cancellation. The full enumeration lives in [plugins.md](../architecture/plugins.md).
+and cancellation. The full capability enumeration is part of the plugin contract.
 
 Execution profile is not a trust level: built-in Rust is trusted first-party code, while script bundles
-and external providers get explicit capabilities at install, with authentication, grants, and secret
-delivery defined by [ADR-007](ADR-007-security-and-plugin-trust.md). There is **no published Rust dynamic
-ABI**. v0.1 does not orchestrate plugin containers, provision Python environments, or manage
+and external providers get explicit capabilities at install; authentication, grants, and secret delivery
+are settled separately (the coupled trust decision). There is **no published Rust dynamic ABI**. v0.1 does not orchestrate plugin containers, provision Python environments, or manage
 external-provider upgrades — an external provider is a user-managed dependency. The embedded-script
 profile is declared stable only after **≥2 built-ins also ship through it** (initial candidates:
 tag/rename and API-based plate solving). A compiled built-in can still panic with core, so only trusted
 first-party code belongs in that profile; WASM and container orchestration remain reversible later
-additions, not M0 prerequisites.
+additions, not up-front prerequisites.
 
 ## Decision
 
-Accepted 2026-08-18 (M0 of RFC #213) — the **capability-oriented hybrid**, as recommended. The embedded
-scripting engine (**Rhai**) is contingent on the M0 spike, with Rune/Lua as fallbacks.
+Accepted 2026-08-18 — the **capability-oriented hybrid**, as recommended. The embedded scripting engine
+(**Rhai**) is contingent on the spike, with Rune/Lua as fallbacks.

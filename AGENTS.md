@@ -150,8 +150,11 @@ alternatives. It is not a changelog. Three tiers keep decisions out of prose wit
   *why* later emerges.
 - **Scope / premise** — the RFC or issue, not here.
 
-New ADRs follow `docs/decisions/ADR-000-template.md`, numbered `ADR-NNN-slug.md`. Keep them concise and
-their options concrete.
+**New ADRs follow** `docs/decisions/ADR-000-template.md`, numbered `ADR-NNN-slug.md`. Keep them concise and
+their options concrete. 
+
+**Each ADR stands alone:** options → recommendation → decision, with at most **one** link to another ADR 
+(in Context, with number + title). They DO NOT reference ephemeral materials (issues, milestones, or RFC).
 
 ### Lifecycle
 
