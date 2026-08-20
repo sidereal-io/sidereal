@@ -1,8 +1,8 @@
 # 004: Database Engine and Schema Strategy
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The [facet mechanism](../architecture/README.md#the-mechanism-metadata-facets) imposes concrete requirements on the store; this ADR picks the engine and schema approach that satisfy them.
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The [facet mechanism](../architecture/README.md#core-and-domain-packs) imposes concrete requirements on the store; this ADR picks the engine and schema approach that satisfy them.
 
 ## Problem
 
@@ -64,4 +64,30 @@ Also decide here:
 
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-18 (M0 of RFC #213). **Option C — PostgreSQL-only.** This **reverses both** the RFC's
+leaning (B) and this ADR's own Recommendation (A) — deliberately. One server-grade engine gives the
+strongest facet indexing (JSONB + GIN), the best recursive-CTE performance for lineage, and real
+concurrency under bursty ingest, and it eliminates the whole class of problems the analysis package
+flagged: unverified SQLite/Postgres parity (`Q1`), silent dialect divergence, a drifted migration chain,
+and doubled facet-indexing work. Neither a dual-dialect matrix (B) nor a SQLite ceiling (A) is carried
+into v2.
+
+**Deployment trade-off, mitigated at the packaging layer.** Option C's rejection ground was that it
+forces every self-hoster to run a database server. We accept that and neutralize it in packaging, not
+schema: v2 ships an **all-in-one Docker image** and/or a **docker-compose bundle** that stands Postgres
+up alongside the app. The install stays effectively one command; M6 requirements (port 5000, volume
+mounts, PUID/PGID, healthcheck) are preserved, with the data volume now backing Postgres. Backup docs
+cover the Postgres volume and `pg_dump` in place of the old file copy.
+
+**Coupled calls settled here:**
+
+- **Facet storage:** **JSONB columns with GIN indexes**, not a key-value side table.
+- **ORM / query layer:** **`sqlx`** — facet queries are dynamic, arguing against compile-time builders
+  (`diesel`, `SeaORM`); `sqlx` gives async Postgres with runtime-composed SQL and optional compile-time
+  checking for static queries.
+- **Migrations:** **forward-only**, downgrade **unsupported** and guarded (a newer schema refuses to
+  start against an older binary), removing `U2`. One canonical migration chain replaces the two
+  hand-maintained schema files.
+
+Existing Postgres and SQLite users both reach v2 through the one-way v0.10.x importer, not in-place
+dialect migration.

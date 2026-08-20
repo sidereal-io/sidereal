@@ -140,18 +140,31 @@ See `.env.example` and `.env.worker.example` for the full list.
 
 ## Decision Records
 
-When you encounter a design decision with multiple valid approaches, suggest a decision record. They're most useful when a reasonable person could argue for a different approach.
+An ADR captures the **why** behind a decision — its context, constraints, trade-offs, and rejected
+alternatives. It is not a changelog. Three tiers keep decisions out of prose without over-writing ADRs:
 
-New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`). Keep options concrete — include code snippets or config examples where they clarify trade-offs.
+- **ADR** — a real fork, or an expensive-to-reverse call: a framework/library/dependency, a data model
+  or schema, an auth strategy, an API architecture, an infra/hosting choice. Lives in `docs/decisions/`.
+- **Design fact** — settled, with no significant alternative: a one-liner under *Design facts*
+  in [`docs/architecture/README.md`](docs/architecture/README.md). Promote it to an ADR if a contested
+  *why* later emerges.
+- **Scope / premise** — the RFC or issue, not here.
+
+New ADRs follow `docs/decisions/ADR-000-template.md`, numbered `ADR-NNN-slug.md`. Keep them concise and
+their options concrete.
 
 ### Lifecycle
 
-- **Proposed** — authored, not yet reviewed.
-- **Accepted** — approved; implementation may proceed.
-- **Superseded by NNN** — reversed or replaced; keep the original file, add a pointer to the replacement.
-- **Archived** — no longer applies; prefix title with [Archived], add a one-line note under Status.
+**Proposed** (authored) → **Accepted** (implementation may proceed) → **Superseded by NNN** (keep the
+file, point to the replacement) or **Archived** (prefix the title `[Archived]`, note it under Status).
+Flip status in the same PR that implements the DR — none should linger in Proposed once code ships.
 
-When a PR implements an Accepted DR, flip its status in the same PR. A DR should never linger in Proposed once the corresponding code ships.
+### Open ADRs block design — STOP
+
+A Proposed ADR is a decision *not yet made*; sitting there indefinitely is fine until its subject comes
+up. **Before designing a feature or sub-issue, scan `docs/decisions/` for a Proposed ADR the design
+would have to assume an answer to. If one exists, STOP** — don't design around it or pick a default.
+Work it through with the operator, get it Accepted, then design on top.
 
 ## Feature & Bug Workflow
 

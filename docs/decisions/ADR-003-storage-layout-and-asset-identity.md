@@ -1,8 +1,8 @@
 # 003: Storage Layout, Asset Identity, and Content Revisions
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-07-29
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The outcome constrains the [Lineage](../architecture/README.md#lineage) model and must be decided before M1 builds the core spine.
+**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). The outcome constrains the [Lineage](../architecture/README.md#core-concepts) model and must be decided before M1 builds the core spine.
 
 ## Problem
 
@@ -79,24 +79,26 @@ file can be re-associated by hash and additional safety checks.
 
 ### Storage layout
 
-Identity does not prescribe layout. Originals may appear in a user-meaningful tree by target, session,
-and date, while derived renditions and superseded versions may live in a protected internal subtree.
-The exact tree and cross-filesystem move behavior remain open within this ADR and must be settled
-before M1, with these invariants:
+Identity does not prescribe layout. The exact on-disk tree and cross-filesystem move behavior are a
+separate decision — split out to [ADR-011](ADR-011-storage-tree-layout.md), which carries the binding
+invariants (recoverable DB+FS updates, moves never rewrite content, historical versions never surface as
+duplicate current assets, path-traversal/symlink escape rejected, every file reconcilable to an
+AssetVersion + hash) and must be Accepted before M1 storage design.
 
-- database and filesystem updates are recoverable after interruption;
-- a user-visible move never rewrites content;
-- internal historical versions are not presented as duplicate current assets;
-- path traversal and symlink escape are rejected;
-- every stored file can be reconciled to an AssetVersion and hash.
+### Version navigation and concurrency (input from #217 / DataHub)
 
-## Consequences
+A [#217](https://github.com/sidereal-io/sidereal/issues/217) / DataHub comparison confirmed the Option C
+shape, with these deliberate divergences from DataHub's moving `v0` sentinel:
 
-- Stable links, collections, and source mappings survive moves and byte revisions.
-- Lineage records exact content rather than a mutable logical placeholder.
-- Byte-editing operations consume additional storage until retention safely reclaims old revisions.
-- Queries that only need the current state join Asset to its current AssetVersion.
+- The "current" selection is a separate `Asset.current_version_id` pointer, **not** a moving `v0`
+  sentinel; `isLatest` is **computed**, never a stored per-version boolean.
+- Navigation aids that are **metadata, not identity**: a dense per-Asset `version_seq` ordinal plus
+  optional curated `label` / `aliases` / `note`.
+- Advancing the current pointer uses **optimistic concurrency** — compare-and-swap guarded by an
+  `Asset.revision` counter.
 
 ## Decision
 
-[Filled in after review.]
+Accepted 2026-08-18 (M0 of RFC #213) — **Option C**, as recommended (identity and versioning only).
+On-disk tree layout and cross-filesystem moves are decided separately in
+[ADR-011](ADR-011-storage-tree-layout.md) (Proposed), which gates M1.

@@ -6,8 +6,8 @@ Everything Sidereal v2 *does* to a user's files uses the plugin contract. This d
 a plugin receives, what it may request, what it returns, and how it proves conformance.
 
 The contract is **transport-independent**. [ADR-001](../decisions/ADR-001-plugin-boundary.md) defines
-three execution profiles — built-in Rust, embedded Rhai, and an external provider — over the same
-semantics. Built-ins do not receive an unconstrained private API merely because they are compiled in.
+three execution profiles — built-in Rust, embedded script (Rhai, pending the M0 spike), and an external
+provider — over the same semantics. Built-ins do not receive an unconstrained private API merely because they are compiled in.
 
 ## Contents
 
@@ -109,7 +109,7 @@ A plugin ships a manifest declaring:
 | `capability_grants` | Requested host functions, allowlisted network destinations, byte-access mode, and secret names. Installation requires explicit approval. |
 | `requires` | Declared external dependencies or provider endpoints so unmet requirements surface before a run. |
 
-Built-in Rust plugins ship with Sidereal. Script plugins are manifest-plus-Rhai bundles loaded by
+Built-in Rust plugins ship with Sidereal. Script plugins are manifest-plus-script bundles loaded by
 core. External providers are separately installed services or agents; Sidereal v0.1 validates and
 connects to their endpoints but does not orchestrate their containers or language environments.
 
@@ -154,12 +154,12 @@ An Operator returns status, proposed core-managed mutations, zero or more new as
 declarations, external receipts, goal-satisfaction evidence, and log output. Core validates the
 complete result before committing core-managed effects.
 
-Every run is recorded as an [Operation Run](README.md#operation-run): Operator and version, addressed
+Every run is recorded as an [Operation Run](README.md#core-concepts): Operator and version, addressed
 Processing Goals, inputs and input versions, params, outputs, status, side-effect state, and logs.
 
 The execution profiles differ only in how requests and results cross the adapter. Built-in Rust uses
-an in-process trait, Rhai uses registered host functions, and external providers use an authenticated
-protocol. Shared fixtures and conformance tests verify the same semantics.
+an in-process trait, the embedded script engine uses registered host functions, and external providers
+use an authenticated protocol. Shared fixtures and conformance tests verify the same semantics.
 
 If a legacy external tool requires a path, core provides a read-only mount or disposable workspace
 and verifies input hashes after execution. Produced files are imported and hashed before becoming
@@ -242,8 +242,8 @@ semantic suite is a bug in the built-in or interface — never an exemption.
 Each capability contract is versioned independently. Core refuses an incompatible capability at load
 time rather than failing partway through a run.
 
-Operator API v0.1 is targeted for M2 after four built-ins, including at least two Rhai
-implementations, consume it unchanged. Source API v0.1 follows real watch-folder and Immich Sources.
+Operator API v0.1 is targeted for M2 after four built-ins, including at least two through the embedded
+script profile, consume it unchanged. Source API v0.1 follows real watch-folder and Immich Sources.
 Sink API v0.1 follows a real Immich or filesystem-gallery Sink. A `v0.2` of each is expected — a
 freeze buys a stable target, not permanent immutability.
 
