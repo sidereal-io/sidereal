@@ -1,16 +1,18 @@
 # Sidereal Architecture
 
-**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) (`status/ready`) · **Last updated:** 2026-08-19
+**Architecture reference:** current · **Open architecture decisions:** [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend), [ADR-011](../decisions/ADR-011-storage-tree-layout.md) (storage tree) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-19
 
-> **Why this lives in the repo.** Feature designs live in issue bodies; this is different. It is the
-> standing answer to "what is this system and where is it going," and it must outlive the issue that
-> produced it. #213 is the *proposal*; this is the *reference*. Where the [decision
-> index](#architecture-decisions) below marks an ADR **Proposed**, the corresponding approach here is a
-> leaning, not a commitment.
-
-This document is a **map**: the north star, a glossary of the load-bearing concepts, and pointers to
-the ADRs and specs that own each decision. It does not restate them — [`docs/decisions/`](../decisions/)
-is the source of truth for *why* each call was made.
+> **How to use this map.** This file owns the **architectural map** — the north star and a glossary of
+> the load-bearing concepts — and points to, without restating, the documents that own each thing:
+>
+> - **Why each decision was made** → the ADRs in [`docs/decisions/`](../decisions/); the
+>   [decision index](#architecture-decisions) below is their canonical status.
+> - **The plan** — milestones, sequencing → [roadmap.md](roadmap.md) and [RFC #213](https://github.com/sidereal-io/sidereal/issues/213).
+> - **Cutover execution** — checklist, rollback → [migration.md](migration.md).
+> - **Current v0.10.x behaviour** → the [analysis package](https://github.com/sidereal-io/sidereal-analysis) — an inventory, not a compatibility contract.
+>
+> Where the decision index marks an ADR **Proposed**, the approach here is a leaning, not a commitment.
+> Change this map through an ADR, then update it in the same PR.
 
 ## Where we are
 
@@ -50,25 +52,6 @@ astro product.
 
 Seven load-bearing additions that do not exist today; everything else in v2 is a consequence of them.
 
-```mermaid
-graph TD
-    S[Source plugin] -->|produces| A[Asset]
-    A -->|member of| C[Collection]
-    A -->|has immutable| AV[Asset Version]
-    AV -.->|derived from| AV
-    OR[Operation Run] -->|consumes| AV
-    OR -->|produces| AV
-    OR -->|records| L[Lineage edges]
-    X[Selector] -->|matches| A
-    X -->|defines membership| C
-    P[Processing Policy] -->|declares| G[Processing Goal]
-    P -->|matches with| X
-    G -->|dispatches eligible| OR
-    OR -->|satisfies| G
-    A -->|published by| K[Sink plugin]
-    A -->|carries| F[Facets]
-```
-
 **Asset** — one logical file. Stable opaque identity, independent of path, so the system reorganising a
 tree never destroys its own references. Carries a small core-owned envelope (`id`, `kind`, `name`) plus
 typed [facets](#core-and-domain-packs), and one or more immutable `AssetVersion` records.
@@ -105,6 +88,27 @@ opaquely stuck. → [ADR-006](../decisions/ADR-006-rule-engine-deferral.md)
 addressed, input and output versions, params, idempotency key, side-effect state, status, and logs.
 Re-run eligibility follows the Operator's side-effect class; an ambiguous external publish is not blindly
 replayed. → [ADR-006](../decisions/ADR-006-rule-engine-deferral.md)
+
+How they relate (reference, not a flow):
+
+```mermaid
+graph TD
+    S[Source plugin] -->|produces| A[Asset]
+    A -->|member of| C[Collection]
+    A -->|has immutable| AV[Asset Version]
+    AV -.->|derived from| AV
+    OR[Operation Run] -->|consumes| AV
+    OR -->|produces| AV
+    OR -->|records| L[Lineage edges]
+    X[Selector] -->|matches| A
+    X -->|defines membership| C
+    P[Processing Policy] -->|declares| G[Processing Goal]
+    P -->|matches with| X
+    G -->|dispatches eligible| OR
+    OR -->|satisfies| G
+    A -->|published by| K[Sink plugin]
+    A -->|carries| F[Facets]
+```
 
 ## Plugin model
 
@@ -161,7 +165,7 @@ rest are accepted.
 **ADR-001 and ADR-007 are coupled** — the execution profile says how code runs; grants and
 `AssetContext` say what it may do. Neither is complete without the other.
 
-## Key design decisions
+## Design facts
 
 Settled calls that don't warrant an ADR — no significant alternative to weigh, or cheap to reverse.
 Anything with real trade-offs is an ADR (table above); product scope lives in RFC #213. If a fact grows
@@ -186,15 +190,3 @@ tracked as sub-issues under [#213](https://github.com/sidereal-io/sidereal/issue
 
 Decision in [ADR-010](../decisions/ADR-010-migration-strategy.md); the cutover gate — checklist,
 compatibility breaks, filesystem-safety invariants, and rollback — in **[migration.md](migration.md)**.
-
-## What this document is not
-
-- **Not a plan.** Milestones are sub-issues under #213.
-- **Not fully accepted.** #213 is `status/ready`, but some ADRs are still Proposed — the
-  [decision index](#architecture-decisions) is canonical, and anything it marks Proposed is a leaning.
-- **Not a v0.10.x reference.** The authoritative record of current behaviour is the
-  [analysis package](https://github.com/sidereal-io/sidereal-analysis).
-
-**Changing it:** an architectural change goes through an ADR in [`docs/decisions/`](../decisions/), then
-this map is updated in the same PR. Resolving an open ADR means filling in its Decision, flipping its
-status, and updating the [decision index](#architecture-decisions) above.

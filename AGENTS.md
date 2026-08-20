@@ -145,7 +145,7 @@ alternatives. It is not a changelog. Three tiers keep decisions out of prose wit
 
 - **ADR** — a real fork, or an expensive-to-reverse call: a framework/library/dependency, a data model
   or schema, an auth strategy, an API architecture, an infra/hosting choice. Lives in `docs/decisions/`.
-- **Design fact** — settled, with no significant alternative: a one-liner under *Key design decisions*
+- **Design fact** — settled, with no significant alternative: a one-liner under *Design facts*
   in [`docs/architecture/README.md`](docs/architecture/README.md). Promote it to an ADR if a contested
   *why* later emerges.
 - **Scope / premise** — the RFC or issue, not here.
