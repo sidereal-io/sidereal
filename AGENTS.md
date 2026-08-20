@@ -140,43 +140,31 @@ See `.env.example` and `.env.worker.example` for the full list.
 
 ## Decision Records
 
-An ADR captures the **why** — the context, constraints, and trade-offs behind a decision. Code shows
-what was built; the ADR explains why it was built this way and what alternatives were rejected. Write to
-that purpose, not to log every change.
+An ADR captures the **why** behind a decision — its context, constraints, trade-offs, and rejected
+alternatives. It is not a changelog. Three tiers keep decisions out of prose without over-writing ADRs:
 
-**Write one at most for:** a framework, library, or major dependency; a data model or database schema;
-an authentication strategy; an API architecture (REST vs. GraphQL vs. tRPC); a build tool, hosting
-platform, or infrastructure choice; or anything that would be **expensive to reverse**. If none of those
-fit and a reasonable person wouldn't argue for a different approach, don't write one.
+- **ADR** — a real fork, or an expensive-to-reverse call: a framework/library/dependency, a data model
+  or schema, an auth strategy, an API architecture, an infra/hosting choice. Lives in `docs/decisions/`.
+- **Design fact** — settled, with no significant alternative: a one-liner under *Key design decisions*
+  in [`docs/architecture/README.md`](docs/architecture/README.md). Promote it to an ADR if a contested
+  *why* later emerges.
+- **Scope / premise** — the RFC or issue, not here.
 
-Three tiers keep decisions out of prose without over-writing ADRs: a real fork or an expensive-to-reverse
-call is an **ADR**; a settled call with no significant alternative goes as a one-line **design fact**
-under *Key design decisions* in [`docs/architecture/README.md`](docs/architecture/README.md); product
-scope and premises live in the **RFC/issue**. A design fact that grows a contested *why* gets promoted to
-an ADR.
-
-New ADRs follow `docs/decisions/ADR-000-template.md`. Number sequentially (`ADR-NNN-short-slug.md`). Keep
-it concise and the options concrete — code or config snippets where they clarify a trade-off.
+New ADRs follow `docs/decisions/ADR-000-template.md`, numbered `ADR-NNN-slug.md`. Keep them concise and
+their options concrete.
 
 ### Lifecycle
 
-- **Proposed** — authored, not yet reviewed.
-- **Accepted** — approved; implementation may proceed.
-- **Superseded by NNN** — reversed or replaced; keep the original file, add a pointer to the replacement.
-- **Archived** — no longer applies; prefix title with [Archived], add a one-line note under Status.
+**Proposed** (authored) → **Accepted** (implementation may proceed) → **Superseded by NNN** (keep the
+file, point to the replacement) or **Archived** (prefix the title `[Archived]`, note it under Status).
+Flip status in the same PR that implements the DR — none should linger in Proposed once code ships.
 
-When a PR implements an Accepted DR, flip its status in the same PR. A DR should never linger in Proposed once the corresponding code ships.
+### Open ADRs block design — STOP
 
-### Open ADRs block design — STOP and decide first
-
-A **Proposed** ADR is a decision that has *not* been made. Sitting in Proposed indefinitely is fine —
-until its subject matter comes up in a design.
-
-**Before designing any feature or sub-issue, scan `docs/decisions/` for a Proposed ADR whose scope
-touches the design** — i.e. one the design would have to assume an answer to. If one exists, **STOP.**
-Don't design around it, pick a default, or leave the choice implicit. Work through it with the operator,
-get it Accepted (write the Decision, flip the status), *then* design on top. An open-ended design that
-silently assumes an undecided ADR is the exact failure this rule prevents.
+A Proposed ADR is a decision *not yet made*; sitting there indefinitely is fine until its subject comes
+up. **Before designing a feature or sub-issue, scan `docs/decisions/` for a Proposed ADR the design
+would have to assume an answer to. If one exists, STOP** — don't design around it or pick a default.
+Work it through with the operator, get it Accepted, then design on top.
 
 ## Feature & Bug Workflow
 
