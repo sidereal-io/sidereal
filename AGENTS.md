@@ -230,8 +230,9 @@ used to get there. Reach for them instead of ad hoc effort:
   / `CONTEXT.md` current as terms crystallize). Route its output into the issue body with
   `writing-specs`.
 - **`status/design`** — once the issue body has a spec, run `spec-critique` for an independent
-  adversarial pass (Codex CLI reviewing against the live repo) before requesting
-  human review. Don't move to `writing-plans` on an uncritiqued spec.
+  adversarial pass before requesting human review; it routes the review to a model family other
+  than the one that authored the spec, reading against the live repo. Don't move to
+  `writing-plans` on an uncritiqued spec.
 - **`status/ready`** — use `writing-plans` to turn the critiqued spec into an implementation plan;
   steps substantial enough to warrant independent tracking become sub-issues per the table above,
   smaller ones stay as plan-file checkboxes. Execute with `executing-plans`'s tick-with-evidence
