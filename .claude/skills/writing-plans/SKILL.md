@@ -15,7 +15,7 @@ The plan file is not meant to outlive the plan's execution and should exist as a
 
 ## Hard gates — verify before writing a word
 
-1. **Critique recorded.** The spec (the issue body) has an independent cross-toolset critique and was revised against it. If not, stop and run the appropriate `spec-critique*` skill first — the reviewer's toolset must differ from the spec author's.
+1. **Critique recorded.** The spec (the issue body) has an independent cross-toolset critique and was revised against it. If not, stop and run `spec-critique` first.
 2. **Source of demand named.** Exactly one GitHub issue must first exist and be named — the parent issue if this plan covers a full feature, or a sub-issue if it covers one step of a larger one. No issue → create/update the source first via `writing-specs`; never write a free-floating plan.
 3. If an **ADR-level decision** ever needs to be made during this stage, STOP immediately and describe the problem — this most likely means going back to the spec.
 

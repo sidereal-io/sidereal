@@ -229,9 +229,8 @@ used to get there. Reach for them instead of ad hoc effort:
   interview you one question at a time, and `domain-modeling` to keep `docs/architecture/README.md`
   / `CONTEXT.md` current as terms crystallize). Route its output into the issue body with
   `writing-specs`.
-- **`status/design`** — once the issue body has a spec, run `spec-critique` (or its
-  `-antigravity`/`-claude` variants when the primary reviewer is unavailable, or the spec's own
-  author toolset needs a different reviewer) for an independent adversarial pass before requesting
+- **`status/design`** — once the issue body has a spec, run `spec-critique` for an independent
+  adversarial pass (Codex CLI reviewing against the live repo) before requesting
   human review. Don't move to `writing-plans` on an uncritiqued spec.
 - **`status/ready`** — use `writing-plans` to turn the critiqued spec into an implementation plan;
   steps substantial enough to warrant independent tracking become sub-issues per the table above,

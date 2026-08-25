@@ -52,14 +52,6 @@ Do NOT rewrite the spec or produce code. Output ranked findings, most severe fir
 
 Run it in the background (`run_in_background`) for `high` — it can take several minutes — and foreground with a generous timeout (600000) otherwise. This costs real tokens; never loop it or re-run without a changed spec or a changed question.
 
-### Fallback — Antigravity `agy` (when Codex is out of credit or unavailable)
-
-`agy` counts as an independent toolset. Use `--dangerously-skip-permissions`. That flag also removes the write/exec gate, so run it only with everything committed and check `git status --porcelain` afterwards to confirm it wrote nothing. See `spec-critique-antigravity` for the full drive.
-
-### Reversed roles — Claude as critic
-
-Independence is by toolset: if a different family wrote the spec, Claude is the independent reviewer. See `spec-critique-claude` for the full drive.
-
 ## Step 4 — Record and triage
 
 1. **Verify every finding before accepting it.** Check each claim against the file, doc, or behavior it cites; a "likely" asserted over something checkable is a question, not a finding. Record the outcome per finding: CONFIRMED, REFUTED (name the contradicting evidence), or OUT-OF-SCOPE (say why).
