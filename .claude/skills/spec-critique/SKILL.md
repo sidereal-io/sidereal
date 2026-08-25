@@ -1,100 +1,89 @@
 ---
 name: spec-critique
-description: Run the independent adversarial spec critique before any implementation plan is written. Portable across harnesses — detects which toolset is running it and dispatches to a different model family for the review. Use whenever a spec is newly written or materially revised, whenever the user says "critique this spec", "spec review", or asks whether a design is ready to plan.
+description: Run the independent adversarial spec critique before any implementation plan is written. Portable across harnesses — establishes who authored the spec and dispatches the review to a different model family. Use whenever a spec is newly written or materially revised, whenever the user says "critique this spec", "spec review", or asks whether a design is ready to plan.
 ---
 
 # Spec Critique
 
-Independent review is the highest-ROI quality step in this process. The property that makes it work
-is **independence by toolset**: the critic must not inherit the authoring session's reasoning, or it
-converges on confirming it. A different model family, with fresh context and read-only access to the
-real repo, checks the spec's claims against the code instead of taking them on faith.
+Independent review is the highest-ROI quality step in this process. What makes it work is
+**independence by model family**: a critic that inherits the author's reasoning just confirms it.
 
-**You are the author.** Whatever harness is executing this skill wrote (or is shepherding) the spec,
-so it cannot be the reviewer. Steps 1–2 exist to route the work to someone else.
+Two things not to assume. **You are not necessarily the author** — someone else may have written the
+spec and pushed it before you saw it. And **a tool is not a family** — `agy` will happily run a Claude
+model, so independence is a property of the model that answers, not the CLI that launches it.
 
-The critic critiques; it does not rewrite. You (with the user) triage its findings and revise the
-spec yourself.
+The critic critiques; it does not rewrite. You and the user triage the findings and revise the spec.
 
-## Step 1 — Identify yourself
+## Step 1 — Pull the spec
 
-Name your own model family — you know which harness you are running in. If genuinely unsure, probe:
-
-| Signal | Family |
-|---|---|
-| `$CLAUDECODE` is `1`, or `$CLAUDE_CODE_ENTRYPOINT` is set | `claude` |
-| `$CODEX_*` env vars present, or the session loaded `AGENTS.md` as its own house rules with no `CLAUDE.md` | `codex` |
-| Running under Antigravity | `agy` (Gemini family) |
-| None of the above | `other` — treat every reviewer below as eligible |
-
-State which you are before continuing. Getting this wrong silently destroys the whole point of the
-step: a spec reviewed by its own family is a rubber stamp.
-
-## Step 2 — Pick the reviewer
-
-Preference order is **`codex` → `claude` → `agy`**. Walk it top to bottom and take the first entry
-that is *not your own family* and *is available* (`command -v <tool>` succeeds, and it is not out of
-credit). That resolves to:
-
-| You are | Reviewer | Then | Last resort |
-|---|---|---|---|
-| `claude` | `codex` | `agy` | — |
-| `codex` | `claude` | `agy` | — |
-| `agy` | `codex` | `claude` | — |
-| `other` | `codex` | `claude` | `agy` |
-
-`agy` sits last everywhere because it needs the house rules pointed at explicitly (below) and has no
-independent effort dial. It is still a legitimate *primary* when the Gemini family did not author the
-spec and you specifically want its point of view — the order is a default, not a prohibition.
-
-**If the only available tool is your own family, STOP** and tell the user. Do not review your own
-spec and label it independent; a self-review is worth less than an honest "no reviewer available."
-
-State the reviewer and why it won before running.
-
-## Step 3 — Identify the spec
-
-The spec is a GitHub issue body — use the issue number the user gave, or the issue under discussion.
-If ambiguous, ask rather than guess. Pull it to the scratchpad for the critic to read alongside the
-live repo:
+A GitHub issue body. Use the number the user gave, or the issue under discussion; if ambiguous, ask.
 
 ```bash
 gh issue view <n> --json body --jq '.body' > .workspace/issue-<n>.md
+gh issue view <n> --json labels --jq '.labels[].name'
 ```
 
-## Step 4 — Scale effort to complexity
+## Step 2 — Establish the author family
 
-Read the spec and score its *proposed* complexity — what it would change, not how long the file is.
-Pick the highest row that matches; when torn between two, take the higher (an under-reviewed design
-costs far more than extra reasoning tokens). `high` is the ceiling — never go above it.
+First of these that answers:
 
-| Tier | When it fits |
+1. The provenance block in the issue body (Step 6 writes it) — authoritative.
+2. An `authored-by/*` label.
+3. This session, if you wrote or materially revised the spec here.
+4. Ask. Don't guess — a wrong answer turns this whole step into a rubber stamp, quietly.
+
+A human author unaided frees every family. But if you then shaped the spec — the usual case out of
+`writing-specs` — exclude your own family too; you'd be reviewing your own reasoning.
+
+State the author family and how you know.
+
+## Step 3 — Pick the reviewer
+
+Order is **`codex` → `claude` → `agy`**. Take the first whose *model family* isn't the author's and
+that's actually available (`command -v`, and not out of credit).
+
+| Author | Reviewer | Then |
+|---|---|---|
+| `claude` | `codex` | `agy`, non-Claude model |
+| `codex` | `claude` | `agy`, non-GPT model |
+| `gemini` | `codex` | `claude` |
+| human, unaided | `codex` | `claude`, then `agy` |
+
+`agy` is last because it needs house rules pointed at explicitly and folds reasoning tier into model
+choice. Still fine as a primary when you want a family the others can't give you — just pick a model
+whose family differs from the author's.
+
+**If every available reviewer shares the author's family, stop** and say so. No review beats a
+self-review wearing an independence label.
+
+## Step 4 — Scale scrutiny
+
+Score what the spec would *change*, not its length. Torn between two rows, take the higher.
+
+| Tier | Fits |
 |---|---|
 | `low` | Narrow fix or polish; one package; no new contracts, schema, events, or authz surface |
 | `medium` | Standard single-subsystem slice on established patterns; contained blast radius |
 | `high` | Multi-package; new contracts/events/migrations; authz or trust boundaries; architecture-changing (new-ADR territory); novel external dependency |
 
-Only Codex has a real reasoning-effort dial. The other two scale by model tier plus how hard the
-prompt pushes:
+Always use the reviewer's **strongest available reasoning model** — this step is worth the tokens.
+Scale the reasoning dial (`low`/`mid`/`highest`) and the run shape: foreground for `low` and
+`medium`, background with a long timeout for `high`, plus a nudge in the prompt to dig deeper.
 
-| Tier | `codex` | `claude` | `agy` |
-|---|---|---|---|
-| `low` | `model_reasoning_effort=low` | default model, foreground | `Gemini 3.1 Pro (Low)`, foreground |
-| `medium` | `model_reasoning_effort=medium` | `--model opus`, foreground | `Gemini 3.1 Pro (High)`, foreground |
-| `high` | `model_reasoning_effort=high` | `--model opus`, background, ask for deeper analysis in the prompt | `Gemini 3.1 Pro (High)`, background, `--print-timeout 20m` |
+Only Codex exposes reasoning independently of model choice. Where the tier is folded into the model
+name, pick the matching variant — and **discover the current list rather than trusting a name written
+here** (`agy models`), since model ids rot fast.
 
-State the chosen tier and the one-line reason before running.
+State the tier and a one-line reason.
 
-## Step 5 — Run the critique
+## Step 5 — Run
 
-Write the prompt to `.workspace/critique-prompt.md`, then run from the repo root. Every recipe below
-is read-only: the critic can read and search the repo but cannot edit it.
-
-**Prompt template** — adjust the bracketed parts only:
+Prompt goes in `.workspace/critique-prompt.md`; run from the repo root. All three recipes are
+read-only.
 
 ```
 You are an independent design reviewer with read-only access to this repository.
-[agy only: First read AGENTS.md for the project's house rules.]
+[tools that don't auto-load house rules: First read AGENTS.md for the project's house rules.]
 Adversarially critique the specification in the body of GitHub issue #<n> (pasted at
 .workspace/issue-<n>.md), checking its claims against the actual code in this repository
 (verify, don't assume).
@@ -111,53 +100,46 @@ verified in the repo, and what question the spec must answer. If the design is s
 plainly rather than inventing objections.
 ```
 
-The house-rules line is conditional because auto-loading differs: **codex** reads `AGENTS.md` and
-**claude** reads `CLAUDE.md` (a symlink to `AGENTS.md` here) on their own — don't restate house rules
-for them. **agy** loads neither, so it needs the explicit pointer.
+That house-rules line is conditional: codex reads `AGENTS.md` and claude reads `CLAUDE.md` (symlinked
+to it here) on their own; `agy` reads neither.
 
-**codex:**
 ```bash
-codex exec -s read-only -m gpt-5.6-sol \
-  -c model_reasoning_effort="<tier>" \
-  -o .workspace/spec-critique-raw.md \
-  - < .workspace/critique-prompt.md
+# codex — -s read-only sandboxes it, reasoning is its own dial
+codex exec -s read-only -m <strongest-model> -c model_reasoning_effort="<tier>" \
+  -o .workspace/spec-critique-raw.md - < .workspace/critique-prompt.md
+
+# claude — plan mode is read-only; critique is the final message on stdout
+claude -p --permission-mode plan --model <highest-reasoning-tier> \
+  < .workspace/critique-prompt.md > .workspace/spec-critique-raw.md
+
+# agy — plan mode is read-only; prompt is the VALUE of -p and must come last
+agy --mode plan --model "<from agy models, family ≠ author>" --print-timeout <timeout> \
+  -p "$(cat .workspace/critique-prompt.md)" > .workspace/spec-critique-raw.md
 ```
 
-**claude** — `--permission-mode plan` is the read-only mode; the critique is the final message on stdout:
-```bash
-claude -p --permission-mode plan --model opus \
-  < .workspace/critique-prompt.md \
-  > .workspace/spec-critique-raw.md
-```
+Costs real tokens — never loop it, never re-run without a changed spec or a changed question. If the
+reviewer errors or is out of credit, fall to the next entry in Step 3 and note the substitution.
 
-**agy** — `--mode plan` is the read-only mode; the prompt is the *value* of `-p` and must come after
-the other flags (flags placed after it get swallowed into the prompt):
-```bash
-agy --mode plan --model "Gemini 3.1 Pro (High)" --print-timeout 20m \
-  -p "$(cat .workspace/critique-prompt.md)" \
-  > .workspace/spec-critique-raw.md
-```
+## Step 6 — Record and stamp
 
-`agy`'s `--model` wants its own display string, not the `gemini-3.1-pro` model id; confirm the
-current strings with `agy models`.
+1. **Verify every finding before accepting it.** A "likely" asserted over something checkable is a
+   question, not a finding. Mark each CONFIRMED, REFUTED (name the contradicting evidence), or
+   OUT-OF-SCOPE (say why).
+2. Summarize to the user by severity with an accept/reject rec each — the critic has no product
+   context, so some findings are legitimately out of scope.
+3. Revise the issue body, then update the provenance block at its top. Step 2 reads this next time,
+   so record what *actually* ran, fallback substitutions included:
 
-Run in the background (`run_in_background`) for `high` — it can take several minutes — and in the
-foreground with a generous timeout (600000) otherwise. This costs real tokens: never loop it, and
-never re-run without a changed spec or a changed question. If the chosen reviewer errors out or is
-out of credit, fall to the next entry in Step 2's order and note the substitution.
+   ```markdown
+   <!-- provenance -->
+   **Authored:** <date> · <family> (<tool/model>)
+   **Critiqued:** <date> · <family> (<tool/model>, <tier>) — N findings, M accepted
+   ```
 
-## Step 6 — Record and triage
-
-1. **Verify every finding before accepting it.** Check each claim against the file, doc, or behavior
-   it cites; a "likely" asserted over something checkable is a question, not a finding. Record the
-   outcome per finding: CONFIRMED, REFUTED (name the contradicting evidence), or OUT-OF-SCOPE (say why).
-2. Summarize the verified findings to the user ranked by severity, with your own accept/reject
-   recommendation per finding — the critic has no product context, so some findings are legitimately
-   out of scope; say why when rejecting.
-3. Revise the issue body for accepted findings, and note at the top:
-   `Critiqued <date> (<tool>/<model>, <tier>): N findings, M accepted — see critique comment.`
-   Record the reviewer that actually ran, so a later reader can tell whether independence held. A
-   spec with all blocker/major findings resolved (fixed or explicitly rejected with reasons) is ready
-   for `writing-plans` and the human approval gate (`status/design` → `status/ready`).
-4. Post the critique to the issue as a comment
-   (`gh issue comment <n> --body-file .workspace/spec-critique-raw.md`).
+   All blocker/major findings resolved — fixed or explicitly rejected with reasons — means ready for
+   `writing-plans` and the approval gate (`status/design` → `status/ready`).
+4. Mirror onto labels for cross-issue queries: `authored-by/<family>`, `reviewed-by/<family>`,
+   following the repo's `category/value` convention. If a label doesn't exist, say so and let the
+   user create it rather than minting labels on a shared repo. The body block stays authoritative;
+   labels are just an index.
+5. `gh issue comment <n> --body-file .workspace/spec-critique-raw.md`
