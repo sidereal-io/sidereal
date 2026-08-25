@@ -12,10 +12,8 @@ Two things not to assume. **You are not necessarily the author** — someone els
 spec and pushed it before you saw it. And **a CLI is not a family** — independence is a property of
 the model that answers, not the tool that launches it.
 
-Three families here — `gpt`, `claude`, `gemini` — each with a usual executor (`codex`, `claude`,
-`agy` respectively). The mapping isn't fixed: `agy` will run models from all three, so it doubles as
-a fallback executor when a family's usual CLI is unavailable. Pick the family first, then decide how
-to run it (Step 5).
+Three families here, one executor each: `gpt` via `codex`, `claude` via `claude`, `gemini` via `agy`.
+No cross-running — if a family's CLI is unavailable, so is that family, and you fall to the next one.
 
 The critic critiques; it does not rewrite. You and the user triage the findings and revise the spec.
 
@@ -44,8 +42,8 @@ State the author family and how you know.
 
 ## Step 3 — Pick the reviewer family
 
-Order is **`gpt` → `claude` → `gemini`**. Take the first that isn't the author's family and can
-actually be executed (Step 5 — its usual CLI is on PATH and has credit, or `agy` can run it).
+Order is **`gpt` → `claude` → `gemini`**. Take the first that isn't the author's family and whose
+executor is available (`command -v`, and not out of credit).
 
 | Author | Reviewer | Then |
 |---|---|---|
@@ -82,16 +80,8 @@ State the tier and a one-line reason.
 
 ## Step 5 — Execute the family
 
-Pick the executor for the family chosen in Step 3:
-
-| Family | Usual executor | If unavailable |
-|---|---|---|
-| `gpt` | `codex` | `agy` with a GPT-family model |
-| `claude` | `claude` | `agy` with a Claude-family model |
-| `gemini` | `agy` with a Gemini-family model | — |
-
-When running any family *through* `agy`, pick its model from `agy models` and confirm the family
-matches what Step 3 chose — using `agy` doesn't make a Claude model independent of a Claude author.
+`agy models` also lists Claude and GPT models — ignore them and pick a Gemini one. Running another
+family there would change which CLI launched the review, not who actually did it.
 
 Prompt goes in `.workspace/critique-prompt.md`; run from the repo root. All recipes are read-only.
 
@@ -126,13 +116,13 @@ codex exec -s read-only -m <strongest-model> -c model_reasoning_effort="<tier>" 
 claude -p --permission-mode plan --model <highest-reasoning-tier> \
   < .workspace/critique-prompt.md > .workspace/spec-critique-raw.md
 
-# agy — executes any family; plan mode is read-only; prompt is the VALUE of -p and must come last
-agy --mode plan --model "<chosen family's model, from agy models>" --print-timeout <timeout> \
+# agy — plan mode is read-only; prompt is the VALUE of -p and must come last
+agy --mode plan --model "<a Gemini model, from agy models>" --print-timeout <timeout> \
   -p "$(cat .workspace/critique-prompt.md)" > .workspace/spec-critique-raw.md
 ```
 
 Costs real tokens — never loop it, never re-run without a changed spec or a changed question. If the
-family can't be executed at all, fall to the next family in Step 3 and note the substitution.
+executor errors or is out of credit, fall to the next family in Step 3 and note the substitution.
 
 ## Step 6 — Record and stamp
 
