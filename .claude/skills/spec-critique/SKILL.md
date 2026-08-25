@@ -9,8 +9,13 @@ Independent review is the highest-ROI quality step in this process. What makes i
 **independence by model family**: a critic that inherits the author's reasoning just confirms it.
 
 Two things not to assume. **You are not necessarily the author** — someone else may have written the
-spec and pushed it before you saw it. And **a tool is not a family** — `agy` will happily run a Claude
-model, so independence is a property of the model that answers, not the CLI that launches it.
+spec and pushed it before you saw it. And **a CLI is not a family** — independence is a property of
+the model that answers, not the tool that launches it.
+
+Three families here — `gpt`, `claude`, `gemini` — each with a usual executor (`codex`, `claude`,
+`agy` respectively). The mapping isn't fixed: `agy` will run models from all three, so it doubles as
+a fallback executor when a family's usual CLI is unavailable. Pick the family first, then decide how
+to run it (Step 5).
 
 The critic critiques; it does not rewrite. You and the user triage the findings and revise the spec.
 
@@ -37,24 +42,23 @@ A human author unaided frees every family. But if you then shaped the spec — t
 
 State the author family and how you know.
 
-## Step 3 — Pick the reviewer
+## Step 3 — Pick the reviewer family
 
-Order is **`codex` → `claude` → `agy`**. Take the first whose *model family* isn't the author's and
-that's actually available (`command -v`, and not out of credit).
+Order is **`gpt` → `claude` → `gemini`**. Take the first that isn't the author's family and can
+actually be executed (Step 5 — its usual CLI is on PATH and has credit, or `agy` can run it).
 
 | Author | Reviewer | Then |
 |---|---|---|
-| `claude` | `codex` | `agy`, non-Claude model |
-| `codex` | `claude` | `agy`, non-GPT model |
-| `gemini` | `codex` | `claude` |
-| human, unaided | `codex` | `claude`, then `agy` |
+| `claude` | `gpt` | `gemini` |
+| `gpt` | `claude` | `gemini` |
+| `gemini` | `gpt` | `claude` |
+| human, unaided | `gpt` | `claude`, then `gemini` |
 
-`agy` is last because it needs house rules pointed at explicitly and folds reasoning tier into model
-choice. Still fine as a primary when you want a family the others can't give you — just pick a model
-whose family differs from the author's.
+`gemini` sits last because its executor needs house rules pointed at explicitly and folds reasoning
+tier into model choice. Still fine as a primary when you specifically want its perspective.
 
-**If every available reviewer shares the author's family, stop** and say so. No review beats a
-self-review wearing an independence label.
+**If every executable family is the author's, stop** and say so. No review beats a self-review
+wearing an independence label.
 
 ## Step 4 — Scale scrutiny
 
@@ -76,10 +80,20 @@ here** (`agy models`), since model ids rot fast.
 
 State the tier and a one-line reason.
 
-## Step 5 — Run
+## Step 5 — Execute the family
 
-Prompt goes in `.workspace/critique-prompt.md`; run from the repo root. All three recipes are
-read-only.
+Pick the executor for the family chosen in Step 3:
+
+| Family | Usual executor | If unavailable |
+|---|---|---|
+| `gpt` | `codex` | `agy` with a GPT-family model |
+| `claude` | `claude` | `agy` with a Claude-family model |
+| `gemini` | `agy` with a Gemini-family model | — |
+
+When running any family *through* `agy`, pick its model from `agy models` and confirm the family
+matches what Step 3 chose — using `agy` doesn't make a Claude model independent of a Claude author.
+
+Prompt goes in `.workspace/critique-prompt.md`; run from the repo root. All recipes are read-only.
 
 ```
 You are an independent design reviewer with read-only access to this repository.
@@ -112,13 +126,13 @@ codex exec -s read-only -m <strongest-model> -c model_reasoning_effort="<tier>" 
 claude -p --permission-mode plan --model <highest-reasoning-tier> \
   < .workspace/critique-prompt.md > .workspace/spec-critique-raw.md
 
-# agy — plan mode is read-only; prompt is the VALUE of -p and must come last
-agy --mode plan --model "<from agy models, family ≠ author>" --print-timeout <timeout> \
+# agy — executes any family; plan mode is read-only; prompt is the VALUE of -p and must come last
+agy --mode plan --model "<chosen family's model, from agy models>" --print-timeout <timeout> \
   -p "$(cat .workspace/critique-prompt.md)" > .workspace/spec-critique-raw.md
 ```
 
 Costs real tokens — never loop it, never re-run without a changed spec or a changed question. If the
-reviewer errors or is out of credit, fall to the next entry in Step 3 and note the substitution.
+family can't be executed at all, fall to the next family in Step 3 and note the substitution.
 
 ## Step 6 — Record and stamp
 
