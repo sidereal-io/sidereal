@@ -4,6 +4,17 @@
 
 **Stack:** TypeScript monorepo · React 19 + Vite (frontend) · Hono (backend) · Drizzle ORM · SQLite (default) / PostgreSQL · Playwright (E2E)
 
+## Current state: v0.10.x + v2 in progress
+
+The repo is **two stacks side by side** during the [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) rewrite:
+
+- **`apps/`, `packages/`** — the **current, running** TypeScript/Hono stack described in the rest of this file. This is what's deployed and what most day-to-day work still touches, until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)).
+- **`backend/`** — the **v2 Rust backend** ([ADR-009](docs/decisions/ADR-009-backend-language.md)), a separate cargo workspace under active build. M0 (scaffolding) is done; M1 (core spine & first plugins, [#217](https://github.com/sidereal-io/sidereal/issues/217)) is in `status/design`. See [`backend/README.md`](backend/README.md) for its layout, prerequisites, and commands, and
+  [`docs/architecture/README.md`](docs/architecture/README.md) / [`roadmap.md`](docs/architecture/roadmap.md) for the target architecture and milestone plan.
+  The frontend stays TypeScript/React through the rewrite ([ADR-005](docs/decisions/ADR-005-frontend-continuity.md)).
+
+Root `justfile` spans both stacks (`just dev` runs the Rust backend + Vite frontend together; `just --list` self-documents). Everything below this section describes the **current v0.10.x stack** only — for the Rust side, use `backend/README.md`, not this file.
+
 ## Repository Structure
 
 ```
@@ -15,6 +26,12 @@ apps/
       services/    # Business logic (astrometry, catalog, config, cron, websocket, worker)
       workers/     # Background job processors
       db.ts        # Database connection
+backend/             # v2 Rust backend (cargo workspace) — see backend/README.md
+  crates/
+    plugin-abi/       # public plugin contracts a third-party pack also codes against
+    core/             # domain-agnostic engine; builds on plugin-abi
+    server/           # thin axum binary
+    packs/astro/      # first-party domain pack; depends on plugin-abi only
 packages/
   shared/          # Code shared between client and server
     src/
@@ -36,8 +53,12 @@ docker/            # Dockerfile, docker-compose files, startup.sh
 - Node.js 20+
 - npm (comes with Node)
 - Docker (optional — only needed for container workflows)
+- **For `backend/` (Rust v2) work only:** [rustup](https://rustup.rs/) (auto-selects the pinned
+  toolchain) and a C linker; [`just`](https://github.com/casey/just) to run cross-stack recipes. See
+  `backend/README.md`.
 
-No external database required for local development; SQLite is used by default.
+No external database required for local (v0.10.x) development; SQLite is used by default. The Rust
+backend is PostgreSQL-only ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
 
 ## Setup
 
@@ -55,19 +76,26 @@ cp .env.example .env.local
 
 | Command | What it does |
 |---|---|
-| `npm run dev` | Start full stack: server + frontend + worker |
-| `npm run dev:server` | Backend server only |
+| `npm run dev` | Start full stack: server + frontend + worker (v0.10.x) |
+| `npm run dev:server` | Backend server only (v0.10.x) |
 | `npm run dev:frontend` | Vite dev server only |
-| `npm run dev:worker` | Worker process only |
-| `npm run check` | TypeScript type checking — **run this after every change** |
+| `npm run dev:worker` | Worker process only (v0.10.x) |
+| `npm run check` | TypeScript type checking — **run this after every change to `apps/`/`packages/`** |
 | `npm run test` | Unit tests (`packages/shared/src/**/*.test.ts`) |
 | `npm run test:e2e` | Playwright E2E tests (requires app on port 5173) |
 | `npm run build` | Production build (frontend + backend) |
 | `npm run db:migrate` | Apply Drizzle migrations |
 | `npm run docker:build` | Build Docker image |
 | `npm run docker:run` | Start via docker-compose |
+| `just dev` | Rust backend + Vite frontend together (v2) |
+| `just backend` | Rust backend only (v2, `GET /healthz`) |
+| `just check` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch-boundary lint — **run this after every change to `backend/`** |
 
 ## Architecture
+
+*The rest of this section describes the current v0.10.x stack (`apps/`, `packages/`). For the v2 Rust
+backend's architecture, see [`docs/architecture/README.md`](docs/architecture/README.md) and
+[`backend/README.md`](backend/README.md).*
 
 ### Backend
 
@@ -190,6 +218,28 @@ Every feature or bug fix starts as a **GitHub Issue**. The issue URL is the task
 4. **Per sub-issue** — comment that you've started, do the work on a branch, comment the commit/PR reference, then close the sub-issue.
 5. **`status/review`** — when every sub-issue is closed, open a PR with `Closes #<parent>` and move the parent to `status/review`.
 6. Merging the PR closes the parent. Done.
+
+### Process within each stage
+
+The lifecycle above is *what* state the work is in; these skills are the *how* — the discipline
+used to get there. Reach for them instead of ad hoc effort:
+
+- **Before `status/design`** — for a new idea or open problem, run `brainstorming` first to ground
+  it in the codebase and existing ADRs and converge on a direction (it drives `grilling` to
+  interview you one question at a time, and `domain-modeling` to keep `docs/architecture/README.md`
+  / `CONTEXT.md` current as terms crystallize). Route its output into the issue body with
+  `writing-specs`.
+- **`status/design`** — once the issue body has a spec, run `spec-critique` (or its
+  `-antigravity`/`-claude` variants when the primary reviewer is unavailable, or the spec's own
+  author toolset needs a different reviewer) for an independent adversarial pass before requesting
+  human review. Don't move to `writing-plans` on an uncritiqued spec.
+- **`status/ready`** — use `writing-plans` to turn the critiqued spec into an implementation plan;
+  steps substantial enough to warrant independent tracking become sub-issues per the table above,
+  smaller ones stay as plan-file checkboxes. Execute with `executing-plans`'s tick-with-evidence
+  discipline and step review gates.
+- **`status/review`** — apply `executing-plans`'s final slice gate: a fresh, independent reviewer
+  on the full branch diff (never the implementer reviewing their own diff) before the PR is opened,
+  plus a documentation pass confirming docs are current with the change.
 
 ### Issue templates
 
