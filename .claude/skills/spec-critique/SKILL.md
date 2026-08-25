@@ -104,9 +104,6 @@ verified in the repo, and what question the spec must answer. If the design is s
 plainly rather than inventing objections.
 ```
 
-That house-rules line is conditional: codex reads `AGENTS.md` and claude reads `CLAUDE.md` (symlinked
-to it here) on their own; `agy` reads neither.
-
 ```bash
 # codex — -s read-only sandboxes it, reasoning is its own dial
 codex exec -s read-only -m <strongest-model> -c model_reasoning_effort="<tier>" \
