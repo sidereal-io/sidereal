@@ -6,7 +6,8 @@ Everything Sidereal v2 *does* to a user's files uses the plugin contract. This d
 a plugin receives, what it may request, what it returns, and how it proves conformance.
 
 The contract is **transport-independent**. [ADR-001](../decisions/ADR-001-plugin-boundary.md) defines
-three execution profiles — built-in Rust, embedded script (Rhai, pending the M0 spike), and an external
+three execution profiles — built-in Rust, embedded script (engine per
+[ADR-012](../decisions/ADR-012-embedded-scripting-engine.md), pending the M0 spike), and an external
 provider — over the same semantics. Built-ins do not receive an unconstrained private API merely because they are compiled in.
 
 ## Contents

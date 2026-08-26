@@ -1,15 +1,16 @@
 # 007: Security and Plugin Trust Model
 
-**Status:** Accepted
-**Date:** 2026-07-30
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). v2 adds filesystem
-mutation, plugin execution, external providers, and scoped secret delivery. The current
-unauthenticated/CORS-open posture cannot be carried forward implicitly.
+**Status:** Accepted · **Date:** 2026-07-30
+
+**Context:** v2 adds filesystem mutation, plugin execution, external providers, and scoped secret
+delivery; the current unauthenticated/CORS-open posture cannot be carried forward implicitly. Coupled
+with [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md): that decision says
+how plugin code runs, this one says what it may do.
 
 ## Problem
 
 v2 becomes the system of record for user files and can invoke code that reads assets, publishes
-externally, and requests secrets. Before M1 touches a real filesystem, the architecture must define who
+externally, and requests secrets. Before any code touches a real filesystem, the architecture must define who
 may use the HTTP and WebSocket APIs, which actions need elevated authority, whether a plugin is trusted
 and which capabilities it receives, how external-provider endpoints authenticate, how secrets are
 stored/delivered/logged/revoked, and which browser origins may issue authenticated requests. Treating
@@ -77,12 +78,11 @@ caller and C funds a multi-user sharing surface v2.0 does not need. The requirem
 
 ## Decision
 
-Accepted 2026-08-18 (M0 of RFC #213) — **Option B**, as recommended. The M0 exit criteria below are
-binding.
+Accepted 2026-08-18 — **Option B**, as recommended. The exit criteria below are binding.
 
-## M0 exit criteria
+## Exit criteria
 
-Binding — M1 cannot begin until:
+Binding — implementation cannot begin until:
 
 1. the application authentication mode and initial-setup flow are selected;
 2. HTTP, WebSocket, CORS, and CSRF behavior are specified and covered by integration tests;

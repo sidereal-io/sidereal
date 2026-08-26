@@ -1,10 +1,10 @@
 # 006: Declarative Processing, Selectors, and Policy Deferral
 
-**Status:** Accepted
-**Date:** 2026-07-31
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Establishes
-declarative, convergent processing in M2 while deferring user-authored policy rules until
-post-cutover (M7+).
+**Status:** Accepted · **Date:** 2026-07-31
+
+**Context:** Establishes declarative, convergent processing while deferring user-authored policy rules
+until after cutover. Facet mechanics are owned separately by [ADR-008 — Metadata envelope, facets &
+write authority](ADR-008-facet-schema-and-write-authority.md).
 
 ## Problem
 
@@ -21,8 +21,8 @@ A workflow or pipeline makes the execution path the durable abstraction. That cr
 problem: when execution stops, the user must diagnose where a workflow cursor is stuck and decide
 how to move it. It also bakes an ordering into policy even when the order is incidental.
 
-An `Operation Run` remains the exact historical record of one Operator attempt. M2 needs a model for
-the desired state above those attempts without becoming a general-purpose workflow engine. It also
+An `Operation Run` remains the exact historical record of one Operator attempt. This decision needs a
+model for the desired state above those attempts without becoming a general-purpose workflow engine. It also
 needs one answer to three applicability questions: which subjects receive a policy, which Operators
 can process a subject, and which assets belong to a dynamic Collection.
 
@@ -80,7 +80,7 @@ Every trigger or button directly invokes one Operator; compound processing is co
 
 **Pros:**
 
-- Smallest M2 implementation.
+- Smallest initial implementation.
 
 **Cons:**
 
@@ -90,7 +90,7 @@ Every trigger or button directly invokes one Operator; compound processing is co
 
 ## Decision
 
-**Accepted Option A.** M2 implements shared Selectors, declarative Processing Goals, and
+**Accepted Option A.** It implements shared Selectors, declarative Processing Goals, and
 reconciliation. It does not introduce a general-purpose workflow engine or a first-class Pipeline
 Run.
 
@@ -103,8 +103,7 @@ The following semantics are part of the decision:
    arbitrary plugin code.
 2. **Facets are the extensible selection metadata.** Facet schemas declare type, scope, mutability,
    indexing, ownership, and provenance. Built-in policies reference canonical core or domain-pack
-   schemas rather than producer-specific fields. [ADR-008](ADR-008-facet-schema-and-write-authority.md)
-   owns the full contract.
+   schemas rather than producer-specific fields; the facet contract is owned separately.
 3. **Sources classify; they do not orchestrate.** Source configuration may assign an initial `kind`
    and configured facets. A Source may propose detected facets within its grants, but never selects
    or invokes Operators. Mixed-kind Sources may classify per asset rather than declaring one fixed
@@ -136,10 +135,10 @@ The following semantics are part of the decision:
 14. **Manual actions add goals.** Button clicks and API requests use the same machinery rather than
     bypassing reconciliation with a separate execution path.
 
-M3 must prove convergence with configured Source facets and a built-in astro policy covering a
-realistic ingest flow. The system must explain policy and Operator matches, recover after a
+Bringing up the astro pack must prove convergence with configured Source facets and a built-in astro
+policy covering a realistic ingest flow. The system must explain policy and Operator matches, recover after a
 deliberately dropped event and a process crash, avoid duplicating a successful external effect, and
 identify an impossible goal without leaving opaque “stuck” work.
 
 User-authored policy matching, conflict resolution, simulation, explanation UI, and policy editing
-remain deferred to M7+. Built-in domain-pack policies provide the required pre-cutover behaviour.
+remain deferred until after cutover. Built-in domain-pack policies provide the required pre-cutover behaviour.

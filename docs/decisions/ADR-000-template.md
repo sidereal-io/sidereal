@@ -1,8 +1,14 @@
 # NNN: Short Decision Title
 
-**Status:** Proposed | Accepted | Superseded by NNN
-**Date:** YYYY-MM-DD
-**Context:** What work or context prompted this decision?
+**Status:** Proposed | Accepted | Superseded by NNN · **Date:** YYYY-MM-DD
+
+**Context:** What situation makes this decision necessary? If this ADR genuinely builds on another, name
+that one ADR here — `[ADR-0NN — Short title](ADR-0NN-slug.md)` — and only here.
+
+> **An ADR stands on its own** — options, a recommendation, a decision, nothing more. At most **one**
+> link to another ADR, in Context above; everywhere else, state facts inline. **Never** reference issues,
+> milestones, or the RFC — they are tracking and plan artifacts, not standing context. Express sequencing
+> as a condition ("once the organize/move operators exist"), never as a milestone number.
 
 ## Problem
 
