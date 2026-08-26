@@ -1,7 +1,7 @@
 # 005: Frontend Continuity
 
-**Status:** Accepted
-**Date:** 2026-07-29
+**Status:** Accepted · **Date:** 2026-07-29
+
 **Context:** The frontend workstream runs in parallel with the backend rewrite — the single most important scheduling decision in the plan. This ADR decides what that workstream starts *from*.
 
 ## Problem

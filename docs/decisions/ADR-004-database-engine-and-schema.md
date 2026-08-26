@@ -1,7 +1,7 @@
 # 004: Database Engine and Schema Strategy
 
-**Status:** Accepted
-**Date:** 2026-07-29
+**Status:** Accepted · **Date:** 2026-07-29
+
 **Context:** The facet mechanism imposes concrete requirements on the store — indexed lookup on semi-structured facet values and recursive lineage traversal; this ADR picks the engine and schema approach that satisfy them.
 
 ## Problem

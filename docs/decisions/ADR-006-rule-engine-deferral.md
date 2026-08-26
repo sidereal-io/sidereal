@@ -1,7 +1,7 @@
 # 006: Declarative Processing, Selectors, and Policy Deferral
 
-**Status:** Accepted
-**Date:** 2026-07-31
+**Status:** Accepted · **Date:** 2026-07-31
+
 **Context:** Establishes declarative, convergent processing while deferring user-authored policy rules
 until after cutover. Facet mechanics are owned separately by [ADR-008 — Metadata envelope, facets &
 write authority](ADR-008-facet-schema-and-write-authority.md).

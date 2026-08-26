@@ -1,9 +1,9 @@
 # 011: Storage Tree Layout and Cross-Filesystem Moves
 
-**Status:** Proposed
-**Date:** 2026-08-19
-**Context:** Builds on [ADR-003 — Storage layout & asset
-identity](ADR-003-storage-layout-and-asset-identity.md), which settled asset identity — a stable `Asset`
+**Status:** Proposed · **Date:** 2026-08-19
+
+**Context:** Builds on [ADR-003 — Asset identity & content
+revisions](ADR-003-storage-layout-and-asset-identity.md), which settled asset identity — a stable `Asset`
 surrogate plus immutable, content-hashed `AssetVersion` byte states — and deliberately left on-disk
 layout and move semantics open. Those govern interruption recovery and data safety, so they are decided
 here, and must be Accepted before any storage code is written.

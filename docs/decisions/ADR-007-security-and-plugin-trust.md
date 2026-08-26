@@ -1,7 +1,7 @@
 # 007: Security and Plugin Trust Model
 
-**Status:** Accepted
-**Date:** 2026-07-30
+**Status:** Accepted · **Date:** 2026-07-30
+
 **Context:** v2 adds filesystem mutation, plugin execution, external providers, and scoped secret
 delivery; the current unauthenticated/CORS-open posture cannot be carried forward implicitly. Coupled
 with [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md): that decision says

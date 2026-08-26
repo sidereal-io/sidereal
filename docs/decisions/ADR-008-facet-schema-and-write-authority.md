@@ -1,7 +1,7 @@
 # 008: Metadata Envelope, Facets, and Write Authority
 
-**Status:** Accepted
-**Date:** 2026-08-01
+**Status:** Accepted · **Date:** 2026-08-01
+
 **Context:** Selectors need a portable metadata contract, while domain packs and alternative plugins
 need interoperable typed values.
 
@@ -84,8 +84,8 @@ values.
 **Mutable-facet audit history is out of scope for v2.0.** The first release's facets are write-once
 observations; a mutable intent facet (`core.processing.mode`) overwrites in place, keeping only
 last-write provenance — not a value trail. A full immutable audit trail is deferred until after cutover
-and, if adopted, reuses [ADR-003 — Storage layout & asset
-identity](ADR-003-storage-layout-and-asset-identity.md)'s immutable-version pattern rather than inventing
+and, if adopted, reuses [ADR-003 — Asset identity & content
+revisions](ADR-003-storage-layout-and-asset-identity.md)'s immutable-version pattern rather than inventing
 a second mechanism.
 
 ## Decision

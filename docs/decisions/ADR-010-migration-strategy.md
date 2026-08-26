@@ -1,7 +1,7 @@
 # 010: Migration Strategy — Clean Break with a One-Way Importer
 
-**Status:** Accepted
-**Date:** 2026-08-19
+**Status:** Accepted · **Date:** 2026-08-19
+
 **Context:** v2 is a new data model; existing v0.10.x users have live data and files. This ADR records
 *how they reach v2*, and why that path knowingly overrides the analysis package's compatibility
 requirements. It coordinates with the PostgreSQL-only engine decision ([ADR-004 — Database engine &

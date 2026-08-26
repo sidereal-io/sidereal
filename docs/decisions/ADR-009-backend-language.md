@@ -1,7 +1,7 @@
 # 009: Backend Language and Runtime
 
-**Status:** Accepted
-**Date:** 2026-08-19
+**Status:** Accepted · **Date:** 2026-08-19
+
 **Context:** The v2 rewrite needs a backend language; this ADR records *why it is Rust* rather than
 leaving the single most expensive-to-reverse decision undocumented.
 
@@ -41,7 +41,7 @@ Reversing this later means a second rewrite, so it is decided explicitly and up 
 - Native hot-path performance for FITS/XISF parsing and hashing; mature image/numeric crates.
 - Compile-time memory and data-race safety on the component that renames, moves, and deletes originals.
 - Fearless concurrency for parallel ingest with no GC-pause tail.
-- Mature embeddable scripting (Rhai) and a clean capability-limited `AssetContext`, matching the plugin execution model.
+- A mature embeddable-scripting ecosystem and a clean capability-limited `AssetContext`, matching the plugin execution model.
 - Single static binary, supporting the one-command deployment goal.
 
 **Cons:**
@@ -55,8 +55,8 @@ Reversing this later means a second rewrite, so it is decided explicitly and up 
 
 **Cons:**
 - Weaker than Rust for CPU-bound numeric/parsing work, and still GC-paused.
-- A less expressive type system for the Asset/Version/Lineage/facet model, and no
-  Rhai-in-process-caliber embedding story.
+- A less expressive type system for the Asset/Version/Lineage/facet model, and a weaker
+  in-process embeddable-scripting story.
 
 ## Recommendation
 

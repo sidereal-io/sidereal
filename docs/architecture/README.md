@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Architecture reference:** current · **Open architecture decisions:** [ADR-011](../decisions/ADR-011-storage-tree-layout.md) (storage tree) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-20
+**Architecture reference:** current · **Open architecture decisions:** [ADR-011](../decisions/ADR-011-storage-tree-layout.md) (storage tree), [ADR-012](../decisions/ADR-012-embedded-scripting-engine.md) (scripting engine) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-20
 
 > **How to use this map.** This file owns the **architectural map** — the north star and a glossary of
 > the load-bearing concepts — and points to, without restating, the documents that own each thing:
@@ -145,13 +145,14 @@ facet query rather than bespoke schema. → [ADR-008](../decisions/ADR-008-facet
 ## Architecture decisions
 
 Each decision has an ADR in [`docs/decisions/`](../decisions/) with the full context, options, and
-rationale. One remains **Proposed** — ADR-011 (storage tree, which gates M1); the rest are accepted.
+rationale. Two remain **Proposed** — ADR-011 (storage tree, which gates M1) and ADR-012 (scripting
+engine, pending a spike); the rest are accepted.
 
 | ADR | Decision | Status |
 |---|---|---|
 | [001](../decisions/ADR-001-plugin-boundary.md) | Plugin contract & execution profiles | Accepted |
 | [002](../decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
-| [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Storage layout & asset identity | Accepted |
+| [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Asset identity & content revisions | Accepted |
 | [004](../decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
 | [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | Accepted (Option C — new shell, port components) |
 | [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
@@ -160,6 +161,7 @@ rationale. One remains **Proposed** — ADR-011 (storage tree, which gates M1); 
 | [009](../decisions/ADR-009-backend-language.md) | Backend language & runtime | Accepted (Rust) |
 | [010](../decisions/ADR-010-migration-strategy.md) | Migration strategy | Accepted (clean break + one-way importer) |
 | [011](../decisions/ADR-011-storage-tree-layout.md) | Storage tree layout & cross-filesystem moves | **Proposed** — split from ADR-003; gates M1 |
+| [012](../decisions/ADR-012-embedded-scripting-engine.md) | Embedded scripting engine | **Proposed** — Rhai, pending spike |
 
 **ADR-001 and ADR-007 are coupled** — the execution profile says how code runs; grants and
 `AssetContext` say what it may do. Neither is complete without the other.
@@ -178,6 +180,24 @@ a contested *why*, promote it to an ADR and it becomes a row above.
   we don't repeat).
 - **A plugin may implement multiple capabilities** — Immich is both a Source and a Sink; the
   registration mechanism is one.
+- **Session is a core concept with pack vocabulary** — core knows the generic time-bounded,
+  subject-bearing Collection; the astro pack supplies the "session" term and its facet values.
+  (Follows from the seam in [ADR-002](../decisions/ADR-002-core-domain-pack-split.md); promoting more
+  of the concept to core later is additive.)
+- **Equipment is pack-owned** — every equipment field is astro-shaped, so it lives in the astro pack
+  and core stays domain-free. Promoting a concept to core later is cheap and additive; pushing astro
+  fields into core now would be a migration to undo.
+- **Packs contribute API and facet schemas, not frontend** — a pack ships backend behaviour and facet
+  schemas carrying render metadata (type, unit, label, filterability, render hint); the single React app
+  renders facets generically, with first-party astro views (sky map, visibility) in that app. No dynamic
+  frontend plugin ABI in v2.0; adding one later is additive.
+- **Current-version selection is a pointer, `isLatest` is computed** — an Asset's current byte state is
+  a separate `Asset.current_version_id` pointer, not a moving `v0` sentinel; per-version "latest" is
+  derived from it, never a stored boolean. Advancing the pointer uses optimistic concurrency — a
+  compare-and-swap guarded by an `Asset.revision` counter. A dense per-Asset `version_seq` ordinal plus
+  optional curated `label`/`aliases`/`note` are navigation metadata, not identity. (Implements Option C
+  of [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md); confirmed against DataHub's
+  aspect-versioning model.)
 
 ## Build shape
 

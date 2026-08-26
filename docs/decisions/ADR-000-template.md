@@ -1,7 +1,7 @@
 # NNN: Short Decision Title
 
-**Status:** Proposed | Accepted | Superseded by NNN
-**Date:** YYYY-MM-DD
+**Status:** Proposed | Accepted | Superseded by NNN · **Date:** YYYY-MM-DD
+
 **Context:** What situation makes this decision necessary? If this ADR genuinely builds on another, name
 that one ADR here — `[ADR-0NN — Short title](ADR-0NN-slug.md)` — and only here.
 
