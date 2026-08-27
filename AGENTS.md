@@ -179,9 +179,11 @@ alternatives. It is not a changelog. Three tiers keep decisions out of prose wit
 - **Scope / premise** — the RFC or issue, not here.
 
 **New ADRs follow** `docs/decisions/ADR-000-template.md`, numbered `ADR-NNN-slug.md`. Keep them concise and
-their options concrete. 
+their options concrete.
 
-**Each ADR stands alone**
+**Each ADR stands alone.** State the context, decision, consequences, and rejected alternatives inline;
+link to at most **one** other ADR (in its Context), and never reference issues, milestones, or the RFC —
+express sequencing as a condition ("once the organize/move operators exist"), not a milestone number.
 
 ### Lifecycle
 
