@@ -1,6 +1,6 @@
 # Sidereal Architecture
 
-**Architecture reference:** current · **Open architecture decisions:** [ADR-005](../decisions/ADR-005-frontend-continuity.md) (frontend), [ADR-011](../decisions/ADR-011-storage-tree-layout.md) (storage tree) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-19
+**Architecture reference:** current · **Open architecture decisions:** [ADR-012](../decisions/ADR-012-embedded-scripting-engine.md) (scripting engine, pending spike) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-26
 
 > **How to use this map.** This file owns the **architectural map** — the north star and a glossary of
 > the load-bearing concepts — and points to, without restating, the documents that own each thing:
@@ -55,12 +55,12 @@ Seven load-bearing additions that do not exist today; everything else in v2 is a
 **Asset** — one logical file. Stable opaque identity, independent of path, so the system reorganising a
 tree never destroys its own references. Carries a small core-owned envelope (`id`, `kind`, `name`) plus
 typed [facets](#core-and-domain-packs), and one or more immutable `AssetVersion` records.
-→ [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md),
+→ [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md),
 [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)
 
 **AssetVersion** — an exact byte state, content-addressed by hash. A rename/move is a path event and
 creates no version; any byte change creates a new immutable version. Lineage and Operation Runs point
-at versions, never at the mutable Asset. → [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md)
+at versions, never at the mutable Asset. → [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md)
 
 **Collection** — a generic grouping (a session, an album). Membership is explicit or defined by a
 Selector. Processing binds an immutable membership snapshot, so a Collection changing underneath a run
@@ -74,7 +74,7 @@ members of a dynamic Collection. → [ADR-006](../decisions/ADR-006-rule-engine-
 
 **Lineage** — directed edges between immutable AssetVersions recording exactly which bytes derived from
 which (`stacked ← 187 lights + master_dark_v3 + master_flat_Ha`). The single highest-value thing v0.10.x
-cannot do. → [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md)
+cannot do. → [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md)
 
 **Processing Goal** — a durable statement of an outcome that must become true for a version or snapshot
 (`metadata.extracted`, `astro.plate_solved`, `published:immich`). A versioned **Processing Policy** uses
@@ -126,7 +126,8 @@ All profiles implement the same semantic contract and conformance suite; only th
 capability-limited `AssetContext` — no filesystem back door. The full contract is in
 **[plugins.md](plugins.md)**; the execution profiles and trust model are
 [ADR-001](../decisions/ADR-001-plugin-boundary.md) and
-[ADR-007](../decisions/ADR-007-security-and-plugin-trust.md).
+[ADR-007](../decisions/ADR-007-security-and-plugin-trust.md), and the embedded-script engine is
+[ADR-012](../decisions/ADR-012-embedded-scripting-engine.md).
 
 ## Core and domain packs
 
@@ -145,22 +146,22 @@ facet query rather than bespoke schema. → [ADR-008](../decisions/ADR-008-facet
 ## Architecture decisions
 
 Each decision has an ADR in [`docs/decisions/`](../decisions/) with the full context, options, and
-rationale. Two remain **Proposed** — ADR-005 (frontend) and ADR-011 (storage tree, which gates M1); the
-rest are accepted.
+rationale. All are **Accepted** except ADR-012 (scripting engine), which stays Proposed pending its spike.
 
 | ADR | Decision | Status |
 |---|---|---|
 | [001](../decisions/ADR-001-plugin-boundary.md) | Plugin contract & execution profiles | Accepted |
 | [002](../decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
-| [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Storage layout & asset identity | Accepted |
+| [003](../decisions/ADR-003-asset-identity-and-content-revisions.md) | Asset identity & content revisions | Accepted |
 | [004](../decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
-| [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | **Proposed** — gated on the contributor conversation + a green v0.10.x E2E baseline |
+| [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | Accepted (Option C — new shell, port components) |
 | [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
 | [007](../decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
 | [008](../decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
 | [009](../decisions/ADR-009-backend-language.md) | Backend language & runtime | Accepted (Rust) |
 | [010](../decisions/ADR-010-migration-strategy.md) | Migration strategy | Accepted (clean break + one-way importer) |
-| [011](../decisions/ADR-011-storage-tree-layout.md) | Storage tree layout & cross-filesystem moves | **Proposed** — split from ADR-003; gates M1 |
+| [011](../decisions/ADR-011-storage-tree-layout.md) | Storage tree layout & cross-filesystem moves | Accepted (Option B — BLAKE3 internal object store) |
+| [012](../decisions/ADR-012-embedded-scripting-engine.md) | Embedded scripting engine | **Proposed** — Rhai, pending spike |
 
 **ADR-001 and ADR-007 are coupled** — the execution profile says how code runs; grants and
 `AssetContext` say what it may do. Neither is complete without the other.
@@ -172,8 +173,8 @@ Anything with real trade-offs is an ADR (table above); product scope lives in RF
 a contested *why*, promote it to an ADR and it becomes a row above.
 
 - **The frontend stays TypeScript/React** through the backend's move to Rust — the deliberate continuity
-  that keeps current contributors productive. (Evolve-vs-start-fresh is
-  [ADR-005](../decisions/ADR-005-frontend-continuity.md)'s separate, still-open call.)
+  that keeps current contributors productive. (How it starts — a new shell with ported components — is
+  settled in [ADR-005](../decisions/ADR-005-frontend-continuity.md).)
 - **Derived values are always computed, never stored** — integration totals and the like are recomputed
   from member assets and their facets, never denormalised onto a row that can drift (a v0.10.x mistake
   we don't repeat).

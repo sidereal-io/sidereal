@@ -81,7 +81,7 @@ detection, and dedup.
 An Operator may produce zero, one, or many new assets — thumbnails, master calibration frames, stacks,
 and exports are all ordinary outputs. Operators never rewrite an existing content revision. Byte
 changes produce a new immutable `AssetVersion`; path-only moves remain events on the stable `Asset`.
-See [ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md).
+See [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md).
 
 ### Sink — publishes assets
 
@@ -253,7 +253,7 @@ freeze buys a stable target, not permanent immutability.
 
 - **[ADR-001](../decisions/ADR-001-plugin-boundary.md)** — execution profiles and installation.
 - **[ADR-002](../decisions/ADR-002-core-domain-pack-split.md)** — the core/domain-pack seam.
-- **[ADR-003](../decisions/ADR-003-storage-layout-and-asset-identity.md)** — stable Assets and immutable
+- **[ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md)** — stable Assets and immutable
   AssetVersions.
 - **[ADR-006](../decisions/ADR-006-rule-engine-deferral.md)** — declarative Processing Goals,
   reconciliation, and policy deferral.
