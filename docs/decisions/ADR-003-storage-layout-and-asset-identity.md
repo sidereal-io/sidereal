@@ -101,4 +101,4 @@ shape, with these deliberate divergences from DataHub's moving `v0` sentinel:
 
 Accepted 2026-08-18 (M0 of RFC #213) — **Option C**, as recommended (identity and versioning only).
 On-disk tree layout and cross-filesystem moves are decided separately in
-[ADR-011](ADR-011-storage-tree-layout.md) (Proposed), which gates M1.
+[ADR-011](ADR-011-storage-tree-layout.md).
