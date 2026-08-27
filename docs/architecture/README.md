@@ -151,7 +151,7 @@ rationale. All M0 ADRs are now **Accepted**.
 |---|---|---|
 | [001](../decisions/ADR-001-plugin-boundary.md) | Plugin contract & execution profiles | Accepted |
 | [002](../decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
-| [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Storage layout & asset identity | Accepted |
+| [003](../decisions/ADR-003-storage-layout-and-asset-identity.md) | Asset identity & content revisions | Accepted |
 | [004](../decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
 | [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | Accepted (Option C — new shell, port components) |
 | [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
