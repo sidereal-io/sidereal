@@ -15,8 +15,6 @@ Find who wrote the work. First answer wins:
 - **This session** — you wrote or shaped the work here.
 - **Ask the author.** Do not guess. A wrong answer turns the review into a rubber stamp.
 
-On this machine the author is almost always `claude` — this session or a Claude subagent.
-
 ## Pick the reviewer family
 
 Take the first family that is not the author's and whose executor is installed (`command -v`).
