@@ -58,7 +58,7 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
 ## Workflow
 
 - Planning uses **OpenSpec**: in-flight work lives under `openspec/changes/`;
-  durable specs under `openspec/specs/`; decision records under `docs/adr/`. Use
+  durable specs under `openspec/specs/`; decision records under `docs/decisions/`. Use
   the `opsx:*` skills (propose → apply → verify → archive).
 - **Toolchain is per stack.** v0.10.x: Node 20+, npm, Vite/React, Hono, Drizzle —
   gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.

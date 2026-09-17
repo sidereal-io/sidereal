@@ -194,13 +194,13 @@ artifacts:
     instruction: >
       Complete ADR review for this change by writing a concise manifest at
       openspec/changes/<change>/adr.md. This change-local file is the artifact
-      completion marker for the adr step. Existing files under <repo>/docs/adr/ are
+      completion marker for the adr step. Existing files under <repo>/docs/decisions/ are
       required context for the review, but they MUST NOT satisfy completion for
       a new change.
 
       Process:
 
-      1. Read every existing ADR in <repo>/docs/adr/. Build the supersession graph
+      1. Read every existing ADR in <repo>/docs/decisions/. Build the supersession graph
          from each ADR's Supersedes field. Note the highest sequence number in
          use.
 
@@ -242,8 +242,8 @@ artifacts:
          design or spec content, not an ADR.
 
       3. For each qualifying decision, create a NEW repository-level file at
-         <repo>/docs/adr/NNNN-kebab-title.md following the template in 
-         <repo>/docs/adr/0000-template.md
+         <repo>/docs/decisions/ADR-NNN-slug.md following the template in
+         <repo>/docs/decisions/ADR-000-template.md
 
       4. Write openspec/changes/<change>/adr.md using the template. The
          manifest MUST state that ADR review completed for this change, list the
