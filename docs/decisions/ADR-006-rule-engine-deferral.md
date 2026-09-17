@@ -1,145 +1,54 @@
-# 006: Declarative Processing, Selectors, and Policy Deferral
+---
+id: adrs-adr006
+date: 2026-08-18
+status: accepted
+title: 'ADR006: Declarative Processing, Selectors, and Policy Deferral'
+description: Architecture Decision Record (ADR) for how v2 drives processing — declarative Processing Goals reconciled to convergence, not a workflow engine.
+---
 
-**Status:** Accepted
-**Date:** 2026-07-31
-**Context:** M0 of [RFC #213](https://github.com/sidereal-io/sidereal/issues/213). Establishes
-declarative, convergent processing in M2 while deferring user-authored policy rules until
-post-cutover (M7+).
+# ADR-006: Declarative Processing, Selectors, and Policy Deferral
 
-## Problem
+## Context
 
-The product needs to react when an asset is ingested, a collection becomes ready, a user clicks a
-button, an API request arrives, or a schedule fires. Several Operators may need to succeed before the
-asset or collection is fully processed.
+The product must react to many triggers: an asset is ingested, a collection becomes ready, a button is clicked, an API request arrives, or a schedule fires. Several Operators may need to succeed before an asset is fully processed.
 
-The user intent is not normally “run A, then B, then C.” It is “make all of these outcomes true.” For
-example, a stacked image may need extracted metadata, a plate solution, a canonical name, a
-thumbnail, and an Immich publication receipt. Ordering matters only where one outcome is a genuine
-prerequisite for another.
+The user's intent is not "run A, then B, then C." It is "make all these outcomes true," with ordering that matters only where one outcome is a genuine prerequisite of another. A workflow makes the execution path the durable abstraction. That forces users to reason about where a cursor is stuck, and it bakes in incidental ordering.
 
-A workflow or pipeline makes the execution path the durable abstraction. That creates a second
-problem: when execution stops, the user must diagnose where a workflow cursor is stuck and decide
-how to move it. It also bakes an ordering into policy even when the order is incidental.
+This decision needs a model for the desired state above individual attempts — without becoming a general-purpose workflow engine. It also needs one answer to three applicability questions: which subjects a policy covers, which Operators can satisfy a subject, and which assets belong to a dynamic Collection.
 
-An `Operation Run` remains the exact historical record of one Operator attempt. M2 needs a model for
-the desired state above those attempts without becoming a general-purpose workflow engine. It also
-needs one answer to three applicability questions: which subjects receive a policy, which Operators
-can process a subject, and which assets belong to a dynamic Collection.
-
-## Options
-
-### Option A: Reconcile declarative Processing Goals
-
-A versioned Processing Policy uses a shared Selector to declare outcomes required for matching
-AssetVersions or immutable Collection snapshots. The reconciler materializes durable Processing
-Goals, compares them with recorded state, and dispatches eligible Operators until every applicable
-goal is satisfied.
-
-Operators declare an `accepts` Selector, semantic prerequisites, and outcomes. The scheduler chooses
-any suitable Operator whose selector matches and imposes only the ordering implied by unmet
-prerequisites. Events prompt reconciliation, while a periodic sweep guarantees convergence after
-missed events or process crashes.
-
-**Pros:**
-
-- Models the user's desired result instead of an incidental execution sequence.
-- Independent work can run concurrently and alternative Operators can satisfy the same outcome.
-- Recovery is transparent: an unsatisfied goal records why it remains unsatisfied.
-- Events, manual actions, schedules, and later user policies share one execution model.
-- Requires no separate workflow runtime or opaque workflow state.
-
-**Cons:**
-
-- Operators need precise prerequisite, outcome, invalidation, and idempotency declarations.
-- Selector changes can fan out widely and require indexed evaluation plus clear match explanations.
-- Planning must detect missing providers and dependency cycles.
-- External effects require durable receipts and explicit ambiguous-completion handling.
-- Some inherently ordered processes may still need a purpose-built coordinating Operator.
-
-### Option B: Execute versioned workflows or pipelines
-
-Triggers start a durable dependency graph of Operator steps. A Pipeline Run records the selected
-definition, current position, child runs, and aggregate status.
-
-**Pros:**
-
-- Familiar model with explicit control flow.
-- Natural fit for processes where order itself is meaningful.
-- Established workflow engines can supply durable waits, signals, retries, and graph scheduling.
-
-**Cons:**
-
-- Makes users reason about stuck execution rather than unsatisfied outcomes.
-- Encodes unnecessary ordering and requires workflow-version migration semantics.
-- Adds a second operational state model and potentially another self-hosted runtime.
-- User-authored workflows create a substantially larger product and debugging surface.
-
-### Option C: Dispatch individual Operators only
-
-Every trigger or button directly invokes one Operator; compound processing is coordinated by callers.
-
-**Pros:**
-
-- Smallest M2 implementation.
-
-**Cons:**
-
-- Sources, API handlers, and UI actions acquire duplicated sequencing logic.
-- Automatic processing cannot recover reliably from missed events or partial completion.
-- Adding policy later requires replacing the core dispatch path after plugins depend on it.
+Facet mechanics are owned separately by [ADR-008 — Metadata envelope, facets & write authority](ADR-008-facet-schema-and-write-authority.md).
 
 ## Decision
 
-**Accepted Option A.** M2 implements shared Selectors, declarative Processing Goals, and
-reconciliation. It does not introduce a general-purpose workflow engine or a first-class Pipeline
-Run.
+Adopt **shared Selectors, declarative Processing Goals, and reconciliation** — no general-purpose workflow engine, and no first-class Pipeline Run.
 
-The following semantics are part of the decision:
+**Selectors** are a shared core primitive over `kind`, source, typed facets, and Collection membership. They are bounded to boolean composition plus existence, equality, set, and typed-comparison operators — never arbitrary plugin code. They evaluate against an index and produce a human-readable match explanation.
 
-1. **Selectors are a shared core primitive.** The deterministic selector vocabulary covers `kind`,
-   source instance, typed facets, and Collection membership. Core owns indexed
-   evaluation and records a human-readable match explanation. The language is bounded to boolean
-   composition plus existence, equality, set, and typed comparison predicates; it cannot invoke
-   arbitrary plugin code.
-2. **Facets are the extensible selection metadata.** Facet schemas declare type, scope, mutability,
-   indexing, ownership, and provenance. Built-in policies reference canonical core or domain-pack
-   schemas rather than producer-specific fields. [ADR-008](ADR-008-facet-schema-and-write-authority.md)
-   owns the full contract.
-3. **Sources classify; they do not orchestrate.** Source configuration may assign an initial `kind`
-   and configured facets. A Source may propose detected facets within its grants, but never selects
-   or invokes Operators. Mixed-kind Sources may classify per asset rather than declaring one fixed
-   kind.
-4. **Policies declare outcomes, not steps.** A versioned Processing Policy uses a Selector to match
-   asset or Collection state and declares the goals that must be satisfied.
-5. **Operators declare applicability.** Each Operator declares an `accepts` Selector plus the goals
-   it provides. Core dispatches it only when the policy selected the subject, the Operator provides
-   the missing goal, `accepts` matches, its grants permit the run, and prerequisites are satisfied.
-6. **Collections support explicit or selected membership.** A selector-backed Collection is a
-   dynamic view. Processing binds an immutable membership snapshot so later selector results cannot
-   alter an in-flight or historical input set.
-7. **Goals bind to immutable inputs.** Each Processing Goal targets an AssetVersion or an immutable
-   Collection snapshot, plus the policy revision that required it.
-8. **Reconciliation is level-triggered.** Durable events request prompt evaluation, but periodic
-   sweeps and startup recovery recompute missing work from source-of-truth state.
-9. **Only data dependencies impose order.** Eligible goals may run concurrently. The planner rejects
-   dependency cycles and reports missing providers rather than waiting indefinitely.
-10. **Operation Runs are attempts.** Each attempt records the goals it addresses, resolved inputs and
-   params, outputs, side-effect state, idempotency key, status, and logs.
-11. **Success is durable evidence.** Facets, artifacts, lineage, and external publication receipts
-   satisfy goals. A process restart never discards that evidence or repeats a completed external
-   effect blindly.
-12. **Invalidation is explicit.** Operators declare which outcomes a new AssetVersion or mutation may
-   invalidate. Reconciliation then creates or reopens goals for the new immutable input.
-13. **Failure is visible at the goal.** Goals progress through `pending`, `running`, `blocked`,
-   `satisfied`, and `needs_attention`. Bounded retry policy, the missing prerequisite, active
-   attempt, or ambiguous external effect is always inspectable.
-14. **Manual actions add goals.** Button clicks and API requests use the same machinery rather than
-    bypassing reconciliation with a separate execution path.
+**Processing Policies** are versioned. A policy uses a Selector to declare the outcomes required for matching versions and snapshots. Each Operator declares an `accepts` Selector and the goals it provides. Core dispatches an Operator only when all of these hold: the policy selected the subject, the Operator provides a missing goal, `accepts` matches, grants permit it, and prerequisites are met.
 
-M3 must prove convergence with configured Source facets and a built-in astro policy covering a
-realistic ingest flow. The system must explain policy and Operator matches, recover after a
-deliberately dropped event and a process crash, avoid duplicating a successful external effect, and
-identify an impossible goal without leaving opaque “stuck” work.
+**Goals** bind to immutable inputs — an AssetVersion or Collection snapshot, plus the policy revision.
 
-User-authored policy matching, conflict resolution, simulation, explanation UI, and policy editing
-remain deferred to M7+. Built-in domain-pack policies provide the required pre-cutover behaviour.
+**Reconciliation is level-triggered.** Events request prompt evaluation, but periodic sweeps and startup recovery recompute missing work from source-of-truth state. So only real data dependencies impose order, and independent goals run concurrently.
+
+Success is durable evidence (facets, artifacts, lineage, receipts) that a restart never discards or blindly repeats. Failure is visible at the goal: `pending`, `running`, `blocked`, `satisfied`, or `needs_attention`. Sources classify but never orchestrate.
+
+User-authored policy rules, conflict resolution, simulation, and a policy editor are deferred until after cutover. Built-in domain-pack policies provide pre-cutover behaviour.
+
+## Consequences
+
+- One execution model serves events, manual actions, schedules, and later user policies. Recovery is transparent, and there is no opaque stuck workflow.
+- Operators must carry precise prerequisite, outcome, invalidation, and idempotency declarations. External effects need durable receipts and explicit handling for ambiguous completion.
+- The level-triggered sweep is the recovery backstop, but its cost scales with total goal and asset count, not just with what changed. On a large library, sweep frequency trades recovery latency against load and needs a bound.
+- When two Operators both provide the same outcome — for example, Astrometry.net and ASTAP for `astro.solve.*` — "dispatch any eligible Operator" is under-specified. Without a stated tie-break, selection can depend on registry order, and a re-run may pick a different provider, hurting reproducibility. A deterministic preference rule must be defined with the Operator contract.
+
+## Alternatives Considered
+
+### Alternative 1: Execute versioned workflows or pipelines
+- **Pros:** familiar explicit control flow; natural where order itself is meaningful; established engines supply durable waits, retries, and graph scheduling.
+- **Cons:** makes users reason about stuck execution instead of unsatisfied outcomes; encodes unnecessary ordering; adds a second operational state model and workflow-version migration; user-authored workflows are a much larger product surface.
+- **Why not:** it optimises for the rare ordered case at the cost of the common "make these true" case, and it enlarges the debugging surface.
+
+### Alternative 2: Dispatch individual Operators only
+- **Pros:** smallest initial implementation.
+- **Cons:** Sources, API handlers, and UI actions each grow duplicated sequencing logic; automatic processing cannot reliably recover from missed events or partial completion; adding policy later means replacing the core dispatch path after plugins already depend on it.
+- **Why not:** it pushes coordination into every caller and forecloses convergent recovery.
