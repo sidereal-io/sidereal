@@ -19,7 +19,7 @@ Fire on any of these:
 
 Prefer an independent adversary. A self-review inherits your own blind spots.
 
-- **Default — dispatch.** Hand the critique to a different model family with `choosing-an-adversary`.
+- **Default — dispatch.** Hand the critique to a different model family with `choose-an-adversary`.
 - **Always dispatch** for high stakes: a new ADR, a subagent's significant deliverable, or a spec or plan that spans multiple units, adds contracts or migrations, or changes the architecture.
 - **Low stakes.** In-session is fine for a bounded, single-unit design or plan with no new contracts. Say plainly that the critique ran in-session, so the reader knows it is weaker.
 - **No other family installed?** Critique in-session and say so.
