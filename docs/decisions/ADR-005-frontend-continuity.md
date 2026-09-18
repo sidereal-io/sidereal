@@ -22,12 +22,7 @@ This is also the most visible decision to the frontend workstream, whose largest
 
 Build a **new application shell, routing, and data layer, and port presentational components across as their screens are built.** The deep-zoom viewer, sky map, and admin forms move over; the old query/filter layer does not.
 
-Two conditions apply as **gates on the frontend build, not on this decision:**
-
-- The contributor conversation happens before that work starts.
-- A green v0.10.x Playwright baseline is established before components are ported, so parity is measured against something real.
-
-The first deliverable is a minimal read-only view as the first screen of the new shell — not throwaway scaffolding.
+This decision governs only *what the UI starts from*. When and in what order the build then proceeds — the contributor conversation up front, a green v0.10.x Playwright parity baseline before any component is ported, and a minimal read-only screen as the first deliverable rather than throwaway scaffolding — are execution conditions owned by the frontend build, not by this record.
 
 ## Consequences
 
