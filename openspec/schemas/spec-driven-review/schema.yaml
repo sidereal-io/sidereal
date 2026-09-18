@@ -37,8 +37,7 @@ artifacts:
       PLAIN LANGUAGE (a hard bar, not a pointer): write this in plain language
       per ISO 24495-1 (and -3 for technical content). One idea per sentence — aim
       for 15-20 words, never exceed 30. Use active voice with the actor named,
-      front-load each section, cut filler, and keep one term per concept. The
-      iso-24495 skill carries the full checklist.
+      front-load each section, cut filler, and keep one term per concept.
     requires: []
 
   - id: specs
@@ -141,8 +140,7 @@ artifacts:
       PLAIN LANGUAGE (a hard bar, not a pointer): write this in plain language
       per ISO 24495-1 (and -3 for technical content). One idea per sentence — aim
       for 15-20 words, never exceed 30. Use active voice with the actor named,
-      front-load each section, cut filler, and keep one term per concept. The
-      iso-24495 skill carries the full checklist.
+      front-load each section, cut filler, and keep one term per concept.
     requires:
       - proposal
 
@@ -182,8 +180,7 @@ artifacts:
       PLAIN LANGUAGE (a hard bar, not a pointer): write this in plain language
       per ISO 24495-1 (and -3 for technical content). One idea per sentence — aim
       for 15-20 words, never exceed 30. Use active voice with the actor named,
-      front-load each section, cut filler, and keep one term per concept. The
-      iso-24495 skill carries the full checklist.
+      front-load each section, cut filler, and keep one term per concept.
     requires:
       - proposal
 
@@ -258,8 +255,7 @@ artifacts:
       PLAIN LANGUAGE (a hard bar, not a pointer): write every ADR in plain
       language per ISO 24495-1, and -3 for technical content. One idea per
       sentence, aim for 15-20 words and never exceed 30, active voice with the
-      actor named, front-loaded, no filler, one term per concept. The iso-24495
-      skill carries the full checklist.
+      actor named, front-loaded, no filler, one term per concept.
     requires:
       - design
 
@@ -397,8 +393,7 @@ artifacts:
 
       PLAIN LANGUAGE (a hard bar, not a pointer): write task descriptions in
       plain language per ISO 24495-1. One idea per line, active voice with the
-      actor named, front-loaded, and no filler. The iso-24495 skill carries the
-      full checklist.
+      actor named, front-loaded, and no filler. 
     requires:
       - review
 
