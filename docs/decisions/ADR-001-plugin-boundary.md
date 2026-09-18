@@ -18,7 +18,7 @@ But the workloads behind that contract need very different runtimes, and no sing
 - **User-authored extensions** (rename, tag, metadata) must install without an extra container or runtime, and must stay tightly capability-limited.
 - **Heavyweight tools** (Python ML, Siril, PixInsight, ASTAP) may need large native runtimes, another OS, or process isolation.
 
-This decision is paired with [ADR-007 — Security & plugin trust](ADR-007-security-and-plugin-trust.md). An execution profile is *how* code runs; that ADR governs *what* it may do.
+An execution profile is *how* code runs; a separate decision governs *what* it may do.
 
 ## Decision
 
@@ -34,7 +34,7 @@ A run-scoped **`AssetContext` is the only route from plugin code to core.** Thro
 
 There is **no published Rust dynamic ABI.** WASM and container orchestration are deferred; both are additive later.
 
-The embedded-script profile's scripting engine is a separate decision (ADR-012), and the profile depends on that engine spike. Declare the profile stable only after **at least two built-ins also ship through it.**
+The embedded-script profile's scripting engine is a separate decision, and the profile depends on that engine spike. Declare the profile stable only after **at least two built-ins also ship through it.**
 
 ## Consequences
 
