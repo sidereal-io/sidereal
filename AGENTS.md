@@ -85,11 +85,9 @@ between phases" step.
   verify → archive all on the branch; `archive` moves the change to
   `openspec/changes/archive/` and syncs delta specs into `openspec/specs/`. Flip the
   PR to ready when the archive commit lands.
-- **The agent runs the mechanical git; you own the merge.** The agent creates the
-  branch, makes every commit, opens the draft PR, archives, and flips it ready —
-  without asking. You review the ready PR and **rebase-merge** it once CI is green
-  (never squash — that would destroy the per-unit commits). Stacks merge bottom-up:
-  parent to `main` first, then retarget and merge each child.
+- **User owns the merge.** The agent never merges a PR unless explicitly asks and 
+  confirmed. Stacks merge bottom-up: parent to `main` first, then retarget and merge 
+  each child.
 - **If a ready PR gets change-requests,** flip it back to draft and `git revert` the
   archive commit — this restores the change under `openspec/changes/` and unwinds the
   spec sync. Make the fixes, re-archive as the last commit, and flip ready again. A
