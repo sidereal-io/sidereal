@@ -35,7 +35,7 @@ Sidereal pins its development tools with a **native Nix flake**, built from smal
 - **The setup splits into modules.** A module with nothing specific to Sidereal can move into a shared flake later without changes.
 - **Editing the environment requires Nix knowledge.** The Nix language and flake-parts are harder to learn than friendlier wrappers. Most contributors only enter the shell, but maintainers carry this cost.
 - **Services cost more setup.** Running a database for development needs an extra flake module, where some wrappers offer this built in.
-- **Two routes must stay working:** the Nix shell and the plain pin files. For Rust, both read the same exact-patch pin file, so they can't drift. For Node, the plain pin file (a version manager reading `.nvmrc`) can agree with Nix only on the major version — Nix's lock decides the exact patch, so the two routes can still land on different patches of the same major.
+- **Two routes must stay working:** the Nix shell and the plain pin files. For Rust, both read the same exact-patch pin file, so they can't drift. For Node, the plain pin file only names the major version. Nix's lock decides the exact patch on its own, so the two routes can still land on different patches of that major.
 
 ## Alternatives Considered
 

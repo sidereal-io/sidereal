@@ -6,7 +6,7 @@ Each contributor and each AI agent builds this repo with whatever tools their ma
 
 - **Node.** `.nvmrc` says `24.10.0` and CI uses `24.x`. `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md` say "Node 20+". The maintainer's machine runs Node 26.
 - **OpenSpec.** The `openspec` CLI is a global npm install that nothing pins.
-- **Rust.** Only Rust is pinned, through `backend/rust-toolchain.toml`.
+- **Rust.** `backend/rust-toolchain.toml` pins Rust, and pins nothing else.
 
 This change gives the repo one pinned environment that turns on when you enter the directory. Later stories in Track E build on it: generated OpenSpec skills (E2), skills refreshed on entry (E3), and a CI drift check (E4).
 

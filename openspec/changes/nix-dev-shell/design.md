@@ -112,7 +112,7 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 - nixpkgs already packages `nodejs_26` (26.10.0 on `nixos-unstable`), prebuilt.
 - `node-version-file` follows the same single-source rule D3 applies to Rust: one file the CI workflows read, instead of four workflows each hardcoding their own copy of the version.
 
-**Consequence:** Node 26 is in its Current phase, not yet Long-Term Support — Node typically promotes an even major to LTS in October of its release year. The pin may need to move again once it does. With `node-version-file`, that costs fewer edits than the first bump did: `nix/toolchains.nix`, `.nvmrc`, the docs, and `Dockerfile`'s two `FROM node:` lines — the four CI workflow files follow `.nvmrc` automatically and need no edit of their own.
+**Consequence:** Node 26 is in its Current phase, not yet Long-Term Support — Node typically promotes an even major to LTS in October of its release year. The pin may need to move again once it does. That next bump costs fewer edits than this one did: `nix/toolchains.nix`, `.nvmrc`, the docs, and `Dockerfile`'s two `FROM node:` lines. The four CI workflow files need no edit — they follow `.nvmrc` automatically through `node-version-file`.
 
 Running production on Node 26 while it's still pre-LTS is itself a trade-off, weighed against keeping the production image on an older, more conservative major than dev and CI use. The maintainer chose consistency: one Node version everywhere, rather than a deliberate split between "what contributors and CI run" and "what production runs."
 
