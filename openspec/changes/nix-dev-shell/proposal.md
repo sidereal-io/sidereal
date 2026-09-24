@@ -48,6 +48,7 @@ None.
   - `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`;
   - `README.md` — it had a stale "Node.js 20+" this change's own review found and fixes;
   - every `.github/workflows/*.yml` file that pins a `node-version` — `ci.yml`, `docker-build-test.yml`, `docker-build-push.yml` and `release.yml` — so none of them drifts from the pin the moment this merges. (An earlier pass touched only `ci.yml`; a later check found the other three.)
+  - `Dockerfile` — both build stages pinned `node:24-alpine`; the production image now matches the dev shell and CI instead of quietly running an older major.
 - **New inputs:** nixpkgs (`nixos-unstable`, pinned by the lock), flake-parts and rust-overlay. The environment reuses nix-direnv from a pinned URL. Everything comes prebuilt from cache.nixos.org, so no one compiles anything.
 - **Contributors who adopt Nix** do two one-time things:
   - run `npm rebuild` if they used another Node major version before, because `better-sqlite3` is a native module built for that version;

@@ -155,7 +155,7 @@ The flake SHALL define a development shell for `x86_64-linux`, `aarch64-linux` a
 
 ### Requirement: Every reference to the Node version agrees
 
-The repo SHALL state Node major version 26 wherever it names a Node version for contributors or for CI. `.nvmrc` SHALL contain the major version only, so Nix, CI and Node version managers agree.
+The repo SHALL state Node major version 26 wherever it names a Node version for contributors, for CI, or for the production image. `.nvmrc` SHALL contain the major version only, so Nix, CI and Node version managers agree.
 
 #### Scenario: A reviewer checks the documented Node version
 
@@ -170,4 +170,9 @@ The repo SHALL state Node major version 26 wherever it names a Node version for 
 #### Scenario: Every CI workflow names the same Node version as the shell
 
 - **WHEN** a reviewer runs `grep -rn node-version .github/workflows/`
+- **THEN** every matching line names major version 26
+
+#### Scenario: The production image names the same Node version as the shell
+
+- **WHEN** a reviewer runs `grep -n 'FROM node:' Dockerfile`
 - **THEN** every matching line names major version 26

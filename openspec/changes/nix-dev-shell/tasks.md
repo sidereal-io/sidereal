@@ -90,17 +90,22 @@ the plan changed).
 - [x] 8.8 Run `nix develop --command just check` and, outside the shell with a Node 26 version manager active, plain `just check`. Verify both exit with status 0. **Verified**: exit 0 inside (Node 26.10.0) and outside (native fnm, Node v26.2.0) — `just check` runs only the Rust checks, so the exact Node patch active outside Nix doesn't affect it.
 - [x] 8.9 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
 
-## 9. Close the remaining CI node-version gap
+## 9. Close the remaining CI and production-image node-version gaps
 
 Section 8's task 8.5 and its own verification (8.6) checked only
 `.github/workflows/ci.yml`. Three more workflow files also pin a Node
 version, and both an earlier `/opsx:verify` pass and this task's own
-tasks 8.5/8.6 missed them: they weren't in the grep's file list. Found
-when the user asked whether every artifact was actually updated.
+tasks 8.5/8.6 missed them: they weren't in the grep's file list.
+The maintainer then asked whether every artifact was actually
+updated; a round-8 review, run in response, found that `Dockerfile`
+pins Node 24 for the production image too, in both build stages --
+also missed by every prior pass.
 
 - [ ] 9.1 Change `node-version: '24'` to `'26'` in `.github/workflows/docker-build-test.yml`.
 - [ ] 9.2 Change `node-version: '24'` to `'26'` in `.github/workflows/docker-build-push.yml`.
 - [ ] 9.3 Change `node-version: '24'` to `'26'` in `.github/workflows/release.yml`.
-- [ ] 9.4 Verify every workflow's `node-version` agrees: `grep -rn node-version .github/workflows/` shows major version 26 on every matching line.
+- [ ] 9.4 Change `ci.yml`'s `node-version: '26.x'` to `'26'`, matching the plain-major-version format the other three files already use (pre-existing inconsistency, not introduced by this change; harmonizing since all four are being touched anyway). Verify every workflow's `node-version` agrees: `grep -rn node-version .github/workflows/` shows major version 26 on every matching line, with no `.x` suffix anywhere.
 - [ ] 9.5 Confirm `backend-rs.yml` and `prune-ghcr.yml` have no `node-version` line, so this list is exhaustive: `grep -Lr node-version .github/workflows/*.yml` should include both.
-- [ ] 9.6 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid.
+- [ ] 9.6 Change both `FROM node:24-alpine` lines in `Dockerfile` (the `builder` and `runtime` stages) to `FROM node:26-alpine`. Verify with `grep -n 'FROM node:' Dockerfile`.
+- [ ] 9.7 Build the production image locally (`docker build -t sidereal-test .`) and confirm it completes without error under Node 26.
+- [ ] 9.8 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid.
