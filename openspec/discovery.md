@@ -1,7 +1,7 @@
 # Discovery: M1 — Core spine & first plugins
 
 > Status: complete
-> Created: 2026-09-18 · Last revised: 2026-09-23
+> Created: 2026-09-18 · Last revised: 2026-09-24
 
 > Release plan produced by the discovery skill. Resume or revise by re-running the skill.
 > To build: run `/opsx:propose` and ask it to use the next unchecked story below.
@@ -160,12 +160,13 @@ split into modules so that later extraction stays possible.
       for toolchains, one for openspec).
     - In: Rust from rust-overlay, reading `backend/rust-toolchain.toml` so that
       file stays the single source of truth.
-    - In: `nodejs_24` and `just`.
+    - In: `nodejs_26` and `just`.
     - In: `openspec` from pinned nixpkgs, or `overrideAttrs` for an exact version.
     - In: `.envrc` with `use flake` for nix-direnv, and `flake.lock`.
-    - In: `AGENTS.md` changes from "Node 20+" to 24, and it describes the optional
+    - In: `AGENTS.md` changes from "Node 20+" to 26, and it describes the optional
       Nix path.
-    - Out: skill generation (E2 and E3) and any CI changes (E4).
+    - Out: skill generation (E2 and E3) and any CI change beyond keeping
+      `ci.yml`'s `node-version` in sync with the pin (E4).
   - **Relevant code**: `justfile`; `backend/rust-toolchain.toml`; `.nvmrc`;
     `package.json`; `AGENTS.md`; `CONTRIBUTING.md`; `.gitignore` (add `.direnv/`)
   - **Added**: 2026-09-23
@@ -520,3 +521,4 @@ proven early (story 2) and then thickened, rather than 8 layers before anything 
 - 2026-09-20 — Phases 2–3 confirmed: three personas (Pat/Nova/Sam) and their journey maps, annotated against the M0 backend.
 - 2026-09-20 — Phases 4–6 confirmed and plan finalized. MoSCoW set (integrity reconciliation moved Must→Should per product owner). Issue #217's horizontal steps 0–10 re-cut into 10 vertical stories: skeleton (story 2) proves the spine, story 3 is the contract-meets-reality slice, kept whole. Three of Mike's open questions resolved into story scope (adopt→story 8, store-orphan sweep→story 2, edit-in-place→story 5 limitation).
 - 2026-09-23 — Revision: added Track E (reproducible, agent-native dev environment), which comes before M1 in build order. It came from an explore session that chose native Nix flakes with flake-parts over devenv, kept Nix optional, and made OpenSpec skills generated rather than committed (`--tools agents,claude`, no detection). Four stories, E1–E4, with E1 as the walking skeleton. M1 stories and numbering are unchanged, and no M1 story has changed state (no active or archived changes).
+- 2026-09-24 — Revision: story E1's scope bullets updated from Node 24 to Node 26, to match the `nix-dev-shell` change (openspec/changes/nix-dev-shell/), which moved its target Node version after propose and review found E1's plan already implemented and approved. E1's "Out" bullet now also carves out keeping CI's `node-version` in sync with the pin, matching that change's design.md. Found and fixed by `/opsx:verify` catching the drift between this file and the change it seeded.
