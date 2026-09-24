@@ -47,13 +47,13 @@ None.
   - `.gitignore` (adds `.direnv/` and `.envrc.local`);
   - `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`;
   - `README.md` — it had a stale "Node.js 20+" this change's own review found and fixes;
-  - `.github/workflows/ci.yml` — its `node-version` string and the step name that references it, so CI doesn't drift from the pin the moment this merges.
+  - every `.github/workflows/*.yml` file that pins a `node-version` — `ci.yml`, `docker-build-test.yml`, `docker-build-push.yml` and `release.yml` — so none of them drifts from the pin the moment this merges. (An earlier pass touched only `ci.yml`; a later check found the other three.)
 - **New inputs:** nixpkgs (`nixos-unstable`, pinned by the lock), flake-parts and rust-overlay. The environment reuses nix-direnv from a pinned URL. Everything comes prebuilt from cache.nixos.org, so no one compiles anything.
 - **Contributors who adopt Nix** do two one-time things:
   - run `npm rebuild` if they used another Node major version before, because `better-sqlite3` is a native module built for that version;
   - wait for one full rebuild of `backend/target`.
 - **Not affected:**
-  - the existing CI workflows, beyond that one `node-version` string;
+  - the existing CI workflows, beyond their `node-version` strings;
   - the `justfile` recipes;
   - application code in either stack;
   - OpenSpec skills.

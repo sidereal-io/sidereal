@@ -167,7 +167,7 @@ The repo SHALL state Node major version 26 wherever it names a Node version for 
 - **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `backend/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
 - **THEN** the search finds no match
 
-#### Scenario: CI names the same Node version as the shell
+#### Scenario: Every CI workflow names the same Node version as the shell
 
-- **WHEN** a reviewer reads the `node-version` value in `.github/workflows/ci.yml`
-- **THEN** it names major version 26
+- **WHEN** a reviewer runs `grep -rn node-version .github/workflows/`
+- **THEN** every matching line names major version 26

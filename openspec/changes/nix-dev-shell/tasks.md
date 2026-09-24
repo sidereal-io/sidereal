@@ -89,3 +89,18 @@ the plan changed).
 - [x] 8.7 Inside the shell (`nix develop`), run `npm rebuild`, then start the v0.10.x server with `npm run dev:server`. Verify that `better-sqlite3` loads without a `NODE_MODULE_VERSION` error under Node 26. **Verified**: `npm rebuild` succeeded; the server logged "Migrations completed successfully" and "Sidereal server running on port 5000" with no `NODE_MODULE_VERSION` error.
 - [x] 8.8 Run `nix develop --command just check` and, outside the shell with a Node 26 version manager active, plain `just check`. Verify both exit with status 0. **Verified**: exit 0 inside (Node 26.10.0) and outside (native fnm, Node v26.2.0) — `just check` runs only the Rust checks, so the exact Node patch active outside Nix doesn't affect it.
 - [x] 8.9 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
+
+## 9. Close the remaining CI node-version gap
+
+Section 8's task 8.5 and its own verification (8.6) checked only
+`.github/workflows/ci.yml`. Three more workflow files also pin a Node
+version, and both an earlier `/opsx:verify` pass and this task's own
+tasks 8.5/8.6 missed them: they weren't in the grep's file list. Found
+when the user asked whether every artifact was actually updated.
+
+- [ ] 9.1 Change `node-version: '24'` to `'26'` in `.github/workflows/docker-build-test.yml`.
+- [ ] 9.2 Change `node-version: '24'` to `'26'` in `.github/workflows/docker-build-push.yml`.
+- [ ] 9.3 Change `node-version: '24'` to `'26'` in `.github/workflows/release.yml`.
+- [ ] 9.4 Verify every workflow's `node-version` agrees: `grep -rn node-version .github/workflows/` shows major version 26 on every matching line.
+- [ ] 9.5 Confirm `backend-rs.yml` and `prune-ghcr.yml` have no `node-version` line, so this list is exhaustive: `grep -Lr node-version .github/workflows/*.yml` should include both.
+- [ ] 9.6 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid.
