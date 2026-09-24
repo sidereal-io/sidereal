@@ -1,5 +1,10 @@
 schema: spec-driven-review
 
+context: |
+  Backlog: openspec/discovery.md is the release plan. When asked to propose the
+  next change without a specific request, pick the next unchecked story in
+  discovery.md and use its story packet as the input. One story per change.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
