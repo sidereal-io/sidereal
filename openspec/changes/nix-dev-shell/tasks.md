@@ -50,7 +50,7 @@
 
 ## 6. Contributor documentation
 
-- [ ] 6.1 Add a "Development environment" section to `CONTRIBUTING.md` covering:
+- [x] 6.1 Add a "Development environment" section to `CONTRIBUTING.md` covering:
   - the optional Nix route: install Nix with flakes, then run `direnv allow`, or use `nix develop` without direnv;
   - the route without Nix: rustup, a Node version manager that reads `.nvmrc`, and `just`;
   - the one-time `npm rebuild` for anyone who used another Node major version;
@@ -58,8 +58,8 @@
   - that `.envrc.local` holds personal settings;
   - that flakes see only files tracked by git.
 
-  Verify that a reader can follow each route from the text alone.
-- [ ] 6.2 Add one paragraph to `AGENTS.md` and to `backend/README.md` saying that the repo provides an optional Nix shell and that `just check` works in it. Verify that the paragraph links to the `CONTRIBUTING.md` section.
+  Verify that a reader can follow each route from the text alone. **Verified**: added `## 🧰 Development Environment` with numbered "With Nix" and "Without Nix" routes; both steps and both one-time-cost notes read standalone.
+- [x] 6.2 Add one paragraph to `AGENTS.md` and to `backend/README.md` saying that the repo provides an optional Nix shell and that `just check` works in it. Verify that the paragraph links to the `CONTRIBUTING.md` section. **Verified**: both paragraphs link to `CONTRIBUTING.md#development-environment`.
 
 ## 7. End-to-end verification
 

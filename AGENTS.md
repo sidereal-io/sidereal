@@ -23,6 +23,8 @@ The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/de
 
 **Run both stacks from the root `justfile`.** It is the single front door: `just dev` starts the Rust backend and the Vite frontend together, and `just --list` describes every recipe.
 
+**An optional, pinned Nix shell provides every tool both stacks need**, including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
+
 **Where to read more:**
 
 - **v2 backend layout, prerequisites, and commands** — [`backend/README.md`](backend/README.md).
