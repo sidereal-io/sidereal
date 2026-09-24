@@ -147,7 +147,7 @@ split into modules so that later extraction stays possible.
 
 ### Stories
 
-- [x] E1. `nix-dev-shell` — enter the repo and get pinned Rust, Node, `just` and `openspec` ⭐ walking skeleton
+- [ ] E1. `nix-dev-shell` — enter the repo and get pinned Rust, Node, `just` and `openspec` ⭐ walking skeleton
   - **Persona served**: Nico, Ada
   - **Journey segment**: Enter env and Work & check
   - **MoSCoW**: Must
@@ -165,13 +165,12 @@ split into modules so that later extraction stays possible.
     - In: `.envrc` with `use flake` for nix-direnv, and `flake.lock`.
     - In: `AGENTS.md` changes from "Node 20+" to 26, and it describes the optional
       Nix path.
-    - Out: skill generation (E2 and E3) and any CI change beyond keeping every
-      workflow's `node-version` in sync with the pin (E4).
+    - Out: skill generation (E2 and E3) and any CI change beyond keeping
+      `ci.yml`'s `node-version` in sync with the pin (E4).
   - **Relevant code**: `justfile`; `backend/rust-toolchain.toml`; `.nvmrc`;
-    `package.json`; `AGENTS.md`; `CONTRIBUTING.md`; `.gitignore` (add `.direnv/`);
-    `.github/workflows/*.yml` (every file with a `node-version`); `Dockerfile`
+    `package.json`; `AGENTS.md`; `CONTRIBUTING.md`; `.gitignore` (add `.direnv/`)
   - **Added**: 2026-09-23
-  - **Change**: `nix-dev-shell` (archived)
+  - **Change**: _not yet proposed_
 
 - [ ] E2. `generated-agent-skills` — `just skills` makes identical skills on every machine, and git holds only authored skills
   - **Persona served**: Dana, Ada, Mo
@@ -523,4 +522,3 @@ proven early (story 2) and then thickened, rather than 8 layers before anything 
 - 2026-09-20 — Phases 4–6 confirmed and plan finalized. MoSCoW set (integrity reconciliation moved Must→Should per product owner). Issue #217's horizontal steps 0–10 re-cut into 10 vertical stories: skeleton (story 2) proves the spine, story 3 is the contract-meets-reality slice, kept whole. Three of Mike's open questions resolved into story scope (adopt→story 8, store-orphan sweep→story 2, edit-in-place→story 5 limitation).
 - 2026-09-23 — Revision: added Track E (reproducible, agent-native dev environment), which comes before M1 in build order. It came from an explore session that chose native Nix flakes with flake-parts over devenv, kept Nix optional, and made OpenSpec skills generated rather than committed (`--tools agents,claude`, no detection). Four stories, E1–E4, with E1 as the walking skeleton. M1 stories and numbering are unchanged, and no M1 story has changed state (no active or archived changes).
 - 2026-09-24 — Revision: story E1's scope bullets updated from Node 24 to Node 26, to match the `nix-dev-shell` change (openspec/changes/nix-dev-shell/), which moved its target Node version after propose and review found E1's plan already implemented and approved. E1's "Out" bullet now also carves out keeping CI's `node-version` in sync with the pin, matching that change's design.md. Found and fixed by `/opsx:verify` catching the drift between this file and the change it seeded.
-- 2026-09-24 — E1 (`nix-dev-shell`) archived after a 10-round review and 42/42 tasks verified, including a check the maintainer prompted that found the Node-26 pin was still missing from three CI workflow files and the production `Dockerfile` — fixed and re-verified before archiving. Its scope bullet reflects the final, delivered breadth: every workflow's `node-version`, not just `ci.yml`'s. `openspec/specs/dev-environment/spec.md` now exists (11 requirements), synced from the archived change's delta. E1 checked off; E2–E4 remain unstarted and unchanged. No M1 story's state changed.
