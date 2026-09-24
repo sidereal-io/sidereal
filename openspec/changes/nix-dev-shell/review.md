@@ -1,62 +1,59 @@
 ## Review Metadata
 
-- **Review round**: 2
-- **Prior round**: Round 1 — REVISE (3 Critical, 3 Moderate, 2 Suggestions). The author fixed 3 findings and rebutted 5. This round's reviewer accepted every rebuttal.
+- **Review round**: 3 (a narrow re-check that the maintainer authorized)
+- **Prior round**: Round 2 — REVISE (1 Critical, 3 Moderate, 2 Suggestions). Two REVISE verdicts in a row sent the change to the maintainer. The maintainer chose to have the author apply fixes F1, F2, F3 and F5, then run a narrow re-check of those fixes and the F4 rebuttal. Round 1 — REVISE (3 Critical, 3 Moderate, 2 Suggestions). Every round-1 item was fixed or rebutted, and the reviewer accepted each one in round 2.
 - **Reviewer context**: cross-model — Gemini 3.1 Pro (High) through the `agy` CLI, with a fresh context for each round
 - **Tool restrictions**: read-only. `agy --mode plan`, with every artifact embedded in the prompt and tool use forbidden.
-- **Artifacts reviewed**: proposal.md, specs/dev-environment/spec.md, design.md, adr.md, docs/decisions/ADR-013-development-environment.md, plus context files: justfile, backend/rust-toolchain.toml, backend/scripts/check-arch.sh, .nvmrc, CI workflows, and discovery.md Track E
-
-**Escalated to a human.** Rounds 1 and 2 both returned REVISE, so the author and reviewer loop has stopped. A maintainer decides the next step. Tasks MUST NOT be generated while this verdict stands.
+- **Artifacts reviewed**: proposal.md, specs/dev-environment/spec.md, design.md, backend/scripts/check-arch.sh. Round 3 checked only the fixes and any new defects. Rounds 1 and 2 covered every artifact, including adr.md and ADR-013.
 
 ## Findings
 
-The author checked every finding against the repo. The labels below record that check: **CONFIRMED** means the evidence supports the finding, and **REFUTED** means the evidence contradicts it.
-
 ### 🔴 Critical (blocking)
 
-1. **`.envrc.local` loads before the Nix shell, so the shell can override it.** CONFIRMED, but the author rates it Moderate. Design D7 loads `.envrc.local` first and runs `use flake` last. A contributor who sets `PATH` or a tool variable in `.envrc.local` sees the flake's values replace it. The spec only tests a variable that the flake never sets, so it doesn't catch this.
-   *Fix:* load `.envrc.local` last, after the Nix block, on both routes. Add a spec scenario where `.envrc.local` changes `PATH` and the change survives.
+None open.
+
+- **R2-F1 — `.envrc.local` loaded before the Nix shell.** RESOLVED. Design D7 now puts the Nix steps inside a condition and loads `.envrc.local` last on both routes. The spec requires that order and adds the scenario "A personal setting overrides the development shell".
 
 ### 🟡 Moderate
 
-2. **The reload scenario can't be tested without a terminal.** CONFIRMED. "direnv reloads … at the contributor's next prompt" needs an interactive prompt.
-   *Fix:* make the result checkable from a script. For example: after touching the file, `direnv status` lists it as watched, and `direnv export bash` prints a non-empty change set.
-3. **The design says `check-arch.sh` uses only `cargo tree` and `grep`.** CONFIRMED. Line 29 also calls `sed`. It still works in the Nix shell, because nixpkgs' standard shell includes `coreutils`, `gnused` and `gnugrep` (`pkgs/stdenv/generic/common-path.nix`).
-   *Fix:* correct the Context line and say where the shell gets these tools.
-4. **`npm rebuild` becomes a recurring cost for contributors who switch between projects.** REFUTED. Each repo has its own `node_modules`. With direnv, this repo always runs Node 24 inside its own directory. Once rebuilt, the module stays valid until the Node major version changes. Other projects that use Node 26 have their own `node_modules`.
+None open.
+
+- **R2-F2 — the reload scenario needed an interactive prompt.** RESOLVED. The scenarios now check the output of `direnv export bash` and `direnv status`.
+- **R2-F3 — the design's `check-arch.sh` tool list left out `sed`.** RESOLVED. The Context section lists `sed` and says that nixpkgs' standard environment supplies it.
+- **R2-F4 — `npm rebuild` said to recur for contributors who switch projects.** REBUTTED — accepted by the reviewer. `node_modules` belongs to each repository, so other projects' Node versions don't affect it.
 
 ### 📌 Suggestions
 
-5. **Passive voice hides the actor** in "Nix is documented as optional" (proposal) and in the requirement title "Remote code is verified before it runs." CONFIRMED for the proposal line. The requirement's own text names the actor ("The environment SHALL verify"). *Fix:* use the active voice in both.
-6. **Nobody is scheduled to update the lock.** NOTED. `discovery.md` already lists scheduled `nix flake update` pull requests under Could for Track E. This change keeps that out of scope.
+- **R2-F5 — passive voice.** RESOLVED. The proposal and the requirement title now use the active voice.
+- **R2-F6 — nobody is scheduled to update the lock.** NOTED, out of scope. The discovery plan lists scheduled lock updates as a Could item.
 
 ## Embedded-Instruction / Injection Attempts
 
-**Detected:** none in the artifacts under review. In round 1 the reviewer flagged a line in `discovery.md` ("don't re-open them"). `discovery.md` is context, not an artifact under review. The round-2 reviewer accepted that rebuttal.
+**Detected:** none. The round-1 reviewer flagged a line in `discovery.md`. That file is context, not an artifact under review, and the reviewer accepted this in round 2.
 
 ## Verdict
 
-VERDICT: REVISE
+VERDICT: APPROVE
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-Not applicable while the verdict is REVISE. The author proposes findings 1, 2, 3 and 5 as the fix set; see the fixes above. Each fix is small and fully specified. The maintainer decides whether to approve that set.
+None.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-Round 1, as adjudicated by the round-2 reviewer. The reviewer's raw output labels these "REJECTED", but it means it rejected the original finding. Each accompanying reason accepts the author's rebuttal or fix.
+Round 1 — the round-2 reviewer adjudicated these:
 
 - R1-1 (Critical, discovery.md steering): rebutted — **accepted by reviewer**: discovery.md is context, not under review.
-- R1-2 (Critical, lock bump breaks `better-sqlite3`): rebutted — **accepted by reviewer**: every Node 24.x release has NODE_MODULE_VERSION 137. The wording is fixed.
-- R1-3 (Critical, `.envrc` ignores `.env`): partly fixed with `.envrc.local` — **accepted by reviewer**. The load order is now round-2 finding 1.
+- R1-2 (Critical, lock bump breaks `better-sqlite3`): rebutted — **accepted by reviewer**: every Node 24.x release has NODE_MODULE_VERSION 137.
+- R1-3 (Critical, `.envrc` ignores `.env`): fixed with `.envrc.local` — **accepted by reviewer**. The load order was then fixed as R2-F1.
 - R1-4 (Moderate, `.nvmrc` major-only drift): rebutted — **accepted by reviewer**: the ABI is the same across 24.x.
 - R1-5 (Moderate, two-machine scenario): fixed — **accepted by reviewer**.
 - R1-6 (Moderate, redundant watch list): rebutted — **accepted by reviewer**: nix-direnv 3.2.0 watches only `flake.nix`, `flake.lock` and `devshell.toml`.
 - R1-7 (Suggestion, cite issues in the ADR): declined — the repository's rule forbids it.
 - R1-8 (Suggestion, 36-word sentence): declined — it is two sentences, of 20 and 17 words.
 
-Round 2:
+Round 2 — the round-3 reviewer adjudicated this:
 
-- R2-4 (Moderate, recurring `npm rebuild`): rebutted by the author; see finding 4. It needs the reviewer's acceptance in the next round.
+- R2-F4 (Moderate, recurring `npm rebuild`): rebutted — **accepted by reviewer**: `node_modules` belongs to each repository.
