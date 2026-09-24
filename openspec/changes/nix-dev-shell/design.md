@@ -5,7 +5,7 @@ See `proposal.md` (Why) for the motivation and `specs/dev-environment/spec.md` f
 - **Rust is already pinned** in `backend/rust-toolchain.toml` at channel `1.85.0`, with `rustfmt` and `clippy`. rustup reads this file today.
 - **`just check` needs the Rust toolchain and a few standard Unix tools.** `backend/scripts/check-arch.sh` calls `bash`, `cargo tree`, `grep` and `sed`. The Nix shell supplies the Unix tools through nixpkgs' standard environment, which includes `coreutils`, `gnugrep` and `gnused`. The shell needs no extra packages for them.
 - **nixpkgs branches differ sharply for `openspec`.** `nixos-unstable` ships 1.13.1. `nixos-26.05` ships 1.4.1, which predates skills delivery and stores. `nixos-25.11` has no package.
-- **nixpkgs cannot pin an exact Node version.** `nodejs_24` fixes the major version, and the lock picks the patch release.
+- **nixpkgs cannot pin an exact Node version.** `nodejs_26` fixes the major version, and the lock picks the patch release.
 - **One native npm module exists.** `better-sqlite3` is compiled for whichever Node version ran `npm install`.
 - **The repo has 369 tracked files, about 15 MB in total.** Nix copies the tracked tree into its store when it evaluates a flake.
 - **Nix is not yet installed on the maintainer's machine.** direnv is installed.
@@ -48,7 +48,7 @@ See `proposal.md` (Why) for the motivation and `specs/dev-environment/spec.md` f
 - It is the only branch with a current `openspec` that comes prebuilt.
 - The lock pins one exact revision, so "unstable" affects only what a lock update brings in.
 - A lock update arrives as a pull request, which a reviewer can test before merging.
-- The branch choice doesn't touch the most important pins. Rust comes from rust-overlay (D3), and `nodejs_24` fixes Node's major version.
+- The branch choice doesn't touch the most important pins. Rust comes from rust-overlay (D3), and `nodejs_26` fixes Node's major version.
 
 **Alternatives:**
 - **`nixos-26.05` only:** its `openspec` 1.4.1 is too old.
@@ -78,7 +78,7 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
   |                         sidereal.shell.packages : list of packages (merged)
   |                         sidereal.shell.hooks    : lines of shell code (concatenated)
   |
-  +-- nix/toolchains.nix  adds Rust, nodejs_24 and just       [specific to Sidereal]
+  +-- nix/toolchains.nix  adds Rust, nodejs_26 and just       [specific to Sidereal]
   |
   +-- nix/openspec.nix    adds openspec                       [can be extracted later]
 ```
@@ -156,7 +156,7 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 
 - **[Risk] Flakes see only files tracked by git.** A new file under `nix/` stays invisible to Nix until someone runs `git add` on it.
   → `CONTRIBUTING.md` says so in one line.
-- **[Risk] `better-sqlite3` fails to load after switching to a different Node major version.** The v0.10.x server then crashes with a `NODE_MODULE_VERSION` error. This happens only across major versions: every Node 24.x release shares module version 137, so lock updates within 24 don't trigger it.
+- **[Risk] `better-sqlite3` fails to load after switching to a different Node major version.** The v0.10.x server then crashes with a `NODE_MODULE_VERSION` error. This happens only across major versions: every Node 26.x release shares module version 147, so lock updates within 26 don't trigger it.
   → `CONTRIBUTING.md` lists `npm rebuild` as a one-time step for anyone who used another major version before entering the shell.
 - **[Trade-off] The first cargo build in the shell rebuilds `backend/target` in full.** The version matches rustup's, but the compiler's path differs, so cargo's cached build data no longer matches.
   → This is a one-time cost, and the docs mention it.

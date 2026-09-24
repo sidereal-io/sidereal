@@ -9,7 +9,7 @@ The development environment gives every contributor and AI agent the same pinned
 The development shell SHALL provide these tools on `PATH`:
 
 - Rust at the exact channel named in `backend/rust-toolchain.toml`, with `rustfmt` and `clippy`;
-- Node at major version 24;
+- Node at major version 26;
 - `just`;
 - the `openspec` CLI.
 
@@ -113,7 +113,7 @@ The environment SHALL NOT require Nix for building or checking the repo. For a c
 
 - **WHEN** a contributor without Nix installs Rust through rustup and installs Node through a version manager reading `.nvmrc`
 - **THEN** rustup selects the channel in `backend/rust-toolchain.toml`
-- **AND** the version manager selects Node major version 24
+- **AND** the version manager selects Node major version 26
 - **AND** `just check` exits with status 0, given that `just` is installed
 
 #### Scenario: The environment does not load application settings
