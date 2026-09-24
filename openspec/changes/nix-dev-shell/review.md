@@ -1,35 +1,42 @@
 ## Review Metadata
 
-- **Review round**: 3 (a narrow re-check that the maintainer authorized)
-- **Prior round**: Round 2 — REVISE (1 Critical, 3 Moderate, 2 Suggestions). Two REVISE verdicts in a row sent the change to the maintainer. The maintainer chose to have the author apply fixes F1, F2, F3 and F5, then run a narrow re-check of those fixes and the F4 rebuttal. Round 1 — REVISE (3 Critical, 3 Moderate, 2 Suggestions). Every round-1 item was fixed or rebutted, and the reviewer accepted each one in round 2.
-- **Reviewer context**: cross-model — Gemini 3.1 Pro (High) through the `agy` CLI, with a fresh context for each round
-- **Tool restrictions**: read-only. `agy --mode plan`, with every artifact embedded in the prompt and tool use forbidden.
-- **Artifacts reviewed**: proposal.md, specs/dev-environment/spec.md, design.md, backend/scripts/check-arch.sh. Round 3 checked only the fixes and any new defects. Rounds 1 and 2 covered every artifact, including adr.md and ADR-013.
+- **Review round**: 6 (a narrow re-check of round 5's re-check of round 4's fixes, for the Node 24 -> 26 revision of an already-approved, already-implemented change)
+- **Prior rounds**: Round 4 — APPROVE_WITH_CHANGES, 1 Moderate + 1 Suggestion on the revision itself. Round 5 — narrow re-check of round 4's fixes: both resolved, but the fix to finding 1 introduced two new Moderate defects (a sentence over 30 words; a regex gap that missed a bare `# v20+` comment). Round 6 (this one) — narrow re-check of round 5's findings, with every grep-target file embedded so the reviewer could check for false positives: both resolved, no new defects, APPROVE. Before that: round 3 — APPROVE, targeting Node 24, fully implemented (25/25 tasks) and merge-ready. The maintainer then asked to bump the target to Node 26 to match their own machine, which revised `proposal.md`, `design.md`, `specs/dev-environment/spec.md` and `tasks.md` (new section 8) and, per the review schema's staleness rule, voided round 3's verdict. Round 1 — REVISE, 3 Critical findings, 2 wrong on inspection. Round 2 — REVISE, escalated to the maintainer, 1 real Critical finding fixed.
+- **Reviewer context**: cross-model — Gemini 3.1 Pro (High) through the `agy` CLI, fresh context, read-only, every file embedded in the prompt
+- **Tool restrictions**: read-only. `agy --mode plan`, tool use forbidden.
+- **Artifacts reviewed**: proposal.md, design.md, specs/dev-environment/spec.md, tasks.md, adr.md, docs/decisions/ADR-013-development-environment.md, plus context: `.github/workflows/ci.yml`, `.nvmrc`, `CHANGELOG.md`. The reviewer was told explicitly that code outside `openspec/changes/nix-dev-shell/` still reflects Node 24 — tasks.md's new section 8 (not yet run) is what brings it to 26 — so it evaluated the revision as a plan, not as already-applied code.
 
 ## Findings
 
 ### 🔴 Critical (blocking)
 
-None open.
-
-- **R2-F1 — `.envrc.local` loaded before the Nix shell.** RESOLVED. Design D7 now puts the Nix steps inside a condition and loads `.envrc.local` last on both routes. The spec requires that order and adds the scenario "A personal setting overrides the development shell".
+None.
 
 ### 🟡 Moderate
 
-None open.
+1. **(Round 4) Task 8.6's verification grep only checked for stray `24`, not `20`.** Task 8.4 fixes root `README.md`'s leftover "Node.js 20+" (found during `/opsx:verify`), but 8.6 as first written wouldn't have caught a skipped or botched 8.4 — it would pass even with "20" still in the file. First fix added a `(24|20)` alternation.
+2. **(Round 5, found on the round-4 fix) The first fix's sentence ran to ~39 words.** Restructured 8.6 into a task with two bullets, each a short sentence.
+3. **(Round 5, found on the round-4 fix) The `(24|20)` pattern still couldn't catch a bare `# v20+` comment** — every alternative required a "Node"/"node:" prefix or a ".x" suffix, and `README.md`'s actual leftover line (`node --version  # v20+`) has neither. Added a fourth alternative, `\bv(24|20)\b`, matching "v20"/"v24" as a standalone word.
 
-- **R2-F2 — the reload scenario needed an interactive prompt.** RESOLVED. The scenarios now check the output of `direnv export bash` and `direnv status`.
-- **R2-F3 — the design's `check-arch.sh` tool list left out `sed`.** RESOLVED. The Context section lists `sed` and says that nixpkgs' standard environment supplies it.
-- **R2-F4 — `npm rebuild` said to recur for contributors who switch projects.** REBUTTED — accepted by the reviewer. `node_modules` belongs to each repository, so other projects' Node versions don't affect it.
+All three resolved as of round 6, which had every grep-target file (`AGENTS.md`, `README.md`, `backend/README.md`, `CONTRIBUTING.md`, `.github/workflows/ci.yml`) embedded so it could check the new pattern for false positives — none found. A direct run of the final regex against the current (pre-8.4/8.5) files confirms it: it flags exactly the stale `24` and `20` references those tasks will fix, and nothing else.
 
 ### 📌 Suggestions
 
-- **R2-F5 — passive voice.** RESOLVED. The proposal and the requirement title now use the active voice.
-- **R2-F6 — nobody is scheduled to update the lock.** NOTED, out of scope. The discovery plan lists scheduled lock updates as a Could item.
+4. **(Round 4) Passive voice in section 8's intro** — "before these tasks are worked" doesn't name who works them. FIXED: reworded to "before anyone works these tasks."
+
+## Interrogated Points
+
+The reviewer answered five specific questions this round asked, beyond its normal method:
+
+- **Is D6's Node-26-over-24 reasoning sound?** Yes — "in a single-maintainer project, minimizing friction for the sole maintainer by matching their native development environment is a highly pragmatic and principled choice," not weak anchoring.
+- **Does the spec's absolute SHALL (Node 26) contradict design's note that the pin may move again at LTS?** No — "anticipating a future version bump... is standard lifecycle management, not a live contradiction of the current spec's integrity."
+- **Is the CI Non-Goals carve-out scope creep?** No — "syncing an existing version string is a mandatory consequence of a version bump to prevent immediate CI breakage," distinct from story E4's new drift-check job.
+- **Does tasks.md section 8 fully cover the proposal's Impact list?** Yes, aside from finding 1 above.
+- **Injection check:** none found. The spec's `WHEN`/`THEN` scenario language is acceptance criteria, not an attempt to steer the reviewer.
 
 ## Embedded-Instruction / Injection Attempts
 
-**Detected:** none. The round-1 reviewer flagged a line in `discovery.md`. That file is context, not an artifact under review, and the reviewer accepted this in round 2.
+**Detected:** none.
 
 ## Verdict
 
@@ -37,23 +44,14 @@ VERDICT: APPROVE
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-None.
+Not applicable — round 6 (this round) is a clean APPROVE with no outstanding items.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-Round 1 — the round-2 reviewer adjudicated these:
+- Round 4 finding 1 (task 8.6's grep missed `20`): fixed, then that fix's own regex gap surfaced in round 5 (finding 3) and was fixed again — **accepted by reviewer** in round 6.
+- Round 5 finding 2 (sentence over 30 words, from the round-4 fix): fixed — **accepted by reviewer** in round 6.
+- Round 4 finding 2 (passive voice): fixed — **accepted by reviewer** in round 5, not reopened in round 6.
 
-- R1-1 (Critical, discovery.md steering): rebutted — **accepted by reviewer**: discovery.md is context, not under review.
-- R1-2 (Critical, lock bump breaks `better-sqlite3`): rebutted — **accepted by reviewer**: every Node 24.x release has NODE_MODULE_VERSION 137.
-- R1-3 (Critical, `.envrc` ignores `.env`): fixed with `.envrc.local` — **accepted by reviewer**. The load order was then fixed as R2-F1.
-- R1-4 (Moderate, `.nvmrc` major-only drift): rebutted — **accepted by reviewer**: the ABI is the same across 24.x.
-- R1-5 (Moderate, two-machine scenario): fixed — **accepted by reviewer**.
-- R1-6 (Moderate, redundant watch list): rebutted — **accepted by reviewer**: nix-direnv 3.2.0 watches only `flake.nix`, `flake.lock` and `devshell.toml`.
-- R1-7 (Suggestion, cite issues in the ADR): declined — the repository's rule forbids it.
-- R1-8 (Suggestion, 36-word sentence): declined — it is two sentences, of 20 and 17 words.
-
-Round 2 — the round-3 reviewer adjudicated this:
-
-- R2-F4 (Moderate, recurring `npm rebuild`): rebutted — **accepted by reviewer**: `node_modules` belongs to each repository.
+`tasks.md` section 8 may now be worked.

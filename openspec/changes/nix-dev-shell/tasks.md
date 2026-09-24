@@ -72,15 +72,18 @@
 
 Groups 1-7 above pinned Node 24. This section moves the pin to 26 (design.md D6,
 revised) to match what the maintainer's machine already runs, and closes a gap
-`/opsx:verify` found in root `README.md`. Requires a fresh review round before
-these tasks are worked (review.md's prior APPROVE is void once the plan changed).
+`/opsx:verify` found in root `README.md`. A fresh review round must approve this
+revision before anyone works these tasks (review.md's prior APPROVE is void once
+the plan changed).
 
 - [ ] 8.1 Change `nix/toolchains.nix`: `pkgs.nodejs_24` -> `pkgs.nodejs_26`. Verify that `nix develop --command node --version` starts with `v26.`.
 - [ ] 8.2 Change `.nvmrc` to contain `26` and a trailing newline. Verify with `cat .nvmrc`.
 - [ ] 8.3 Replace "Node 24" with "Node 26" in `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`.
 - [ ] 8.4 Fix the stale "Node.js 20+" / "`# v20+`" in the root `README.md` (the `/opsx:verify` finding) to Node 26.
 - [ ] 8.5 Change `.github/workflows/ci.yml`'s `node-version` from `'24.x'` to `'26.x'`.
-- [ ] 8.6 Verify that `grep -rnE 'Node(\.js)?\s?v?24|node:24|24\.x' AGENTS.md README.md backend/README.md CONTRIBUTING.md .github/workflows/ci.yml` finds no match, and that a manual check of `backend/README.md`'s markdown-link line also shows 26.
+- [ ] 8.6 Verify no stale Node 24 or 20 references remain:
+  - `grep -rnE 'Node(\.js)?\s?v?(24|20)\b|node:(24|20)|(24|20)\.x|\bv(24|20)\b' AGENTS.md README.md backend/README.md CONTRIBUTING.md .github/workflows/ci.yml` finds no match. The `\bv(24|20)\b` alternative catches a bare version comment like `# v20+`. Without it, task 8.4's fix to that exact `README.md` line would go unverified.
+  - `backend/README.md`'s markdown-link line also shows 26.
 - [ ] 8.7 Inside the shell (`nix develop`), run `npm rebuild`, then start the v0.10.x server with `npm run dev:server`. Verify that `better-sqlite3` loads without a `NODE_MODULE_VERSION` error under Node 26.
 - [ ] 8.8 Run `nix develop --command just check` and, outside the shell with a Node 26 version manager active, plain `just check`. Verify both exit with status 0.
 - [ ] 8.9 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid.
