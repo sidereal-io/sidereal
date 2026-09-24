@@ -44,7 +44,7 @@ The development shell SHALL resolve every tool from inputs pinned in the committ
 - **AND** runs `nix eval --raw .#devShells.<system>.default.drvPath` in each clone
 - **THEN** both commands print an identical derivation path
 
-### Requirement: Remote code is verified before it runs
+### Requirement: The environment verifies remote code before running it
 
 The environment SHALL verify every piece of remote code it fetches against a hash committed to the repo. This covers flake inputs and any script that `.envrc` loads. The environment SHALL refuse to use content whose hash does not match.
 
@@ -70,18 +70,29 @@ For a contributor with Nix and direnv, entering the repo directory SHALL turn th
 
 #### Scenario: The Rust pin changes while the shell is active
 
-- **WHEN** `backend/rust-toolchain.toml` or any file under `nix/` changes while the contributor is inside the repo directory
-- **THEN** direnv reloads the development shell at the contributor's next prompt
+- **WHEN** a tester with the shell loaded changes the modification time of `backend/rust-toolchain.toml`, or of any file under `nix/`
+- **AND** runs `direnv export bash` in the repo directory
+- **THEN** the command prints a non-empty set of export statements, which shows that direnv reloaded the shell
+
+#### Scenario: The watch list covers the shell's files
+
+- **WHEN** a tester with the shell loaded runs `direnv status` in the repo directory
+- **THEN** the output lists `backend/rust-toolchain.toml` and each file under `nix/` as watched
 
 ### Requirement: Contributors can add their own direnv settings
 
-`.envrc` SHALL load a file named `.envrc.local` when it exists, whether or not Nix is installed. Git SHALL ignore `.envrc.local`, so each contributor keeps their own settings out of commits.
+`.envrc` SHALL load a file named `.envrc.local` when it exists, whether or not Nix is installed. It SHALL load `.envrc.local` last, after the development shell, so the contributor's settings take precedence. Git SHALL ignore `.envrc.local`, so each contributor keeps their own settings out of commits.
 
 #### Scenario: A contributor adds a personal variable
 
 - **WHEN** a contributor writes `export SIDEREAL_TEST_VAR=1` in `.envrc.local` and enters the repo directory
 - **THEN** `SIDEREAL_TEST_VAR` equals `1` in the contributor's shell
 - **AND** the result is the same with Nix installed and without it
+
+#### Scenario: A personal setting overrides the development shell
+
+- **WHEN** a contributor with Nix writes `export PATH="$PWD/.local-bin:$PATH"` in `.envrc.local` and enters the repo directory
+- **THEN** the first entry of `PATH` in the contributor's shell is the repo's `.local-bin` directory
 
 #### Scenario: The personal file stays out of git
 

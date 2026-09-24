@@ -22,7 +22,7 @@ This change gives the repo one pinned environment that turns on when you enter t
 - **An `.envrc` for direnv.** It enters the shell automatically when Nix is installed, and does nothing when Nix is missing. It also loads a contributor's own gitignored `.envrc.local`, if one exists.
 - **`nix flake check` builds the shell.** This gives Track E's later CI work somewhere to add checks.
 - **Node 24 becomes the documented version everywhere.** `.nvmrc` becomes `24`. `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md` say Node 24 instead of "Node 20+".
-- **Nix is documented as optional.** `CONTRIBUTING.md` describes both routes: with Nix, and with rustup and a Node version manager. It also lists the one-time steps after first entering the shell.
+- **`CONTRIBUTING.md` documents Nix as optional.** It describes both routes: with Nix, and with rustup and a Node version manager. It also lists the one-time steps after first entering the shell.
 
 Nothing here is **BREAKING**. Contributors without Nix keep working exactly as today.
 

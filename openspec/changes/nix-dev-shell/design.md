@@ -3,7 +3,7 @@
 See `proposal.md` (Why) for the motivation and `specs/dev-environment/spec.md` for the required behavior. This section covers only the facts that shape the approach.
 
 - **Rust is already pinned** in `backend/rust-toolchain.toml` at channel `1.85.0`, with `rustfmt` and `clippy`. rustup reads this file today.
-- **`just check` needs only four tools**: `cargo`, `bash`, `grep` and the Rust toolchain. `backend/scripts/check-arch.sh` uses only `cargo tree` and `grep`.
+- **`just check` needs the Rust toolchain and a few standard Unix tools.** `backend/scripts/check-arch.sh` calls `bash`, `cargo tree`, `grep` and `sed`. The Nix shell supplies the Unix tools through nixpkgs' standard environment, which includes `coreutils`, `gnugrep` and `gnused`. The shell needs no extra packages for them.
 - **nixpkgs branches differ sharply for `openspec`.** `nixos-unstable` ships 1.13.1. `nixos-26.05` ships 1.4.1, which predates skills delivery and stores. `nixos-25.11` has no package.
 - **nixpkgs cannot pin an exact Node version.** `nodejs_24` fixes the major version, and the lock picks the patch release.
 - **One native npm module exists.** `better-sqlite3` is compiled for whichever Node version ran `npm install`.
@@ -114,18 +114,18 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 
 **Choice:** `.envrc` does these things, in this order:
 
-1. Loads `.envrc.local` if it exists. Git ignores that file, so each contributor can keep personal settings there.
-2. Stops quietly unless the `nix` command exists.
-3. Loads nix-direnv 3.2.0 from its release URL, verified with a committed `sha256` hash, if the contributor hasn't installed nix-direnv.
-4. Watches `backend/rust-toolchain.toml` and every file under `nix/`.
-5. Runs `use flake`.
+1. Runs steps 2–4 only if the `nix` command exists. This is a condition around those steps, not an early exit, so step 5 always runs.
+2. Loads nix-direnv 3.2.0 from its release URL, verified with a committed `sha256` hash, if the contributor hasn't installed nix-direnv.
+3. Watches `backend/rust-toolchain.toml` and every file under `nix/`.
+4. Runs `use flake`.
+5. Loads `.envrc.local` last, if it exists. Git ignores that file, so each contributor can keep personal settings there.
 
 **Why:**
-- The guard keeps `.envrc` harmless for contributors without Nix.
+- The condition in step 1 keeps `.envrc` harmless for contributors without Nix.
 - Loading nix-direnv this way means contributors need only plain direnv.
 - The hash check meets the rule that remote code is verified before it runs.
-- nix-direnv 3.2.0 watches only `flake.nix`, `flake.lock` and `devshell.toml`; its `direnvrc` source shows this. Without step 4, a change to the Rust pin or a module would not reload the shell.
-- The repo now owns the `.envrc` name. Step 1 gives contributors who had their own `.envrc` somewhere to move it.
+- nix-direnv 3.2.0 watches only `flake.nix`, `flake.lock` and `devshell.toml`; its `direnvrc` source shows this. Without step 3, a change to the Rust pin or a module would not reload the shell.
+- The repo now owns the `.envrc` name. Step 5 gives contributors who had their own `.envrc` somewhere to move it. It runs last so that a contributor's `PATH` or tool settings win over the development shell's.
 - **`.envrc` never loads `.env`.** That file holds settings for the v0.10.x app, not for the development environment.
 
 **Trust model:** direnv runs nothing until a contributor runs `direnv allow`. It asks again after any change to `.envrc`.
