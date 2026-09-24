@@ -22,7 +22,7 @@
 - [x] 4.1 Create `.envrc`, following design D7:
   - wrap the Nix steps in a condition on `has nix`;
   - inside it, load nix-direnv 3.2.0 from its release URL with a committed `sha256` hash;
-  - inside it, `watch_file` `backend/rust-toolchain.toml` and `nix/*.nix`;
+  - inside it, `watch_file` `backend/rust-toolchain.toml` and every file directly under `nix/` (`nix/*`, not `nix/*.nix` — a future non-`.nix` file there must still be watched);
   - inside it, run `use flake`;
   - after the condition, load `.envrc.local` last with `source_env_if_exists`.
 
@@ -35,11 +35,11 @@
   - delete `.envrc.local` afterwards.
 
   **Verified**: both held; `PATH` led with `.local-bin`.
-- [x] 4.5 Verify the reload triggers:
-  - after `touch backend/rust-toolchain.toml`, `direnv export bash` prints export statements;
+- [x] 4.5 Verify the reload triggers, and that it actually changes the shell, not just that direnv ran:
+  - change `channel` in `backend/rust-toolchain.toml` to a different stable version (not just its modification time — a no-op touch causes direnv to re-run but proves nothing about the result, since `rustc --version` stays the same either way), run `direnv export bash`, and confirm `rustc --version` now reports the new version. Revert the change afterward;
   - `direnv status` lists `backend/rust-toolchain.toml` and each file under `nix/` as watched.
 
-  **Verified**: `direnv status` listed `backend/rust-toolchain.toml`, `nix/devshell.nix`, `nix/openspec.nix` and `nix/toolchains.nix` as loaded watches.
+  **Verified**: bumping the channel to `1.84.1` changed `rustc --version` to match; reverting restored `1.85.0`. `direnv status` listed `backend/rust-toolchain.toml`, `nix/devshell.nix`, `nix/openspec.nix` and `nix/toolchains.nix` as watched.
 - [x] 4.6 Verify that `.env` stays unloaded. Confirm that a variable defined only in `.env` is unset in the shell inside the repo. **Verified**: `IMMICH_URL` (defined only in `.env`) stayed unset.
 - [x] 4.7 Verify the route without Nix. In a shell where `nix` isn't on `PATH` (for example a container with direnv but no Nix, or a `PATH` with Nix removed), enter the repo. Confirm that direnv reports no error, and that `env` without its `DIRENV_` lines matches the output from before entering. **Verified**: with `nix` stripped from `PATH`, direnv logged only the load line, and the only environment differences were `DIRENV_*` variables.
 
@@ -65,7 +65,7 @@
 
 - [x] 7.1 Run `nix develop --command just check` at the repo root. Verify that it exits with status 0. **Verified**: exit 0, all cargo checks and the arch lint passed.
 - [x] 7.2 Verify the route without Nix still passes. With rustup and Node 24 from `.nvmrc`, `just check` exits with status 0 outside the Nix shell. **Verified**: exit 0. (`just check` runs only the Rust checks; rustup selects 1.85.0 from `backend/rust-toolchain.toml` regardless of the active Node version.)
-- [x] 7.3 Run `npm rebuild` inside the shell, then start the v0.10.x server with `npm run dev:server`. Verify that `better-sqlite3` loads without a `NODE_MODULE_VERSION` error. **Verified**: `npm rebuild` succeeded, then `npm run dev:server` logged "Using SQLite database: local.db", ran migrations and started serving — no `NODE_MODULE_VERSION` error.
+- [x] 7.3 Run `npm rebuild` inside the shell. Verify `better-sqlite3` loads and works with `node -e "require('better-sqlite3')(':memory:').exec('SELECT 1')"`, exit status 0. Do not use `npm run dev:server` for this: it runs `tsx --env-file=.env`, and `.env` is gitignored, so on a fresh clone Node aborts before `better-sqlite3` is ever loaded — this task would silently pass for the wrong reason on any machine with a leftover `.env` from other work, and fail outright on a clean one. **Verified**: `npm rebuild` succeeded; the direct require-and-query printed `OK`.
 - [x] 7.4 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
 
 ## 8. Node version bump to 26
@@ -86,7 +86,7 @@ the plan changed).
   - `backend/README.md`'s markdown-link line also shows 26.
 
   **Verified**: grep exit 1 (no match); `backend/README.md:32` reads "Node.js ... 26".
-- [x] 8.7 Inside the shell (`nix develop`), run `npm rebuild`, then start the v0.10.x server with `npm run dev:server`. Verify that `better-sqlite3` loads without a `NODE_MODULE_VERSION` error under Node 26. **Verified**: `npm rebuild` succeeded; the server logged "Migrations completed successfully" and "Sidereal server running on port 5000" with no `NODE_MODULE_VERSION` error.
+- [x] 8.7 Inside the shell (`nix develop`), run `npm rebuild`. Verify `better-sqlite3` loads and works with `node -e "require('better-sqlite3')(':memory:').exec('SELECT 1')"` under Node 26, exit status 0. Same reasoning as task 7.3: `npm run dev:server` depends on the gitignored `.env`, so it isn't a reliable check on a fresh clone. **Verified**: same run as 7.3, under Node 26 in the shell — printed `OK`.
 - [x] 8.8 Run `nix develop --command just check` and, outside the shell with a Node 26 version manager active, plain `just check`. Verify both exit with status 0. **Verified**: exit 0 inside (Node 26.10.0) and outside (native fnm, Node v26.2.0) — `just check` runs only the Rust checks, so the exact Node patch active outside Nix doesn't affect it.
 - [x] 8.9 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
 
@@ -101,11 +101,24 @@ updated; a round-8 review, run in response, found that `Dockerfile`
 pins Node 24 for the production image too, in both build stages --
 also missed by every prior pass.
 
-- [x] 9.1 Change `node-version: '24'` to `'26'` in `.github/workflows/docker-build-test.yml`. **Verified**: line reads `node-version: '26'`.
-- [x] 9.2 Change `node-version: '24'` to `'26'` in `.github/workflows/docker-build-push.yml`. **Verified**: line reads `node-version: '26'`.
-- [x] 9.3 Change `node-version: '24'` to `'26'` in `.github/workflows/release.yml`. **Verified**: line reads `node-version: '26'`.
-- [x] 9.4 Change `ci.yml`'s `node-version: '26.x'` to `'26'`, matching the plain-major-version format the other three files already use (pre-existing inconsistency, not introduced by this change; harmonizing since all four are being touched anyway). Verify every workflow's `node-version` agrees: `grep -rn node-version .github/workflows/` shows major version 26 on every matching line, with no `.x` suffix anywhere. **Verified**: all four lines read `node-version: '26'`; a second grep for `.x` found nothing.
-- [x] 9.5 Confirm `backend-rs.yml` and `prune-ghcr.yml` have no `node-version` line, so this list is exhaustive: `grep -Lr node-version .github/workflows/*.yml` should include both. **Verified**: both listed.
-- [x] 9.6 Change both `FROM node:24-alpine` lines in `Dockerfile` (the `builder` and `runtime` stages) to `FROM node:26-alpine`. Verify with `grep -n 'FROM node:' Dockerfile`. **Verified**: both lines read `FROM node:26-alpine`.
-- [x] 9.7 Build and boot the production image under Node 26. A successful build only proves dependencies compiled — it does not prove the app runs, since `better-sqlite3` compiles fresh against Alpine's musl libc in the runtime stage. Use `docker compose up -d --build` (the documented path — `docker-compose.yml`'s own header says so), not a bare `docker run`: the compose file's volumes give the app a writable `/app/config` for its SQLite file, which a bare `docker run` lacks. Confirm `curl -f http://localhost:5000/api/health` succeeds. Then `docker compose down -v` to clean up. **Verified**: `docker build` completed; a bare `docker run` (tried first) crashed on a missing `DATABASE_URL`, traced to the missing config volume, not Node 26 — `docker compose up -d --build` then started cleanly and `curl -sf http://localhost:5000/api/health` returned `{"status":"healthy",...,"database":"healthy","nodeVersion":"v26.10.0"}`. Torn down and the standalone test image removed afterward.
-- [x] 9.8 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
+An external PR review then found a better mechanism than hardcoding
+the version four times over: `actions/setup-node`'s `node-version-file`
+input reads `.nvmrc` directly, the same single-source principle D3
+already applies to Rust. Tasks 9.1-9.4 below use that instead of a
+fourth hand-sync pass.
+
+- [x] 9.1 Change `node-version: '24'` to `node-version-file: '.nvmrc'` in `.github/workflows/docker-build-test.yml`, `.github/workflows/docker-build-push.yml`, `.github/workflows/release.yml` and `.github/workflows/ci.yml`. `actions/setup-node@v7` supports this input directly (confirmed against its docs); it follows the same single-source principle D3 already applies to Rust, so a future Node bump touches `.nvmrc` once instead of five files. **Verified**: all four files changed.
+- [x] 9.2 Verify with `grep -rn node-version .github/workflows/`: every matching line reads `node-version-file: '.nvmrc'`, and none hardcodes a version number. **Verified**: all four lines match, no hardcoded number anywhere.
+- [x] 9.3 Confirm `backend-rs.yml` and `prune-ghcr.yml` have no `node-version` line, so this list is exhaustive: `grep -Lr node-version .github/workflows/*.yml` should include both. **Verified**: both listed.
+- [x] 9.4 Validate each edited workflow's YAML with `python3 -c "import yaml; yaml.safe_load(open('<file>'))"` (or equivalent), since `node-version-file` is a new key, not a value swap. **Verified**: all four parse cleanly.
+- [x] 9.5 Change both `FROM node:24-alpine` lines in `Dockerfile` (the `builder` and `runtime` stages) to `FROM node:26-alpine`. Verify with `grep -n 'FROM node:' Dockerfile`. **Verified**: both lines read `FROM node:26-alpine`.
+- [x] 9.6 Build and boot the production image under Node 26. A successful build only proves dependencies compiled — it does not prove the app runs, since `better-sqlite3` compiles fresh against Alpine's musl libc in the runtime stage. Use `docker compose up -d --build` (the documented path — `docker-compose.yml`'s own header says so), not a bare `docker run`: the compose file's volumes give the app a writable `/app/config` for its SQLite file, which a bare `docker run` lacks. Confirm `curl -f http://localhost:5000/api/health` succeeds. Then `docker compose down -v` to clean up. **Verified**: `docker build` completed; a bare `docker run` (tried first) crashed on a missing `DATABASE_URL`, traced to the missing config volume, not Node 26 — `docker compose up -d --build` then started cleanly and `curl -sf http://localhost:5000/api/health` returned `{"status":"healthy",...,"database":"healthy","nodeVersion":"v26.10.0"}`. Torn down and the standalone test image removed afterward.
+- [x] 9.7 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
+
+## 10. Correct two inaccurate claims an external PR review found
+
+Neither is a behavior bug; both are prose in already-written artifacts
+that stated something false. Fixed directly rather than as a code task.
+
+- [x] 10.1 `docs/decisions/ADR-013-development-environment.md`'s Consequences said the plain pin files "can agree with [Nix] only on major versions" as a blanket claim. False for Rust: `backend/rust-toolchain.toml` pins an exact patch, read identically by rustup and rust-overlay. Scoped the claim to Node, where it's true. **Verified**: re-read the corrected paragraph; it now distinguishes the two pins.
+- [x] 10.2 `design.md` D7 said nix-direnv 3.2.0 "watches only `flake.nix`, `flake.lock` and `devshell.toml`." Its own `direnvrc` source (fetched and grepped directly) also watches `~/.direnvrc`, `~/.config/direnv/direnvrc` and its generated cache file. Corrected the list; the underlying conclusion (rust-toolchain.toml and nix/ still need explicit `watch_file` calls) was already right and is unchanged. **Verified**: `.envrc`'s own comment above the `watch_file` lines was also inaccurate in the same way — corrected there too.

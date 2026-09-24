@@ -104,14 +104,15 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 
 ### D6. Node: `nodejs_26`, and `.nvmrc` holds the major version
 
-**Choice:** The shell uses `pkgs.nodejs_26`. `.nvmrc` becomes `26`. The docs, every CI workflow's `node-version`, and `Dockerfile`'s base image all say Node 26.
+**Choice:** The shell uses `pkgs.nodejs_26`. `.nvmrc` becomes `26`. Every CI workflow reads it too, through `actions/setup-node`'s `node-version-file: '.nvmrc'` — not a separate hardcoded `node-version` string. The docs and `Dockerfile`'s base image still say Node 26 directly, since neither reads `.nvmrc`.
 
 **Why:**
-- Nix, CI and Node version managers can agree only on the major version. A patch pin in `.nvmrc` would disagree with Nix after every lock update.
+- Nix and Node version managers can agree only on the major version. A patch pin in `.nvmrc` would disagree with Nix after every lock update.
 - Node 26 is what the maintainer's machine already runs. Picking it, rather than 24, makes the pinned shell match reality from the start, instead of asking the maintainer to switch down.
 - nixpkgs already packages `nodejs_26` (26.10.0 on `nixos-unstable`), prebuilt.
+- `node-version-file` follows the same single-source rule D3 applies to Rust: one file the CI workflows read, instead of four workflows each hardcoding their own copy of the version.
 
-**Consequence:** Node 26 is in its Current phase, not yet Long-Term Support — Node typically promotes an even major to LTS in October of its release year. The pin may need to move again once it does. That costs the same handful of one-line edits this bump did: `nix/toolchains.nix`, `.nvmrc`, the docs, every workflow file under `.github/workflows/` that pins a `node-version`, and `Dockerfile`'s two `FROM node:` lines.
+**Consequence:** Node 26 is in its Current phase, not yet Long-Term Support — Node typically promotes an even major to LTS in October of its release year. The pin may need to move again once it does. With `node-version-file`, that costs fewer edits than the first bump did: `nix/toolchains.nix`, `.nvmrc`, the docs, and `Dockerfile`'s two `FROM node:` lines — the four CI workflow files follow `.nvmrc` automatically and need no edit of their own.
 
 Running production on Node 26 while it's still pre-LTS is itself a trade-off, weighed against keeping the production image on an older, more conservative major than dev and CI use. The maintainer chose consistency: one Node version everywhere, rather than a deliberate split between "what contributors and CI run" and "what production runs."
 
@@ -133,7 +134,7 @@ Running production on Node 26 while it's still pre-LTS is itself a trade-off, we
 - The condition in step 1 keeps `.envrc` harmless for contributors without Nix.
 - Loading nix-direnv this way means contributors need only plain direnv.
 - The hash check meets the rule that remote code is verified before it runs.
-- nix-direnv 3.2.0 watches only `flake.nix`, `flake.lock` and `devshell.toml`; its `direnvrc` source shows this. Without step 3, a change to the Rust pin or a module would not reload the shell.
+- nix-direnv 3.2.0's own watch list — `flake.nix`, `flake.lock`, `devshell.toml`, `~/.direnvrc`, `~/.config/direnv/direnvrc` and its generated cache file — never includes `backend/rust-toolchain.toml` or anything under `nix/`; its `direnvrc` source shows this. Without step 3, a change to the Rust pin or a module would not reload the shell.
 - The repo now owns the `.envrc` name. Step 5 gives contributors who had their own `.envrc` somewhere to move it. It runs last so that a contributor's `PATH` or tool settings win over the development shell's.
 - **`.envrc` never loads `.env`.** That file holds settings for the v0.10.x app, not for the development environment.
 

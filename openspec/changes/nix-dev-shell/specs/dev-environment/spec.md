@@ -70,9 +70,9 @@ For a contributor with Nix and direnv, entering the repo directory SHALL turn th
 
 #### Scenario: The Rust pin changes while the shell is active
 
-- **WHEN** a tester with the shell loaded changes the modification time of `backend/rust-toolchain.toml`, or of any file under `nix/`
+- **WHEN** a tester with the shell loaded changes `channel` in `backend/rust-toolchain.toml` to a different stable version, without leaving the repo directory
 - **AND** runs `direnv export bash` in the repo directory
-- **THEN** the command prints a non-empty set of export statements, which shows that direnv reloaded the shell
+- **THEN** `rustc --version` in that shell reports the new version, not the one from before the edit
 
 #### Scenario: The watch list covers the shell's files
 
@@ -155,7 +155,7 @@ The flake SHALL define a development shell for `x86_64-linux`, `aarch64-linux` a
 
 ### Requirement: Every reference to the Node version agrees
 
-The repo SHALL state Node major version 26 wherever it names a Node version for contributors, for CI, or for the production image. `.nvmrc` SHALL contain the major version only, so Nix, CI and Node version managers agree.
+The repo SHALL state Node major version 26 wherever it names a Node version for contributors or for the production image. `.nvmrc` SHALL contain the major version only, so Nix and Node version managers agree. Every CI workflow SHALL read `.nvmrc` rather than hold its own copy of the version, so CI can never drift from it.
 
 #### Scenario: A reviewer checks the documented Node version
 
@@ -167,10 +167,11 @@ The repo SHALL state Node major version 26 wherever it names a Node version for 
 - **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `backend/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
 - **THEN** the search finds no match
 
-#### Scenario: Every CI workflow names the same Node version as the shell
+#### Scenario: Every CI workflow reads the Node version from .nvmrc
 
 - **WHEN** a reviewer runs `grep -rn node-version .github/workflows/`
-- **THEN** every matching line names major version 26
+- **THEN** every matching line reads `node-version-file: '.nvmrc'`
+- **AND** no matching line hardcodes a Node version number
 
 #### Scenario: The production image names the same Node version as the shell
 
