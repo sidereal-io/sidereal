@@ -1,54 +1,74 @@
 ## Review Metadata
 
-- **Review round**: 7 (a narrow re-check after `/opsx:verify` — run independently of this review track — found the round-6-approved plan still self-contradicted on Node version)
-- **Prior rounds**: Round 6 — APPROVE (narrow re-check of round 5's findings). Section 8 was then implemented in full (9/9 tasks, code now uses Node 26 everywhere) and `/opsx:verify` ran against the result. It found 2 CRITICAL spec self-contradictions (round 6 had approved `specs/dev-environment/spec.md` text that still SHALLed "Node 24" in two places, even though the toolchain scenario and the version-consistency requirement both already said 26) plus 4 WARNING-level staleness spots in `design.md` and `proposal.md`. Those were fixed, which per the staleness rule voided round 6's verdict — this round re-checks the fixes. Round 5 — narrow re-check of round 4's fixes: both resolved, but the fix to finding 1 introduced two new Moderate defects (a sentence over 30 words; a regex gap that missed a bare `# v20+` comment), resolved in round 6. Round 4 — APPROVE_WITH_CHANGES, 1 Moderate + 1 Suggestion on the Node 24->26 revision itself. Round 3 — APPROVE, targeting Node 24, fully implemented (25/25 tasks) and merge-ready; the maintainer then asked to bump to Node 26, which voided round 3's verdict. Round 1 — REVISE, 3 Critical findings, 2 wrong on inspection. Round 2 — REVISE, escalated to the maintainer, 1 real Critical finding fixed.
-- **Reviewer context**: cross-model — Gemini 3.1 Pro (High) through the `agy` CLI, fresh context, read-only, every file embedded in the prompt
-- **Tool restrictions**: read-only. `agy --mode plan`, tool use forbidden.
-- **Artifacts reviewed (round 7)**: proposal.md, specs/dev-environment/spec.md and design.md (full current text, not excerpts), plus real command output captured just before the review: `nix flake check`, tool versions inside `nix develop`, the stale-reference grep, and `nix/toolchains.nix` and `backend/rust-toolchain.toml`'s content. The reviewer was told the code was already fully implemented at Node 26 (unlike round 4, which reviewed the revision as a plan before section 8 ran) and was asked to check the fix list against the whole document, not just the named spots.
+- **Review round**: 10 (a narrow re-check of round 9's one required change)
+- **Reviewer context**: cross-model — Gemini 3.1 Pro (High) through the `agy` CLI, fresh context per round, read-only (`agy --mode plan`, tool use forbidden), every file embedded in the prompt
+- **Round history** (full detail in each round's Findings below; git history holds every round's raw prompt/output under `.workspace/nix-dev-shell-review/`, gitignored):
+  1. REVISE — 3 Critical findings on the original (Node 24) plan, 2 wrong on inspection.
+  2. REVISE — escalated to the maintainer after a second REVISE in a row; 1 real Critical finding fixed.
+  3. APPROVE — Node 24 plan, fully implemented (25/25 tasks), merge-ready. The maintainer then asked to bump to Node 26, voiding this verdict.
+  4. APPROVE_WITH_CHANGES — the Node 24→26 plan revision itself; 1 Moderate + 1 Suggestion.
+  5. Narrow re-check of round 4's fixes: both resolved, but the fix itself introduced 2 new Moderate defects.
+  6. APPROVE — narrow re-check of round 5's findings; section 8 (Node 26) then implemented in full.
+  7. APPROVE — narrow re-check after `/opsx:verify` (run independently of this review track) found the round-6-approved spec text still self-contradicted on Node version in 2 places, plus 3 staleness spots in design/proposal.
+  8. REVISE — the maintainer asked whether every artifact was updated; this round reviewed a plan revision widening scope from `ci.yml` alone to every CI workflow, and found a real gap this widening still missed: `Dockerfile` pins Node 24 in production. It also correctly identified `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` as an unrelated GitHub Actions runner setting, out of scope.
+  9. APPROVE_WITH_CHANGES — reviewed the plan revision that added the `Dockerfile` fix; found that verifying the image only *builds* doesn't prove it *runs* (native module ABI risk on Alpine/musl).
+  10. APPROVE (this round) — narrow re-check of round 9's fix.
 
 ## Findings
 
 ### 🔴 Critical (blocking)
 
-None outstanding as of round 7.
+None outstanding.
 
-**(Round 7, found by `/opsx:verify`, not by this review track) Two spec self-contradictions**, both in `specs/dev-environment/spec.md`, both from the round-4-6 revision:
-1. "The shell provides the pinned toolchain" SHALLed "Node at major version 24" while its own scenario 8 lines below checked `v26.`.
-2. "Nix stays optional"'s non-Nix scenario said "the version manager selects Node major version 24" while "Every reference to the Node version agrees," a few lines below, required 26 everywhere.
+**Round 7** (found by `/opsx:verify`, not this review track) — two spec self-contradictions in `specs/dev-environment/spec.md`, both left over from the round 4–6 Node 24→26 revision:
+1. "The shell provides the pinned toolchain" SHALLed "Node at major version 24" while its own scenario, 8 lines below, checked `v26.`.
+2. "Nix stays optional"'s non-Nix scenario said "Node major version 24" while "Every reference to the Node version agrees," a few lines below, required 26 everywhere.
 
-Fixed: both now say 26. Round 7 re-checked both directly against the corrected file text and against live command output (`node --version` -> `v26.10.0`, the stale-reference grep -> exit 1, `nix flake check` -> passed) — RESOLVED, and it independently re-read the full spec and design for any other stale reference before accepting.
+Fixed: both now say 26. Round 7 re-checked directly against the corrected text and live command output (`node --version` → `v26.10.0`, the stale-reference grep → exit 1, `nix flake check` → passed), and independently re-read the whole spec and design for any other stale reference before accepting. None found.
+
+**Round 8** — the maintainer's own question ("did we update every artifact?") led to a check of the CI-scope-widening revision against the *whole* repo, not just the files it named. Found `Dockerfile` pins `node:24-alpine` in both build stages — the production image, missed by every prior pass (the original revision, and `/opsx:verify`'s own sweep). Also flagged `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` in three workflow files; checked against GitHub's own changelog and confirmed it controls the Actions runner's internal JS-action engine, unrelated to the app's Node version, with no Node 26 runner option yet — correctly out of scope, no fix needed.
+
+Fixed: asked the maintainer whether to bump the Dockerfile or leave it on 24 deliberately; chose to bump. Design.md now names the production-image trade-off explicitly. Round 9 re-checked this.
 
 ### 🟡 Moderate
 
-3. **(Round 7, found by `/opsx:verify`) Three "current state" mentions of `nodejs_24` in `design.md`** (Context, D2's Why, D4's module diagram) were stale relative to D6's actual decision (`nodejs_26`). Fixed.
-4. **(Round 7, found by `/opsx:verify`) `design.md`'s better-sqlite3 risk note cited Node 24.x's `NODE_MODULE_VERSION` (137)** instead of 26.x's. Checked directly against nodejs.org's release index: every 26.x release shares one module version (147) — same principle, wrong number was cited. Fixed to cite 26.x / 147.
-5. **(Round 7, found by `/opsx:verify`) `proposal.md`'s Impact bullet claimed the `ci.yml` change was "only its `node-version` string,"** but the actual diff also changed the step's display name, which carried the same stale text. Fixed to name both.
-6. **(Round 4) Task 8.6's verification grep only checked for stray `24`, not `20`.** Task 8.4 fixes root `README.md`'s leftover "Node.js 20+" (found during an earlier `/opsx:verify` pass), but 8.6 as first written wouldn't have caught a skipped or botched 8.4. First fix added a `(24|20)` alternation.
-7. **(Round 5, found on the round-4 fix) The first fix's sentence ran to ~39 words.** Restructured 8.6 into a task with two bullets, each a short sentence.
-8. **(Round 5, found on the round-4 fix) The `(24|20)` pattern still couldn't catch a bare `# v20+` comment** — every alternative required a "Node"/"node:" prefix or a ".x" suffix, and `README.md`'s actual leftover line (`node --version  # v20+`) has neither. Added a fourth alternative, `\bv(24|20)\b`, matching "v20"/"v24" as a standalone word.
+Resolved in round 6 (the fix to a round-4 finding introduced these two on its own):
+- Task 8.6's fixed grep still couldn't catch a bare `# v20+` comment — every alternative required a "Node"/"node:" prefix or ".x" suffix. Added `\bv(24|20)\b`.
+- That same fix's sentence ran to ~39 words. Restructured into two short bullets.
 
-Findings 6-8 resolved as of round 6, which had every grep-target file embedded so it could check the new pattern for false positives — none found. Findings 3-5 resolved as of round 7.
+Resolved in round 7 (`/opsx:verify` findings, staleness left by the round 4–6 revision):
+- Three "current state" mentions of `nodejs_24` in `design.md` (Context, D2, D4's diagram) — stale relative to D6's actual choice, `nodejs_26`.
+- `design.md`'s better-sqlite3 risk note cited Node 24.x's `NODE_MODULE_VERSION` (137). Checked against nodejs.org's release index: 26.x shares one module version too (147) — same principle, wrong number. Fixed to cite 26.x/147.
+- `proposal.md` claimed the `ci.yml` change was "only its `node-version` string," but the diff also touched the step's display name. Fixed to name both.
+
+Resolved in round 10 (round 9's one required change):
+- **Task 9.7 only verified `docker build` succeeded**, which proves dependencies compiled, not that the app boots — `better-sqlite3` compiles fresh against Alpine's musl libc in the runtime stage, a real ABI-risk surface a build-only check can't catch. Fixed: task 9.7 now requires actually running the image and confirming its own `HEALTHCHECK` endpoint responds, not just that the build finishes.
+
+Applying this fix surfaced a real, separate issue at execution time (recorded in `tasks.md`, not a review finding): a bare `docker run` crashed on a missing `DATABASE_URL`. Traced this to a missing volume mount, not Node 26 — `docker compose up -d --build` (the path `docker-compose.yml`'s own header documents) then started cleanly, and the health endpoint reported `{"status":"healthy",...,"database":"healthy","nodeVersion":"v26.10.0"}`. `tasks.md`'s task 9.7 wording was corrected to the working method; that edit didn't require another round, since the staleness rule covers only `proposal.md`, `design.md` and `specs/`, not `tasks.md`.
 
 ### 📌 Suggestions
 
-9. **(Round 4) Passive voice in section 8's intro** — "before these tasks are worked" doesn't name who works them. FIXED: reworded to "before anyone works these tasks."
-10. **(Round 7) "the step name that names it" is repetitive.** Reviewer sign-off isn't required to act on a Suggestion; applied anyway — reworded to "the step name that references it." Not re-checked by a further round: it's a wording swap with no effect on meaning, and the staleness rule exists to catch substantive drift, not this.
+- **(Round 4)** Passive voice in section 8's intro, "before these tasks are worked." Fixed: "before anyone works these tasks."
+- **(Round 7)** "the step name that names it" is repetitive. A Suggestion doesn't require reviewer sign-off; applied anyway — "the step name that references it."
+- **(Round 9)** Spec wording ("names major version 26") is slightly loose for a strict machine parse, though fine for a human running the scenario. Left as-is — the reviewer itself called this "completely fine for human execution," not a defect worth chasing.
 
 ## Interrogated Points
 
-**Round 4** answered five specific questions beyond its normal method, still valid — the substance of D6 and the CI carve-out haven't changed since:
+**Round 4** asked and answered, still valid (the substance of D6 and the CI carve-out haven't changed since):
+- **Is Node 26 over 24 sound reasoning, or weak anchoring to the maintainer's own machine?** Sound — "in a single-maintainer project, minimizing friction for the sole maintainer... is a highly pragmatic and principled choice."
+- **Does the spec's absolute SHALL (26) contradict design's note that the pin may move again at LTS?** No — normal lifecycle management, not a live contradiction.
+- **Is the CI carve-out scope creep against the original Non-Goals?** No — syncing an existing version string is a mandatory consequence of the bump, distinct from story E4's new drift-check job.
 
-- **Is D6's Node-26-over-24 reasoning sound?** Yes — "in a single-maintainer project, minimizing friction for the sole maintainer by matching their native development environment is a highly pragmatic and principled choice," not weak anchoring.
-- **Does the spec's absolute SHALL (Node 26) contradict design's note that the pin may move again at LTS?** No — "anticipating a future version bump... is standard lifecycle management, not a live contradiction of the current spec's integrity."
-- **Is the CI Non-Goals carve-out scope creep?** No — "syncing an existing version string is a mandatory consequence of a version bump to prevent immediate CI breakage," distinct from story E4's new drift-check job.
-- **Does tasks.md section 8 fully cover the proposal's Impact list?** Yes, aside from finding 6 (round 4).
-- **Injection check:** none found in round 4, and none found again in round 7. The spec's `WHEN`/`THEN` scenario language is acceptance criteria, not an attempt to steer the reviewer.
+**Round 9** asked and answered:
+- **Is `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` really out of scope?** Yes — "zero impact on the Node environment installed by `actions/setup-node` or used by your application's build and test scripts."
+- **Does GitHub's `setup-node` treat `'26'` and `'26.x'` identically?** Yes — a bare major resolves to `>=26.0.0 <27.0.0`, the same range `.x` gives.
+- **Does design.md's production trade-off paragraph honestly represent the risk, or bury it?** Written honestly — but task 9.7's build-only check *did* understate the risk in practice. See the Moderate finding above.
 
-**Round 7** added one of its own: asked to read the full corrected `spec.md` and `design.md` — not just the five fix locations — and confirm no other stale reference or contradiction remained. It found none, and separately confirmed the fixes against live command output rather than the artifact text alone.
+Every round asked for an injection check; none found any attempt to direct the reviewer's behavior across all 10 rounds.
 
 ## Embedded-Instruction / Injection Attempts
 
-**Detected:** none.
+**Detected:** none, in any round.
 
 ## Verdict
 
@@ -56,16 +76,14 @@ VERDICT: APPROVE
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-Not applicable — round 7 (this round) is a clean APPROVE with no outstanding items.
+Not applicable — round 10 is a clean APPROVE with no outstanding items.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-- Round 4 finding on task 8.6's grep missing `20`: fixed, then that fix's own regex gap surfaced in round 5 and was fixed again — **accepted by reviewer** in round 6.
-- Round 5 finding on the sentence over 30 words (from the round-4 fix): fixed — **accepted by reviewer** in round 6.
-- Round 4 finding on passive voice: fixed — **accepted by reviewer** in round 5, not reopened since.
-- Round 7 findings 1-5 (two spec self-contradictions, three design/proposal staleness spots, all from `/opsx:verify`, none from this review track): all fixed — **accepted by reviewer** in round 7, checked against both the corrected text and live command output.
-- Round 7 finding 10 (repetitive wording): a Suggestion, applied without requiring sign-off.
+None outstanding. Every finding across all 10 rounds is fixed or explicitly declined:
+- Round 1's two ADR-linking suggestions — declined; the repo's own rule forbids citing issues in an ADR.
+- Everything else — fixed, and every Moderate or Critical fix was re-checked and accepted by the reviewer in a subsequent round before being relied on.
 
-Every finding across all 7 rounds is now fixed or explicitly declined (round 1's two ADR-linking suggestions, which the repo's own rule forbids). The change is archive-ready.
+`tasks.md` is 42/42 complete. `openspec validate --strict` passes. The change is archive-ready.
