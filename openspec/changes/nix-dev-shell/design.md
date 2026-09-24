@@ -20,7 +20,7 @@ See `proposal.md` (Why) for the motivation and `specs/dev-environment/spec.md` f
 **Non-Goals:**
 
 - Generating OpenSpec skills, or running any command when the shell starts. That is Track E stories E2 and E3.
-- Any CI change. That is story E4.
+- Any CI change beyond keeping `ci.yml`'s `node-version` string in sync with `.nvmrc` (D6). Adding the skills-drift check job itself is story E4.
 - Editor tooling such as `rust-analyzer` and `rust-src`. Adding them to `backend/rust-toolchain.toml` later would serve rustup users as well.
 - Services such as PostgreSQL.
 - A binary cache of our own. Every package comes prebuilt from cache.nixos.org.
@@ -102,13 +102,20 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 
 **When to override:** If we ever need a version nixpkgs doesn't have, `nix/openspec.nix` overrides the package with `overrideAttrs`, and only there. We would then weigh a binary cache.
 
-### D6. Node: `nodejs_24`, and `.nvmrc` holds the major version
+### D6. Node: `nodejs_26`, and `.nvmrc` holds the major version
 
-**Choice:** The shell uses `pkgs.nodejs_24`. `.nvmrc` becomes `24`. The docs say Node 24.
+**Choice:** The shell uses `pkgs.nodejs_26`. `.nvmrc` becomes `26`. The docs, and CI's `node-version`, say Node 26.
 
-**Why:** Nix, CI (`24.x`) and Node version managers can agree only on the major version. A patch pin in `.nvmrc` would disagree with Nix after every lock update.
+**Why:**
+- Nix, CI and Node version managers can agree only on the major version. A patch pin in `.nvmrc` would disagree with Nix after every lock update.
+- Node 26 is what the maintainer's machine already runs. Picking it, rather than 24, makes the pinned shell match reality from the start, instead of asking the maintainer to switch down.
+- nixpkgs already packages `nodejs_26` (26.10.0 on `nixos-unstable`), prebuilt.
 
-**Alternative:** keep `24.10.0` in `.nvmrc`. It would drift from Nix straight away, which is the problem this change fixes.
+**Consequence:** Node 26 is in its Current phase, not yet Long-Term Support — Node typically promotes an even major to LTS in October of its release year. The pin may need to move again once it does. That costs the same one line in three places (`nix/toolchains.nix`, `.nvmrc`, `ci.yml`) this bump did.
+
+**Alternatives:**
+- **`nodejs_24`, the LTS choice:** safer, but drifts from what the maintainer's machine — and every `npm install` run on it — already uses.
+- **An exact version in `.nvmrc`** (`24.10.0`, or now some `26.x.y`): rejected either way. It disagrees with Nix's patch choice after every lock update, which is the drift this change exists to fix.
 
 ### D7. `.envrc`: guarded, pinned and watched
 

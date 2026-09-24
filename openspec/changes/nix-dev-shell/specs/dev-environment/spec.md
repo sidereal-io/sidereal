@@ -17,7 +17,7 @@ The development shell SHALL provide these tools on `PATH`:
 
 - **WHEN** a contributor runs `nix develop --command sh -c 'rustc --version; node --version; just --version; openspec --version'` at the repo root
 - **THEN** `rustc --version` reports the version in the `channel` field of `backend/rust-toolchain.toml`
-- **AND** `node --version` output starts with `v24.`
+- **AND** `node --version` output starts with `v26.`
 - **AND** the `just` and `openspec` commands each exit with status 0
 
 #### Scenario: Formatting and lint tools come with Rust
@@ -153,16 +153,21 @@ The flake SHALL define a development shell for `x86_64-linux`, `aarch64-linux` a
 - **WHEN** a contributor runs `nix flake show --json --all-systems`
 - **THEN** the output contains `devShells.x86_64-linux.default`, `devShells.aarch64-linux.default` and `devShells.aarch64-darwin.default`
 
-### Requirement: Every document names the same Node version
+### Requirement: Every reference to the Node version agrees
 
-The repo SHALL state Node major version 24 wherever it names a Node version for contributors. `.nvmrc` SHALL contain the major version only, so Nix, CI and Node version managers agree.
+The repo SHALL state Node major version 26 wherever it names a Node version for contributors or for CI. `.nvmrc` SHALL contain the major version only, so Nix, CI and Node version managers agree.
 
 #### Scenario: A reviewer checks the documented Node version
 
 - **WHEN** a reviewer reads `.nvmrc`
-- **THEN** the file contains `24` and nothing else except a trailing newline
+- **THEN** the file contains `26` and nothing else except a trailing newline
 
 #### Scenario: No outdated Node version is left in the docs
 
-- **WHEN** a reviewer searches `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md` for "Node 20" and "Node.js 20"
+- **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `backend/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
 - **THEN** the search finds no match
+
+#### Scenario: CI names the same Node version as the shell
+
+- **WHEN** a reviewer reads the `node-version` value in `.github/workflows/ci.yml`
+- **THEN** it names major version 26

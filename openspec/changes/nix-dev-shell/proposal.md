@@ -14,14 +14,14 @@ This change gives the repo one pinned environment that turns on when you enter t
 
 - **A Nix flake at the repo root.** It uses flake-parts and provides one development shell with:
   - Rust at the exact version in `backend/rust-toolchain.toml`;
-  - Node 24;
+  - Node 26;
   - `just`;
   - the `openspec` CLI.
 - **Split into small modules under `nix/`.** The shell setup, the toolchains and `openspec` each get their own module. The `openspec` module stays free of anything specific to Sidereal, so a shared flake can take it over later.
 - **A committed `flake.lock`.** It pins every input to an exact revision. Tool versions change only when someone updates the lock in a pull request.
 - **An `.envrc` for direnv.** It enters the shell automatically when Nix is installed, and does nothing when Nix is missing. It also loads a contributor's own gitignored `.envrc.local`, if one exists.
 - **`nix flake check` builds the shell.** This gives Track E's later CI work somewhere to add checks.
-- **Node 24 becomes the documented version everywhere.** `.nvmrc` becomes `24`. `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md` say Node 24 instead of "Node 20+".
+- **Node 26 becomes the documented version everywhere.** `.nvmrc` becomes `26`. `AGENTS.md`, `README.md`, `backend/README.md` and `CONTRIBUTING.md` all say Node 26, and CI's `node-version` matches it.
 - **`CONTRIBUTING.md` documents Nix as optional.** It describes both routes: with Nix, and with rustup and a Node version manager. It also lists the one-time steps after first entering the shell.
 
 Nothing here is **BREAKING**. Contributors without Nix keep working exactly as today.
@@ -45,13 +45,15 @@ None.
 - **Changed files:**
   - `.nvmrc`;
   - `.gitignore` (adds `.direnv/` and `.envrc.local`);
-  - `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`.
+  - `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`;
+  - `README.md` — it had a stale "Node.js 20+" this change's own review found and fixes;
+  - `.github/workflows/ci.yml` — only its `node-version` string, so CI doesn't drift from the pin the moment this merges.
 - **New inputs:** nixpkgs (`nixos-unstable`, pinned by the lock), flake-parts and rust-overlay. The environment reuses nix-direnv from a pinned URL. Everything comes prebuilt from cache.nixos.org, so no one compiles anything.
 - **Contributors who adopt Nix** do two one-time things:
   - run `npm rebuild` if they used another Node major version before, because `better-sqlite3` is a native module built for that version;
   - wait for one full rebuild of `backend/target`.
 - **Not affected:**
-  - the existing CI workflows;
+  - the existing CI workflows, beyond that one `node-version` string;
   - the `justfile` recipes;
   - application code in either stack;
   - OpenSpec skills.
