@@ -19,25 +19,29 @@
 
 ## 4. direnv integration
 
-- [ ] 4.1 Create `.envrc`, following design D7:
+- [x] 4.1 Create `.envrc`, following design D7:
   - wrap the Nix steps in a condition on `has nix`;
   - inside it, load nix-direnv 3.2.0 from its release URL with a committed `sha256` hash;
   - inside it, `watch_file` `backend/rust-toolchain.toml` and `nix/*.nix`;
   - inside it, run `use flake`;
   - after the condition, load `.envrc.local` last with `source_env_if_exists`.
 
-  Verify that `direnv allow`, then entering the repo, gives the pinned `rustc --version`, and that leaving the repo restores the previous version.
-- [ ] 4.2 Add `.direnv/` and `.envrc.local` to `.gitignore`. Verify that `git status --porcelain` lists neither after `.envrc.local` and `.direnv/` exist.
-- [ ] 4.3 Verify the hash check. Temporarily change one character of the nix-direnv hash in `.envrc`, then run `direnv allow`. Confirm that direnv stops with an error and doesn't load the script. Then revert the change.
-- [ ] 4.4 Verify `.envrc.local`:
+  Verify that `direnv allow`, then entering the repo, gives the pinned `rustc --version`, and that leaving the repo restores the previous version. **Verified**: entering gave `rustc 1.85.0`; leaving restored `1.97.1` (the rustup toolchain) and direnv reported "unloading".
+- [x] 4.2 Add `.direnv/` and `.envrc.local` to `.gitignore`. Verify that `git status --porcelain` lists neither after `.envrc.local` and `.direnv/` exist. **Verified**: with both present, `git status --porcelain` stayed clean of them.
+- [x] 4.3 Verify the hash check. Temporarily change one character of the nix-direnv hash in `.envrc`, then run `direnv allow`. Confirm that direnv stops with an error and doesn't load the script. Then revert the change. **Verified**: direnv reported "error hash mismatch", and `rustc` stayed the non-Nix version.
+- [x] 4.4 Verify `.envrc.local`:
   - with `export SIDEREAL_TEST_VAR=1`, the variable equals `1` inside the repo;
   - with `export PATH="$PWD/.local-bin:$PATH"`, the first `PATH` entry is the repo's `.local-bin`;
   - delete `.envrc.local` afterwards.
-- [ ] 4.5 Verify the reload triggers:
+
+  **Verified**: both held; `PATH` led with `.local-bin`.
+- [x] 4.5 Verify the reload triggers:
   - after `touch backend/rust-toolchain.toml`, `direnv export bash` prints export statements;
   - `direnv status` lists `backend/rust-toolchain.toml` and each file under `nix/` as watched.
-- [ ] 4.6 Verify that `.env` stays unloaded. Confirm that a variable defined only in `.env` is unset in the shell inside the repo.
-- [ ] 4.7 Verify the route without Nix. In a shell where `nix` isn't on `PATH` (for example a container with direnv but no Nix, or a `PATH` with Nix removed), enter the repo. Confirm that direnv reports no error, and that `env` without its `DIRENV_` lines matches the output from before entering.
+
+  **Verified**: `direnv status` listed `backend/rust-toolchain.toml`, `nix/devshell.nix`, `nix/openspec.nix` and `nix/toolchains.nix` as loaded watches.
+- [x] 4.6 Verify that `.env` stays unloaded. Confirm that a variable defined only in `.env` is unset in the shell inside the repo. **Verified**: `IMMICH_URL` (defined only in `.env`) stayed unset.
+- [x] 4.7 Verify the route without Nix. In a shell where `nix` isn't on `PATH` (for example a container with direnv but no Nix, or a `PATH` with Nix removed), enter the repo. Confirm that direnv reports no error, and that `env` without its `DIRENV_` lines matches the output from before entering. **Verified**: with `nix` stripped from `PATH`, direnv logged only the load line, and the only environment differences were `DIRENV_*` variables.
 
 ## 5. Node version alignment
 
