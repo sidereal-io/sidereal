@@ -55,7 +55,7 @@ We welcome several types of contributions:
 ## 🛠️ Development Setup
 
 ### Prerequisites
-- Node.js 24
+- Node.js 26
 - npm 10+
 - Git
 - Docker (optional, for database)
@@ -127,7 +127,7 @@ Nix flake. Nix is optional. Pick either route.
    that one terminal session.
 3. If you used a different major version of Node before, run `npm rebuild` once.
    `better-sqlite3` is a native module built for one Node version, and Nix's
-   Node 24 needs its own build.
+   Node 26 needs its own build.
 4. Expect a full rebuild of `backend/target` the first time you run a Rust
    command in the shell. The Rust version matches rustup's, but the compiler's
    store path differs, so cargo's cached build data doesn't carry over.
@@ -143,7 +143,7 @@ it, and it loads after the pinned shell, so your settings take precedence.
 1. Install [rustup](https://rustup.rs/). It reads `backend/rust-toolchain.toml`
    and selects the pinned Rust version on its own.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
-   and run its "use" command in the repo root to select Node 24.
+   and run its "use" command in the repo root to select Node 26.
 3. Install [`just`](https://github.com/casey/just).
 
 Both routes pass the same `just check` gate.

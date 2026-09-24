@@ -332,8 +332,8 @@ Sidereal/
 ### Prerequisites
 
 ```bash
-# Install Node.js 20+
-node --version  # v20+
+# Install Node.js 26
+node --version  # v26
 npm --version   # 10+
 
 # Clone repository
