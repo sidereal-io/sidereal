@@ -69,6 +69,35 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
 - **Releases are tag-driven** — bump `package.json`, add a `CHANGELOG.md` entry, then
   push a `v*.*.*` tag; the workflow does the rest. Never `gh release create` manually.
 
+### OpenSpec git workflow
+
+One branch and one pull request carry a change through its whole lifecycle —
+propose, apply, verify, archive — and merge once. There is no "cross `main`
+between phases" step.
+
+- **Branch per change.** One OpenSpec change (one discovery story) = one branch =
+  one PR. Dependent stories **stack**: branch off the parent's branch and target
+  its PR; independent stories branch off `main`.
+- **A commit per unit of work.** Each artifact (proposal, design, specs, tasks) is
+  its own `docs:` commit; each implementation task is its own commit with its real
+  type (`feat:`/`fix:`/`refactor:`/`test:`); the archive is its own `chore:` commit.
+- **Draft until archived.** Open the PR as a draft at propose. Run propose → apply →
+  verify → archive all on the branch; `archive` moves the change to
+  `openspec/changes/archive/` and syncs delta specs into `openspec/specs/`. Flip the
+  PR to ready when the archive commit lands.
+- **User owns the merge.** The agent never merges a PR unless explicitly asks and 
+  confirmed. Stacks merge bottom-up: parent to `main` first, then retarget and merge 
+  each child.
+- **If a ready PR gets change-requests,** flip it back to draft and `git revert` the
+  archive commit — this restores the change under `openspec/changes/` and unwinds the
+  spec sync. Make the fixes, re-archive as the last commit, and flip ready again. A
+  rejected PR is just closed and its branch deleted; `main` stays clean.
+- **Issue provenance.** When a change originates from a GitHub issue, discovery
+  records `Origin: #<issue>` on the story and propose carries it into `proposal.md`.
+  A PR that fully resolves a single issue says `Closes #<issue>`; a PR that is one of
+  many stories under an epic or milestone issue says `Part of #<issue>`, and that
+  parent issue is closed only once `discovery.md` shows all its stories archived.
+
 ## Writing document artifacts — plain language
 
 Write every document artifact — READMEs, ADRs, GitHub issue bodies/designs, `docs/`,
