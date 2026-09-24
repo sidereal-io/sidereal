@@ -38,10 +38,11 @@ The development shell SHALL take the Rust version and components from `backend/r
 
 The development shell SHALL resolve every tool from inputs pinned in the committed `flake.lock`. The same commit SHALL produce the same shell on every machine of the same system type.
 
-#### Scenario: Two evaluations of one commit agree
+#### Scenario: Two clones of one commit agree
 
-- **WHEN** two machines of the same system type evaluate the development shell's derivation path from the same commit
-- **THEN** both evaluations produce an identical derivation path
+- **WHEN** a tester clones the same commit into two different directories on one machine
+- **AND** runs `nix eval --raw .#devShells.<system>.default.drvPath` in each clone
+- **THEN** both commands print an identical derivation path
 
 ### Requirement: Remote code is verified before it runs
 
@@ -72,13 +73,28 @@ For a contributor with Nix and direnv, entering the repo directory SHALL turn th
 - **WHEN** `backend/rust-toolchain.toml` or any file under `nix/` changes while the contributor is inside the repo directory
 - **THEN** direnv reloads the development shell at the contributor's next prompt
 
+### Requirement: Contributors can add their own direnv settings
+
+`.envrc` SHALL load a file named `.envrc.local` when it exists, whether or not Nix is installed. Git SHALL ignore `.envrc.local`, so each contributor keeps their own settings out of commits.
+
+#### Scenario: A contributor adds a personal variable
+
+- **WHEN** a contributor writes `export SIDEREAL_TEST_VAR=1` in `.envrc.local` and enters the repo directory
+- **THEN** `SIDEREAL_TEST_VAR` equals `1` in the contributor's shell
+- **AND** the result is the same with Nix installed and without it
+
+#### Scenario: The personal file stays out of git
+
+- **WHEN** a contributor creates `.envrc.local` and runs `git status --porcelain`
+- **THEN** the output does not list `.envrc.local`
+
 ### Requirement: Nix stays optional
 
-The environment SHALL NOT require Nix for building or checking the repo. For a contributor with direnv but without Nix, entering the repo SHALL produce no error. It SHALL change no environment variables except direnv's own `DIRENV_*` variables. The repo SHALL keep the pin files that tools outside Nix read: `backend/rust-toolchain.toml` for rustup, and `.nvmrc` for Node version managers.
+The environment SHALL NOT require Nix for building or checking the repo. For a contributor with direnv but without Nix, entering the repo SHALL produce no error. It SHALL change no environment variables except direnv's own `DIRENV_*` variables and any that the contributor's `.envrc.local` sets. The repo SHALL keep the pin files that tools outside Nix read: `backend/rust-toolchain.toml` for rustup, and `.nvmrc` for Node version managers.
 
 #### Scenario: A contributor has direnv but not Nix
 
-- **WHEN** a contributor without Nix runs `direnv allow` and then enters the repo directory
+- **WHEN** a contributor without Nix and without `.envrc.local` runs `direnv allow`, then enters the repo directory
 - **THEN** direnv reports no error
 - **AND** `env`, with lines starting `DIRENV_` removed, shows the same output as before the contributor entered the directory
 

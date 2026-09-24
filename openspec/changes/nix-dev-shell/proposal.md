@@ -19,7 +19,7 @@ This change gives the repo one pinned environment that turns on when you enter t
   - the `openspec` CLI.
 - **Split into small modules under `nix/`.** The shell setup, the toolchains and `openspec` each get their own module. The `openspec` module stays free of anything specific to Sidereal, so a shared flake can take it over later.
 - **A committed `flake.lock`.** It pins every input to an exact revision. Tool versions change only when someone updates the lock in a pull request.
-- **An `.envrc` for direnv.** It enters the shell automatically when Nix is installed. It does nothing when Nix is missing.
+- **An `.envrc` for direnv.** It enters the shell automatically when Nix is installed, and does nothing when Nix is missing. It also loads a contributor's own gitignored `.envrc.local`, if one exists.
 - **`nix flake check` builds the shell.** This gives Track E's later CI work somewhere to add checks.
 - **Node 24 becomes the documented version everywhere.** `.nvmrc` becomes `24`. `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md` say Node 24 instead of "Node 20+".
 - **Nix is documented as optional.** `CONTRIBUTING.md` describes both routes: with Nix, and with rustup and a Node version manager. It also lists the one-time steps after first entering the shell.
@@ -44,11 +44,11 @@ None.
   - `.envrc`.
 - **Changed files:**
   - `.nvmrc`;
-  - `.gitignore` (adds `.direnv/`);
+  - `.gitignore` (adds `.direnv/` and `.envrc.local`);
   - `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`.
 - **New inputs:** nixpkgs (`nixos-unstable`, pinned by the lock), flake-parts and rust-overlay. The environment reuses nix-direnv from a pinned URL. Everything comes prebuilt from cache.nixos.org, so no one compiles anything.
 - **Contributors who adopt Nix** do two one-time things:
-  - run `npm rebuild`, because `better-sqlite3` is a native module built for another Node version;
+  - run `npm rebuild` if they used another Node major version before, because `better-sqlite3` is a native module built for that version;
   - wait for one full rebuild of `backend/target`.
 - **Not affected:**
   - the existing CI workflows;

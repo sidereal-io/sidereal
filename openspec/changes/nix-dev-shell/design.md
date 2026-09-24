@@ -114,16 +114,18 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 
 **Choice:** `.envrc` does these things, in this order:
 
-1. Stops quietly unless the `nix` command exists.
-2. Loads nix-direnv 3.2.0 from its release URL, verified with a committed `sha256` hash, if the contributor hasn't installed nix-direnv.
-3. Watches `backend/rust-toolchain.toml` and every file under `nix/`.
-4. Runs `use flake`.
+1. Loads `.envrc.local` if it exists. Git ignores that file, so each contributor can keep personal settings there.
+2. Stops quietly unless the `nix` command exists.
+3. Loads nix-direnv 3.2.0 from its release URL, verified with a committed `sha256` hash, if the contributor hasn't installed nix-direnv.
+4. Watches `backend/rust-toolchain.toml` and every file under `nix/`.
+5. Runs `use flake`.
 
 **Why:**
 - The guard keeps `.envrc` harmless for contributors without Nix.
 - Loading nix-direnv this way means contributors need only plain direnv.
 - The hash check meets the rule that remote code is verified before it runs.
-- nix-direnv already watches `flake.nix` and `flake.lock`. Without step 3, a change to the Rust pin or a module would not reload the shell.
+- nix-direnv 3.2.0 watches only `flake.nix`, `flake.lock` and `devshell.toml`; its `direnvrc` source shows this. Without step 4, a change to the Rust pin or a module would not reload the shell.
+- The repo now owns the `.envrc` name. Step 1 gives contributors who had their own `.envrc` somewhere to move it.
 - **`.envrc` never loads `.env`.** That file holds settings for the v0.10.x app, not for the development environment.
 
 **Trust model:** direnv runs nothing until a contributor runs `direnv allow`. It asks again after any change to `.envrc`.
@@ -147,8 +149,8 @@ flake.nix         inputs: nixpkgs, flake-parts, rust-overlay
 
 - **[Risk] Flakes see only files tracked by git.** A new file under `nix/` stays invisible to Nix until someone runs `git add` on it.
   → `CONTRIBUTING.md` says so in one line.
-- **[Risk] `better-sqlite3` fails to load after switching Node versions.** The v0.10.x server then crashes with a `NODE_MODULE_VERSION` error.
-  → `CONTRIBUTING.md` lists `npm rebuild` as a one-time step after first entering the shell.
+- **[Risk] `better-sqlite3` fails to load after switching to a different Node major version.** The v0.10.x server then crashes with a `NODE_MODULE_VERSION` error. This happens only across major versions: every Node 24.x release shares module version 137, so lock updates within 24 don't trigger it.
+  → `CONTRIBUTING.md` lists `npm rebuild` as a one-time step for anyone who used another major version before entering the shell.
 - **[Trade-off] The first cargo build in the shell rebuilds `backend/target` in full.** The version matches rustup's, but the compiler's path differs, so cargo's cached build data no longer matches.
   → This is a one-time cost, and the docs mention it.
 - **[Risk] A lock update to `nixos-unstable` brings a broken or changed tool.**
