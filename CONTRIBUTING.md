@@ -109,9 +109,16 @@ Nix flake. Nix is optional. Pick either route.
 
 ### With Nix
 
-1. Install [Nix](https://nixos.org/download/) with flakes enabled. Both the
-   official installer and [Determinate's](https://determinate.systems/nix-installer/)
-   enable flakes by default.
+1. Install [Nix](https://nixos.org/download/) with flakes enabled.
+   [Determinate's installer](https://determinate.systems/nix-installer/) enables
+   flakes by default. The plain installer at nixos.org does not: after it, add
+   this line to `/etc/nix/nix.conf` (multi-user install) or
+   `~/.config/nix/nix.conf` (single-user install), then restart the Nix daemon
+   if you have one:
+
+   ```
+   experimental-features = nix-command flakes
+   ```
 2. Install [direnv](https://direnv.net/) and run `direnv allow` in the repo root.
    Entering the repo directory now loads the pinned shell automatically. Leaving
    restores your previous environment.

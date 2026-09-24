@@ -1,6 +1,6 @@
 ## 1. Prerequisites
 
-- [ ] 1.1 The maintainer installs Nix with flakes enabled, using the official installer or Determinate's. Verify that `nix --version` and `nix flake --help` both exit with status 0.
+- [x] 1.1 The maintainer installs Nix with flakes enabled, using the official installer or Determinate's. Verify that `nix --version` and `nix flake --help` both exit with status 0. **Verified**: Nix 2.35.2 is installed; both commands exit 0 (with `experimental-features = nix-command flakes` set, since this machine's default `nix.conf` doesn't enable flakes globally — noted below).
 
 ## 2. Flake skeleton
 
@@ -63,7 +63,7 @@
 
 ## 7. End-to-end verification
 
-- [ ] 7.1 Run `nix develop --command just check` at the repo root. Verify that it exits with status 0.
-- [ ] 7.2 Verify the route without Nix still passes. With rustup and Node 24 from `.nvmrc`, `just check` exits with status 0 outside the Nix shell.
-- [ ] 7.3 Run `npm rebuild` inside the shell, then start the v0.10.x server with `npm run dev:server`. Verify that `better-sqlite3` loads without a `NODE_MODULE_VERSION` error.
-- [ ] 7.4 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid.
+- [x] 7.1 Run `nix develop --command just check` at the repo root. Verify that it exits with status 0. **Verified**: exit 0, all cargo checks and the arch lint passed.
+- [x] 7.2 Verify the route without Nix still passes. With rustup and Node 24 from `.nvmrc`, `just check` exits with status 0 outside the Nix shell. **Verified**: exit 0. (`just check` runs only the Rust checks; rustup selects 1.85.0 from `backend/rust-toolchain.toml` regardless of the active Node version.)
+- [x] 7.3 Run `npm rebuild` inside the shell, then start the v0.10.x server with `npm run dev:server`. Verify that `better-sqlite3` loads without a `NODE_MODULE_VERSION` error. **Verified**: `npm rebuild` succeeded, then `npm run dev:server` logged "Using SQLite database: local.db", ran migrations and started serving — no `NODE_MODULE_VERSION` error.
+- [x] 7.4 Run `openspec validate nix-dev-shell --strict`. Verify that it reports the change as valid. **Verified**: "Change 'nix-dev-shell' is valid".
