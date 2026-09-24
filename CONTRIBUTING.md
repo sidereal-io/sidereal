@@ -55,7 +55,7 @@ We welcome several types of contributions:
 ## 🛠️ Development Setup
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 24
 - npm 10+
 - Git
 - Docker (optional, for database)

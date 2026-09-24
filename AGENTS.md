@@ -60,7 +60,7 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
 - Planning uses **OpenSpec**: in-flight work lives under `openspec/changes/`;
   durable specs under `openspec/specs/`; decision records under `docs/decisions/`. Use
   the `opsx:*` skills (propose → apply → verify → archive).
-- **Toolchain is per stack.** v0.10.x: Node 20+, npm, Vite/React, Hono, Drizzle —
+- **Toolchain is per stack.** v0.10.x: Node 24, npm, Vite/React, Hono, Drizzle —
   gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.
   v2: cargo workspace under `backend/`, orchestrated by the root `justfile` — gate with
   **`just check`** (fmt + clippy `-D warnings` + tests + arch-boundary lint) after every

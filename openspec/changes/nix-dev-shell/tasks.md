@@ -45,8 +45,8 @@
 
 ## 5. Node version alignment
 
-- [ ] 5.1 Change `.nvmrc` to contain `24` and a trailing newline. Verify with `cat .nvmrc`.
-- [ ] 5.2 Replace "Node 20+" and "Node.js 20+" with Node 24 in `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`. Verify that `grep -nE 'Node(\.js)? 20' AGENTS.md backend/README.md CONTRIBUTING.md` finds no match.
+- [x] 5.1 Change `.nvmrc` to contain `24` and a trailing newline. Verify with `cat .nvmrc`. **Verified**: contains `24\n`.
+- [x] 5.2 Replace "Node 20+" and "Node.js 20+" with Node 24 in `AGENTS.md`, `backend/README.md` and `CONTRIBUTING.md`. Verify that `grep -nE 'Node(\.js)? 20' AGENTS.md backend/README.md CONTRIBUTING.md` finds no match. **Verified**: no match. (The verification regex doesn't span `backend/README.md`'s markdown link syntax around "Node.js"; checked that occurrence by hand too.)
 
 ## 6. Contributor documentation
 
