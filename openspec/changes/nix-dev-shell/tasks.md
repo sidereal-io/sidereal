@@ -4,18 +4,18 @@
 
 ## 2. Flake skeleton
 
-- [ ] 2.1 Create `flake.nix` with three inputs (nixpkgs on `nixos-unstable`, flake-parts and rust-overlay) and three systems (`x86_64-linux`, `aarch64-linux` and `aarch64-darwin`). It imports the three modules under `nix/`. Verify that `nix flake show --json --all-systems` lists `devShells.<system>.default` for all three systems.
-- [ ] 2.2 Create `nix/devshell.nix`. It declares the mergeable options `sidereal.shell.packages` and `sidereal.shell.hooks`, builds `devShells.default` from them, and sets `checks.devshell` to that shell (design D4 and D8). Verify that `nix flake check` exits with status 0.
-- [ ] 2.3 Generate and commit `flake.lock`. Verify that `nix flake metadata --json` shows a `locked` entry with a `narHash` for every input.
+- [x] 2.1 Create `flake.nix` with three inputs (nixpkgs on `nixos-unstable`, flake-parts and rust-overlay) and three systems (`x86_64-linux`, `aarch64-linux` and `aarch64-darwin`). It imports the three modules under `nix/`. Verify that `nix flake show --json --all-systems` lists `devShells.<system>.default` for all three systems. **Verified**: listed for all three.
+- [x] 2.2 Create `nix/devshell.nix`. It declares the mergeable options `sidereal.shell.packages` and `sidereal.shell.hooks`, builds `devShells.default` from them, and sets `checks.devshell` to that shell (design D4 and D8). Verify that `nix flake check` exits with status 0. **Verified**: exit 0, "all checks passed!".
+- [x] 2.3 Generate and commit `flake.lock`. Verify that `nix flake metadata --json` shows a `locked` entry with a `narHash` for every input. **Verified**: `nixpkgs`, `flake-parts`, `flake-parts/nixpkgs-lib`, `rust-overlay` and `rust-overlay/nixpkgs` (follows `nixpkgs`) each have a `locked.narHash`.
 
 ## 3. Tool modules
 
-- [ ] 3.1 Create `nix/toolchains.nix`. It adds Rust from rust-overlay's `fromRustupToolchainFile ./backend/rust-toolchain.toml`, plus `nodejs_24` and `just`. Verify that `nix develop --command rustc --version` reports `1.85.0`, and that `node --version` starts with `v24.`.
-- [ ] 3.2 Verify inside the shell that `cargo fmt --version` and `cargo clippy --version` both exit with status 0.
-- [ ] 3.3 Create `nix/openspec.nix`. It adds `pkgs.openspec` and contains nothing specific to Sidereal. Verify that `nix develop --command openspec --version` exits with status 0.
-- [ ] 3.4 Verify that the Rust version has a single source. Temporarily change `channel` in `backend/rust-toolchain.toml` to another stable version, and confirm that `nix develop --command rustc --version` reports it. Then revert the change.
-- [ ] 3.5 Verify that the shell is reproducible. Clone the branch into two different directories, and confirm that `nix eval --raw .#devShells.x86_64-linux.default.drvPath` prints the same path in both.
-- [ ] 3.6 Verify that `nix flake check` fails on a broken shell. Temporarily add a package name that doesn't exist to `nix/toolchains.nix`, and confirm that `nix flake check` exits with a non-zero status. Then revert the change.
+- [x] 3.1 Create `nix/toolchains.nix`. It adds Rust from rust-overlay's `fromRustupToolchainFile ./backend/rust-toolchain.toml`, plus `nodejs_24` and `just`. Verify that `nix develop --command rustc --version` reports `1.85.0`, and that `node --version` starts with `v24.`. **Verified**: `rustc 1.85.0`, `node v24.20.0`.
+- [x] 3.2 Verify inside the shell that `cargo fmt --version` and `cargo clippy --version` both exit with status 0. **Verified**: both ran (`rustfmt 1.8.0-stable`, `clippy 0.1.85`).
+- [x] 3.3 Create `nix/openspec.nix`. It adds `pkgs.openspec` and contains nothing specific to Sidereal. Verify that `nix develop --command openspec --version` exits with status 0. **Verified**: reported `1.13.1`.
+- [x] 3.4 Verify that the Rust version has a single source. Temporarily change `channel` in `backend/rust-toolchain.toml` to another stable version, and confirm that `nix develop --command rustc --version` reports it. Then revert the change. **Verified**: changing the channel to `1.84.1` changed the shell's `rustc` to match; reverting restored `1.85.0`.
+- [x] 3.5 Verify that the shell is reproducible. Clone the branch into two different directories, and confirm that `nix eval --raw .#devShells.x86_64-linux.default.drvPath` prints the same path in both. **Verified**: both clones printed the identical `.drv` path.
+- [x] 3.6 Verify that `nix flake check` fails on a broken shell. Temporarily add a package name that doesn't exist to `nix/toolchains.nix`, and confirm that `nix flake check` exits with a non-zero status. Then revert the change. **Verified**: exit 1 with the broken package; exit 0 after reverting.
 
 ## 4. direnv integration
 
