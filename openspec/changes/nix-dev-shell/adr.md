@@ -9,7 +9,7 @@ ADR review completed for this change. One decision in `design.md` met the bar: D
 
 The other decisions (D2–D9) did not meet the bar. Each one lives in a few lines of `flake.nix`, `nix/` or `.envrc`, costs little to change, and the code itself shows it. `design.md` records their reasons.
 
-**ADR-013 is Proposed.** The repo's rule is not to design past a Proposed ADR. A maintainer should accept ADR-013 before the apply phase starts.
+**ADR-013 is Accepted.** The maintainer accepted it on 2026-09-24, after two review rounds.
 
 ## In-Force ADRs Reviewed
 
@@ -32,4 +32,4 @@ No ADR has a Supersedes entry, so the supersession graph is empty. The highest n
 
 ## New Durable ADRs Created
 
-- [`docs/decisions/ADR-013-development-environment.md`](../../../docs/decisions/ADR-013-development-environment.md) — pin development tools with a native Nix flake built from flake-parts modules, turned on by direnv. Nix is optional for contributors. Status: proposed.
+- [`docs/decisions/ADR-013-development-environment.md`](../../../docs/decisions/ADR-013-development-environment.md) — pin development tools with a native Nix flake built from flake-parts modules, turned on by direnv. Nix is optional for contributors. Status: accepted.
