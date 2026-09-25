@@ -15,7 +15,6 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "ignoreDeprecations": "6.0",
-    "baseUrl": ".",
     "types": ["node", "vite/client"],
     "paths": {
       "@/*": ["./apps/client/src/*"],

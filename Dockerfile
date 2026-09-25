@@ -3,15 +3,9 @@
 # All sensitive configuration is provided via environment variables at runtime
 FROM node:26-alpine AS builder
 
-# Upgrade npm and patch its bundled dependencies to fix known CVEs
-RUN npm install -g npm@11.14.1 && \
-    npm pack minimatch@10.2.4 && \
-    tar -xzf minimatch-10.2.4.tgz -C /usr/local/lib/node_modules/npm/node_modules/minimatch --strip-components=1 && \
-    rm minimatch-10.2.4.tgz && \
-    npm pack tar@7.5.11 && \
-    tar -xzf tar-7.5.11.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
-    rm tar-7.5.11.tgz && \
-    npm cache clean --force
+# Build tools for native modules (better-sqlite3) that lack a prebuilt binary
+# hadolint ignore=DL3018
+RUN apk add --no-cache python3 make g++
 
 # Set working directory
 WORKDIR /build
@@ -38,16 +32,6 @@ RUN npm run build:docker
 
 # Production stage
 FROM node:26-alpine AS runtime
-
-# Upgrade npm and patch its bundled dependencies to fix known CVEs
-RUN npm install -g npm@11.14.1 && \
-    npm pack minimatch@10.2.4 && \
-    tar -xzf minimatch-10.2.4.tgz -C /usr/local/lib/node_modules/npm/node_modules/minimatch --strip-components=1 && \
-    rm minimatch-10.2.4.tgz && \
-    npm pack tar@7.5.11 && \
-    tar -xzf tar-7.5.11.tgz -C /usr/local/lib/node_modules/npm/node_modules/tar --strip-components=1 && \
-    rm tar-7.5.11.tgz && \
-    npm cache clean --force
 
 # Upgrade base packages (fixes zlib CVEs) and install runtime dependencies
 # hadolint ignore=DL3018
@@ -82,7 +66,7 @@ COPY docker/startup.sh ./
 RUN chmod +x startup.sh
 
 # Run as root initially to allow PUID/PGID remapping in startup.sh
-# hadolint ignore=DL3002
+# hadolint ignore=DL3002,DL3066
 USER root
 
 # Expose port
@@ -90,7 +74,7 @@ EXPOSE 5000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:5000/api/health || exit 1
+  CMD ["sh", "-c", "curl -f http://localhost:5000/api/health || exit 1"]
 
 # Start application
 CMD ["./startup.sh"]

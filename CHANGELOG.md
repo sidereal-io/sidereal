@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Docker image**: Stopped reinstalling an older npm (11.14.1) and hand-patching its bundled packages. The Node base image now ships a newer npm whose bundled `tar`, `undici`, `sigstore`, `pacote`, `brace-expansion`, and `ip-address` are already patched.
+- **sharp**: Updated 0.34.5 → 0.35.4 (GHSA-f88m-g3jw-g9cj, GHSA-rgj7-g3m4-5g8c).
+- **nanoid**: Updated 5.1.11 → 6.0.1 (CVE-2026-67214).
+- Together these clear all 13 fixable high and critical Trivy findings in the published image, including critical CVE-2026-59873 in `tar`.
+
+### Changed
+- **Dependencies**: Rolled up pending Dependabot updates, including majors: TypeScript 6 → 7, better-sqlite3 12 → 13, framer-motion 12 → 13, and nanoid 5 → 6.
+- **TypeScript**: Removed `baseUrl` from `tsconfig.json`; TypeScript 7 no longer supports it, and `paths` resolve without it.
+- **Docker build**: The builder stage installs `python3`, `make`, and `g++` so native modules without a prebuilt binary compile.
+- **CI**: Dockerfile lint passes again, `hadolint-action` is 3.5.0, and the Docker build test also runs on pull requests into `v0.x`.
+
+## [0.10.1] - 2026-06-10
+
+### Security
+- **hono**: Updated 4.12.18 → 4.12.25 to fix four medium CVEs: cookie `sameSite`/`priority` injection (CVE-2026-47675), `app.mount()` percent-encoded path routing (CVE-2026-47676), IPv6 non-canonical address bypass in IP restriction (CVE-2026-47674), JWT middleware accepting non-Bearer schemes (CVE-2026-47673).
+- **ws**: Updated 8.20.0 → 8.21.0 to fix uninitialized memory disclosure (CVE-2026-45736).
+- **tmp**: Updated 0.2.5 → 0.2.7 to fix path traversal via unsanitized prefix/postfix (CVE-2026-44705).
+- **concurrently**: Updated 9.2.1 → 10.0.3 to resolve critical shell-quote newline injection vulnerability (CVE) via transitive dependency.
+
+### Changed
+- **Dependencies**: Updated all production and development dependencies within semver ranges.
+- **GitHub Actions**: Bumped `actions/download-artifact` v4 → v8 in release and Docker build workflows.
+
 ## [0.10.0] - 2026-05-15
 
 ### Changed
