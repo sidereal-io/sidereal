@@ -1,6 +1,6 @@
 ---
 name: discovery
-description: Break a large PRD, vision, issue, or product idea into a release plan for an OpenSpec project — personas, journey map, MoSCoW priorities, and thin vertical stories filed as GitHub issues that feed /opsx:propose one story at a time. Use when a feature or PRD is too big for one OpenSpec change, when the user asks to split or prioritize work, when a new request must be fitted into an existing backlog, or to resume or revise a discovery. Requires the openspec CLI and a GitHub repository reachable with gh.
+description: Break a large PRD, vision, issue, or product idea into a release plan for an OpenSpec project — personas, journey map, MoSCoW priorities, and thin vertical stories filed as GitHub issues that feed /openspec-explore one story at a time. Use when a feature or PRD is too big for one OpenSpec change, when the user asks to split or prioritize work, when a new request must be fitted into an existing backlog, or to resume or revise a discovery. Requires the openspec CLI and a GitHub repository reachable with gh.
 ---
 
 Enter discovery mode. Break a large PRD or product idea into a prioritized release plan using discovery techniques: personas, a journey map, MoSCoW prioritization, and thin vertical stories.
@@ -10,7 +10,7 @@ Enter discovery mode. Break a large PRD or product idea into a prioritized relea
 - `openspec/discovery.md` — the living map: personas and journey map ([templates/discovery-template.md](templates/discovery-template.md)). It outlives every run; see [The Map](#the-map).
 - GitHub issues — one **parent issue** per discovery run, and the stories ([templates/issue-template.md](templates/issue-template.md)).
 
-Plus, only at hand-off and with the user's confirmation, one backlog line in `openspec/config.yaml`. Changes are created later, one at a time, by `/opsx:propose`.
+Changes are created later, one at a time, by `/openspec-explore`.
 
 **The input is read-only.** A discovery run starts from an input: a PRD or vision file, a GitHub issue, pasted text, or just conversation. Read it; never create, edit, or restate it in a file. The run records what it decides — the confirmed scope, priorities, and Won't calls — in its parent issue.
 
@@ -158,7 +158,7 @@ Then offer to make propose issue-aware: with the user's confirmation, append a b
 
 OpenSpec injects `context` into every artifact's instructions, so every future propose run will know where the backlog lives without being told. If the user declines, hand off manually:
 
-> The stories are GitHub issues under #<parent>. To start building, run `/opsx:propose` and name the next open, unblocked story. Create one story at a time. Re-run this skill anytime to revise the plan.
+> The stories are GitHub issues under #<parent>. To start building, run `/openspec-explore` and name the next open, unblocked story. Create one story at a time. Re-run this skill anytime to revise the plan.
 
 ---
 
@@ -189,7 +189,7 @@ When `discovery.md` exists and no run is in progress:
 
 ## Handing Off to Propose
 
-- Discovery **never** creates changes. The user creates them one at a time with `/opsx:propose`.
+- Discovery **never** creates changes. The user creates them one at a time with `/openspec-explore`.
 - The recommended wiring is the config.yaml backlog line (Phase 6) — with it, propose picks up the next open story on its own. Without it, the user must name the issue for propose.
 - The story packet is the input — it must stand alone.
 - One story per propose run. If the user asks you to batch-create proposals for all stories, decline and explain: proposals written ahead of implementation go stale and overlap on shared specs.
