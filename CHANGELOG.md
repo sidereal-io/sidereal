@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Dependencies**: Rolled up pending Dependabot updates, including majors: TypeScript 6 → 7, better-sqlite3 12 → 13, framer-motion 12 → 13, and nanoid 5 → 6.
+- **Dependencies**: drizzle-orm 0.45.2 → 0.45.3, @types/better-sqlite3 7 → 9, and @types/sharp 0.31 → 0.32.
 - **TypeScript**: Removed `baseUrl` from `tsconfig.json`; TypeScript 7 no longer supports it, and `paths` resolve without it.
 - **Docker build**: The builder stage installs `python3`, `make`, and `g++` so native modules without a prebuilt binary compile.
 - **CI**: Dockerfile lint passes again, `hadolint-action` is 3.5.0, and the Docker build test also runs on pull requests into `v0.x`.
