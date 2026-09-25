@@ -1,150 +1,206 @@
 # Discovery
 
-The living map behind the backlog: who it serves and the journeys it supports.
-
-The product input is GitHub issue [#217](https://github.com/sidereal-io/sidereal/issues/217)
-"M1: Core spine & first plugins", with the [migration plan](migration.md),
-for M1; and [ADR-013](../docs/decisions/ADR-013-development-environment.md) with the epic
-[#272](https://github.com/sidereal-io/sidereal/issues/272) for the dev environment. Stories are GitHub
-issues: each issue body is the story packet, with its MoSCoW priority.
+> The living map behind the backlog: who it serves and the journeys it supports.
+> The backlog is GitHub issues. To build, run `/openspec-propose-change`; 
+> it picks the next open, unblocked, unassigned issue.
 
 ## Personas
 
-### Dev environment
+### People who use Sidereal
 
-- **Ada, the AI coding agent** (Claude, Codex, Gemini, and others). *Goal:* start
-  every session with the exact tools and OpenSpec skills the repo expects. *Pain
-  today:* skill text depends on whoever's machine it is, and the committed skills
-  contain Codex-specific hints. *Success:* the same `openspec --version`, the same
-  toolchain versions, and the same skills in every session, with no setup steps to
-  work out.
-- **Nico, the contributor with Nix.** *Goal:* go from clone to `just check` with no
-  manual installs. *Success:* running `direnv allow` once is the whole setup.
-- **Dana, the contributor without Nix.** *Goal:* contribute without learning Nix.
-  *Pain today:* no clear, supported way to get the OpenSpec skills. *Success:*
-  `just skills` gives the same skills using any `openspec` install.
-- **Mo, the maintainer.** *Goal:* trust that pull requests don't commit generated
-  files and that the pinned CLI regenerates cleanly. *Pain today:* generated skills
-  are committed and nothing checks them. *Success:* a CI check fails on drift.
+#### Nova — the astrophotographer
 
-### M1
+- **Who**: an amateur astrophotographer who shoots hundreds of light frames a session,
+  plus darks, flats, and bias frames, and keeps the stacked and finished images too.
+- **Goal**: keep every frame, from raw light to annotated final, organized and
+  findable, along with the record of how each final image was made.
+- **Pain today**: FITS and XISF files pile up across folders and drives. Nothing reads
+  their headers, groups them into sessions, or remembers which master dark went into
+  which stack. Answering "is this master dark still valid for this camera at this
+  temperature?" means digging by hand. Gallery tools only understand finished photos.
+- **Success looks like**: drops a night's files in a folder and finds them grouped by
+  session and target, with calibration matched and lineage recorded; answers "which
+  stacks used this master dark?" in seconds.
 
-- **Pat, the plugin author.** Builds a Source or Operator against `plugin-abi`. In M1
-  this is a Sidereal maintainer *wearing the third-party hat*: writing the two
-  built-ins with no privileges a real third party wouldn't have. *Goal:* make a
-  file-discovering Source and a metadata-emitting Operator work end to end through
-  the public contract alone. *Pain today:* `plugin-abi` is id-stubs: no
-  `AssetContext`, no byte access, no facet emission, and no proof the contract is
-  expressive enough for real work. *Success:* both plugins run through the same
-  surface a stranger would use, and any attempt to reach around it (direct store
-  write, forged facet) is rejected.
-- **Nova, the astrophotographer.** The end user who will eventually manage thousands
-  of frames. *Goal:* drop a file into a folder and see Sidereal recognize it. *Pain
-  today:* v2 turns nothing into a managed asset; the backend only serves `/healthz`.
-  *Success:* a file appears in the UI on its own, with size, format and dimensions
-  filled in, within seconds of landing in the folder. *Honest scope:* M1 is a sliver
-  of Nova's journey (generic metadata only, read-only UI, no astro). Her real payoff
-  is M3.
-- **Sam, the self-hoster.** Runs the Sidereal box on their own hardware. *Goal:*
-  stand it up in roughly one command and trust it with their files. *Pain today:*
-  nothing to run, no storage story, no assurance originals are safe. *Success:*
-  Postgres and the app come up bundled; originals in the watched folder are never
-  moved or altered; and if a stored file is corrupted, Sidereal detects it and offers
-  a fix (adopt, restore or ignore).
+#### Sam — the self-hoster
+
+- **Who**: runs Sidereal on their own hardware, such as a home server or NAS, and may
+  be upgrading an existing install.
+- **Goal**: stand Sidereal up quickly, keep it running, and trust it with files that
+  cannot be replaced.
+- **Pain today**: photo tools either want files in someone else's cloud or take over
+  the folder layout. One bug can corrupt originals that took months of clear nights to
+  capture, and a major-version upgrade puts the whole library at risk.
+- **Success looks like**: installs with one command; originals are never altered;
+  corruption is detected and can be repaired; upgrades run against a verified backup
+  and report anything that didn't carry over.
+
+#### Pat — the plugin author
+
+- **Who**: a developer who extends Sidereal with a new file source, processing step,
+  or publishing target. Pat may be a third party or a maintainer.
+- **Goal**: build a plugin against a public, documented contract and have it behave
+  like a built-in.
+- **Pain today**: extending a gallery app usually means forking it or depending on
+  internals that break on the next release.
+- **Success looks like**: the plugin runs through the same contract the built-ins
+  use, passes the conformance suite, and survives upgrades; anything outside the
+  contract is refused, not quietly allowed.
+
+### People who build Sidereal
+
+#### Ada — the AI coding agent
+
+- **Who**: Claude, Codex, Gemini, and other agents working in the repo.
+- **Goal**: start every session with the tools and skills the repo expects.
+- **Pain today**: an agent inherits whatever the host machine has. Tool versions and
+  skill text vary between machines, and hints meant for one agent leak into another's.
+- **Success looks like**: the same tool versions and the same skills in every
+  session, with no setup steps to work out.
+
+#### Nico — the contributor with Nix
+
+- **Who**: a contributor who already uses Nix.
+- **Goal**: go from clone to a passing check with no manual installs.
+- **Pain today**: a Rust-and-Node repo usually means a page of install steps and
+  versions that drift from what CI uses.
+- **Success looks like**: running `direnv allow` once is the whole setup.
+
+#### Dana — the contributor without Nix
+
+- **Who**: a contributor who installs tools by hand and doesn't want to learn Nix.
+- **Goal**: contribute without learning Nix.
+- **Pain today**: projects that adopt Nix often leave everyone else on an unsupported,
+  second-class path.
+- **Success looks like**: with tools installed by hand, gets the same checks and the
+  same skills as everyone else.
+
+#### Mo — the maintainer
+
+- **Who**: reviews and merges pull requests and keeps the toolchain current.
+- **Goal**: trust that every pull request is built with the pinned tools and commits
+  no generated drift, and keep the pins fresh without toil.
+- **Pain today**: generated files and tool pins drift quietly until something breaks.
+- **Success looks like**: CI fails on drift, and pin updates arrive as routine pull
+  requests.
+
+> **Implication**: Ada, Nico, Dana, and Mo walk one contributor path; they differ in
+> how their tools arrive, not in what they do. Build one path that all of them reach,
+> not one per setup.
 
 ## Journey Map
 
-### Dev environment
+Stage status checked against the code on 2026-09-25. Status describes the v2 backend
+in `backend/`; where v0.10.x already covers a stage, the stage says so.
+
+### People who use Sidereal
+
+**Library journey** (Nova):
 
 ```
-  Clone --> Enter env --> Get skills --> Work & check --> Open PR --> Bump pins
-    |           |             |               |               |            |
- supported  supported      partial        supported          gap        partial
+  Point at ─► Ingest   ─► Read     ─► See it   ─► Group    ─► Match    ─► Plate    ─► Trace    ─► Find &
+  folder                  metadata                sessions    calibr.     solve       lineage     publish
+     │           │           │           │           │           │           │           │           │
+    gap         gap         gap         gap         gap         gap         gap         gap         gap
 ```
 
-1. **Clone.** `git clone` works. *Supported.*
-2. **Enter env.** `flake.nix`, `nix/` and `.envrc` give a pinned shell through
-   direnv. *Supported* ([#273](https://github.com/sidereal-io/sidereal/issues/273)).
-3. **Get skills.** The skills are committed, but they are Codex-flavored, depend on
-   the global OpenSpec config, and aren't regenerated. *Partial*
+1. **Point at a folder** — Sidereal watches a folder for new files — gap
+   ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
+2. **Ingest** — copy each file, hash it with BLAKE3, skip duplicates, and record an
+   immutable version — gap: no schema and no store yet
+   ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
+3. **Read metadata** — size, format, and dimensions as facets — gap
+   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
+   [#280](https://github.com/sidereal-io/sidereal/issues/280)). FITS and XISF header
+   reading has no story yet.
+4. **See it** — the asset appears in the browser as it lands — gap: no v2 frontend
+   shell ([#282](https://github.com/sidereal-io/sidereal/issues/282)). The v0.10.x
+   gallery shows Immich images only.
+5. **Group into sessions** — frames sorted by type, target, filter, and equipment —
+   gap.
+6. **Match calibration** — a master dark or flat matched to the lights it fits by
+   camera, temperature, gain, and exposure — gap.
+7. **Plate solve** — gap in v2. v0.10.x solves Immich images through Astrometry.net.
+8. **Trace lineage** — which lights and masters produced a stack — gap
+   ([#286](https://github.com/sidereal-io/sidereal/issues/286) exposes the scaffolding
+   tables).
+9. **Find & publish** — search by target, filter, or equipment, and publish to Immich,
+   Astrobin, or a static gallery — gap in v2. v0.10.x browses and filters Immich
+   images.
+
+**Self-host journey** (Sam):
+
+```
+  Install ─► Configure ─► Protect ─► Detect & ─► Back up & ─► Upgrade from
+  (1 cmd)                 originals   repair      restore      v0.10.x
+     │           │            │           │           │            │
+  partial       gap          gap         gap         gap          gap
+```
+
+1. **Install** — Postgres and the app come up together from one command — partial:
+   `backend/Dockerfile` and the axum shell exist, with no database or compose bundle
+   ([#285](https://github.com/sidereal-io/sidereal/issues/285)).
+2. **Configure** — storage root and watched folders set through config or environment
+   — gap ([#281](https://github.com/sidereal-io/sidereal/issues/281)). An admin
+   configuration UI has no story yet.
+3. **Protect originals** — ingest copies and never moves, renames, or deletes files in
+   the watched folder — gap ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
+4. **Detect & repair** — a corrupted stored file is found, and the user can adopt,
+   restore, or ignore it — gap ([#284](https://github.com/sidereal-io/sidereal/issues/284)).
+5. **Back up & restore** — a documented, verified backup of both the database and the
+   storage root — gap.
+6. **Upgrade from v0.10.x** — a one-way importer with a dry run and a report of what
+   didn't map — gap.
+
+**Plugin journey** (Pat):
+
+```
+  Code to    ─► Read bytes ─► Declare    ─► Register   ─► Run via    ─► Back door  ─► Pass
+  contract      & facets      grants                      executor      refused       conform.
+      │             │             │             │             │             │             │
+   partial         gap           gap        supported        gap           gap           gap
+```
+
+1. **Code to the contract** — implement a Source or Operator against `plugin-abi` —
+   partial: the traits in `backend/crates/plugin-abi/src/lib.rs` carry only an id
+   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
+   [#281](https://github.com/sidereal-io/sidereal/issues/281)). The embedded-script
+   profile has no story yet.
+2. **Read bytes & emit facets** — through `AssetContext`: byte access, `emit_facet`,
+   `log`, `is_cancelled` — gap ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
+3. **Declare grants** — a manifest names the facets the plugin may write — gap.
+4. **Register** — `Pack::register` adds the plugin to the `Registry` — supported.
+5. **Run via the executor** — the executor dispatches the plugin and validates its
+   outcome — gap ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
+6. **Back door refused** — a direct store write or forged facet is rejected — gap
+   ([#279](https://github.com/sidereal-io/sidereal/issues/279); proven in CI by
+   [#283](https://github.com/sidereal-io/sidereal/issues/283)).
+7. **Pass conformance** — the plugin passes the shared conformance suite — gap.
+
+### People who build Sidereal
+
+**Contributor journey** (Ada, Nico, Dana, Mo):
+
+```
+  Clone ─► Enter env ─► Get skills ─► Work & check ─► Open PR ─► Bump pins (Mo)
+    │          │             │              │             │            │
+ supported  supported     partial       supported      partial      partial
+```
+
+1. **Clone** — `git clone` works — supported.
+2. **Enter env** — `flake.nix`, `nix/`, and `.envrc` give Nico a pinned shell through
+   direnv; Dana installs the same tools by hand — supported.
+3. **Get skills** — skills are committed, but they carry Codex-specific hints, depend
+   on the global OpenSpec config, and aren't regenerated — partial
    ([#274](https://github.com/sidereal-io/sidereal/issues/274),
    [#275](https://github.com/sidereal-io/sidereal/issues/275)).
-4. **Work & check.** `just check` runs with pinned Rust, Node, `just` and `openspec`.
-   *Supported* ([#273](https://github.com/sidereal-io/sidereal/issues/273)).
-5. **Open PR.** CI checks the code, but nothing checks the skills. *Gap*
-   ([#276](https://github.com/sidereal-io/sidereal/issues/276)).
-6. **Bump pins.** `flake.lock` exists, but there is no update routine. *Partial*
+4. **Work & check** — `just check` runs with pinned Rust, Node, `just`, and
+   `openspec` — supported.
+5. **Open PR** — CI checks the code, but not the skills, and not inside the pinned
+   shell — partial ([#276](https://github.com/sidereal-io/sidereal/issues/276),
+   [#289](https://github.com/sidereal-io/sidereal/issues/289)).
+6. **Bump pins** — `flake.lock` exists, but nothing updates it on a schedule — partial
    ([#287](https://github.com/sidereal-io/sidereal/issues/287)).
-
-### M1: Nova's spine, the asset path
-
-This path is M1's exit criterion. M0's one solid rung is the registration path
-(`Pack::register` + `Registry`). The storage layout is decided
-([ADR-011](../docs/decisions/ADR-011-storage-tree-layout.md), Accepted).
-
-```
-  Run app ──► Point at ──► Drop ──► Ingest ──► Extract ──► See in ──► Live
-  (Postgres)   folder      file    (hash/       metadata    UI        update
-                                    store/ver)                         (WS)
-     │           │           │        │            │          │          │
-   partial     gap         gap      gap          gap        gap        gap
-```
-
-1. **Run app.** Bundled Postgres and app boot. *Partial:* `backend/Dockerfile` and
-   the axum shell exist; no database, no compose bundle
-   ([#285](https://github.com/sidereal-io/sidereal/issues/285)).
-2. **Point at a watched folder.** Config or env. *Gap*
-   ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
-3. **Drop a file, auto-detected.** Source, `notify` and debounce. *Gap*
-   ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
-4. **Ingest.** Copy, BLAKE3 hash, dedup, store, mint `AssetVersion`. *Gap:* no schema,
-   no store ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
-5. **Extract metadata.** The executor runs the Pure operator and emits `core.*`
-   facets. *Gap* ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-   [#280](https://github.com/sidereal-io/sidereal/issues/280)).
-6. **See in UI.** Read-only asset list and detail. *Gap:* the frontend in `apps/client`
-   is v0.10.x; there is no v2 shell
-   ([#282](https://github.com/sidereal-io/sidereal/issues/282)).
-7. **Live update.** `asset.ingested` over `/ws`. *Gap*
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-   [#282](https://github.com/sidereal-io/sidereal/issues/282)).
-
-### M1: Pat's overlay, build a plugin through the contract
-
-```
-  Code to ──► Get ──► Read bytes ──► Emit ──► Register ──► Run via ──► Back-door
-  contract   AssetCtx   /facets    facet     plugin      executor    rejected
-     │          │          │          │         │            │           │
-  partial     gap        gap        gap    supported       gap         gap
-```
-
-- **Code to contract.** *Partial:* the `Source` and `Operator` traits in
-  `backend/crates/plugin-abi/src/lib.rs` are id-only
-  ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-  [#281](https://github.com/sidereal-io/sidereal/issues/281)).
-- **AssetContext** (byte read, `emit_facet`, `log`, `is_cancelled`). *Gap*
-  ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
-- **Register plugin.** *Supported:* `Pack::register` + `Registry`, proven in M0.
-- **Run via executor, outcome validated, no back door.** *Gap*
-  ([#279](https://github.com/sidereal-io/sidereal/issues/279); proven in CI by
-  [#283](https://github.com/sidereal-io/sidereal/issues/283)).
-
-### M1: Sam's overlay, install and trust
-
-```
-  Install ──► Configure ──► Originals ──► Detect ──► Repair
-  (1 cmd)                   untouched    corruption  (adopt/restore/ignore)
-     │           │             │            │            │
-  partial       gap           gap          gap          gap
-```
-
-- **One-command install.** *Partial:* `backend/Dockerfile` exists; no bundled-Postgres
-  compose ([#285](https://github.com/sidereal-io/sidereal/issues/285)).
-- **Configure.** *Gap* ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
-- **Filesystem safety** (copy, never move). *Gap*
-  ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
-- **Integrity detect and repair.** *Gap*
-  ([#284](https://github.com/sidereal-io/sidereal/issues/284)).
 
 ## Backlog
 
