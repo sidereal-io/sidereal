@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Sidereal</Name>
-  <Repository>ghcr.io/mstelz/sidereal:latest</Repository>
-  <Registry>https://ghcr.io/mstelz/sidereal</Registry>
+  <Repository>ghcr.io/sidereal-io/sidereal:latest</Repository>
+  <Registry>https://ghcr.io/sidereal-io/sidereal</Registry>
   <Network>bridge</Network>
   <WebUI>http://[IP]:[PORT:2284]/</WebUI>
-  <Icon>https://raw.githubusercontent.com/mstelz/sidereal/main/assets/images/sidereal-transparent.png</Icon>
-  <TemplateURL>https://raw.githubusercontent.com/mstelz/sidereal/main/docker/unraid-templates/sidereal.xml</TemplateURL>
-  <Support>https://github.com/mstelz/sidereal/issues</Support>
-  <Project>https://github.com/mstelz/sidereal</Project>
+  <Icon>https://raw.githubusercontent.com/sidereal-io/sidereal/main/assets/images/sidereal-transparent.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/sidereal-io/sidereal/main/docker/unraid-templates/sidereal.xml</TemplateURL>
+  <Support>https://github.com/sidereal-io/sidereal/issues</Support>
+  <Project>https://github.com/sidereal-io/sidereal</Project>
   <Beta>False</Beta>
   <Category>MediaApp:Photos MediaApp:Other Tools:</Category>
   <Date>2026-03-23</Date>

@@ -9,7 +9,7 @@
 
 services:
   sidereal:
-    image: ghcr.io/mstelz/sidereal:latest
+    image: ghcr.io/sidereal-io/sidereal:latest
     container_name: sidereal
     restart: unless-stopped
     ports:

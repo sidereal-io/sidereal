@@ -110,7 +110,7 @@ export function Header() {
               {syncing ? 'Syncing...' : 'Sync Immich'}
             </Button>
             <a
-              href="https://github.com/mstelz/sidereal"
+              href="https://github.com/sidereal-io/sidereal"
               target="_blank"
               rel="noopener noreferrer"
               title="View on GitHub"

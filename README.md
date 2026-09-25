@@ -90,7 +90,7 @@ Single container setup with built-in SQLite database — no external database ne
 
 ```bash
 # Download production compose file
-curl -o docker-compose.prod.yml https://raw.githubusercontent.com/mstelz/Sidereal/main/docker-compose.prod.yml
+curl -o docker-compose.prod.yml https://raw.githubusercontent.com/sidereal-io/sidereal/main/docker-compose.prod.yml
 
 # Start Sidereal
 docker compose -f docker-compose.prod.yml up -d
@@ -117,7 +117,7 @@ Single container deployment using GitHub Container Registry:
 
 ```bash
 # Pull the latest image
-docker pull ghcr.io/mstelz/sidereal:latest
+docker pull ghcr.io/sidereal-io/sidereal:latest
 
 # Run with Docker (uses built-in SQLite database)
 docker run -d \
@@ -126,7 +126,7 @@ docker run -d \
   -e NODE_ENV=production \
   -v sidereal-config:/app/config \
   -v sidereal-cache:/app/cache \
-  ghcr.io/mstelz/sidereal:latest
+  ghcr.io/sidereal-io/sidereal:latest
 
 # Access the application
 open http://localhost:5000
@@ -140,7 +140,7 @@ open http://localhost:5000
 
 For now, manual installation:
 
-1. **Install Sidereal**: Add container using template URL `https://raw.githubusercontent.com/mstelz/Sidereal/main/docker/unraid-templates/sidereal.xml`
+1. **Install Sidereal**: Add container using template URL `https://raw.githubusercontent.com/sidereal-io/sidereal/main/docker/unraid-templates/sidereal.xml`
 2. **Configure**: Optionally set Immich URL and API keys (can also be done via admin UI)
 3. **Access**: Navigate to `http://your-server:2284`
 
@@ -150,7 +150,7 @@ For now, manual installation:
 
 ```bash
 # Clone and install dependencies
-git clone https://github.com/mstelz/Sidereal.git
+git clone https://github.com/sidereal-io/sidereal.git
 cd Sidereal
 npm install
 
@@ -246,9 +246,9 @@ The script handles all type conversions (timestamps, booleans, JSON, arrays) and
 Sidereal provides ready-to-use container images through GitHub Container Registry:
 
 ### Available Images
-- **Latest Release**: `ghcr.io/mstelz/sidereal:latest`
-- **Specific Version**: `ghcr.io/mstelz/sidereal:v1.x.x`
-- **Development**: `ghcr.io/mstelz/sidereal:main`
+- **Latest Release**: `ghcr.io/sidereal-io/sidereal:latest`
+- **Specific Version**: `ghcr.io/sidereal-io/sidereal:0.10.1` (tags have no `v` prefix; `0.10` and `0` track the latest patch and minor)
+- **Development**: `ghcr.io/sidereal-io/sidereal:main`
 
 ### Supported Architectures
 - `linux/amd64` (x86_64)
@@ -337,7 +337,7 @@ node --version  # v26
 npm --version   # 10+
 
 # Clone repository
-git clone https://github.com/mstelz/Sidereal.git
+git clone https://github.com/sidereal-io/sidereal.git
 cd Sidereal
 ```
 
@@ -452,8 +452,8 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [ ] Community features (sharing, public galleries)
 
 ### Community & Help
-- **Bug Reports**: [GitHub Issues](https://github.com/mstelz/Sidereal/issues)
-- **Feature Requests**: [GitHub Discussions](https://github.com/mstelz/Sidereal/discussions)
+- **Bug Reports**: [GitHub Issues](https://github.com/sidereal-io/sidereal/issues)
+- **Feature Requests**: [GitHub Discussions](https://github.com/sidereal-io/sidereal/discussions)
 
 ## License
 
@@ -472,6 +472,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built for the astrophotography community**
 
-[Star this repo](https://github.com/mstelz/Sidereal) | [Report bug](https://github.com/mstelz/Sidereal/issues) | [Request feature](https://github.com/mstelz/Sidereal/discussions)
+[Star this repo](https://github.com/sidereal-io/sidereal) | [Report bug](https://github.com/sidereal-io/sidereal/issues) | [Request feature](https://github.com/sidereal-io/sidereal/discussions)
 
 </div>
