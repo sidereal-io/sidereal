@@ -31,12 +31,12 @@ jobs:
             const packageName = process.env.PACKAGE_NAME;
 
             // Protected tag patterns — never delete versions that carry these
-            const protectedPattern = /^(v?\d+(\.\d+)*|latest|main)$/;
+            const protectedPattern = /^(v?\d+(\.\d+)*|latest|main|v0\.x)$/;
 
             // Fetch all versions (paginated)
             const versions = await github.paginate(
-              github.rest.packages.getAllPackageVersionsForPackageOwnedByUser,
-              { package_type: 'container', package_name: packageName, username: owner, per_page: 100 }
+              github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg,
+              { package_type: 'container', package_name: packageName, org: owner, per_page: 100 }
             );
 
             // Partition into protected vs deletable
@@ -61,10 +61,10 @@ jobs:
             for (const v of toDelete) {
               const tags = v.metadata?.container?.tags || [];
               core.info(`DELETE id=${v.id} tags=[${tags.join(', ')}] created=${v.created_at}`);
-              await github.rest.packages.deletePackageVersionForUser({
+              await github.rest.packages.deletePackageVersionForOrg({
                 package_type: 'container',
                 package_name: packageName,
-                username: owner,
+                org: owner,
                 package_version_id: v.id,
               });
             }
