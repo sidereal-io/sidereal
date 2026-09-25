@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-09-25
+
+### Fixed
+- **Immich album sync**: With Immich 3.x, **Sync by album only** found the selected albums but imported no images, because Immich no longer lists an album's images in its album response. Sidereal now fetches each selected album's images through Immich's metadata search (#293).
+
 ### Changed
+- **Immich album sync**: Album sync now imports only images, as full-library sync already did. Videos in a selected album are no longer imported.
 - **Dependencies**: drizzle-orm 0.45.2 → 0.45.3 and @types/better-sqlite3 7 → 9.
 
 ## [0.10.2] - 2026-09-25
