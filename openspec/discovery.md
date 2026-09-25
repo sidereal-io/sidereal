@@ -3,7 +3,7 @@
 The living map behind the backlog: who it serves and the journeys it supports.
 
 The product input is GitHub issue [#217](https://github.com/sidereal-io/sidereal/issues/217)
-"M1: Core spine & first plugins", with the [v2 roadmap](../docs/architecture/roadmap.md),
+"M1: Core spine & first plugins", with the [migration plan](migration.md),
 for M1; and [ADR-013](../docs/decisions/ADR-013-development-environment.md) with the epic
 [#272](https://github.com/sidereal-io/sidereal/issues/272) for the dev environment. Stories are GitHub
 issues: each issue body is the story packet, with its MoSCoW priority.
