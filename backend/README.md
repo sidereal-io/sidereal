@@ -29,8 +29,11 @@ backend/
 - **[just](https://github.com/casey/just)** — the command runner spanning both stacks:
   `cargo install just` (or a system package: `apt install just`, `brew install just`,
   `scoop install just`).
-- **[Node.js](https://nodejs.org/) 20+** — only needed to run the frontend half of
+- **[Node.js](https://nodejs.org/) 26** — only needed to run the frontend half of
   `just dev`.
+
+The repo also provides an optional, pinned Nix shell with every prerequisite above.
+See [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
 
 ## Zero-to-running
 

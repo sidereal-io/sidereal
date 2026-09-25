@@ -117,6 +117,10 @@ vite.config.ts.*
 # Working state (plans, caches, scratch) — fully ignored
 .workspace/
 
+# Nix / direnv — flake.nix and flake.lock are committed, this state isn't
+.direnv/
+.envrc.local
+
 # AI tooling
 .claude/settings.local.json
 .claude/worktrees/
