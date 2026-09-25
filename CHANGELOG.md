@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Dependencies**: drizzle-orm 0.45.2 → 0.45.3 and @types/better-sqlite3 7 → 9.
+
 ## [0.10.2] - 2026-09-25
 
 ### Fixed
