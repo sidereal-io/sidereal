@@ -43,6 +43,7 @@ This skill is designed for and tested with OpenSpec projects. It requires the op
 - **Annotations show present status only.** A `supported` stage links no issues — the code is the evidence. A `partial` or `gap` stage links only the open issues that close it. A `gap` with no link is known but unplanned.
 - **A freshness line dates the annotations.** The Journey Map opens with `Stage status checked against the code on YYYY-MM-DD.` Update it whenever you re-check stages.
 - **Epic scope stays out.** A run's scope, exit criterion, and "what this release covers" go in its parent issue, never in the map. No section, heading, or persona is named for a milestone or epic.
+- **Finished journeys stay.** A journey whose stages are all `supported` stays in the map; it still shows what the product does. Only a path that no longer applies is removed.
 - **Removal is recorded.** Remove a persona or journey that no longer applies, and note the removal and its reason in the current run's parent issue.
 
 ---
@@ -79,7 +80,7 @@ Take in the input — a file path, an issue (`gh issue view <n>`), pasted text, 
 
 ### Phase 2: Personas
 
-Start from the personas already in `discovery.md`. For the people this input serves, reuse an existing persona first; extend its entry only if the input reveals a lasting fact about them. Add a new persona only for a person the map lacks — typically 1-4 across the whole map, not per run. For each new persona:
+Start from the personas already in `discovery.md`. For the people this input serves, reuse an existing persona first; extend its entry only if the input reveals a lasting fact about them. Add a new persona only for a person the map lacks; most runs add none. For each new persona:
 
 - **Who** they are
 - **Goal** they're trying to reach
