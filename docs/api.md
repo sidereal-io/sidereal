@@ -1222,6 +1222,6 @@ Note: Admin settings take precedence over environment variables.
 ## Support
 
 For API support and questions:
-- Check the [GitHub Issues](https://github.com/mstelz/Sidereal/issues)
+- Check the [GitHub Issues](https://github.com/sidereal-io/sidereal/issues)
 - Review the [Contributing Guide](../CONTRIBUTING.md)
-- Join discussions in [GitHub Discussions](https://github.com/mstelz/Sidereal/discussions)
+- Join discussions in [GitHub Discussions](https://github.com/sidereal-io/sidereal/discussions)
