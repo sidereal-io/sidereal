@@ -100,7 +100,7 @@ between phases" step.
   spec sync. Make the fixes, re-archive as the last commit, and flip ready again. A
   rejected PR is just closed and its branch deleted; `main` stays clean.
 - **Every story is an issue.** Its body is the story packet, and the story's PR
-  says `Closes #<issue>`. An epic is a parent issue, labeled `epic`, with its stories
+  says `Closes #<issue>`. An epic is a parent issue, labeled `kind/epic`, with its stories
   as sub-issues; close it once they are all closed. Dependencies are "blocked by"
   links between issues.
 

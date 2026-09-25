@@ -6,7 +6,7 @@ context: |
   story packet before it is proposed. When asked to propose the next change without
   a specific request, list open issues with
   `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,subIssuesSummary`.
-  Skip epic parents (any issue labeled `epic` or with sub-issues), issues with an
+  Skip epic parents (any issue labeled `kind/epic` or with sub-issues), issues with an
   open blocker, and assigned issues (they are in progress). Take the lowest number
   and read its story packet with `gh issue view <n> --json body`. When proposing,
   assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
