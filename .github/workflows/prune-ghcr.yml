@@ -35,8 +35,8 @@ jobs:
 
             // Fetch all versions (paginated)
             const versions = await github.paginate(
-              github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg,
-              { package_type: 'container', package_name: packageName, org: owner, per_page: 100 }
+              github.rest.packages.getAllPackageVersionsForPackageOwnedByUser,
+              { package_type: 'container', package_name: packageName, username: owner, per_page: 100 }
             );
 
             // Partition into protected vs deletable
@@ -61,10 +61,10 @@ jobs:
             for (const v of toDelete) {
               const tags = v.metadata?.container?.tags || [];
               core.info(`DELETE id=${v.id} tags=[${tags.join(', ')}] created=${v.created_at}`);
-              await github.rest.packages.deletePackageVersionForOrg({
+              await github.rest.packages.deletePackageVersionForUser({
                 package_type: 'container',
                 package_name: packageName,
-                org: owner,
+                username: owner,
                 package_version_id: v.id,
               });
             }
