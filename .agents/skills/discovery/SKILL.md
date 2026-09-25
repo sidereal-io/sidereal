@@ -38,7 +38,7 @@ This skill is designed for and tested with OpenSpec projects. It requires the op
 
 - **Personas are durable.** A persona entry reads the same before and after any single epic ships. *Pain today* is the person's real-world problem without a good tool; *Success looks like* is the lasting outcome they want. Neither names code, milestones, or epics. Edit a persona only when facts about the person change.
 - **Personas sit in audience groups.** Under `## Personas`, one `###` heading per audience — typically `People who use <product>` and `People who build <product>` — and one `####` entry per persona. Omit a group that has no personas. `## Journey Map` uses the same groups.
-- **One journey per distinct path.** Personas who walk the same stages share one journey, named for all of them, with an *Implication* note saying what that means for the build. A persona gets its own journey only when its stages differ.
+- **One journey per distinct path.** Personas who walk the same stages share one journey, named for all of them, with an *Implication* note saying what that means for the build. A stage only some of them reach stays in the shared journey and names whose it is, such as `Bump pins (Mo)`. A persona gets its own journey only when most of its stages differ.
 - **A journey shows the full path.** Map every stage the persona goes through, not only the part this run's input covers. Draw future stages only from sources the project already has (vision, architecture docs, decision records); don't invent them.
 - **Annotations show present status only.** A `supported` stage links no issues — the code is the evidence. A `partial` or `gap` stage links only the open issues that close it. A `gap` with no link is known but unplanned.
 - **A freshness line dates the annotations.** The Journey Map opens with `Stage status checked against the code on YYYY-MM-DD.` Update it whenever you re-check stages.
@@ -177,7 +177,7 @@ When `discovery.md` exists and no run is in progress:
 
 1. **Read it**, then reconcile the map against reality:
    - `gh issue list --state all --limit 500 --json number,title,state,stateReason,parent` → shipped and open stories
-   - Run [scripts/stale-links.sh](scripts/stale-links.sh) `<root.path>/openspec/discovery.md`. It prints each link to a closed issue. For each one, re-check that stage against the code: upgrade the stage and drop the link, or replace the link with the open issue that now closes the gap.
+   - Run [scripts/stale-links.sh](scripts/stale-links.sh) `<root.path>/openspec/discovery.md`. It prints each link to a closed issue. For each one, re-check that stage against the code: upgrade the stage and drop the link; replace the link with the open issue that now closes the gap; or, if nothing open does, drop the link and leave the stage an unplanned `gap`.
    - Re-annotate every journey stage against the code; stages move to `supported` as their stories ship
    - Update the freshness line to today
 2. **Take in what the user brings** — a new PRD, new requirements, changed priorities, learnings from shipped stories. New work is a new run with its own parent issue: Ingest, then MoSCoW and Stories. Revisit Personas and the Journey Map only when the input changes who the product serves or how they use it.

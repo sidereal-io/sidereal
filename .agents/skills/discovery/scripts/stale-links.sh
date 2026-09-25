@@ -8,7 +8,8 @@ set -euo pipefail
 map="${1:?usage: stale-links.sh <path/to/discovery.md>}"
 
 declare -A state title
-grep -no 'https://github.com/[^/]*/[^/]*/issues/[0-9]*' "$map" |
+# grep exits 1 when the map links no issues; that is a clean map, not an error.
+{ grep -no 'https://github.com/[^/]*/[^/]*/issues/[0-9]*' "$map" || true; } |
 while IFS=: read -r line url_scheme url_rest; do
   url="$url_scheme:$url_rest"
   repo=$(sed -E 's#https://github.com/([^/]+/[^/]+)/issues/.*#\1#' <<<"$url")
