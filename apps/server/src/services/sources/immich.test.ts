@@ -104,20 +104,28 @@ describe('ImmichImageSource.getStatus', () => {
 });
 
 describe('ImmichImageSource.sync (album mode)', () => {
-  it('ingests assets from selected albums', async () => {
+  it('pages album assets through search/metadata when the album detail omits them (Immich 3.x)', async () => {
     const albumCfg = { getImmichConfig: mock.mock.fn(async () => ({ host: 'http://immich.test', apiKey: 'k', syncByAlbum: true, selectedAlbumIds: ['alb1'] })) };
     const db = makeDb();
     const imgStorage = { writeImage: mock.mock.fn(async (id: number) => ({ originalPath: `/p/${id}.fit` })) };
-    const fetchFn = mock.mock.fn(async (url: string) => {
-      if (url === 'http://immich.test/api/albums') return jsonResponse([{ id: 'alb1', albumName: 'A', assetCount: 1 }]);
-      if (url === 'http://immich.test/api/albums/alb1') return jsonResponse({ assets: [{ id: 'a1', originalFileName: 'a1.fit', exifInfo: {} }] });
+    const searchBodies: Record<string, unknown>[] = [];
+    const fetchFn = mock.mock.fn(async (url: string, init?: { body?: string }) => {
+      if (url === 'http://immich.test/api/albums') return jsonResponse([{ id: 'alb1', albumName: 'A', assetCount: 2 }, { id: 'alb2', albumName: 'B', assetCount: 5 }]);
+      if (url === 'http://immich.test/api/albums/alb1') return jsonResponse({ albumName: 'A', assetCount: 2, assets: [] });
+      if (url.includes('/api/search/metadata')) {
+        const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
+        searchBodies.push(body);
+        return body.page === 1
+          ? jsonResponse({ assets: { items: [{ id: 'a1', originalFileName: 'a1.fit', exifInfo: {} }], nextPage: '2' } })
+          : jsonResponse({ assets: { items: [{ id: 'a2', originalFileName: 'a2.fit', exifInfo: {} }], nextPage: null } });
+      }
       if (url.includes('/api/assets/')) return bytesResponse(new Uint8Array([1, 2, 3]).buffer);
       return jsonResponse({});
     });
     const src = new ImmichImageSource(db as never, imgStorage as never, albumCfg as never, fetchFn as never);
     const r = await src.sync();
-    assert.equal(r.syncedCount, 1);
-    assert.equal(db.rows[0]?.sourceType, 'immich');
-    assert.equal(db.rows[0]?.sourceId, 'a1');
+    assert.equal(r.syncedCount, 2);
+    assert.deepEqual(db.rows.map(row => row.sourceId), ['a1', 'a2']);
+    assert.deepEqual(searchBodies.map(b => [b.albumIds, b.page]), [[['alb1'], 1], [['alb1'], 2]], 'should search only the selected album, following nextPage');
   });
 });
