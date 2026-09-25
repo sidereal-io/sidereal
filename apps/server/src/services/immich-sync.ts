@@ -1,6 +1,7 @@
 import { configService } from './config';
 import { storage } from './storage';
 import { filterRelevantTags } from './tags-utils';
+import { searchImmichAssets } from './immich-search';
 import type { AstroImage } from '@shared/types';
 
 class ImmichSyncService {
@@ -251,14 +252,10 @@ class ImmichSyncService {
         if (album.id && (album.assetCount as number) > 0) {
           try {
             console.log(`Fetching assets from album: ${album.albumName} (${album.assetCount} assets)`);
-            const albumRes = await fetch(`${config.host}/api/albums/${album.id}`, {
-              headers: { 'X-API-Key': config.apiKey },
-            });
-            const albumData = await albumRes.json() as Record<string, unknown>;
-            if (albumData && albumData.assets && Array.isArray(albumData.assets)) {
-              allAssets.push(...(albumData.assets as Record<string, unknown>[]));
-              console.log(`Added ${(albumData.assets as unknown[]).length} assets from album ${album.albumName}`);
-            }
+            // GET /api/albums/{id} returns an empty `assets` array on Immich 3.x, so search by album instead.
+            const albumAssets = await searchImmichAssets(config, { albumIds: [album.id] });
+            allAssets.push(...albumAssets);
+            console.log(`Added ${albumAssets.length} assets from album ${album.albumName}`);
           } catch (albumError: unknown) {
             const err = albumError as Error;
             console.warn(
@@ -271,30 +268,7 @@ class ImmichSyncService {
     } else {
       // Sync all assets from library using metadata search with pagination
       console.log('Fetching all assets from Immich library via metadata search...');
-      let page = 1;
-      const pageSize = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await fetch(`${config.host}/api/search/metadata`, {
-          method: 'POST',
-          headers: { 'X-API-Key': config.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ size: pageSize, page, type: 'IMAGE' }),
-        });
-        const data = await response.json() as Record<string, unknown>;
-
-        const assets = data?.assets as Record<string, unknown> | undefined;
-        const items = (assets?.items || []) as Record<string, unknown>[];
-        allAssets.push(...items);
-        console.log(`Page ${page}: fetched ${items.length} assets (${allAssets.length} total)`);
-
-        const nextPage = assets?.nextPage;
-        if (nextPage != null && items.length > 0) {
-          page = nextPage as number;
-        } else {
-          hasMore = false;
-        }
-      }
+      allAssets = await searchImmichAssets(config);
 
       console.log(`Fetched ${allAssets.length} total assets from Immich library`);
     }
