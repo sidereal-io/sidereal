@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Run weekly at midnight on Sunday
   workflow_dispatch:      # Allow manual trigger
+    inputs:
+      dry-run:
+        description: 'Log what would be deleted without deleting'
+        type: boolean
+        default: true
 
 env:
   PACKAGE_NAME: sidereal
@@ -15,56 +20,99 @@ jobs:
       packages: write
 
     steps:
-      - name: Prune untagged images
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: ${{ env.PACKAGE_NAME }}
-          package-type: 'container'
-          min-versions-to-keep: 0
-          delete-only-untagged-versions: 'true'
-
-      - name: Prune old intermediate tags (keep releases, latest, main)
+      # Multi-arch images are an index (tagged) that points at per-platform
+      # manifests (untagged). Deleting "untagged versions" blindly deletes the
+      # platform images that release tags depend on, so untagged versions are
+      # only deleted when no kept index references them.
+      - name: Prune old intermediate tags and orphaned manifests
         uses: actions/github-script@v9
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run || 'false' }}
         with:
           script: |
-            const owner = context.repo.owner;
+            const org = context.repo.owner;
             const packageName = process.env.PACKAGE_NAME;
+            const dryRun = process.env.DRY_RUN === 'true';
+            const image = `${org}/${packageName}`.toLowerCase();
 
             // Protected tag patterns — never delete versions that carry these
             const protectedPattern = /^(v?\d+(\.\d+)*|latest|main|v0\.x)$/;
+            // Keep this many of the most recent unprotected tagged builds
+            const keepRecentTagged = 5;
+            // Leave untagged manifests younger than this alone (a build may be mid-push)
+            const minOrphanAgeMs = 24 * 60 * 60 * 1000;
 
-            // Fetch all versions (paginated)
             const versions = await github.paginate(
               github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg,
-              { package_type: 'container', package_name: packageName, org: owner, per_page: 100 }
+              { package_type: 'container', package_name: packageName, org, per_page: 100 }
             );
+            const tagsOf = v => v.metadata?.container?.tags || [];
 
-            // Partition into protected vs deletable
-            const deletable = [];
-            for (const v of versions) {
-              const tags = v.metadata?.container?.tags || [];
-              const hasProtectedTag = tags.some(t => protectedPattern.test(t));
-              if (hasProtectedTag) {
-                core.info(`KEEP  id=${v.id} tags=[${tags.join(', ')}]`);
-              } else {
-                deletable.push(v);
+            // 1. Decide which tagged versions to keep
+            const tagged = versions.filter(v => tagsOf(v).length > 0);
+            const untagged = versions.filter(v => tagsOf(v).length === 0);
+            const protectedVersions = tagged.filter(v => tagsOf(v).some(t => protectedPattern.test(t)));
+            const unprotected = tagged
+              .filter(v => !protectedVersions.includes(v))
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            const keptTagged = [...protectedVersions, ...unprotected.slice(0, keepRecentTagged)];
+            const deleteTagged = unprotected.slice(keepRecentTagged);
+
+            core.info(`Versions: ${versions.length} (tagged ${tagged.length}, untagged ${untagged.length})`);
+            for (const v of keptTagged) core.info(`KEEP   id=${v.id} tags=[${tagsOf(v).join(', ')}]`);
+
+            // 2. Collect every digest a kept index references (platform images, attestations)
+            const tokenRes = await fetch(`https://ghcr.io/token?scope=repository:${image}:pull`, {
+              headers: { Authorization: 'Basic ' + Buffer.from(`${context.actor}:${process.env.GITHUB_TOKEN}`).toString('base64') },
+            });
+            const registryToken = tokenRes.ok ? (await tokenRes.json()).token : null;
+
+            const referenced = new Set();
+            let referencesComplete = registryToken !== null;
+            for (const v of keptTagged) {
+              if (!referencesComplete) break;
+              const res = await fetch(`https://ghcr.io/v2/${image}/manifests/${v.name}`, {
+                headers: {
+                  Authorization: `Bearer ${registryToken}`,
+                  Accept: [
+                    'application/vnd.oci.image.index.v1+json',
+                    'application/vnd.docker.distribution.manifest.list.v2+json',
+                    'application/vnd.oci.image.manifest.v1+json',
+                    'application/vnd.docker.distribution.manifest.v2+json',
+                  ].join(','),
+                },
+              });
+              if (!res.ok) {
+                core.warning(`Could not read manifest ${v.name} (HTTP ${res.status}); skipping orphan cleanup`);
+                referencesComplete = false;
+                break;
               }
+              const manifest = await res.json();
+              for (const m of manifest.manifests || []) referenced.add(m.digest);
             }
 
-            // Sort deletable by created_at descending, keep the 5 most recent
-            deletable.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-            const toKeep = 5;
-            const toDelete = deletable.slice(toKeep);
+            // 3. Untagged versions are deletable only if nothing kept references them
+            let deleteUntagged = [];
+            if (referencesComplete) {
+              const now = Date.now();
+              deleteUntagged = untagged.filter(v =>
+                !referenced.has(v.name) && now - new Date(v.created_at).getTime() > minOrphanAgeMs);
+              core.info(`Referenced by kept indexes: ${referenced.size}; orphaned untagged to delete: ${deleteUntagged.length}`);
+            } else {
+              core.warning('Reference scan incomplete; no untagged versions will be deleted');
+            }
 
-            core.info(`Total versions: ${versions.length}, protected: ${versions.length - deletable.length}, deletable: ${deletable.length}, pruning: ${toDelete.length}`);
-
+            // 4. Delete (tagged indexes first; their platform manifests become orphans for next run)
+            const toDelete = [...deleteTagged, ...deleteUntagged];
+            core.info(`${dryRun ? 'DRY RUN — would delete' : 'Deleting'} ${toDelete.length} versions`);
             for (const v of toDelete) {
-              const tags = v.metadata?.container?.tags || [];
-              core.info(`DELETE id=${v.id} tags=[${tags.join(', ')}] created=${v.created_at}`);
+              core.info(`DELETE id=${v.id} ${v.name.slice(0, 19)} tags=[${tagsOf(v).join(', ')}] created=${v.created_at}`);
+              if (dryRun) continue;
               await github.rest.packages.deletePackageVersionForOrg({
                 package_type: 'container',
                 package_name: packageName,
-                org: owner,
+                org,
                 package_version_id: v.id,
               });
             }
