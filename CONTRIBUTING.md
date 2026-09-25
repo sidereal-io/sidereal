@@ -55,7 +55,7 @@ We welcome several types of contributions:
 ## 🛠️ Development Setup
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 26
 - npm 10+
 - Git
 - Docker (optional, for database)
@@ -101,6 +101,52 @@ npm run lint           # ESLint checking
 npm run format         # Prettier formatting
 npm run test           # Run tests
 ```
+
+## 🧰 Development Environment
+
+The repo pins its tools — Rust, Node, `just`, and the `openspec` CLI — through a
+Nix flake. Nix is optional. Pick either route.
+
+### With Nix
+
+1. Install [Nix](https://nixos.org/download/) with flakes enabled.
+   [Determinate's installer](https://determinate.systems/nix-installer/) enables
+   flakes by default. The plain installer at nixos.org does not: after it, add
+   this line to `/etc/nix/nix.conf` (multi-user install) or
+   `~/.config/nix/nix.conf` (single-user install), then restart the Nix daemon
+   if you have one:
+
+   ```
+   experimental-features = nix-command flakes
+   ```
+2. Install [direnv](https://direnv.net/) and run `direnv allow` in the repo root.
+   Entering the repo directory now loads the pinned shell automatically. Leaving
+   restores your previous environment.
+
+   Without direnv, run `nix develop` by hand instead. It gives the same shell for
+   that one terminal session.
+3. If you used a different major version of Node before, run `npm rebuild` once.
+   `better-sqlite3` is a native module built for one Node version, and Nix's
+   Node 26 needs its own build.
+4. Expect a full rebuild of `backend/target` the first time you run a Rust
+   command in the shell. The Rust version matches rustup's, but the compiler's
+   store path differs, so cargo's cached build data doesn't carry over.
+
+Nix sees only files tracked by git. A new file under `nix/` stays invisible to
+the shell until you run `git add` on it.
+
+Keep personal direnv settings in `.envrc.local`, next to `.envrc`. Git ignores
+it, and it loads after the pinned shell, so your settings take precedence.
+
+### Without Nix
+
+1. Install [rustup](https://rustup.rs/). It reads `backend/rust-toolchain.toml`
+   and selects the pinned Rust version on its own.
+2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
+   and run its "use" command in the repo root to select Node 26.
+3. Install [`just`](https://github.com/casey/just).
+
+Both routes pass the same `just check` gate.
 
 ## 📝 Code Standards
 

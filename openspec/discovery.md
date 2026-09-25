@@ -1,11 +1,261 @@
 # Discovery: M1 — Core spine & first plugins
 
 > Status: complete
-> Created: 2026-09-18 · Last revised: 2026-09-20
+> Created: 2026-09-18 · Last revised: 2026-09-24
 
 > Release plan produced by the discovery skill. Resume or revise by re-running the skill.
 > To build: run `/opsx:propose` and ask it to use the next unchecked story below.
 > One story = one OpenSpec change (proposal ≈ 200 words). Create one at a time.
+
+> **Two tracks, in build order.** Track E (dev environment, stories E1–E4) comes
+> first and is independent of M1. The M1 plan follows it, starting at
+> [Sources](#sources); its story numbers are unchanged.
+
+## Track E — Reproducible, agent-native dev environment
+
+### What this track delivers
+
+One reproducible development environment for this repo. It pins the Rust and Node
+toolchains and the `openspec` CLI, and it turns on automatically when you enter the
+repo, through direnv. Every agent (Claude, Codex, Gemini and others) and every
+contributor gets the same tools and the same OpenSpec skills, without having to
+work anything out.
+
+**Decisions already made** (in an explore session on 2026-09-23; don't re-open them):
+
+- **Native Nix flakes with flake-parts, not devenv.** The deciding factors:
+  - no wrapper CLI for contributors or CI to install;
+  - `nix flake check` gives CI a native place for checks;
+  - flake-parts modules can later be extracted into a shared, vendor-free flake.
+  - The accepted cost: services such as Postgres will need services-flake later,
+    which takes more setup than devenv's built-in services.
+- **Nix is optional for humans.** `backend/rust-toolchain.toml` and `.nvmrc` remain
+  the path for contributors without Nix. The environment guarantees the tools; it is
+  not the only way in.
+- **OpenSpec skills are generated, not committed.** They are generated only with
+  `--tools agents,<list>`, where the list of extra agents starts as `claude`. There
+  is no detection of which agents a contributor has installed: to add an agent,
+  add one name to the list.
+- **Authored skills live only in `.agents/skills/`.** Authored skill names must never
+  start with `openspec-`, because that prefix is reserved for generated skills.
+- **Excluded tools:** mise and devbox, because they aren't hermetic and composition
+  is weaker; flox, because it depends on the hosted FloxHub service.
+
+**What we found in the repo and CLI** (tested in scratch copies on 2026-09-23):
+
+- **Generated skills depend on a per-user global config.** `openspec init` reads
+  `~/.config/openspec/config.json` (profile, delivery, workflows). With a default
+  config it generates 6 skills instead of 8, so the same pinned CLI can produce
+  different skills on different machines. `XDG_CONFIG_HOME` redirects this config.
+- **Only the `.agents/skills/` target and the listed agents' folders are written.**
+  `openspec init --tools agents,claude` writes only `.agents/skills/openspec-*`,
+  a `.agents/skills/.openspec-target` marker, and `.claude/skills/openspec-*`. It
+  does not touch `AGENTS.md`. Running `openspec update` again leaves `git status`
+  clean.
+- **Per-agent outputs differ by one line only**, a "run this next" hint. With
+  skills-only delivery, Claude's output is byte-identical to the generic output.
+- **`openspec update` does not detect new agent folders.** It refreshes only the
+  agents that are already set up.
+- **Every `openspec update` checks the network for a newer CLI** and prints a notice.
+- **`openspec` is not pinned today.** Version 1.12.0 is installed globally through
+  npm. nixpkgs packages it (`pkgs/by-name/op/openspec`, 1.13.1 on master).
+- **The committed skills were generated with `--tools codex`.**
+  - That output contains Codex-specific hint text.
+  - `.claude/skills` is a directory symlink to `.agents/skills`.
+  - All eight generated `openspec-*` skills are committed.
+- **The Node version is already inconsistent:** `.nvmrc` says `24.10.0`, CI uses
+  `24.x`, and `AGENTS.md` says "Node 20+".
+
+**Out of scope:** Postgres and service management (deferred to M1 story 9, when it
+is needed), and the shared multi-repo "agent-conventions" flake. The environment is
+split into modules so that later extraction stays possible.
+
+### Personas
+
+- **Ada, the AI coding agent** (Claude, Codex, Gemini, and others). *Goal:* start
+  every session with the exact tools and OpenSpec skills the repo expects. *Pain
+  today:* tool versions and skill text depend on whoever's machine it is, and the
+  committed skills contain Codex-specific hints. *Success:* the same `openspec
+  --version`, the same toolchain versions, and the same skills in every session,
+  with no setup steps to work out.
+- **Nico, the contributor with Nix.** *Goal:* go from clone to `just check` with no
+  manual installs. *Pain today:* installs rustup, a Node version manager and a global
+  `openspec` by hand, and the versions drift. *Success:* running `direnv allow` once
+  is the whole setup.
+- **Dana, the contributor without Nix.** *Goal:* contribute without learning Nix.
+  *Pain today:* no clear, supported way to get the OpenSpec skills. *Success:*
+  `just skills` gives the same skills using any `openspec` install.
+- **Mo, the maintainer.** *Goal:* trust that pull requests don't commit generated
+  files and that the pinned CLI regenerates cleanly. *Pain today:* generated skills
+  are committed and nothing checks them. *Success:* a CI check fails on drift.
+
+### Journey map
+
+```
+  Clone --> Enter env --> Get skills --> Work & check --> Open PR --> Bump pins
+    |           |             |               |               |            |
+ supported     gap         partial          partial          gap          gap
+```
+
+1. **Clone.** `git clone` works today. *Supported.*
+2. **Enter env.** There is no flake and no `.envrc`; tools come from each
+   contributor's own installs. *Gap.*
+3. **Get skills.** The skills are committed, but they are Codex-flavored, depend on
+   the global config, and aren't regenerated. *Partial.*
+4. **Work & check.** `just check` exists, but its tool versions aren't pinned
+   (`justfile`, `backend/rust-toolchain.toml` for Rust only). *Partial.*
+5. **Open PR.** CI checks the code, but nothing checks the skills. *Gap.*
+6. **Bump pins.** There is no lock file and no update routine for the environment.
+   *Gap.*
+
+### MoSCoW
+
+**Must**
+
+- A pinned dev shell that turns on automatically, for Ada and Nico (journey stages 2
+  and 4).
+- Reproducible skill generation through `just skills`: a repo-owned OpenSpec config,
+  the fixed agent list, and authored skills linked into each listed agent's folder.
+  This serves Ada and Dana (stage 3).
+- Generated files are gitignored and removed from git, and the directory symlink is
+  gone. Mo needs this so generated files stay out of commits (stage 3).
+- Skills are generated when you enter the shell, with the update-check notice turned
+  off. Ada and Nico get fresh skills without a manual step (stage 3).
+- A CI check for skills drift, for Mo (stage 5).
+
+**Should**
+
+- Documentation in `AGENTS.md` and `CONTRIBUTING.md`: the Nix and non-Nix paths,
+  the reserved `openspec-` prefix, and how to add an agent. Each story updates the
+  docs it affects.
+
+**Could**
+
+- Scheduled `nix flake update` pull requests for Mo (stage 6).
+- A Cachix binary cache, only once we build our own derivations. Everything in this
+  plan is prebuilt on cache.nixos.org.
+- Moving all CI jobs onto `nix develop`.
+
+**Won't (this track)**
+
+- Postgres or services; this belongs to M1 story 9.
+- The shared agent-conventions flake; this track only keeps the modules separate.
+- Detecting installed agents: generated files are gitignored and cheap, and
+  detection would make output differ between machines.
+- Requiring Nix: that would add friction for contributors who don't use it.
+- devenv, mise, devbox and flox: see the decisions above.
+
+### Stories
+
+- [x] E1. `nix-dev-shell` — enter the repo and get pinned Rust, Node, `just` and `openspec` ⭐ walking skeleton
+  - **Persona served**: Nico, Ada
+  - **Journey segment**: Enter env and Work & check
+  - **MoSCoW**: Must
+  - **Why this story / why now**: this is the thinnest end-to-end path. After a clone,
+    `direnv allow` gives a shell where `just check` passes with pinned tools. All
+    other stories build on it.
+  - **Depends on**: nothing
+  - **Scope**:
+    - In: a `flake.nix` using flake-parts, with separate modules under `nix/` (one
+      for toolchains, one for openspec).
+    - In: Rust from rust-overlay, reading `backend/rust-toolchain.toml` so that
+      file stays the single source of truth.
+    - In: `nodejs_26` and `just`.
+    - In: `openspec` from pinned nixpkgs, or `overrideAttrs` for an exact version.
+    - In: `.envrc` with `use flake` for nix-direnv, and `flake.lock`.
+    - In: `AGENTS.md` changes from "Node 20+" to 26, and it describes the optional
+      Nix path.
+    - Out: skill generation (E2 and E3) and any CI change beyond keeping
+      every workflow's Node version in sync with the pin (E4).
+  - **Relevant code**: `justfile`; `backend/rust-toolchain.toml`; `.nvmrc`;
+    `package.json`; `AGENTS.md`; `CONTRIBUTING.md`; `.gitignore` (add `.direnv/`);
+    `.github/workflows/*.yml` (every file with a Node version); `Dockerfile`
+  - **Added**: 2026-09-23
+  - **Change**: `nix-dev-shell` (archived)
+
+- [ ] E2. `generated-agent-skills` — `just skills` makes identical skills on every machine, and git holds only authored skills
+  - **Persona served**: Dana, Ada, Mo
+  - **Journey segment**: Get skills
+  - **MoSCoW**: Must
+  - **Why this story / why now**: this fixes the global-config leak and the Codex
+    hint text. It also removes generated files from git. It works without Nix, so
+    Dana is covered too.
+  - **Depends on**: nothing (it can run in parallel with E1)
+  - **Scope**:
+    - In: a repo-owned OpenSpec config with 8 workflows and skills-only delivery.
+      `just skills` points `XDG_CONFIG_HOME` at it and turns telemetry off.
+    - In: `just skills` runs `openspec init --tools agents,<list>` (the list starts
+      as `claude`) and links each authored skill into each listed agent's folder.
+    - In: a `.gitignore` covering generated skills in every agent folder and the
+      authored-skill links. Generated `openspec-*` skills are removed from git, and
+      the `.claude/skills` directory symlink is replaced by a real folder.
+    - In: `AGENTS.md` and `CONTRIBUTING.md` document `just skills`, the reserved
+      prefix, and how to add an agent.
+    - Out: running it automatically when entering the shell (E3).
+  - **Relevant code**: `.agents/skills/*` (authored: `critique`, `grill-me`,
+    `choose-an-adversary`); `.agents/skills/.openspec-target`; `.claude/skills`
+    (symlink); `openspec/config.yaml`; `justfile`; `.gitignore`
+  - **Added**: 2026-09-23
+  - **Change**: _not yet proposed_
+
+- [ ] E3. `skills-on-env-enter` — entering the shell refreshes the skills quietly and offline
+  - **Persona served**: Ada, Nico
+  - **Journey segment**: Enter env and Get skills
+  - **MoSCoW**: Must
+  - **Why this story / why now**: agents shouldn't need to know that they have to
+    run `just skills`. This story joins E1 and E2 together.
+  - **Depends on**: E1, E2
+  - **Scope**:
+    - In: a shell hook in the openspec flake module runs `just skills`, but only
+      when the CLI version or the `openspec/` config changes (tracked by a stamp
+      file).
+    - In: the hook never blocks entering the shell.
+    - In: turn off OpenSpec's update-check notice and network call in the
+      environment. If no switch exists, use a timeout or report it upstream.
+    - Out: CI (E4).
+  - **Relevant code**: the openspec flake module from E1; `just skills` from E2
+  - **Added**: 2026-09-23
+  - **Change**: _not yet proposed_
+
+- [ ] E4. `skills-drift-ci` — CI proves the pinned CLI regenerates the skills cleanly
+  - **Persona served**: Mo
+  - **Journey segment**: Open PR
+  - **MoSCoW**: Must
+  - **Why this story / why now**: without this check, generated files can slip back
+    into commits and pins can drift unnoticed.
+  - **Depends on**: E1, E2
+  - **Scope**:
+    - In: a check runs inside the Nix shell, exposed through `nix flake check` and
+      run by a new CI job. It passes only when:
+      - `just skills` on a clean checkout leaves `git status --porcelain` empty;
+      - every generated `SKILL.md` has `generatedBy` equal to `openspec --version`;
+      - `git ls-files` shows no tracked `openspec-*` skill.
+    - In: Nix is installed in CI with the Determinate installer, with no Cachix.
+    - Out: moving the existing `ci.yml` and `backend-rs.yml` jobs onto Nix
+      (Could); scheduled flake updates (Could).
+  - **Relevant code**: `.github/workflows/ci.yml`; `.github/workflows/backend-rs.yml`
+    (the pattern to follow); the check module in the flake from E1
+  - **Added**: 2026-09-23
+  - **Change**: _not yet proposed_
+
+### Open questions (Track E)
+
+- **Which switch turns off OpenSpec's update check?** Not yet found. E3 depends on it.
+- **How should `openspec` be pinned?** Follow the nixpkgs version (1.13.1 on master)
+  or override to an exact version? This decides whether we ever build it ourselves,
+  and so whether Cachix matters.
+- **Which popular agents read `.agents/skills` natively?** Codex and Gemini do. We
+  believe Copilot, Cursor and OpenCode do, but haven't verified it. The answer
+  decides whether the agent list grows beyond `claude`.
+- **Does each listed agent load a symlinked skill folder?** Check this once per agent.
+- **What is the generic `.gitignore` rule** for authored-skill links in any listed
+  agent's folder, so that adding an agent needs no `.gitignore` change?
+- **Which platforms does the flake support?** Linux only, or macOS (`darwin`) too?
+- **The maintainer's own setup:** global `openspec-*` and `opsx:*` skills in
+  `~/.claude` duplicate the repo's skills. Remove them after E3 ships; we'll note
+  this for contributors.
+
+---
 
 ## Sources
 
@@ -271,3 +521,6 @@ proven early (story 2) and then thickened, rather than 8 layers before anything 
 - 2026-09-18 — Initial plan from issue #217. Phase 1 (ingest) captured: scope restated, goals/non-goals lifted from the issue, open questions surfaced from Mike's review comment.
 - 2026-09-20 — Phases 2–3 confirmed: three personas (Pat/Nova/Sam) and their journey maps, annotated against the M0 backend.
 - 2026-09-20 — Phases 4–6 confirmed and plan finalized. MoSCoW set (integrity reconciliation moved Must→Should per product owner). Issue #217's horizontal steps 0–10 re-cut into 10 vertical stories: skeleton (story 2) proves the spine, story 3 is the contract-meets-reality slice, kept whole. Three of Mike's open questions resolved into story scope (adopt→story 8, store-orphan sweep→story 2, edit-in-place→story 5 limitation).
+- 2026-09-23 — Revision: added Track E (reproducible, agent-native dev environment), which comes before M1 in build order. It came from an explore session that chose native Nix flakes with flake-parts over devenv, kept Nix optional, and made OpenSpec skills generated rather than committed (`--tools agents,claude`, no detection). Four stories, E1–E4, with E1 as the walking skeleton. M1 stories and numbering are unchanged, and no M1 story has changed state (no active or archived changes).
+- 2026-09-24 — Revision: story E1's scope bullets updated from Node 24 to Node 26, to match the `nix-dev-shell` change (openspec/changes/nix-dev-shell/), which moved its target Node version after propose and review found E1's plan already implemented and approved. E1's "Out" bullet now also carves out keeping CI's `node-version` in sync with the pin, matching that change's design.md. Found and fixed by `/opsx:verify` catching the drift between this file and the change it seeded.
+- 2026-09-24 — E1 (`nix-dev-shell`) archived after a 13-round review (10 rounds before archive; an external PR review then found 8 more findings — 6 real, 1 already fixed, 1 refuted with direct evidence — which reopened and re-closed the change through 3 more rounds) and 43/43 tasks verified. Delivered scope widened twice past what E1 originally scoped: every CI workflow's Node version, not just `ci.yml`'s, and the production `Dockerfile`. CI workflows now read `.nvmrc` through `node-version-file` rather than hardcoding the version, cutting the hand-synced locations from seven to three. `openspec/specs/dev-environment/spec.md` synced (11 requirements). E1 checked off; E2–E4 remain unstarted and unchanged. No M1 story's state changed.

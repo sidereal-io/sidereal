@@ -23,6 +23,8 @@ The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/de
 
 **Run both stacks from the root `justfile`.** It is the single front door: `just dev` starts the Rust backend and the Vite frontend together, and `just --list` describes every recipe.
 
+**An optional, pinned Nix shell provides every tool both stacks need**, including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
+
 **Where to read more:**
 
 - **v2 backend layout, prerequisites, and commands** — [`backend/README.md`](backend/README.md).
@@ -60,7 +62,7 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
 - Planning uses **OpenSpec**: in-flight work lives under `openspec/changes/`;
   durable specs under `openspec/specs/`; decision records under `docs/decisions/`. Use
   the `opsx:*` skills (propose → apply → verify → archive).
-- **Toolchain is per stack.** v0.10.x: Node 20+, npm, Vite/React, Hono, Drizzle —
+- **Toolchain is per stack.** v0.10.x: Node 26, npm, Vite/React, Hono, Drizzle —
   gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.
   v2: cargo workspace under `backend/`, orchestrated by the root `justfile` — gate with
   **`just check`** (fmt + clippy `-D warnings` + tests + arch-boundary lint) after every
