@@ -61,7 +61,11 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
 
 - Planning uses **OpenSpec**: in-flight work lives under `openspec/changes/`;
   durable specs under `openspec/specs/`; decision records under `docs/decisions/`. Use
-  the `opsx:*` skills (propose → apply → verify → archive).
+  the `opsx:*` skills (propose → apply → verify → archive). The product input (a
+  milestone issue such as #217, or an ADR) holds intent; `openspec/discovery.md`
+  holds personas and journeys; the backlog is GitHub issues.
+- OpenSpec changes carry product behavior. Repo maintenance goes through an ordinary
+  branch and PR with Conventional Commits.
 - **Toolchain is per stack.** v0.10.x: Node 26, npm, Vite/React, Hono, Drizzle —
   gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.
   v2: cargo workspace under `backend/`, orchestrated by the root `justfile` — gate with
@@ -77,16 +81,17 @@ One branch and one pull request carry a change through its whole lifecycle —
 propose, apply, verify, archive — and merge once. There is no "cross `main`
 between phases" step.
 
-- **Branch per change.** One OpenSpec change (one discovery story) = one branch =
+- **Branch per change.** One OpenSpec change (one backlog issue) = one branch =
   one PR. Dependent stories **stack**: branch off the parent's branch and target
   its PR; independent stories branch off `main`.
 - **A commit per unit of work.** Each artifact (proposal, design, specs, tasks) is
   its own `docs:` commit; each implementation task is its own commit with its real
   type (`feat:`/`fix:`/`refactor:`/`test:`); the archive is its own `chore:` commit.
-- **Draft until archived.** Open the PR as a draft at propose. Run propose → apply →
-  verify → archive all on the branch; `archive` moves the change to
-  `openspec/changes/archive/` and syncs delta specs into `openspec/specs/`. Flip the
-  PR to ready when the archive commit lands.
+- **Draft until archived.** Open the PR as a draft at propose, and assign its issue
+  (`gh issue edit <n> --add-assignee @me`); an assigned open issue is in progress.
+  Run propose → apply → verify → archive all on the branch; `archive` moves the
+  change to `openspec/changes/archive/` and syncs delta specs into `openspec/specs/`.
+  Flip the PR to ready when the archive commit lands.
 - **User owns the merge.** The agent never merges a PR unless explicitly asks and 
   confirmed. Stacks merge bottom-up: parent to `main` first, then retarget and merge 
   each child.
@@ -94,11 +99,10 @@ between phases" step.
   archive commit — this restores the change under `openspec/changes/` and unwinds the
   spec sync. Make the fixes, re-archive as the last commit, and flip ready again. A
   rejected PR is just closed and its branch deleted; `main` stays clean.
-- **Issue provenance.** When a change originates from a GitHub issue, discovery
-  records `Origin: #<issue>` on the story and propose carries it into `proposal.md`.
-  A PR that fully resolves a single issue says `Closes #<issue>`; a PR that is one of
-  many stories under an epic or milestone issue says `Part of #<issue>`, and that
-  parent issue is closed only once `discovery.md` shows all its stories archived.
+- **Every story is an issue.** Its body is the story packet, and the story's PR
+  says `Closes #<issue>`. An epic is a parent issue, labeled `epic`, with its stories
+  as sub-issues; close it once they are all closed. Dependencies are "blocked by"
+  links between issues.
 
 ## Writing document artifacts — plain language
 
