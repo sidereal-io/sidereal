@@ -1,18 +1,16 @@
 # Sidereal Architecture
 
-**Architecture reference:** current · **Open architecture decisions:** [ADR-012](../decisions/ADR-012-embedded-scripting-engine.md) (scripting engine, pending spike) · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Last updated:** 2026-08-26
+**How to use this map.** This file owns the **architectural map** — the north star and a glossary of
+the load-bearing concepts — and points to, without restating, the documents that own each thing:
 
-> **How to use this map.** This file owns the **architectural map** — the north star and a glossary of
-> the load-bearing concepts — and points to, without restating, the documents that own each thing:
->
-> - **Why each decision was made** → the ADRs in [`docs/decisions/`](../decisions/); the
->   [decision index](#architecture-decisions) below is their canonical status.
-> - **The plan** — milestones, sequencing → [roadmap.md](roadmap.md) and [RFC #213](https://github.com/sidereal-io/sidereal/issues/213).
-> - **Cutover execution** — checklist, rollback → [migration.md](migration.md).
-> - **Current v0.10.x behaviour** → the [analysis package](https://github.com/sidereal-io/sidereal-analysis) — an inventory, not a compatibility contract.
->
-> Where the decision index marks an ADR **Proposed**, the approach here is a leaning, not a commitment.
-> Change this map through an ADR, then update it in the same PR.
+- **Why each decision was made** → the ADRs in [`docs/decisions/`](./decisions/); the
+  [decision index](#architecture-decisions) below is their canonical status.
+- **The plan** — milestones, sequencing → [migration.md](../openspec/migration.md)
+- **Cutover execution** — checklist, rollback → [migration.md](../openspec/migration.md).
+- **Current v0.10.x behaviour** → the [analysis package](https://github.com/sidereal-io/sidereal-analysis) — an inventory, not a compatibility contract.
+
+Where the decision index marks an ADR **Proposed**, the approach here is a leaning, not a commitment.
+Change this map through an ADR, then update it in the same PR.
 
 ## Where we are
 
@@ -35,7 +33,7 @@ What this model **cannot** express, and v2 must:
 
 **Product:** an astrophotography system that manages photos at *every* stage — calibration frames, raw
 lights, stacked results, annotated finals. **Codebase:** a
-[Rust backend](../decisions/ADR-009-backend-language.md), a plugin system for input/output formats and
+[Rust backend](./decisions/ADR-009-backend-language.md), a plugin system for input/output formats and
 operations, and a TypeScript/React frontend. Three commitments shape everything below:
 
 1. **Sidereal becomes the system of record for files on disk** — it renames, moves, and organises them.
@@ -55,12 +53,12 @@ Seven load-bearing additions that do not exist today; everything else in v2 is a
 **Asset** — one logical file. Stable opaque identity, independent of path, so the system reorganising a
 tree never destroys its own references. Carries a small core-owned envelope (`id`, `kind`, `name`) plus
 typed [facets](#core-and-domain-packs), and one or more immutable `AssetVersion` records.
-→ [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md),
-[ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)
+→ [ADR-003](./decisions/ADR-003-asset-identity-and-content-revisions.md),
+[ADR-008](./decisions/ADR-008-facet-schema-and-write-authority.md)
 
 **AssetVersion** — an exact byte state, content-addressed by hash. A rename/move is a path event and
 creates no version; any byte change creates a new immutable version. Lineage and Operation Runs point
-at versions, never at the mutable Asset. → [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md)
+at versions, never at the mutable Asset. → [ADR-003](./decisions/ADR-003-asset-identity-and-content-revisions.md)
 
 **Collection** — a generic grouping (a session, an album). Membership is explicit or defined by a
 Selector. Processing binds an immutable membership snapshot, so a Collection changing underneath a run
@@ -70,11 +68,11 @@ cannot alter its inputs.
 (boolean composition + existence/equality/set/typed-facet comparisons) over `kind`, source, facets, and
 membership — data, not plugin code, so matching stays indexable and explainable. One primitive answers
 three questions: which goals apply to a subject, which Operator can satisfy a goal, and which assets are
-members of a dynamic Collection. → [ADR-006](../decisions/ADR-006-rule-engine-deferral.md)
+members of a dynamic Collection. → [ADR-006](./decisions/ADR-006-rule-engine-deferral.md)
 
 **Lineage** — directed edges between immutable AssetVersions recording exactly which bytes derived from
 which (`stacked ← 187 lights + master_dark_v3 + master_flat_Ha`). The single highest-value thing v0.10.x
-cannot do. → [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md)
+cannot do. → [ADR-003](./decisions/ADR-003-asset-identity-and-content-revisions.md)
 
 **Processing Goal** — a durable statement of an outcome that must become true for a version or snapshot
 (`metadata.extracted`, `astro.plate_solved`, `published:immich`). A versioned **Processing Policy** uses
@@ -82,12 +80,12 @@ a Selector to declare desired outcomes; it does not prescribe an Operator sequen
 reconciler compares desired outcomes with recorded state and dispatches any eligible Operator, so only
 real data dependencies impose ordering and missed events recover on a sweep. An unsatisfied goal is
 always inspectable (`pending`/`running`/`blocked`/`needs_attention`) — no pipeline cursor to get
-opaquely stuck. → [ADR-006](../decisions/ADR-006-rule-engine-deferral.md)
+opaquely stuck. → [ADR-006](./decisions/ADR-006-rule-engine-deferral.md)
 
 **Operation Run** — the exact record of one Operator attempt: which Operator/version ran, the goals it
 addressed, input and output versions, params, idempotency key, side-effect state, status, and logs.
 Re-run eligibility follows the Operator's side-effect class; an ambiguous external publish is not blindly
-replayed. → [ADR-006](../decisions/ADR-006-rule-engine-deferral.md)
+replayed. → [ADR-006](./decisions/ADR-006-rule-engine-deferral.md)
 
 How they relate (reference, not a flow):
 
@@ -125,9 +123,9 @@ All profiles implement the same semantic contract and conformance suite; only th
 (built-in Rust, embedded script, or external provider), and every profile receives the same
 capability-limited `AssetContext` — no filesystem back door. The full contract is in
 **[plugins.md](plugins.md)**; the execution profiles and trust model are
-[ADR-001](../decisions/ADR-001-plugin-boundary.md) and
-[ADR-007](../decisions/ADR-007-security-and-plugin-trust.md), and the embedded-script engine is
-[ADR-012](../decisions/ADR-012-embedded-scripting-engine.md).
+[ADR-001](./decisions/ADR-001-plugin-boundary.md) and
+[ADR-007](./decisions/ADR-007-security-and-plugin-trust.md), and the embedded-script engine is
+[ADR-012](./decisions/ADR-012-embedded-scripting-engine.md).
 
 ## Core and domain packs
 
@@ -135,33 +133,33 @@ capability-limited `AssetContext` — no filesystem back door. The full contract
 Collection, Selector, Lineage, Processing Goal, Operation Run, plugin/policy registries, storage, search,
 job queue, web shell). **Domain packs** are plugins: the astro pack contributes the
 `light/dark/flat/master/stacked` vocabulary, FITS/XISF readers, OpenNGC catalog, plate solving, sky map,
-equipment, acquisitions, and visibility math. → [ADR-002](../decisions/ADR-002-core-domain-pack-split.md)
+equipment, acquisitions, and visibility math. → [ADR-002](./decisions/ADR-002-core-domain-pack-split.md)
 
 The mechanism is **namespaced, searchable facets** (`astro.fits.ccd_temp`, `astro.solve.ra`,
 `photo.exif.iso`). Core stores, indexes, and queries facets without knowing what any of them mean; a pack
 owns each schema, and compatible producers get write grants with retained provenance. This is what makes
 calibration-master matching — "a master dark for this camera at −10 °C, gain 100, 300 s, bin 1×1" — a
-facet query rather than bespoke schema. → [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)
+facet query rather than bespoke schema. → [ADR-008](./decisions/ADR-008-facet-schema-and-write-authority.md)
 
 ## Architecture decisions
 
-Each decision has an ADR in [`docs/decisions/`](../decisions/) with the full context, options, and
+Each decision has an ADR in [`docs/decisions/`](./decisions/) with the full context, options, and
 rationale. All are **Accepted** except ADR-012 (scripting engine), which stays Proposed pending its spike.
 
 | ADR | Decision | Status |
 |---|---|---|
-| [001](../decisions/ADR-001-plugin-boundary.md) | Plugin contract & execution profiles | Accepted |
-| [002](../decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
-| [003](../decisions/ADR-003-asset-identity-and-content-revisions.md) | Asset identity & content revisions | Accepted |
-| [004](../decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
-| [005](../decisions/ADR-005-frontend-continuity.md) | Frontend continuity | Accepted (Option C — new shell, port components) |
-| [006](../decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
-| [007](../decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
-| [008](../decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
-| [009](../decisions/ADR-009-backend-language.md) | Backend language & runtime | Accepted (Rust) |
-| [010](../decisions/ADR-010-migration-strategy.md) | Migration strategy | Accepted (clean break + one-way importer) |
-| [011](../decisions/ADR-011-storage-tree-layout.md) | Storage tree layout & cross-filesystem moves | Accepted (Option B — BLAKE3 internal object store) |
-| [012](../decisions/ADR-012-embedded-scripting-engine.md) | Embedded scripting engine | **Proposed** — Rhai, pending spike |
+| [001](./decisions/ADR-001-plugin-boundary.md) | Plugin contract & execution profiles | Accepted |
+| [002](./decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
+| [003](./decisions/ADR-003-asset-identity-and-content-revisions.md) | Asset identity & content revisions | Accepted |
+| [004](./decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
+| [005](./decisions/ADR-005-frontend-continuity.md) | Frontend continuity | Accepted (Option C — new shell, port components) |
+| [006](./decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
+| [007](./decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
+| [008](./decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
+| [009](./decisions/ADR-009-backend-language.md) | Backend language & runtime | Accepted (Rust) |
+| [010](./decisions/ADR-010-migration-strategy.md) | Migration strategy | Accepted (clean break + one-way importer) |
+| [011](./decisions/ADR-011-storage-tree-layout.md) | Storage tree layout & cross-filesystem moves | Accepted (Option B — BLAKE3 internal object store) |
+| [012](./decisions/ADR-012-embedded-scripting-engine.md) | Embedded scripting engine | **Proposed** — Rhai, pending spike |
 
 **ADR-001 and ADR-007 are coupled** — the execution profile says how code runs; grants and
 `AssetContext` say what it may do. Neither is complete without the other.
@@ -174,20 +172,9 @@ a contested *why*, promote it to an ADR and it becomes a row above.
 
 - **The frontend stays TypeScript/React** through the backend's move to Rust — the deliberate continuity
   that keeps current contributors productive. (How it starts — a new shell with ported components — is
-  settled in [ADR-005](../decisions/ADR-005-frontend-continuity.md).)
+  settled in [ADR-005](./decisions/ADR-005-frontend-continuity.md).)
 - **Derived values are always computed, never stored** — integration totals and the like are recomputed
   from member assets and their facets, never denormalised onto a row that can drift (a v0.10.x mistake
   we don't repeat).
 - **A plugin may implement multiple capabilities** — Immich is both a Source and a Sink; the
   registration mechanism is one.
-
-## Build shape
-
-Critical path is **M0 → M1 → M2**; if the plugin interface is wrong, we find out at M2 rather than M6.
-The milestone map, exit criteria, and parallelism are in **[roadmap.md](roadmap.md)**; milestones are
-tracked as sub-issues under [#213](https://github.com/sidereal-io/sidereal/issues/213).
-
-## Migration & cutover
-
-Decision in [ADR-010](../decisions/ADR-010-migration-strategy.md); the cutover gate — checklist,
-compatibility breaks, filesystem-safety invariants, and rollback — in **[migration.md](migration.md)**.
