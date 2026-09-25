@@ -1,9 +1,16 @@
 schema: spec-driven-review
 
 context: |
-  Backlog: openspec/discovery.md is the release plan. When asked to propose the
-  next change without a specific request, pick the next unchecked story in
-  discovery.md and use its story packet as the input. One story per change.
+  The backlog is GitHub issues, each with its MoSCoW priority; openspec/discovery.md
+  holds personas and journeys. An issue marked "Not yet a story" must be cut into a
+  story packet before it is proposed. When asked to propose the next change without
+  a specific request, list open issues with
+  `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,subIssuesSummary`.
+  Skip epic parents (any issue labeled `epic` or with sub-issues), issues with an
+  open blocker, and assigned issues (they are in progress). Take the lowest number
+  and read its story packet with `gh issue view <n> --json body`. When proposing,
+  assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
+  say `Closes #<n>`. One story per change.
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
