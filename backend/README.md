@@ -2,7 +2,7 @@
 
 The Rust backend for Sidereal v2, a cargo workspace living as a sibling subtree
 alongside the existing TypeScript stack (`apps/`, `packages/`). See
-[`docs/architecture/README.md`](../docs/architecture/README.md) and
+[`docs/architecture.md`](../docs/architecture.md) and
 [ADR-002](../docs/decisions/ADR-002-core-domain-pack-split.md) for the design.
 
 ## Crate layout

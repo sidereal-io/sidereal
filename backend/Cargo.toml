@@ -1,5 +1,5 @@
 # Sidereal v2 backend — cargo workspace.
-# Crate seams mirror the architecture (see docs/architecture/README.md and ADR-002):
+# Crate seams mirror the architecture (see docs/architecture.md and ADR-002):
 #   plugin-abi  — public contracts a third-party pack would also code against
 #   core        — domain-agnostic engine, built on plugin-abi
 #   packs/astro — first-party pack; depends on plugin-abi ONLY, never core internals

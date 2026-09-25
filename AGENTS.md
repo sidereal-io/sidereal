@@ -28,7 +28,7 @@ The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/de
 **Where to read more:**
 
 - **v2 backend layout, prerequisites, and commands** — [`backend/README.md`](backend/README.md).
-- **v2 target architecture and milestone plan** — [`docs/architecture/README.md`](docs/architecture/README.md) and [`roadmap.md`](docs/architecture/roadmap.md).
+- **v2 target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
 - **The rest of this file** — describes the v0.10.x stack, plus the v2 constraints and cross-stack workflow in the sections below.
 
 ## Durable constraints (v2 backend)
@@ -100,7 +100,7 @@ between phases" step.
   spec sync. Make the fixes, re-archive as the last commit, and flip ready again. A
   rejected PR is just closed and its branch deleted; `main` stays clean.
 - **Every story is an issue.** Its body is the story packet, and the story's PR
-  says `Closes #<issue>`. An epic is a parent issue, labeled `epic`, with its stories
+  says `Closes #<issue>`. An epic is a parent issue, labeled `kind/epic`, with its stories
   as sub-issues; close it once they are all closed. Dependencies are "blocked by"
   links between issues.
 
