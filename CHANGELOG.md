@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Docker images**: The weekly prune job deleted the platform images behind the `latest` and `0.10.x` tags, so `docker pull` failed with `manifest unknown`. The job now keeps any manifest a kept tag references.
+- **Image location**: The compose file, README, and Unraid template now point to `ghcr.io/sidereal-io/sidereal` (#256).
+
+### Security
+- **Docker image**: Replaced the pinned npm 11.14.1 install, which now downgraded npm, with an upgrade to the newest npm 11.x. This patches npm's bundled `tar`, `brace-expansion`, and `ip-address`. The image has no fixable high or critical Trivy findings.
+
+### Changed
+- **Dependencies**: Brought dependencies up to date with `main`, including majors: TypeScript 6 → 7, better-sqlite3 12 → 13, framer-motion 12 → 13, and nanoid 5 → 6.
+- **TypeScript**: Removed `baseUrl` from `tsconfig.json`; TypeScript 7 no longer supports it, and `paths` resolve without it.
+- **Docker build**: The builder stage installs `python3`, `make`, and `g++` so native modules without a prebuilt binary compile.
+- **CI**: Typecheck, tests, build, Docker lint, and image builds now run for `v0.x` pushes and pull requests. Branch pushes publish a `v0.x` image tag; `latest` still comes only from releases.
+
 ## [0.10.1] - 2026-06-10
 
 ### Security
