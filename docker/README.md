@@ -56,7 +56,7 @@ docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
 ### Step 1: Install Sidereal
 1. Go to Docker tab in UnRAID
 2. Click "Add Container"
-3. Use template URL: `https://raw.githubusercontent.com/mstelz/Sidereal/main/docker/unraid-templates/sidereal.xml`
+3. Use template URL: `https://raw.githubusercontent.com/sidereal-io/sidereal/main/docker/unraid-templates/sidereal.xml`
 4. Optionally add your Immich and Astrometry.net credentials
 5. Apply and start container
 
@@ -155,7 +155,7 @@ docker compose down
 docker run --rm \
   -v sidereal-config:/app/config \
   --network sidereal-network \
-  ghcr.io/mstelz/sidereal:latest \
+  ghcr.io/sidereal-io/sidereal:latest \
   node /app/dist/tools/scripts/migrate-db.js \
     --from postgresql://sidereal:password@sidereal-db:5432/sidereal \
     --to sqlite:/app/config/sidereal.db
@@ -173,7 +173,7 @@ docker compose down
 docker run --rm \
   -v sidereal-config:/app/config \
   --network sidereal-network \
-  ghcr.io/mstelz/sidereal:latest \
+  ghcr.io/sidereal-io/sidereal:latest \
   node /app/dist/tools/scripts/migrate-db.js \
     --from sqlite:/app/config/sidereal.db \
     --to postgresql://sidereal:password@sidereal-db:5432/sidereal

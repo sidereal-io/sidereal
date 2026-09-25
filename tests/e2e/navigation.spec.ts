@@ -103,7 +103,7 @@ test.describe('Header - Consistent Across Pages', () => {
 
     test(`should display GitHub link on ${p.name} page`, async ({ page }) => {
       await page.goto(p.url);
-      await expect(page.locator('a[href="https://github.com/mstelz/sidereal"]')).toBeVisible();
+      await expect(page.locator('a[href="https://github.com/sidereal-io/sidereal"]')).toBeVisible();
     });
   }
 });
