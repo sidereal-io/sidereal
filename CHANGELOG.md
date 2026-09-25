@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dependencies**: Rolled up pending Dependabot updates, including majors: TypeScript 6 → 7, better-sqlite3 12 → 13, framer-motion 12 → 13, and nanoid 5 → 6.
 - **TypeScript**: Removed `baseUrl` from `tsconfig.json`; TypeScript 7 no longer supports it, and `paths` resolve without it.
 - **Docker build**: The builder stage installs `python3`, `make`, and `g++` so native modules without a prebuilt binary compile.
-- **CI**: Dockerfile lint passes again, `hadolint-action` is 3.5.0, the image-prune job uses the organization package API, and the Docker build test also runs on pull requests into `v0.x`.
+- **CI**: Dockerfile lint passes again, `hadolint-action` is 3.5.0, and the Docker build test also runs on pull requests into `v0.x`.
 
 ## [0.10.1] - 2026-06-10
 
