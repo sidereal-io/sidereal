@@ -56,7 +56,7 @@ At the start:
 2. Read `<root.path>/openspec/config.yaml` (or `config.yml`) if it exists. Its `context` and `rules` are constraints for you to follow, not content to reproduce.
 3. Run `gh auth status` and `gh repo view --json nameWithOwner,url`. Both must succeed.
 4. Pick the mode, first match wins:
-   - **An open parent issue says `Discovery status: in-progress`** (`gh issue list --state open --search '"Discovery status: in-progress" in:body' --json number,title,body`) → Resume mode (below).
+   - **An open parent issue says `Discovery status: in-progress`** (`gh issue list --state open --search '"Discovery status: in-progress" in:body' --json number,title,body`) → Resume mode (below). If more than one does, list them and ask the user which to resume, or whether to start a new run; never pick one yourself.
    - **`<root.path>/openspec/discovery.md` doesn't exist** → run every phase.
    - **Otherwise** → Revision mode (below).
 
@@ -66,7 +66,7 @@ If the openspec CLI is unavailable, no OpenSpec root is found, or gh cannot reac
 
 ## The Phases
 
-**Checkpoint every phase.** At the end of each phase, once the user confirms it, write that phase's result and set the parent issue's status line to the next phase (`personas → journey-map → moscow → stories`). Personas and the journey map go in `discovery.md`; everything else goes in the parent issue. The parent issue and `discovery.md` are the resume point — a future session with none of this conversation's context must be able to pick up exactly where this one stopped.
+**Checkpoint every phase.** At the end of each phase, once the user confirms it, write that phase's result and set the parent issue's status line to the next phase this run will do (`personas → journey-map → moscow → stories`). A revision run that skips Personas and the Journey Map goes from Ingest straight to `moscow`. Personas and the journey map go in `discovery.md`; everything else goes in the parent issue. The parent issue and `discovery.md` are the resume point — a future session with none of this conversation's context must be able to pick up exactly where this one stopped.
 
 ### Phase 1: Ingest
 
@@ -164,7 +164,7 @@ OpenSpec injects `context` into every artifact's instructions, so every future p
 
 ## Resume Mode
 
-When an open parent issue says `Discovery status: in-progress`:
+When an open parent issue says `Discovery status: in-progress` (or the user picked one of several):
 
 1. **Read it and `discovery.md`.** The status line records the next phase; the sections already present are confirmed work.
 2. **Restate where discovery stopped** — a one-paragraph summary of what the parent issue and map already capture — and confirm with the user.
