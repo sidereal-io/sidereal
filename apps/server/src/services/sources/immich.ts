@@ -65,6 +65,28 @@ export class ImmichImageSource implements ImageSourcePlugin {
     return { bytes: Buffer.from(arrayBuffer), filename };
   }
 
+  private async searchAssets(config: { host: string; apiKey: string }, filter: Record<string, unknown>): Promise<Record<string, unknown>[]> {
+    const results: Record<string, unknown>[] = [];
+    let page = 1;
+    const pageSize = 1000;
+    let hasMore = true;
+    while (hasMore) {
+      const response = await this.fetchFn(`${config.host}/api/search/metadata`, {
+        method: 'POST',
+        headers: { 'X-API-Key': config.apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...filter, size: pageSize, page, type: 'IMAGE' }),
+      });
+      const data = (await response.json()) as Record<string, unknown>;
+      const assets = data?.assets as Record<string, unknown> | undefined;
+      const items = (assets?.items || []) as Record<string, unknown>[];
+      results.push(...items);
+      const nextPage = assets?.nextPage;
+      if (nextPage != null && items.length > 0) page = Number(nextPage);
+      else hasMore = false;
+    }
+    return results;
+  }
+
   async sync(): Promise<{ syncedCount: number; removedCount: number; message: string }> {
     const config = await this.cfg.getImmichConfig();
     if (!config.host || !config.apiKey) {
@@ -82,34 +104,15 @@ export class ImmichImageSource implements ImageSourcePlugin {
       for (const album of albumsToSync) {
         if (album.id && (album.assetCount as number) > 0) {
           try {
-            const albumRes = await this.fetchFn(`${config.host}/api/albums/${album.id}`, { headers: { 'X-API-Key': config.apiKey } });
-            const albumData = (await albumRes.json()) as Record<string, unknown>;
-            if (albumData?.assets && Array.isArray(albumData.assets)) {
-              allAssets.push(...(albumData.assets as Record<string, unknown>[]));
-            }
+            // GET /api/albums/{id} no longer populates `assets` (Immich 3.x), so page through search instead.
+            allAssets.push(...(await this.searchAssets(config, { albumIds: [album.id] })));
           } catch (albumError) {
             console.warn(`Failed to get assets from album ${album.id}:`, (albumError as Error).message);
           }
         }
       }
     } else {
-      let page = 1;
-      const pageSize = 1000;
-      let hasMore = true;
-      while (hasMore) {
-        const response = await this.fetchFn(`${config.host}/api/search/metadata`, {
-          method: 'POST',
-          headers: { 'X-API-Key': config.apiKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ size: pageSize, page, type: 'IMAGE' }),
-        });
-        const data = (await response.json()) as Record<string, unknown>;
-        const assets = data?.assets as Record<string, unknown> | undefined;
-        const items = (assets?.items || []) as Record<string, unknown>[];
-        allAssets.push(...items);
-        const nextPage = assets?.nextPage;
-        if (nextPage != null && items.length > 0) page = nextPage as number;
-        else hasMore = false;
-      }
+      allAssets = await this.searchAssets(config, {});
     }
 
     const uniqueAssetsMap = new Map<unknown, Record<string, unknown>>();
