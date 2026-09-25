@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-09-25
+
 ### Fixed
 - **Docker images**: The weekly prune job deleted the platform images behind the `latest` and `0.10.x` tags, so `docker pull` failed with `manifest unknown`. The job now keeps any manifest a kept tag references.
 - **Image location**: The compose file, README, and Unraid template now point to `ghcr.io/sidereal-io/sidereal` (#256).
