@@ -10,19 +10,19 @@ description: Architecture Decision Record (ADR) for how different classes of plu
 
 ## Context
 
-In v2, every pipeline action is a plugin — the built-ins included. So one semantic contract (Source / Operator / Sink) must cover all of them.
+All pipeline actions—including built-in features—use a single unified contract (Source / Operator / Sink).
 
-But the workloads behind that contract need very different runtimes, and no single runtime serves all three:
+However, different tasks require distinct execution environments, and no single runtime satisfies all needs:
 
 - **Hot paths** (FITS/XISF parsing, storage adapters, core astro operations) need low overhead and run as trusted first-party code.
 - **User-authored extensions** (rename, tag, metadata) must install without an extra container or runtime, and must stay tightly capability-limited.
 - **Heavyweight tools** (Python ML, Siril, PixInsight, ASTAP) may need large native runtimes, another OS, or process isolation.
 
-An execution profile is *how* code runs; a separate decision governs *what* it may do.
+An execution profile defines _how_ a plugin runs, whereas permissions separately dictate _what_ actions it can perform.
 
 ## Decision
 
-Adopt a **capability-oriented hybrid: three execution profiles behind one semantic contract and conformance suite.** Only the transport adapter differs between profiles.
+Implement a** capability-focused hybrid approach featuring three distinct execution profiles, all governed by a single semantic contract and conformance test suite**. The transport adapter is the sole component that varies across profiles..
 
 | Profile | Use | Packaging |
 |---|---|---|
@@ -30,19 +30,19 @@ Adopt a **capability-oriented hybrid: three execution profiles behind one semant
 | **Embedded script** | Default public extension surface for lightweight Operators/Sources/Sinks | Manifest + script source in a plugin bundle |
 | **External provider** | Python ML, Siril/PixInsight/ASTAP, hardware- or OS-specific tools | Separately installed service; manifest configures its endpoint |
 
-A run-scoped **`AssetContext` is the only route from plugin code to core.** Through it, a plugin can read approved metadata and facets, access bytes under mediation, emit new assets and proposed facets, request core-managed rename/move/tag/publish intents, make allowlisted HTTP calls, use run-scoped declared secrets, report logs and progress, and observe cancellation. No profile gets a writable path into the store, and none gets ambient access to assets, secrets, processes, or the network. Core imports the files a plugin produces and hashes them into `AssetVersion` records.
+Plugins interact with core exclusively through a run-scoped **`AssetContext`** interface. This context grants plugins controlled capabilities—such as reading approved metadata and facets, accessing mediated file bytes, generating new assets and proposed facets, triggering core-managed actions (rename, move, tag, publish), initiating allowlisted HTTP requests, retrieving declared run-scoped secrets, logging output, reporting progress, and listening for cancellation signals. Direct writable access to the store is strictly prohibited across all execution profiles, as is ambient access to assets, secrets, system processes, or host network interfaces. When a plugin generates output files, core ingests them directly and computes hashes to create corresponding AssetVersion records.
 
-There is **no published Rust dynamic ABI.** WASM and container orchestration are deferred; both are additive later.
+A **published Rust dynamic ABI will not be provided**. Both container orchestration and WASM support have been postponed, though both can be added incrementally at a later date.
 
-The embedded-script profile's scripting engine is a separate decision, and the profile depends on that engine spike. Declare the profile stable only after **at least two built-ins also ship through it.**
+Selecting the engine for the embedded-script profile remains an independent decision that hinges on completing the scripting engine spike. This profile should only be marked as stable once **a minimum of two built-in extensions have been successfully delivered using it**.
 
 ## Consequences
 
-- The default deployment stays one binary or container for built-ins and script plugins. Heavy integrations keep their language and OS freedom without becoming a tax on every plugin.
-- The team maintains several transport adapters against one contract and conformance suite.
-- A compiled built-in can still panic and take down core, so only trusted first-party code belongs in that profile.
-- Some external tools must *write* — PixInsight and Siril, for example. They cannot use a read-only mount, so core gives them a disposable workspace and imports from it. The external-provider profile's real capability envelope is therefore broader than the in-process ones, even under "identical semantics."
-- The two-built-in stability bar risks being cleared on trivial candidates — tag/rename, API plate-solve — that never exercise async cancellation, memory limits under hostile input, or large-batch streaming. The profile could be declared "stable" on toy workloads and then break on the first demanding third-party plugin.
+- **Deployment Efficiency**: Standard deployments remain lightweight, packing built-ins and script plugins into a single binary or container. Resource-heavy integrations retain language and OS flexibility without burdening standard plugins.
+- **Maintenance Overhead**: The engineering team must manage multiple transport adapters to support the single contract and conformance suite.
+- **Blast Radius & Trust**: Because panics in compiled built-ins can crash core, this profile is strictly reserved for trusted first-party code.
+- **Expanded External Capabilities**: External tools requiring write access (e.g., Siril, PixInsight) operate via disposable workspaces imported back by core rather than read-only mounts. Consequently, the external-provider profile inherently possesses a broader capability footprint than in-process profiles despite identical nominal semantics.
+- **Stability Certification Risks**: The requirement of two built-in implementations could be met using trivial cases (like API plate-solving or tagging) that fail to test asynchronous cancellation, streaming large batches, or memory bounds under hostile inputs. This creates a risk of declaring the profile stable on simple workloads only to encounter failures under demanding third-party usage.
 
 ## Alternatives Considered
 
