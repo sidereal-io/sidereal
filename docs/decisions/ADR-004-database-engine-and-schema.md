@@ -10,25 +10,26 @@ description: Architecture Decision Record (ADR) for the v2 database engine and s
 
 ## Context
 
-The v2 store must do three things:
+The sidereal datastore has three core requirements:
 
-1. Look up semi-structured facet values by index. Calibration-master matching is a facet query, not a set of bespoke columns.
-2. Traverse lineage graphs recursively.
-3. The original hope: avoid a hard dependency on a server database for single-user installs, which are the majority.
+- Efficient indexed lookups of semi-structured facet data (e.g., treating calibration-master matching as a generic facet query rather than dedicated columns).
+- Recursive traversal of lineage graphs.
+- An initial goal to avoid requiring a full database server for single-user deployments, which constitute most installations.
 
-Both SQLite (JSON1 + recursive CTEs) and PostgreSQL satisfy the first two, so the choice turns on deployment, concurrency under ingest, and maintenance.
+While both SQLite (leveraging JSON1 and recursive CTEs) and PostgreSQL fulfill the functional requirements for facet queries and lineage traversal, selecting an engine comes down to concurrency during ingest, operational maintenance, and deployment complexity.
 
-The v0.10.x codebase carried two hand-written schema files kept in sync by convention. PostgreSQL parity was never verified at runtime, and the migration chain had drifted. Dual-dialect support has a demonstrated cost.
+Maintaining two separate hand-written schemas in v0.10.x introduced clear operational friction: migration paths diverged, and PostgreSQL runtime parity went unverified. Experience demonstrates that supporting multiple database dialects imposes a significant ongoing overhead.
 
 ## Decision
 
-**PostgreSQL only.** One server-grade engine gives the strongest facet indexing (JSONB + GIN), the best recursive-CTE performance for lineage, and real concurrency under bursty ingest. It also removes the entire class of unverified-parity, dialect-divergence, and doubled-indexing problems. Three coupled calls follow:
+**Standardizing on PostgreSQL**. Utilizing a single server-grade database engine delivers optimal JSONB and GIN facet indexing, peak recursive-CTE lineage performance, and robust concurrency during heavy ingest operations. This strategy eliminates dialect fragmentation, unverified runtime parity, and redundant indexing overhead. Key implementation directives include:
 
-- **Facets live in JSONB columns with GIN indexes,** not in a key-value side table.
-- **The query layer is `sqlx`.** Facet queries are dynamic, which argues against compile-time builders like `diesel` or `SeaORM`; sqlx gives async Postgres with runtime-composed SQL and optional static checking.
-- **Migrations are forward-only.** Downgrade is unsupported and guarded — a newer schema refuses to start against an older binary. One canonical chain replaces the two hand-maintained files.
+- **JSONB Column Storage with GIN Indexing**: Store facets directly in JSONB columns utilizing GIN indexes rather than maintaining separate key-value tables.
+- **Query Abstraction via `sqlx`**: Dynamic facet querying makes static ORM builders such as `diesel` or `SeaORM` impractical. Adopting `sqlx` enables asynchronous PostgreSQL access using runtime-built SQL combined with optional compile-time checking.
+- **Strict Forward-Only Migrations**: Schema downgrades are disabled and blocked; updated schemas will refuse execution against legacy application binaries. A unified migration pipeline replaces separate schema definitions.
 
-The single-user deployment cost is neutralised at the packaging layer, not the schema. v2 ships an all-in-one image and/or a docker-compose bundle that stands Postgres up beside the app.
+Deployment overhead for single-tenant setups is addressed via container orchestration rather than database architecture. Release v2 provides a unified single image or a pre-configured Docker Compose setup running PostgreSQL alongside the main application.
+gle-user deployment cost is neutralised at the packaging layer, not the schema. v2 ships an all-in-one image and/or a docker-compose bundle that stands Postgres up beside the app.
 
 ## Consequences
 
