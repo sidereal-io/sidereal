@@ -10,20 +10,21 @@ description: Architecture Decision Record (ADR) for the v2 trust boundary — bu
 
 ## Context
 
-v2 becomes the system of record for user files, and it can invoke code that reads assets, publishes externally, and requests secrets. The current unauthenticated, CORS-open posture cannot be carried forward implicitly.
+As the primary system of record for user files, Sidereal executes code that accesses assets, broadcasts data externally, and retrieves sensitive secrets. Consequently, the existing unauthenticated and open-CORS posture is no longer viable and cannot be maintained.
 
-Before any code touches a real filesystem, the architecture must define:
+Prior to any code interacting with an active filesystem, the core architecture must clearly establish:
 
-- Who may use the HTTP and WebSocket APIs.
-- Which actions need elevated authority.
-- Whether a plugin is trusted, and which capabilities it gets.
-- How external providers authenticate.
-- How secrets are stored, delivered, logged, and revoked.
-- Which origins may issue authenticated requests.
+- API access permissions for HTTP and WebSocket endpoints.
+- Which operations demand elevated privileges.
+- Criteria for plugin trust and their corresponding capability allocations.
+- Authentication protocols for external integrations.
+- Lifecycles for secret management, including storage, transport, logging, and revocation.
+- Approved origins permitted to send authenticated requests.
 
-Treating every self-hosted network as trusted is not enough. Reverse proxies, shared home networks, browser CSRF, and accidentally exposed container ports are ordinary conditions.
+Relying on implicit trust within self-hosted environments is insufficient, as reverse proxies, shared local networks, cross-site request forgery (CSRF), and unintended container exposure represent standard operating risks.
 
-This is the trust half of the plugin model in [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md).
+These requirements form the trust framework complementing the plugin specifications in
+n [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md).
 
 ## Decision
 
