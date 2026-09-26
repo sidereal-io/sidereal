@@ -10,7 +10,7 @@ description: Architecture Decision Record (ADR) for the identity model of the v2
 
 ## Context
 
-Sidereal v2 becomes the system of record for the files it renames, moves, and organises. So identity cannot be derived from the path.
+Sidereal serves as the system of record for the files it renames, moves, and organizes, meaning asset identity cannot be derived from file paths.
 
 A single mutable Asset record is also not enough. If an operation rewrites bytes under a stable id, the previous hash and state vanish, and lineage cannot tell before from after.
 
@@ -24,17 +24,30 @@ On-disk layout and move semantics are a separate decision, taken in [ADR-011 —
 
 ## Decision
 
-Adopt a **stable `Asset` plus immutable `AssetVersion`.**
+Implement a dual-layer entity architecture combining a **persistent `Asset` record with immutable `AssetVersion` instances**.
 
-`Asset.id` is a stable opaque surrogate, independent of path and content. `AssetVersion.id` is an opaque id that carries a mandatory content hash (indexed for dedup and integrity, but not the user-facing key), plus byte size, format, and provenance. Lineage edges and Operation Run inputs/outputs reference exact **versions**.
+### Entity Definitions & References
+- **`Asset.id`**: Serves as a persistent, opaque surrogate identifier, decoupled from both file path and underlying binary content.
+- **`AssetVersion.id`**: An opaque identifier tied to a mandatory content hash (indexed for deduplication and verification, but not exposed as the primary key), along with size in bytes, format specification, and origin provenance.
+- **Explicit Lineage**: All lineage links and input/output definitions for Operation Runs strictly bind to specific **versions**.
 
-A rename or move is a path event and creates no version. Any byte change creates a new immutable version. New scientific products (thumbnails, masters, stacks, exports) are normally new Assets.
+### Lifecycle Rules & Mutation Boundaries
+- Renames & Relocations: Path modifications are treated purely as location updates and do not generate a new version.
+- Byte Modifications: Any change to binary content forces the creation of a distinct immutable version.
+- Derived Output: Secondary scientific artifacts (such as stacks, thumbnails, masters, or exported files) are created as separate Assets by default.
 
-Core — not plugins — mints identities, hashes bytes, advances current-version pointers, and writes lineage. Retention is lineage-aware: core cannot GC anything referenced by lineage, a run, a hold, or migration audit.
+### Core Platform Responsibilities & Retention
+System core retains exclusive responsibility for minting IDs, calculating content hashes, advancing version pointers, and logging lineage. Garbage collection and retention are 
+fully lineage-aware: core will refuse to delete any entity currently bound to lineage history, active runs, legal holds, or migration audit records.
 
-The "current" selection is a separate `Asset.current_version_id` pointer, not a moving `v0` sentinel; `isLatest` is computed. Navigation aids — the `version_seq` ordinal and an optional `label`, `aliases`, or `note` — are metadata, not identity. Advancing the current pointer uses optimistic concurrency: a compare-and-swap guarded by an `Asset.revision` counter.
+### State Tracking & Version Navigation
+The active version is referenced through a dedicated `Asset.current_version_id` pointer rather than a moving `v0` target, while `isLatest` is evaluated dynamically. Auxiliary 
+attributes—such as the version_seq counter alongside optional `label`, `aliases`, or `note` fields—act purely as descriptive metadata. Pointer updates rely on optimistic 
+concurrency control, using compare-and-swap validation backed by an `Asset.revision` sequence.
 
-Reconciliation never silently updates on an out-of-band byte change. It records an integrity mismatch that needs an explicit adopt, restore, or ignore. A missing path marks the Asset unavailable without deleting its identity, versions, or lineage.
+### Reconciliation & Out-of-Band Changes
+External or out-of-band byte modifications will never trigger automatic version updates. Instead, reconciliation flags an integrity mismatch requiring deliberate resolution 
+(adopt, restore, or ignore). If an asset's file path disappears, it is flagged as unavailable while preserving its identity, version history, and lineage untamed.
 
 ## Consequences
 
