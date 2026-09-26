@@ -10,23 +10,23 @@ description: Architecture Decision Record (ADR) for where the domain-agnostic co
 
 ## Context
 
-`kind` must not be a Rust enum listing `light | dark | flat` — astro vocabulary belongs to a pack, not to core. Two questions remain:
+Domain-specific terms such as astronomy vocabulary belong in dedicated packs rather than core logic; for instance, `kind` should avoid hardcoding a Rust enum of `light | dark | flat`. Consequently, two primary structural decisions must be addressed:
 
-1. Exactly where the seam falls. Equipment, sessions, and visibility math are genuinely ambiguous between "general" and "astro-shaped."
-2. Whether packs are compiled in or loaded at runtime.
+- Defining the exact boundary seam where ambiguous concepts—such as equipment, sessions, and visibility calculations—are split between domain packs and core.
+- Determining if domain packs ought to be compiled directly into the binary or loaded dynamically at runtime.
 
-This builds on the execution profiles in [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md): a pack with a FITS reader sits on the hot ingest path and can use the built-in Rust profile without a different semantic contract.
+This approach expands upon the execution strategies outlined in  [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md). For example, a pack equipped with a FITS reader operates along the critical ingest path and can leverage the native built-in Rust execution profile without altering its underlying semantic contract.
 
-The concrete crate skeleton makes the seam physical, so we decide it now rather than defer it. We take every call in the reversible-safe direction: compiled-in can become loadable, pack-owned can move to core, and API-only can gain a UI ABI. Each of those is additive later; the reverse would be a migration.
+Establishing a concrete crate structure gives physical form to this boundary, requiring an immediate decision rather than postponement. We consistently opt for reversible and additive choices: compiled-in components can later transition to runtime loading, pack-level features can migrate into core, and API-only models can subsequently receive a UI ABI—whereas reversing these choices later would necessitate complex migrations.
 
 ## Decision
 
-Compile the first-party **astro pack into v2.0 as a crate that codes against the public plugin contract** — the same Source/Operator/Sink traits and registry a third party uses, never against core internals. Enforce this structurally and with a dependency-direction lint. Four specific calls:
+The **first-party astro pack will be compiled directly into sidereal as a crate using the public plugin contract** — leveraging the identical Source, Operator, and Sink traits and registry available to third parties, avoiding direct reliance on core internals. Structural design and dependency-direction lints will strictly enforce this isolation. This decision rests on four key architectural choices:
 
-1. **Seam = compiled-in pack against the public contract.** Dynamically replacing the whole domain pack is deferred, not designed out: the boundary exists today; only the dynamic loader is absent.
-2. **Session = core concept, pack vocabulary.** Core knows the generic time-bounded, subject-bearing Collection. The astro pack supplies the term "session" and its facet values.
-3. **Equipment = pack-owned.** Every equipment field is astro-shaped, so equipment lives entirely in the pack and core stays domain-free.
-4. **Frontend = API plus descriptive facet schemas only.** Packs ship backend behaviour and facet schemas that carry render metadata (type, unit, label, filterability, render hint). The single React app renders facets generically, with first-party astro views (sky map, visibility) built into that app. There is no dynamic frontend plugin ABI in v2.0.
+1. **Seam: Static compilation against public traits**. Dynamic replacement of the entire domain pack is postponed rather than ruled out; the architectural boundary is established now, with only the dynamic loading mechanism left for future implementation.
+2. **Session: Core abstraction, pack-provided terminology**. The core system defines a generic, time-bounded, subject-bearing Collection. Specific terminology ("session") and facet definitions are contributed by the astro pack.
+3. **Equipment: Managed entirely within the pack**. Because equipment metadata is tailored to astronomy, equipment models reside strictly within the pack to keep core domain-agnostic.
+4. **Frontend: API and declarative facet schemas**. Domain packs supply backend logic along with facet schemas containing rendering metadata (such as type, unit, display label, filterability, and render hints). A unified React application renders these facets generically, while specialized first-party astronomy views (e.g., sky maps, visibility graphs) are bundled directly into the application, foregoing a dynamic frontend plugin ABI.
 
 ## Consequences
 
