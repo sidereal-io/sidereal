@@ -70,6 +70,7 @@ The Nix lock file is the only pin for the `openspec` version. `just skills` chec
 - **Why:** a second pin outside Nix cannot choose the version. It can only detect that Nix moved it. It would also break `just skills` on every `flake.lock` bump, until someone edited the pin by hand.
 - **Why check for the CLI at all:** without the check, a missing CLI fails only after the deletion step, and the clone loses its skills.
 - **Consequence:** contributors without Nix install the latest release, so their skill text can differ slightly from the Nix route. Git ignores the generated skills, so the difference cannot reach a commit. Each `SKILL.md` records its CLI version in `generatedBy`. ADR-013 accepts the same kind of drift between the two routes for Node.
+- **An older CLI:** 1.12.0 generated the same 8 skills, with slightly different text. A CLI too old to know the `agents` tool stops with its own error, which lists the tools it knows.
 - **Alternative — a pin in the `justfile`, checked on every run:** this was the first version. It had the two problems above.
 - **Alternative — build the CLI at a chosen version in `nix/openspec.nix`:** one pin would then serve both routes. Each version bump would need a new source hash, which costs more than the drift.
 - **Alternative — an npm devDependency:** it would add v2 tooling to the v0.10.x `package.json`, which the cutover replaces. It would also put a second `openspec` on `PATH` in the Nix shell.
@@ -89,15 +90,17 @@ Before it deletes anything, the script resolves the real paths of `.agents` and 
 
 - **Why:** a symbolic link at `.agents` or `.agents/skills` could otherwise point the deletion at a directory outside the repo. A contributor might link `.agents/skills` to a personal skills folder, for example. Checking each level covers a link at either one.
 - **Alternative — check only `.agents/skills`:** it misses a link one level up, at `.agents`.
+- **Why not `.config`:** the script only reads that folder, and the CLI writes nothing there. A link in place of the tracked `.config` folder shows in `git status`.
 
 ## Risks / Trade-offs
 
 - **A future CLI renders `claude` skills differently** → Claude would read the generic text, which still works. The spec scenario "Claude sees the generated and authored skills" and #276's drift check are where to catch it. Move Claude to its own folder if that happens.
 - **Contributors without Nix get slightly different skill text** → accepted, as D5 explains. `generatedBy` shows which version made each skill.
-- **A future CLI writes to its config file** → `git status` shows the tracked file as changed. The scenario "The CLI does not write to the repo's settings" fails, and the fix is decided then.
+- **A future CLI writes to its config file, or adds files beside it** → `git status` shows the tracked file as changed, or the new files as untracked. The scenario "The CLI does not write to the repo's settings" fails, and the fix is decided then. Ignoring the folder would hide these writes, so git does not ignore it.
+- **A contributor replaces `.config` with a link to another folder** → the CLI reads the settings found there, so the skills can differ. `git status` shows the tracked config as missing or changed. The repo does not support this setup.
 - **Someone runs `openspec init` or `openspec update` by hand** → it renders with their global settings into ignored files. The next `just skills` restores the repo's settings. `AGENTS.md` tells agents to use `just skills`.
 - **An authored skill is named `openspec-something`** → `just skills` deletes it. The docs reserve the prefix.
-- **A run fails or stops after the deletion step** → the clone has no generated skills until the next successful run, and git cannot restore them. When a step fails, the script prints "run `just skills` again". A killed run prints nothing, but the same rerun fixes it. A new run needs no network and takes seconds. We accept this state rather than generate into a copy and swap it in. `init` needs a full project around it, so the swap would add more code than the problem costs.
+- **A run fails or stops after the deletion step** → the clone has no generated skills until the next successful run, and git cannot restore them. When a step fails, the script says to run `just skills` again, or to update `openspec` if the CLI failed. A killed run prints nothing, but the same rerun fixes it. A new run needs no network and takes seconds. We accept this state rather than generate into a copy and swap it in. `init` needs a full project around it, so the swap would add more code than the problem costs.
 
 ## Migration Plan
 

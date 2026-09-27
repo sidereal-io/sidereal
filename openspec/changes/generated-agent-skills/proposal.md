@@ -27,7 +27,7 @@ Two later stories build on this one: refreshing skills when you enter the shell 
   - where the skill settings live;
   - how to add another agent.
 
-Nothing here is **BREAKING**. After pulling this change, each contributor runs `just skills` once to get the skills back.
+Nothing here is **BREAKING** for the app or its APIs. It does change local setup: pulling this change deletes the generated skills from each clone. Each contributor must then run `just skills` once to get them back.
 
 ## Capabilities
 
