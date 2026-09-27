@@ -17,7 +17,7 @@
 
 ## 2. The `enter` recipe
 
-- [ ] 2.1 Add the `enter` recipe to the `justfile`, as design D3 shows, with a comment that says the shell runs it on load. Verify:
+- [x] 2.1 Add the `enter` recipe to the `justfile`, as design D3 shows, with a comment that says the shell runs it on load. Verify:
   - with stale skills, `just enter` exits 0 and prints nothing to standard output or standard error;
   - with a stub `openspec` that exits 1, `just enter` exits 0, and standard error holds exactly one line that names `just skills`;
   - `just --list` shows the recipe with its comment.
