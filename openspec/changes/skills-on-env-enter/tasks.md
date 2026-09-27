@@ -33,7 +33,7 @@
 
 ## 4. direnv
 
-- [ ] 4.1 Add `watch_file .config/openspec/config.json scripts/skills.sh` to `.envrc`, outside the `if has nix` block (design D5), with a one-line comment on why. Verify that `direnv status` in the repo lists both files as watched.
+- [x] 4.1 Add `watch_file .config/openspec/config.json scripts/skills.sh` to `.envrc`, outside the `if has nix` block (design D5), with a one-line comment on why. Verify that `direnv status` in the repo lists both files as watched.
 - [ ] 4.2 Verify the direnv scenarios in a throwaway clone with Nix and direnv, after `direnv allow`:
   - fresh clone: `direnv exec . true` leaves the 8 generated folders, and `git status --porcelain` prints nothing;
   - nothing changed: a second `direnv exec . true` leaves every modification time under `.agents/skills` unchanged;
