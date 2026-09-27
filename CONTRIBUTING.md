@@ -147,12 +147,15 @@ it, and it loads after the pinned shell, so your settings take precedence.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
    and run its "use" command in the repo root to select Node 26.
 3. Install [`just`](https://github.com/casey/just).
-4. Install the pinned `openspec` CLI, then run `just skills`:
+4. Install the `openspec` CLI, then run `just skills`:
 
    ```
-   npm install -g @fission-ai/openspec@1.13.1
+   npm install -g @fission-ai/openspec
    just skills
    ```
+
+   The Nix shell pins the CLI version that the repo tests with. Without Nix,
+   you get the latest release, so your skill text can differ slightly.
 
 Both routes pass the same `just check` gate.
 
@@ -167,21 +170,23 @@ through the `.claude/skills` link. The folder holds two kinds of skill:
   ignores them.
 
 Run `just skills` once after you clone, and again after you pull a change to
-the `justfile`. The recipe gives the same skills on every machine:
+the skill settings. For a given CLI version, it gives the same skills on every
+machine:
 
-- It stops unless `openspec --version` matches the version pinned in the
-  `justfile`. The error message names the install command.
+- It stops if `openspec` is not installed. The error message names the install
+  command.
 - It deletes every `openspec-*` skill and the `.openspec-target` marker, then
   generates them again.
-- It reads the workflow list from the `justfile`, never from your own
+- It reads the skill settings from the repo, never from your own
   `~/.config/openspec/config.json`. It leaves that file unchanged.
 
-Two rules follow from this:
+The skill settings live in `.config/openspec/config.json`: the profile, the
+delivery mode and the workflow list. To add or remove a workflow, edit that
+file and run `just skills`. The other OpenSpec file, `openspec/config.yaml`,
+holds the schema, the project context and the artifact rules.
 
-- **The `openspec-` prefix is reserved.** `just skills` deletes any skill folder
-  with that prefix, so give an authored skill a different name.
-- **The recipe owns `.config/openspec`.** It deletes and rewrites that folder on
-  every run, so keep nothing else in it.
+**The `openspec-` prefix is reserved.** `just skills` deletes any skill folder
+with that prefix, so give an authored skill a different name.
 
 Don't run `openspec init` or `openspec update` by hand. They use your global
 settings instead of the repo's. If you do, run `just skills` to restore the
@@ -193,7 +198,7 @@ To support another agent, pick the case that fits it:
 - **It reads only its own folder:** add a tracked link from that folder to
   `.agents/skills`, as `.claude/skills` does.
 - **It needs different skill text:** it needs its own generated set. That takes
-  a change to the `just skills` recipe.
+  a change to `scripts/skills.sh`.
 
 ## 📝 Code Standards
 
