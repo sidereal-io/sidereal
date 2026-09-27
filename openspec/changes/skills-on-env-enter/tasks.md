@@ -29,7 +29,7 @@
   - with the `enter` recipe removed in a throwaway clone, `nix develop --command true` exits 0 and the hook prints nothing;
   - `nix/devshell.nix` contains no mention of `skills` or `openspec`.
 - [x] 3.2 Make `nix/openspec.nix` add a hook that exports `OPENSPEC_NO_UPDATE_CHECK=1` (design D4). Verify that `nix develop --command printenv OPENSPEC_NO_UPDATE_CHECK` prints `1`, and that `direnv exec . printenv OPENSPEC_NO_UPDATE_CHECK` prints `1`.
-- [ ] 3.3 Verify the refresh works offline. On Linux, delete the stamp, then run `unshare --net --map-root-user nix develop --offline --command true`. Confirm that `.agents/skills` holds the 8 generated folders and a new stamp. Some hosts block user namespaces without root, such as Ubuntu with `kernel.apparmor_restrict_unprivileged_userns=1`. On those hosts, run `strace -f -e trace=connect -o <log> nix develop --offline --command true` instead. Confirm the same result, and that `<log>` holds no `AF_INET` or `AF_INET6` connect call.
+- [x] 3.3 Verify the refresh works offline. On Linux, delete the stamp, then run `unshare --net --map-root-user nix develop --offline --command true`. Confirm that `.agents/skills` holds the 8 generated folders and a new stamp. Some hosts block user namespaces without root, such as Ubuntu with `kernel.apparmor_restrict_unprivileged_userns=1`. On those hosts, run `strace -f -e trace=connect -o <log> nix develop --offline --command true` instead. Confirm the same result, and that `<log>` holds no `AF_INET` or `AF_INET6` connect call.
 
 ## 4. direnv
 
