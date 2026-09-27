@@ -21,7 +21,7 @@ Facts that shape the approach. Each was checked against OpenSpec 1.13.1, the ver
 - **The CLI has an off switch for its update check.** It skips the check when `OPENSPEC_NO_UPDATE_CHECK` is set, when `OPENSPEC_TELEMETRY=0`, or under CI. `scripts/skills.sh` already sets `OPENSPEC_TELEMETRY=0`, so today's generation makes no network call.
 - **Generation is cheap.** `openspec init` takes about 0.3 seconds. Asking `openspec --version` costs about the same, because each starts Node.
 - **`openspec update` is not an option.** It detects staleness on its own, but it has no `--tools` filter. In a test, it rewrote and deleted skills in a global `~/.minimax/skills` folder outside the repo. `AGENTS.md` already forbids it.
-- **The Nix modules are written to move.** `nix/openspec.nix` says nothing in it is specific to Sidereal, so a later shared flake can take it over unchanged.
+- **ADR-013 keeps the Nix modules portable.** It asks each module to stay free of Sidereal-specific code, so a later shared flake can take it over unchanged. `nix/openspec.nix` says so in its header.
 - **A shell hook reaches only shells that load the flake.** Agents started some other way don't run it. They still read the same files on disk, so one refresh serves every agent in the directory.
 
 ## Goals / Non-Goals
@@ -114,6 +114,7 @@ Two shells that load at the same moment can both find the skills stale, and both
 - **A hand-edited generated skill survives a load** → the stamp checks versions and folders, not file contents. `just skills` restores the file, and #276 catches the drift in CI.
 - **A contributor without Nix opts in but has no `openspec`** → every load prints the one-line warning. `just skills` then names the install command.
 - **The hook also runs in CI jobs that use `nix develop`** → it generates the skills there too. CI sets `CI`, so the CLI makes no network call. #276 can rely on that, or run `just skills` itself.
+- **Loading the shell runs code from the working tree** → direnv asks for approval only when `.envrc` itself changes. It does not ask when a watched file changes. A checkout can therefore reload the shell and run the flake's hook, the `justfile` and `scripts/skills.sh` from that branch. Watching `flake.nix` and `nix/*` already carries this risk. This change adds the `justfile` and `scripts/skills.sh` to it. `CONTRIBUTING.md` tells contributors to run `direnv deny` before they check out a branch they don't trust.
 - **An agent reads a skill during a refresh** → the skill may be missing for about 0.3 seconds. This happens only when the inputs changed.
 
 ## Migration Plan
