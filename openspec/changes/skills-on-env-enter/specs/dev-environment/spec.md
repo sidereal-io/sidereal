@@ -98,6 +98,7 @@ The development shell SHALL set `OPENSPEC_NO_UPDATE_CHECK=1`, so no `openspec` c
 
 - **WHEN** the skills are stale, and a tester loads the shell with no network access, for example inside `unshare --net --map-root-user` on Linux
 - **THEN** the refresh completes, and `.agents/skills` contains the 8 generated `openspec-*` folders
+- **AND** the refresh opens no network connection
 
 ### Requirement: Contributors without Nix can opt in to the refresh
 
