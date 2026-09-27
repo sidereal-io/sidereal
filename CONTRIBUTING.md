@@ -131,7 +131,8 @@ Nix flake. Nix is optional. Pick either route.
 4. Expect a full rebuild of `backend/target` the first time you run a Rust
    command in the shell. The Rust version matches rustup's, but the compiler's
    store path differs, so cargo's cached build data doesn't carry over.
-5. Run `just skills` to generate the OpenSpec agent skills. See
+5. Nothing to run for the OpenSpec agent skills. The shell generates them when
+   it loads, and again only when they are stale. See
    [Agent skills](#agent-skills).
 
 Nix sees only files tracked by git. A new file under `nix/` stays invisible to
@@ -156,8 +157,24 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
    The Nix shell pins the CLI version that the repo tests with. Without Nix,
    you get the latest release, so your skill text can differ slightly.
+5. Optional: refresh the skills each time you enter the repo, as the Nix shell
+   does. Install [direnv](https://direnv.net/), add this line to `.envrc.local`
+   in the repo root, then run `direnv allow`:
+
+   ```
+   just enter
+   ```
+
+   The `enter` recipe regenerates the skills only when they are stale. If it
+   fails, it prints one warning line, and direnv still loads.
 
 Both routes pass the same `just check` gate.
+
+**Run `direnv deny` before you check out a branch you don't trust.** Loading
+the shell runs code from the working tree: the flake, the `justfile` and
+`scripts/skills.sh`. direnv asks for approval again only when `.envrc` changes,
+so a checkout can run a branch's code without asking. After you read the
+branch's changes, run `direnv allow` again.
 
 ### Agent skills
 
@@ -169,14 +186,19 @@ through the `.claude/skills` link. The folder holds two kinds of skill:
 - **Generated skills**, named `openspec-*`. `just skills` creates them, and git
   ignores them.
 
-Run `just skills` once after you clone, and again after you pull a change to
-the skill settings. For a given CLI version, it gives the same skills on every
-machine:
+The Nix shell refreshes the generated skills when it loads, but only when they
+are stale. They are stale when any of these changed since the last run: the
+`openspec` version, `.config/openspec/config.json` or `scripts/skills.sh`. A
+missing generated folder also makes them stale. `just skills` records its
+inputs in `.agents/skills/.openspec-stamp`, which git ignores.
+
+`just skills` still forces a full run whenever you call it. For a given CLI
+version, it gives the same skills on every machine:
 
 - It stops if `openspec` is not installed. The error message names the install
   command.
-- It deletes every `openspec-*` skill and the `.openspec-target` marker, then
-  generates them again.
+- It deletes every `openspec-*` skill, the `.openspec-target` marker and the
+  stamp, then generates them again.
 - It reads the skill settings from the repo, never from your own
   `~/.config/openspec/config.json`. It leaves that file unchanged.
 

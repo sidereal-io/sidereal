@@ -34,24 +34,24 @@
 ## 4. direnv
 
 - [x] 4.1 Add `watch_file .config/openspec/config.json scripts/skills.sh` to `.envrc`, outside the `if has nix` block (design D5), with a one-line comment on why. Verify that `direnv status` in the repo lists both files as watched.
-- [ ] 4.2 Verify the direnv scenarios in a throwaway clone with Nix and direnv, after `direnv allow`:
+- [x] 4.2 Verify the direnv scenarios in a throwaway clone with Nix and direnv, after `direnv allow`:
   - fresh clone: `direnv exec . true` leaves the 8 generated folders, and `git status --porcelain` prints nothing;
   - nothing changed: a second `direnv exec . true` leaves every modification time under `.agents/skills` unchanged;
   - folder deleted: after deleting `.agents/skills/openspec-explore`, `direnv exec . true` recreates it;
   - settings changed: after removing `verify` from `.config/openspec/config.json`, `direnv exec . true` removes `openspec-verify-change`.
-- [ ] 4.3 Verify the opt-in without Nix. In a throwaway clone, put a `PATH` without Nix but with `just` and an npm-installed `openspec`, write `just enter` in `.envrc.local`, and delete `.agents/skills/openspec-explore`. Run `direnv exec . true`, and confirm that `openspec-explore/SKILL.md` exists again.
+- [x] 4.3 Verify the opt-in without Nix. In a throwaway clone, put a `PATH` without Nix but with `just` and an npm-installed `openspec`, write `just enter` in `.envrc.local`, and delete `.agents/skills/openspec-explore`. Run `direnv exec . true`, and confirm that `openspec-explore/SKILL.md` exists again.
 
 ## 5. Documentation
 
-- [ ] 5.1 Update `CONTRIBUTING.md`:
+- [x] 5.1 Update `CONTRIBUTING.md`:
   - the Nix setup says the shell refreshes the skills when it loads, and only when they are stale; drop "run `just skills` once after you clone" from that route;
   - the setup without Nix explains the `just enter` line for `.envrc.local`;
   - the "Agent skills" section says `just skills` still forces a full run;
   - a short note tells contributors to run `direnv deny` before they check out a branch they don't trust, because loading the shell runs code from the working tree.
 
   Verify that `grep` finds `just enter`, `direnv deny` and `.envrc.local` in the file.
-- [ ] 5.2 Check `AGENTS.md` against the new behavior, and update any statement it contradicts. Verify that `grep -n 'just skills' AGENTS.md` still finds the rule to generate skills with `just skills`.
-- [ ] 5.3 Check the new prose against ISO 24495-1: no sentence over 30 words, and active voice with the actor named. Verify with a sentence-length scan of the changed lines.
+- [x] 5.2 Check `AGENTS.md` against the new behavior, and update any statement it contradicts. Verify that `grep -n 'just skills' AGENTS.md` still finds the rule to generate skills with `just skills`.
+- [x] 5.3 Check the new prose against ISO 24495-1: no sentence over 30 words, and active voice with the actor named. Verify with a sentence-length scan of the changed lines.
 
 ## 6. Gate
 
