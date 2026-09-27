@@ -30,14 +30,14 @@
 
 ## 3. Same output on every machine
 
-- [ ] 3.1 Verify that the global config has no effect. Run `just skills` in two throwaway clones of one commit. Give each run a different `HOME` whose `.config/openspec/config.json` differs: one uses the `core` profile, and one sets `delivery: both`. Confirm that `diff -r .agents/skills` between the clones finds no difference, and that neither `HOME` config file changed.
-- [ ] 3.2 Verify the stale-marker case. In a throwaway clone, put back the old tracked `openspec-*` skills and a `.openspec-target` containing `codex`, then run `just skills`. Confirm that `grep -rl '\$openspec-' .agents/skills` finds nothing.
-- [ ] 3.3 Verify that removing a workflow removes its skill. Temporarily drop `verify` from the `justfile` list and run `just skills`. Confirm that `.agents/skills/openspec-verify-change` no longer exists. Then revert the change and run `just skills` again.
-- [ ] 3.4 Verify the route without Nix. Outside the Nix shell, install `@fission-ai/openspec@1.13.1` into a prefix under `.workspace/` and put it first on `PATH`. Run `just skills`, and confirm that `diff -r .agents/skills` against a `nix develop --command just skills` run finds no difference.
+- [x] 3.1 Verify that the global config has no effect. Run `just skills` in two throwaway clones of one commit. Give each run a different `HOME` whose `.config/openspec/config.json` differs: one uses the `core` profile, and one sets `delivery: both`. Confirm that `diff -r .agents/skills` between the clones finds no difference, and that neither `HOME` config file changed.
+- [x] 3.2 Verify the stale-marker case. In a throwaway clone, put back the old tracked `openspec-*` skills and a `.openspec-target` containing `codex`, then run `just skills`. Confirm that `grep -rl '\$openspec-' .agents/skills` finds nothing.
+- [x] 3.3 Verify that removing a workflow removes its skill. Temporarily drop `verify` from the `justfile` list and run `just skills`. Confirm that `.agents/skills/openspec-verify-change` no longer exists. Then revert the change and run `just skills` again.
+- [x] 3.4 Verify the route without Nix. Outside the Nix shell, install `@fission-ai/openspec@1.13.1` into a prefix under `.workspace/` and put it first on `PATH`. Run `just skills`, and confirm that `diff -r .agents/skills` against a `nix develop --command just skills` run finds no difference.
 
 ## 4. Documentation
 
-- [ ] 4.1 Update `CONTRIBUTING.md` under "Development Environment". Cover:
+- [x] 4.1 Update `CONTRIBUTING.md` under "Development Environment". Cover:
   - `just skills` as a setup step on both routes;
   - installing the pinned CLI without Nix, with `npm install -g @fission-ai/openspec@<version>`;
   - the reserved `openspec-` prefix;
@@ -45,8 +45,8 @@
   - how to add an agent: nothing, a folder link, or a separate generated set.
 
   Verify that `grep` finds `just skills`, `openspec-` and `@fission-ai/openspec@1.13.1` in the file.
-- [ ] 4.2 Update `AGENTS.md`. Tell agents to run `just skills` instead of `openspec init` or `openspec update`, and state the reserved prefix. Verify that `grep` finds `just skills` in `AGENTS.md`.
-- [ ] 4.3 Check the new prose against ISO 24495-1: no sentence over 30 words, and active voice with the actor named. Verify with a sentence-length scan of the changed lines.
+- [x] 4.2 Update `AGENTS.md`. Tell agents to run `just skills` instead of `openspec init` or `openspec update`, and state the reserved prefix. Verify that `grep` finds `just skills` in `AGENTS.md`.
+- [x] 4.3 Check the new prose against ISO 24495-1: no sentence over 30 words, and active voice with the actor named. Verify with a sentence-length scan of the changed lines.
 
 ## 5. Gate
 

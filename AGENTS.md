@@ -64,6 +64,10 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
   the `opsx:*` skills (propose → apply → verify → archive). The product input (a
   milestone issue such as #217, or an ADR) holds intent; `openspec/discovery.md`
   holds personas and journeys; the backlog is GitHub issues.
+- **Generate OpenSpec skills with `just skills`.** Never run `openspec init` or
+  `openspec update` — they read your global config, not the repo's settings. The
+  `openspec-` prefix is reserved for generated skills: `just skills` deletes any
+  `.agents/skills/openspec-*` folder, so never give an authored skill that prefix.
 - OpenSpec changes carry product behavior. Repo maintenance goes through an ordinary
   branch and PR with Conventional Commits.
 - **Toolchain is per stack.** v0.10.x: Node 26, npm, Vite/React, Hono, Drizzle —
