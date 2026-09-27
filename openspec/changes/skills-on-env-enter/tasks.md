@@ -55,4 +55,4 @@
 
 ## 6. Gate
 
-- [ ] 6.1 Verify the whole repo: `just check`, `nix flake check`, `shellcheck scripts/skills.sh` and `openspec validate skills-on-env-enter --strict` each exit with status 0, and `git status --porcelain` prints nothing after `nix develop --command true`.
+- [x] 6.1 Verify the whole repo: `just check`, `nix flake check`, `shellcheck scripts/skills.sh` and `openspec validate skills-on-env-enter --strict` each exit with status 0, and `git status --porcelain` prints nothing after `nix develop --command true`.
