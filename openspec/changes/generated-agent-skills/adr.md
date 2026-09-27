@@ -10,15 +10,15 @@ ADR review completed for this change. No decision in `design.md` met the bar, so
 Why each decision falls short:
 
 - **D1 (redirect `XDG_CONFIG_HOME` for one command)** is a stopgap. The recipe's own comment names when to remove it: once OpenSpec reads project-scoped settings.
-- **D2 (write the config at run time)**, **D3 (delete generated files first)**, **D6 (one bash script)** and **D7 (stay inside the repo)** are small. Each lives in a few lines of the `justfile` or `.gitignore`, costs little to change, and shows in the code.
+- **D2 (track the settings file)**, **D3 (delete generated files first)**, **D6 (put the steps in a script)** and **D7 (stay inside the repo)** are small. Each lives in one file or a few lines of shell, costs little to change, and shows in the code.
 - **D4 (generate for `agents` only)** depends on the current CLI rendering identical skills for `agents` and `claude`. It is a fact about one tool version, and the drift check in a later story can show when it stops holding.
-- **D5 (pin the CLI version in the `justfile`)** applies an existing decision rather than making a new one. ADR-013 keeps Nix optional and requires both routes, with Nix and without, to keep working through plain pin files. D5 adds the same kind of pin file for the OpenSpec CLI that `backend/rust-toolchain.toml` and `.nvmrc` already give Rust and Node.
+- **D5 (let Nix own the CLI version)** applies an existing decision rather than making a new one. ADR-013 makes the Nix lock the source of tool versions and keeps Nix optional. It already accepts that the two routes can land on different versions, as they do for Node's patch version. D5 accepts the same drift for the OpenSpec CLI.
 
 `design.md` records the reasons and the alternatives for all seven decisions.
 
 ## In-Force ADRs Reviewed
 
-- ADR-013 Development Environment (accepted) — directly relevant. This change follows it: the Nix shell stays the installer for contributors with Nix, and a plain pin covers contributors without it. No conflict.
+- ADR-013 Development Environment (accepted) — directly relevant. This change follows it: the Nix lock pins the OpenSpec CLI, and contributors without Nix install it through npm. No conflict.
 - ADR-001 Plugin Contract and Execution Profiles (accepted)
 - ADR-002 Core / Domain-Pack Seam (accepted)
 - ADR-003 Asset Identity and Content Revisions (accepted)
