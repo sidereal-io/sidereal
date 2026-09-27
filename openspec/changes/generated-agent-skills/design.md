@@ -41,13 +41,15 @@ The repo today tracks the 8 generated skills, a `codex` marker, and the `.claude
 
 `just skills` writes `.config/openspec/config.json` on every run, from values in the `justfile`. Git ignores `/.config/openspec/` only, not all of `.config/`.
 
+The recipe removes `.config/openspec` before it writes, then creates a fresh directory. The recipe owns that directory, and the docs say to keep nothing else in it. Removing a symbolic link deletes only the link, so a link at that path cannot steer the write into another config. D7 covers a link higher up.
+
 - **Why:** the workflow list sits beside the agent list and the version pin, so one file holds every skill setting. A fresh file on every run also means nothing the CLI writes can carry over.
 - **Alternative — a tracked config file:** it would be easier to diff. It also adds a second file named `config` in the repo, next to `openspec/config.yaml`, which readers confuse.
 - **Alternative — `.workspace/`:** that folder is kept for agents' scratch files.
 
 ### D3. Delete generated files before `init`
 
-Before `init`, `just skills` deletes `.agents/skills/openspec-*` and `.agents/skills/.openspec-target`. It deletes nothing else.
+Before `init`, `just skills` deletes `.agents/skills/openspec-*` and `.agents/skills/.openspec-target`. It deletes nothing else. D7 keeps the deletion inside the repo.
 
 - **Why:** a stale `codex` marker, or leftover skills, change what `init` renders. Deleting them first means every run starts from the same state. It also removes a workflow's skill after the workflow leaves the list.
 - **Alternative — delete only the marker:** `init` also infers the renderer from leftover skill text, so the skills must go too.
@@ -76,12 +78,20 @@ The recipe uses a `#!/usr/bin/env bash` shebang with `set -euo pipefail`.
 
 - **Why:** the steps depend on each other. A failed version check must stop the run before any file is deleted. In a shebang recipe, `just` runs all the lines in one shell, so an early exit stops everything after it.
 
+### D7. Keep every deletion and write inside the repo
+
+Before it deletes or writes anything, the recipe resolves the real path of each target's parent directory. It stops with an error unless that path lies inside the repo root.
+
+- **Why:** a symbolic link at `.agents`, `.agents/skills` or `.config` could otherwise point a deletion or a write at a directory outside the repo. Checking the resolved parent covers a link at any level with one rule.
+- **Alternative — check each known path for a link:** it misses a link one level up, such as `.agents` above `.agents/skills`.
+
 ## Risks / Trade-offs
 
 - **A future CLI renders `claude` skills differently** → Claude would read the generic text, which still works. The spec scenario "Claude sees the generated and authored skills" and #276's drift check are where to catch it. Move Claude to its own folder if that happens.
 - **A `flake.lock` bump breaks `just skills` in the Nix shell** → this is intended. The error names the new version, and the fix is a one-line pin change. Scheduled flake updates (#287) must bump the pin too.
 - **Someone runs `openspec init` or `openspec update` by hand** → it renders with their global settings into ignored files. The next `just skills` restores the repo's settings. `AGENTS.md` tells agents to use `just skills`.
 - **An authored skill is named `openspec-something`** → `just skills` deletes it. The docs reserve the prefix.
+- **A run fails or stops after the deletion step** → the clone has no generated skills until the next successful run, and git cannot restore them. When a step fails, the recipe prints "run `just skills` again". A killed run prints nothing, but the same rerun fixes it. A new run needs no network and takes seconds. We accept this state rather than generate into a copy and swap it in. `init` needs a full project around it, so the swap would add more code than the problem costs.
 
 ## Migration Plan
 

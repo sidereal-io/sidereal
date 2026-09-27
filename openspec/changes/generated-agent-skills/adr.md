@@ -10,11 +10,11 @@ ADR review completed for this change. No decision in `design.md` met the bar, so
 Why each decision falls short:
 
 - **D1 (redirect `XDG_CONFIG_HOME` for one command)** is a stopgap. The recipe's own comment names when to remove it: once OpenSpec reads project-scoped settings.
-- **D2 (write the config at run time)**, **D3 (delete generated files first)** and **D6 (one bash script)** each live in a few lines of the `justfile` or `.gitignore`. They cost little to change, and the code shows them.
+- **D2 (write the config at run time)**, **D3 (delete generated files first)**, **D6 (one bash script)** and **D7 (stay inside the repo)** are small. Each lives in a few lines of the `justfile` or `.gitignore`, costs little to change, and shows in the code.
 - **D4 (generate for `agents` only)** depends on the current CLI rendering identical skills for `agents` and `claude`. It is a fact about one tool version, and the drift check in a later story can show when it stops holding.
 - **D5 (pin the CLI version in the `justfile`)** applies an existing decision rather than making a new one. ADR-013 keeps Nix optional and requires both routes, with Nix and without, to keep working through plain pin files. D5 adds the same kind of pin file for the OpenSpec CLI that `backend/rust-toolchain.toml` and `.nvmrc` already give Rust and Node.
 
-`design.md` records the reasons and the alternatives for all six decisions.
+`design.md` records the reasons and the alternatives for all seven decisions.
 
 ## In-Force ADRs Reviewed
 

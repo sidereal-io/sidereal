@@ -14,7 +14,7 @@ Running `just skills` SHALL generate the OpenSpec skills from settings the repo 
 
 - **WHEN** a contributor runs `just skills`
 - **THEN** `.agents/skills` contains exactly these generated folders: `openspec-propose`, `openspec-explore`, `openspec-continue-change`, `openspec-apply-change`, `openspec-update-change`, `openspec-sync-specs`, `openspec-archive-change` and `openspec-verify-change`
-- **AND** no command files for any agent appear in the repo
+- **AND** the run creates or changes no file outside `.agents/skills` and `.config/openspec`
 
 #### Scenario: A stale Codex marker is left in the clone
 
@@ -29,7 +29,7 @@ Running `just skills` SHALL generate the OpenSpec skills from settings the repo 
 
 ### Requirement: The skills command leaves the contributor's own config alone
 
-`just skills` SHALL NOT read or change the contributor's global OpenSpec config. It SHALL redirect the CLI to the repo's settings for its own run only, so the contributor's shell keeps its environment. It SHALL run the CLI with usage telemetry turned off.
+`just skills` SHALL NOT read or change the contributor's global OpenSpec config. It SHALL redirect the CLI to the repo's settings for its own run only, so the contributor's shell keeps its environment. It SHALL run the CLI with usage telemetry turned off. It SHALL NOT delete or write any file outside the repo.
 
 #### Scenario: The global config file is unchanged
 
@@ -40,6 +40,18 @@ Running `just skills` SHALL generate the OpenSpec skills from settings the repo 
 
 - **WHEN** a contributor runs `just skills` in an interactive shell
 - **THEN** `XDG_CONFIG_HOME` and `OPENSPEC_TELEMETRY` in that shell keep the values they had before the run
+
+#### Scenario: A link sits where the generated config goes
+
+- **WHEN** `.config/openspec` is a symbolic link to another directory, and a contributor runs `just skills`
+- **THEN** no file in the link's target directory changes
+- **AND** `.config/openspec` is a real directory after the run
+
+#### Scenario: An agent folder links outside the repo
+
+- **WHEN** `.agents` is a symbolic link to a directory outside the repo, and a contributor runs `just skills`
+- **THEN** the command exits with a non-zero status
+- **AND** no file in the link's target directory changes
 
 #### Scenario: No telemetry ID is recorded
 
