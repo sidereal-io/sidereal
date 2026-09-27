@@ -1,20 +1,20 @@
 ## 1. The `just skills` script
 
-- [ ] 1.1 Create `scripts/skills.sh`, an executable bash script with `set -euo pipefail` (design D6). Its first step stops unless `openspec` is on `PATH` (design D5). Replace the `justfile` recipe with the one line `scripts/skills.sh`, and remove `openspec_version` and `openspec_workflows`. Verify with a `PATH` that has no `openspec`:
+- [x] 1.1 Create `scripts/skills.sh`, an executable bash script with `set -euo pipefail` (design D6). Its first step stops unless `openspec` is on `PATH` (design D5). Replace the `justfile` recipe with the one line `scripts/skills.sh`, and remove `openspec_version` and `openspec_workflows`. Verify with a `PATH` that has no `openspec`:
   - `just skills` exits with a non-zero status;
   - the error names `npm install -g @fission-ai/openspec`;
   - `git status --porcelain` shows the same output as before the run.
-- [ ] 1.2 Add the path-boundary check for `.agents` and `.agents/skills` (design D7). Verify in throwaway clones with a stub `openspec`:
+- [x] 1.2 Add the path-boundary check for `.agents` and `.agents/skills` (design D7). Verify in throwaway clones with a stub `openspec`:
   - with `.agents` as a link to a folder outside the clone, `just skills` exits non-zero and no file in that folder changes;
   - with `.agents/skills` as a link to a folder outside the clone, the result is the same.
-- [ ] 1.3 Make the script delete `.agents/skills/openspec-*` and `.agents/skills/.openspec-target` (design D3). It then runs `openspec init --tools agents --no-animation`, with `XDG_CONFIG_HOME="$root/.config"` and `OPENSPEC_TELEMETRY=0` as a prefix on that command only (design D1). Above it, keep the comment that links Fission-AI/OpenSpec#914 and #779. Verify:
+- [x] 1.3 Make the script delete `.agents/skills/openspec-*` and `.agents/skills/.openspec-target` (design D3). It then runs `openspec init --tools agents --no-animation`, with `XDG_CONFIG_HOME="$root/.config"` and `OPENSPEC_TELEMETRY=0` as a prefix on that command only (design D1). Above it, keep the comment that links Fission-AI/OpenSpec#914 and #779. Verify:
   - `.agents/skills` holds exactly the 8 expected `openspec-*` folders;
   - `grep -rl '\$openspec-' .agents/skills` finds nothing;
   - every generated `SKILL.md` has `generatedBy` equal to the output of `openspec --version`;
   - `git diff --exit-code .config/openspec/config.json` exits 0;
   - `echo $XDG_CONFIG_HOME $OPENSPEC_TELEMETRY` in the calling shell prints the same as before the run;
   - `shellcheck scripts/skills.sh` reports nothing.
-- [ ] 1.4 Make the script print a message when a step fails after the CLI check. The message says to run `just skills` again, or to update `openspec` if the CLI failed. Verify with a stub `openspec` that fails on `init`: the message appears and the exit status is non-zero.
+- [x] 1.4 Make the script print a message when a step fails after the CLI check. The message says to run `just skills` again, or to update `openspec` if the CLI failed. Verify with a stub `openspec` that fails on `init`: the message appears and the exit status is non-zero.
 
 ## 2. Git tracks authored skills and the settings
 
