@@ -1,22 +1,22 @@
 ## 1. The `just skills` recipe
 
-- [ ] 1.1 Add `openspec_version := "1.13.1"` and the 8-workflow list to the `justfile`. Add a `skills` recipe, written as one bash script with `set -euo pipefail` (design D5 and D6), whose first step compares `openspec --version` with the pin. Verify with a stub `openspec` early on `PATH` that prints `1.12.0`:
+- [x] 1.1 Add `openspec_version := "1.13.1"` and the 8-workflow list to the `justfile`. Add a `skills` recipe, written as one bash script with `set -euo pipefail` (design D5 and D6), whose first step compares `openspec --version` with the pin. Verify with a stub `openspec` early on `PATH` that prints `1.12.0`:
   - `just skills` exits with a non-zero status;
   - the error names `1.12.0`, `1.13.1` and `npm install -g @fission-ai/openspec@1.13.1`;
   - `git status --porcelain` shows the same output as before the run.
-- [ ] 1.2 Add the path-boundary check (design D7): before any deletion or write, the recipe resolves each target's parent directory and stops unless it lies inside the repo root. Verify both cases in a throwaway clone:
+- [x] 1.2 Add the path-boundary check (design D7): before any deletion or write, the recipe resolves each target's parent directory and stops unless it lies inside the repo root. Verify both cases in a throwaway clone:
   - with `.agents` replaced by a link to a folder under `.workspace/`, `just skills` exits non-zero and no file in that folder changes;
   - with `.config` as a link to a folder outside the repo, the result is the same.
-- [ ] 1.3 Make the recipe delete `.agents/skills/openspec-*` and `.agents/skills/.openspec-target` (design D3). It then removes `.config/openspec`, creates it fresh, and writes `config.json` from the `justfile` values (design D2). Verify:
+- [x] 1.3 Make the recipe delete `.agents/skills/openspec-*` and `.agents/skills/.openspec-target` (design D3). It then removes `.config/openspec`, creates it fresh, and writes `config.json` from the `justfile` values (design D2). Verify:
   - with `.config/openspec` as a link to another folder, that folder is unchanged after the run, and `.config/openspec` is a real directory;
   - `config.json` holds `profile: custom`, `delivery: skills` and the 8 workflows.
-- [ ] 1.4 Make the recipe run `openspec init --tools agents --no-animation` with `XDG_CONFIG_HOME` and `OPENSPEC_TELEMETRY=0` as a prefix on that command only (design D1). Above it, add a comment that links Fission-AI/OpenSpec#914 and #779 and says to remove the redirect once the CLI reads project-scoped `profile`, `delivery` and `workflows`. Verify:
+- [x] 1.4 Make the recipe run `openspec init --tools agents --no-animation` with `XDG_CONFIG_HOME` and `OPENSPEC_TELEMETRY=0` as a prefix on that command only (design D1). Above it, add a comment that links Fission-AI/OpenSpec#914 and #779 and says to remove the redirect once the CLI reads project-scoped `profile`, `delivery` and `workflows`. Verify:
   - `.agents/skills` holds exactly the 8 expected `openspec-*` folders;
   - `grep -rl '\$openspec-' .agents/skills` finds nothing;
   - every generated `SKILL.md` has `generatedBy: "1.13.1"`;
   - `config.json` has no `telemetry` key after the run;
   - `echo $XDG_CONFIG_HOME $OPENSPEC_TELEMETRY` in the calling shell prints the same as before the run.
-- [ ] 1.5 Make the recipe print "run `just skills` again" when a step fails after the version check. Verify with a stub `openspec` that reports `1.13.1` but fails on `init`: the message appears and the exit status is non-zero.
+- [x] 1.5 Make the recipe print "run `just skills` again" when a step fails after the version check. Verify with a stub `openspec` that reports `1.13.1` but fails on `init`: the message appears and the exit status is non-zero.
 
 ## 2. Git holds only authored skills
 
