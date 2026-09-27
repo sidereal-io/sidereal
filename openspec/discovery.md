@@ -90,7 +90,7 @@
 
 ## Journey Map
 
-Stage status checked against the code on 2026-09-25. Status describes the v2 backend
+Stage status checked against the code on 2026-09-26. Status describes the v2 backend
 in `backend/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -184,7 +184,7 @@ in `backend/`; where v0.10.x already covers a stage, the stage says so.
 ```
   Clone ─► Enter env ─► Get skills ─► Work & check ─► Open PR ─► Bump pins (Mo)
     │          │             │              │             │            │
- supported  supported     partial       supported      partial      partial
+ supported  supported     partial        partial       partial      partial
 ```
 
 1. **Clone** — `git clone` works — supported.
@@ -195,10 +195,12 @@ in `backend/`; where v0.10.x already covers a stage, the stage says so.
    ([#274](https://github.com/sidereal-io/sidereal/issues/274),
    [#275](https://github.com/sidereal-io/sidereal/issues/275)).
 4. **Work & check** — `just check` runs with pinned Rust, Node, `just`, and
-   `openspec` — supported.
+   `openspec`, but it gates only the Rust workspace. v2 has no web frontend to run or
+   check, and the Rust workspace still sits in `backend/` rather than `server/` —
+   partial ([#299](https://github.com/sidereal-io/sidereal/issues/299), [#300](https://github.com/sidereal-io/sidereal/issues/300), [#301](https://github.com/sidereal-io/sidereal/issues/301), [#302](https://github.com/sidereal-io/sidereal/issues/302), [#303](https://github.com/sidereal-io/sidereal/issues/303)).
 5. **Open PR** — CI checks the code, but not the skills, and not inside the pinned
-   shell — partial ([#276](https://github.com/sidereal-io/sidereal/issues/276),
-   [#289](https://github.com/sidereal-io/sidereal/issues/289)).
+   shell. v0.10.x CI also runs on v2-only pull requests, and v2 web code has no CI
+   job — partial ([#276](https://github.com/sidereal-io/sidereal/issues/276), [#289](https://github.com/sidereal-io/sidereal/issues/289), [#299](https://github.com/sidereal-io/sidereal/issues/299), [#301](https://github.com/sidereal-io/sidereal/issues/301)).
 6. **Bump pins** — `flake.lock` exists, but nothing updates it on a schedule — partial
    ([#287](https://github.com/sidereal-io/sidereal/issues/287)).
 
