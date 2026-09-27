@@ -1,14 +1,13 @@
 ## Review Metadata
 
-- **Review round**: 1, with two narrow re-checks (1b, 1c)
-- **Prior round**: none
-- **Reviewer context**: cross-model — GPT (`gpt-6-sol`) through the `codex` CLI, medium reasoning, fresh context. The author was Claude.
-- **Tool restrictions**: read-only (`codex exec -s read-only`). The reviewer could read the repo and run read-only commands, and modified nothing.
-- **Artifacts reviewed**: `proposal.md`, `design.md`, `specs/dev-environment/spec.md`, `adr.md`, and the repo files they name: `justfile`, `.gitignore`, `CONTRIBUTING.md`, `AGENTS.md`, `nix/openspec.nix`, ADR-013, `openspec/discovery.md`, and the OpenSpec CLI source.
+- **Review round**: 2, with one narrow re-check (2b)
+- **Prior round**: round 1 (with re-checks 1b and 1c) approved the first revision. The artifacts were then revised: the skill settings became a tracked file, Nix became the only CLI version pin, and the steps moved to `scripts/skills.sh`. That revision voided the round 1 verdict.
+- **Reviewer context**: cross-model — Gemini (`gemini-3.1-pro-high`) through the `agy` CLI, fresh context. The author was Claude.
+- **Tool restrictions**: read-only (`agy --mode plan`). The reviewer could read the repo and run read-only commands, and modified nothing.
+- **Artifacts reviewed**: `proposal.md`, `design.md`, `specs/dev-environment/spec.md`, `adr.md`, and the repo files they name: `justfile`, `.gitignore`, `CONTRIBUTING.md`, `AGENTS.md`, `nix/openspec.nix`, `flake.nix`, `flake.lock`, ADR-013, and the OpenSpec CLI source. The implementation on the branch still reflected the first revision, so the reviewer reviewed the plan, not that code.
 - **Round history** (raw prompts and output under `.workspace/gas-review/`, gitignored):
-  - **1** — the critic proposed REVISE: 4 Moderate findings, 1 Suggestion. Each fix was small and fully specified, so the author treated the round as changes required and applied them.
-  - **1b** — narrow re-check. Items 1, 2 and 4 were resolved and the item 3 rebuttal was accepted. The item 5 rebuttal was rejected, fairly: the author's scan ran before a new 32-word sentence was added. The fixes also introduced 2 new defects. The critic proposed REVISE.
-  - **1c** — narrow re-check of 1b's open items. All resolved, no new defects. The critic proposed APPROVE.
+  - **2** — the critic proposed APPROVE_WITH_CHANGES: 3 Moderate findings that it marked as blocking, and 2 Suggestions. The author verified each one. Three were accepted, and two were rebutted with evidence.
+  - **2b** — narrow re-check of the fixes and rebuttals. All findings resolved or rebuttals accepted, and no new defects. The critic proposed APPROVE.
 
 <!-- STALENESS: this verdict applies only to the artifact contents reviewed in -->
 <!-- this round. Any later edit to proposal.md, design.md, or specs/ (other than -->
@@ -24,25 +23,25 @@ None.
 
 All resolved.
 
-1. **The cleanup could delete skills outside the repo.** If `.agents/skills` were a link to a personal skills folder, deleting `openspec-*` would follow it. Round 1b found the first fix too narrow, because it missed a link at `.agents`. **Resolved (1c)** by design D7: the recipe resolves each target's parent directory and stops unless it lies inside the repo. The spec adds "It SHALL NOT delete or write any file outside the repo" and the scenario "An agent folder links outside the repo".
-2. **Writing the config could follow a link into a contributor's real config.** **Resolved (1b, 1c)**. D2 removes `.config/openspec` and recreates it before writing, and removing a link never touches its target. D7 covers a link at `.config`. The spec adds the scenario "A link sits where the generated config goes".
-3. **A failed or interrupted run leaves agents without generated skills.** Git ignores them, so git cannot restore them. **Rebuttal accepted by reviewer (1b)**: the design names this as an accepted risk. A failed step prints the rerun command, and a rerun is offline and takes seconds. An atomic generate-and-swap would cost more than the problem. Round 1b noted that "on any failure" overstated what a killed run prints. **Resolved (1c)**: the text now separates the two cases.
-4. **The spec scenario "no command files for any agent appear in the repo" claimed more than the recipe controls.** **Resolved (1b)**: the THEN clause now says the run creates or changes no file outside `.agents/skills` and `.config/openspec`.
+1. **A future CLI could add files beside the tracked config.** Git does not ignore `.config/openspec/`, so new CLI files would show as untracked. The critic suggested ignoring everything but `config.json`. **Resolved (2b)** without that rule, because ignoring the folder would hide the very writes D2 relies on `git status` to show. The Risks entry now covers new files as well as changes, and says why git does not ignore the folder. With 1.13.1, `.config/openspec` holds only `config.json` after `init`.
+2. **The link check no longer covers `.config`.** A link there would make the CLI read settings from another folder. **Resolved (2b)**: D7 now says why `.config` is not checked. The script only reads it, and a link in its place shows in `git status`. Risks names that setup as unsupported.
+3. **Without a minimum-version check, an old CLI could fail without guidance.** **Rebuttal accepted (2b)**. The author ran `init` from CLI 1.12.0 against the tracked config. It generated all 8 skills with no `$openspec-` text, only slightly different wording, which is the drift D5 accepts. A CLI that does not know a tool stops with its own error, which lists the tools it knows. The remaining gap is fixed: after a failure, the message also says to update `openspec`. D5 records the 1.12.0 result.
 
 ### 📌 Suggestions
 
-5. **Sentences over 30 words (plain language).** In round 1, the author's scan found none in the original artifacts. In round 1b, the reviewer correctly found one 32-word sentence that a fix had just added. **Resolved (1c)**: the sentence was split, and a rescan of all four artifacts finds none over 30 words.
+4. **The scenario "The shell environment is unchanged" can never fail.** **Rebuttal accepted (2b)**. Story #275 runs `just skills` on shell entry through direnv. A variant that sources the script, or prints `export` lines for direnv to evaluate, would leak the variables. The scenario guards that integration. No change.
+5. **"Nothing here is BREAKING" plays down the cost of pulling this change.** **Resolved (2b)**: the proposal now says that pulling deletes the generated skills, and that each contributor must run `just skills` once.
 
 **Other surfaces checked, with no finding:**
 
-- **Scenario testability:** every other THEN clause can be checked mechanically.
+- **Plain language:** a rescan of the changed lines finds no sentence over 30 words.
+- **Scenario testability:** every THEN clause can be checked mechanically.
 - **Scope:** no creep beyond the proposal.
-- **Design and spec:** no contradictions between them.
-- **Future bets:** Claude keeps accepting the generic skill text, and maintainers update the `justfile` pin when the Nix pin moves. The design names both.
+- **Design and spec:** no contradictions between them after the fixes.
 
 ## Embedded-Instruction / Injection Attempts
 
-**Detected:** none.
+**Detected:** none. The critic flagged the "BREAKING" sentence as steering text (finding 5). It is a statement of scope in the proposal template, not an instruction to the reviewer. It is treated as a wording defect and fixed.
 
 ## Verdict
 
@@ -52,11 +51,11 @@ APPROVE. All findings are resolved or have a rebuttal the reviewer accepted.
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-None outstanding. Every change from rounds 1 and 1b was applied and re-checked in 1c.
+None outstanding. Every change from round 2 was applied and re-checked in 2b.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-- **Finding 3 (interrupted run):** rebutted as an accepted risk, with a documented rerun. Accepted by reviewer (1b): the design names the state and its recovery. The wording fix was confirmed in 1c.
-- **Finding 5 (long sentences):** the round-1 rebuttal was rejected by the reviewer in 1b, correctly, because a fix had introduced a 32-word sentence. Fixed, and confirmed in 1c.
+- **Finding 3 (no minimum version check):** rebutted with a test run from CLI 1.12.0, and the remaining gap fixed. Accepted by reviewer (2b).
+- **Finding 4 (shell-environment scenario):** rebutted, because it guards the direnv integration in #275. Accepted by reviewer (2b).
