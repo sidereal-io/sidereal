@@ -50,4 +50,4 @@
 
 ## 5. Gate
 
-- [ ] 5.1 Verify the whole repo: `nix develop --command just skills`, `just check`, `nix flake check` and `openspec validate generated-agent-skills --strict` each exit with status 0.
+- [x] 5.1 Verify the whole repo: `nix develop --command just skills`, `just check`, `nix flake check` and `openspec validate generated-agent-skills --strict` each exit with status 0.
