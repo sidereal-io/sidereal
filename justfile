@@ -5,6 +5,10 @@
 default:
     @just --list
 
+# Generate the OpenSpec agent skills into .agents/skills (see scripts/skills.sh).
+skills:
+    @scripts/skills.sh
+
 # Zero-to-running: backend + frontend together.
 dev:
     npx concurrently -n backend,frontend -c blue,green \

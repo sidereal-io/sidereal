@@ -131,6 +131,8 @@ Nix flake. Nix is optional. Pick either route.
 4. Expect a full rebuild of `backend/target` the first time you run a Rust
    command in the shell. The Rust version matches rustup's, but the compiler's
    store path differs, so cargo's cached build data doesn't carry over.
+5. Run `just skills` to generate the OpenSpec agent skills. See
+   [Agent skills](#agent-skills).
 
 Nix sees only files tracked by git. A new file under `nix/` stays invisible to
 the shell until you run `git add` on it.
@@ -145,8 +147,58 @@ it, and it loads after the pinned shell, so your settings take precedence.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
    and run its "use" command in the repo root to select Node 26.
 3. Install [`just`](https://github.com/casey/just).
+4. Install the `openspec` CLI, then run `just skills`:
+
+   ```
+   npm install -g @fission-ai/openspec
+   just skills
+   ```
+
+   The Nix shell pins the CLI version that the repo tests with. Without Nix,
+   you get the latest release, so your skill text can differ slightly.
 
 Both routes pass the same `just check` gate.
+
+### Agent skills
+
+AI agents read skills from `.agents/skills`. Claude Code reads the same folder
+through the `.claude/skills` link. The folder holds two kinds of skill:
+
+- **Authored skills**, such as `critique` and `discovery`. People write them, and
+  git tracks them.
+- **Generated skills**, named `openspec-*`. `just skills` creates them, and git
+  ignores them.
+
+Run `just skills` once after you clone, and again after you pull a change to
+the skill settings. For a given CLI version, it gives the same skills on every
+machine:
+
+- It stops if `openspec` is not installed. The error message names the install
+  command.
+- It deletes every `openspec-*` skill and the `.openspec-target` marker, then
+  generates them again.
+- It reads the skill settings from the repo, never from your own
+  `~/.config/openspec/config.json`. It leaves that file unchanged.
+
+The skill settings live in `.config/openspec/config.json`: the profile, the
+delivery mode and the workflow list. To add or remove a workflow, edit that
+file and run `just skills`. The other OpenSpec file, `openspec/config.yaml`,
+holds the schema, the project context and the artifact rules.
+
+**The `openspec-` prefix is reserved.** `just skills` deletes any skill folder
+with that prefix, so give an authored skill a different name.
+
+Don't run `openspec init` or `openspec update` by hand. They use your global
+settings instead of the repo's. If you do, run `just skills` to restore the
+repo's skills.
+
+To support another agent, pick the case that fits it:
+
+- **It reads `.agents/skills`:** do nothing.
+- **It reads only its own folder:** add a tracked link from that folder to
+  `.agents/skills`, as `.claude/skills` does.
+- **It needs different skill text:** it needs its own generated set. That takes
+  a change to `scripts/skills.sh`.
 
 ## 📝 Code Standards
 

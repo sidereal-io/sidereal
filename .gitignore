@@ -125,3 +125,7 @@ vite.config.ts.*
 .claude/settings.local.json
 .claude/worktrees/
 docs/superpowers/
+
+# OpenSpec output — `just skills` regenerates these; only authored skills are tracked
+/.agents/skills/openspec-*/
+/.agents/skills/.openspec-target
