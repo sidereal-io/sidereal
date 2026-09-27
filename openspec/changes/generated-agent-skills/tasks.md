@@ -20,13 +20,13 @@
 
 ## 2. Git holds only authored skills
 
-- [ ] 2.1 Add to `.gitignore`: `/.agents/skills/openspec-*/`, `/.agents/skills/.openspec-target` and `/.config/openspec/`. Verify that `git check-ignore` reports each of the three paths as ignored, and reports `.agents/skills/critique/SKILL.md` as not ignored.
-- [ ] 2.2 Remove the 8 generated skill folders and the marker from git with `git rm -r --cached`, then run `just skills`. Verify:
+- [x] 2.1 Add to `.gitignore`: `/.agents/skills/openspec-*/`, `/.agents/skills/.openspec-target` and `/.config/openspec/`. Verify that `git check-ignore` reports each of the three paths as ignored, and reports `.agents/skills/critique/SKILL.md` as not ignored.
+- [x] 2.2 Remove the 8 generated skill folders and the marker from git with `git rm -r --cached`, then run `just skills`. Verify:
   - `git status --porcelain` shows only the intended removals, and nothing untracked;
   - `git ls-files .agents/skills` lists no `openspec-*` path and no `.openspec-target`.
-- [ ] 2.3 Verify that the authored skills survive generation. Record `sha256sum` of every file under `critique`, `grill-me`, `choose-an-adversary` and `discovery`, run `just skills` twice, and confirm that the checksums are unchanged. Also confirm that `diff -r` of `.agents/skills` finds no difference between the two runs.
-- [ ] 2.4 Verify that Claude sees the full set: `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/critique/SKILL.md` both exist, and `realpath .claude/skills` equals `realpath .agents/skills`.
-- [ ] 2.5 Verify that the run touches nothing else. Compare `git status --porcelain --ignored` before and after `just skills`: the only new entries are under `.agents/skills` and `.config/openspec`.
+- [x] 2.3 Verify that the authored skills survive generation. Record `sha256sum` of every file under `critique`, `grill-me`, `choose-an-adversary` and `discovery`, run `just skills` twice, and confirm that the checksums are unchanged. Also confirm that `diff -r` of `.agents/skills` finds no difference between the two runs.
+- [x] 2.4 Verify that Claude sees the full set: `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/critique/SKILL.md` both exist, and `realpath .claude/skills` equals `realpath .agents/skills`.
+- [x] 2.5 Verify that the run touches nothing else. Compare `git status --porcelain --ignored` before and after `just skills`: the only new entries are under `.agents/skills` and `.config/openspec`.
 
 ## 3. Same output on every machine
 
