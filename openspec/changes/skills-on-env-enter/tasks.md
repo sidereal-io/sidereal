@@ -24,11 +24,11 @@
 
 ## 3. The Nix shell
 
-- [ ] 3.1 Add the generic hook to `nix/devshell.nix` (design D1). Order it after the other hooks with `lib.mkAfter`. It runs `just enter` only when `just` is on `PATH` and `just --show enter` succeeds, and it ends with `|| true`. Update the `hooks` option description, which still says a later story adds the first hook. Verify:
+- [x] 3.1 Add the generic hook to `nix/devshell.nix` (design D1). Order it after the other hooks with `lib.mkAfter`. It runs `just enter` only when `just` is on `PATH` and `just --show enter` succeeds, and it ends with `|| true`. Update the `hooks` option description, which still says a later story adds the first hook. Verify:
   - with stale skills, `nix develop --command true` exits 0, prints nothing from the hook, and leaves the 8 generated folders;
   - with the `enter` recipe removed in a throwaway clone, `nix develop --command true` exits 0 and the hook prints nothing;
   - `nix/devshell.nix` contains no mention of `skills` or `openspec`.
-- [ ] 3.2 Make `nix/openspec.nix` add a hook that exports `OPENSPEC_NO_UPDATE_CHECK=1` (design D4). Verify that `nix develop --command printenv OPENSPEC_NO_UPDATE_CHECK` prints `1`, and that `direnv exec . printenv OPENSPEC_NO_UPDATE_CHECK` prints `1`.
+- [x] 3.2 Make `nix/openspec.nix` add a hook that exports `OPENSPEC_NO_UPDATE_CHECK=1` (design D4). Verify that `nix develop --command printenv OPENSPEC_NO_UPDATE_CHECK` prints `1`, and that `direnv exec . printenv OPENSPEC_NO_UPDATE_CHECK` prints `1`.
 - [ ] 3.3 Verify the refresh works offline. On Linux, delete the stamp, then run `unshare --net --map-root-user nix develop --offline --command true`. Confirm that `.agents/skills` holds the 8 generated folders and a new stamp.
 
 ## 4. direnv

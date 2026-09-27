@@ -15,7 +15,7 @@
         default = [ ];
         description = ''
           Shell script fragments run, in order, when the development shell
-          starts. Empty in this change; story E3 adds the first hook.
+          starts. This module adds the `just enter` hook last.
         '';
       };
     };
@@ -25,6 +25,15 @@
         packages = config.sidereal.shell.packages;
         shellHook = lib.concatStringsSep "\n" config.sidereal.shell.hooks;
       };
+
+      # Run the repo's `enter` recipe, if its justfile defines one, after every
+      # other hook. The justfile decides what entering means. A failure never
+      # stops the shell from loading.
+      sidereal.shell.hooks = lib.mkAfter [
+        ''
+          { command -v just >/dev/null 2>&1 && just --show enter >/dev/null 2>&1 && just enter; } || true
+        ''
+      ];
 
       # Building the shell is also a flake check (design.md D8). Story E4
       # adds more checks here.
