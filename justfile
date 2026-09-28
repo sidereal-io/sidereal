@@ -9,6 +9,10 @@ default:
 skills:
     @scripts/skills.sh
 
+# Refresh stale OpenSpec skills. The dev shell runs this when it loads.
+enter:
+    @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
+
 # Zero-to-running: backend + frontend together.
 dev:
     npx concurrently -n backend,frontend -c blue,green \
