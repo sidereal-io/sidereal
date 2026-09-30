@@ -18,7 +18,7 @@
 
 ## 3. Review guidance
 
-- [ ] 3.1 Add a "Reviewing a pin update" section to the Development Environment part of `CONTRIBUTING.md`, as design D7 describes. Verify that the section names the flake check, the `openspec` release notes, and the existing Rust workflow.
+- [x] 3.1 Add a "Reviewing a pin update" section to the Development Environment part of `CONTRIBUTING.md`, as design D7 describes. Verify that the section names the flake check, the `openspec` release notes, and the existing Rust workflow.
 
 ## 4. Verification on GitHub
 
