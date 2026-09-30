@@ -222,6 +222,21 @@ To support another agent, pick the case that fits it:
 - **It needs different skill text:** it needs its own generated set. That takes
   a change to `scripts/skills.sh`.
 
+### Reviewing a pin update
+
+Every Monday, Dependabot may open pull requests that update the pinned tools.
+Check these points before you merge one:
+
+- **Nix pull requests change `flake.lock`.** The flake check CI job builds the
+  shell with the new pins. A green check means the shell builds. The job log
+  also prints the `openspec`, Node, and `just` versions inside the new shell.
+- **A new `openspec` version changes every agent's skills.** The shell
+  regenerates the skills from the CLI, so read the
+  [`openspec` release notes](https://github.com/Fission-AI/OpenSpec/releases)
+  before you merge an update that changes its version.
+- **Cargo pull requests change `backend/Cargo.lock`.** The existing
+  `backend-rs` workflow checks them, the same as any other backend change.
+
 ## 📝 Code Standards
 
 ### TypeScript
