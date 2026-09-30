@@ -18,7 +18,7 @@
       imports = [
         ./nix/devshell.nix
         ./nix/toolchains.nix
-        ./nix/openspec.nix
+        ./nix/does-not-exist.nix
       ];
 
       # Every module below gets a `pkgs` with the rust-overlay applied, so
