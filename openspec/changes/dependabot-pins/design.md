@@ -2,12 +2,12 @@
 
 See proposal.md for why this change exists. The requirements are in specs/dev-environment/spec.md.
 
-These facts about the repo shape the approach:
+The repo today:
 
 - `.github/dependabot.yml` already has weekly entries for npm, Docker, and GitHub Actions. They all run on Monday at 04:00.
 - `flake.nix` has three inputs: `nixpkgs`, `rust-overlay`, and `flake-parts`. `nix/devshell.nix` already defines `checks.devshell`, so `nix flake check` builds the shell today.
 - No CI workflow installs Nix. `ci.yml` checks the v0.10.x TypeScript app. `backend-rs.yml` checks the Rust workspace through rustup, and it runs on every change under `backend/**`, which includes `Cargo.lock`.
-- The shell is built from `flake.nix`, `flake.lock`, the files in `nix/`, and `backend/rust-toolchain.toml`. `.envrc` watches the same files.
+- Four sets of files define the shell: `flake.nix`, `flake.lock`, the files in `nix/`, and `backend/rust-toolchain.toml`. `.envrc` watches the same files.
 - The story asks for the simplest thing that works: no backwards-compatibility shims, no unnecessary defensive code, and no unnecessary deduplication.
 
 ## Goals / Non-Goals
@@ -54,11 +54,13 @@ The job installs Nix with `DeterminateSystems/determinate-nix-action@v3`. It add
 - **Why**: `CONTRIBUTING.md` already recommends Determinate's installer, and the action enables flakes by default. The existing `github-actions` Dependabot entry keeps the action's version current.
 - **Alternative**: `cachix/install-nix-action`, which needs flakes enabled by hand. A build cache such as Cachix is story #288.
 
-### D5. The job prints versions to its log
+### D5. The job runs each tool and prints its version
 
-After `nix flake check` passes, one step runs `nix develop --command sh -c 'openspec --version; node --version; just --version'`.
+After `nix flake check` passes, one step runs `nix develop --command sh -c 'openspec --version && node --version && just --version'`.
 
 - **Why**: this is one command. A reviewer opens the job log to see the versions a pin update brings.
+- **Why `&&`**: `nix flake check` builds the tools but never runs them, so this step is the only one that proves each tool starts. With `;`, the step would pass whenever `just --version` passed, even if `openspec` failed.
+- **Side effect we accept**: `nix develop` runs the shell hook, which refreshes the agent skills. That takes a few seconds, and it also exercises skill generation with the new CLI.
 - **Alternative**: write the versions to the job summary, or comment on the pull request. A comment needs write permission, which a Dependabot pull request does not have. A summary adds formatting code for little gain.
 
 ### D6. The job has read-only permissions
@@ -66,6 +68,7 @@ After `nix flake check` passes, one step runs `nix develop --command sh -c 'open
 The workflow sets `permissions: contents: read` and uses no secrets.
 
 - **Why**: the job only reads the repo and builds it. Pull requests from forks and from Dependabot get the same read-only token, so the job behaves the same for every author.
+- **Trust boundary**: `nix develop` runs the pull request's shell hook on the runner, outside the Nix sandbox. This adds no new exposure. `ci.yml` already runs `npm install` and `backend-rs.yml` already runs `cargo test` on pull request code. In all three workflows, the boundary is the read-only token and the absence of secrets.
 
 ### D7. Where the review guidance lives
 
@@ -77,6 +80,7 @@ The workflow sets `permissions: contents: read` and uses no secrets.
 
 ## Risks / Trade-offs
 
+- **Dependabot may reject `groups` for the Nix ecosystem as invalid configuration.** A configuration error could stop every Dependabot update, not only Nix → after merge, the implementer checks the repo's Dependabot status page. If Dependabot reports the Nix `groups` block as invalid, the implementer removes that block and accepts one pull request per input.
 - **Dependabot's Nix support is new (April 2026) and may misbehave** → we accept its default behaviour and do not work around it. A broken update shows up as a failing flake check.
 - **`rust-overlay` changes daily, so its pull request will appear almost every week** → Mo merges it once the check is green. It is noise only if grouping fails.
 - **The check builds the shell for one system only** → a pin that breaks the macOS shell still passes CI. Contributors on macOS catch it when their shell reloads.
