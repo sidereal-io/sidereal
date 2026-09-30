@@ -1,7 +1,7 @@
 ## 1. Dependabot entries
 
 - [x] 1.1 Add a `nix` entry to `.github/dependabot.yml`: directory `/`, weekly on Monday at 04:00, and a group whose `patterns` list is `["*"]`. Verify that the `yq` command in the scenario "The configuration declares the Nix updates" prints exactly one matching entry.
-- [ ] 1.2 Add a `cargo` entry to `.github/dependabot.yml`: directory `/backend`, weekly on Monday at 04:00, and a group whose `patterns` list is `["*"]`. Verify that the `yq` command in the scenario "The configuration declares the Cargo updates" prints exactly one matching entry.
+- [x] 1.2 Add a `cargo` entry to `.github/dependabot.yml`: directory `/backend`, weekly on Monday at 04:00, and a group whose `patterns` list is `["*"]`. Verify that the `yq` command in the scenario "The configuration declares the Cargo updates" prints exactly one matching entry.
 - [ ] 1.3 Validate the whole file against the Dependabot schema with `uv run --with check-jsonschema check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml`. Verify that it exits with status 0.
 
 ## 2. The flake check workflow
