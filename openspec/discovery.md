@@ -91,7 +91,7 @@
 ## Journey Map
 
 Stage status checked against the code on 2026-09-28. Status describes the v2 backend
-in `backend/`; where v0.10.x already covers a stage, the stage says so.
+in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
 
@@ -138,7 +138,7 @@ in `backend/`; where v0.10.x already covers a stage, the stage says so.
 ```
 
 1. **Install** — Postgres and the app come up together from one command — partial:
-   `backend/Dockerfile` and the axum shell exist, with no database or compose bundle
+   `server/Dockerfile` and the axum shell exist, with no database or compose bundle
    ([#285](https://github.com/sidereal-io/sidereal/issues/285)).
 2. **Configure** — storage root and watched folders set through config or environment
    — gap ([#281](https://github.com/sidereal-io/sidereal/issues/281)). An admin
@@ -162,7 +162,7 @@ in `backend/`; where v0.10.x already covers a stage, the stage says so.
 ```
 
 1. **Code to the contract** — implement a Source or Operator against `plugin-abi` —
-   partial: the traits in `backend/crates/plugin-abi/src/lib.rs` carry only an id
+   partial: the traits in `server/crates/plugin-abi/src/lib.rs` carry only an id
    ([#279](https://github.com/sidereal-io/sidereal/issues/279),
    [#281](https://github.com/sidereal-io/sidereal/issues/281)). The embedded-script
    profile has no story yet.
@@ -196,13 +196,12 @@ in `backend/`; where v0.10.x already covers a stage, the stage says so.
    ([#306](https://github.com/sidereal-io/sidereal/issues/306)).
 4. **Work & check** — `just check` runs with pinned Rust, Node, `just`, and
    `openspec`, but it gates only the Rust workspace. v2 has no web frontend to run or
-   check, and the Rust workspace still sits in `backend/` rather than `server/` —
-   partial ([#299](https://github.com/sidereal-io/sidereal/issues/299), [#300](https://github.com/sidereal-io/sidereal/issues/300), [#301](https://github.com/sidereal-io/sidereal/issues/301), [#302](https://github.com/sidereal-io/sidereal/issues/302), [#303](https://github.com/sidereal-io/sidereal/issues/303)).
-5. **Open PR** — CI checks the code, but not inside the pinned shell. v0.10.x CI also
-   runs on v2-only pull requests, and v2 web code has no CI job — partial
-   ([#289](https://github.com/sidereal-io/sidereal/issues/289), [#299](https://github.com/sidereal-io/sidereal/issues/299), [#301](https://github.com/sidereal-io/sidereal/issues/301)).
+   check — partial ([#300](https://github.com/sidereal-io/sidereal/issues/300), [#301](https://github.com/sidereal-io/sidereal/issues/301), [#302](https://github.com/sidereal-io/sidereal/issues/302), [#303](https://github.com/sidereal-io/sidereal/issues/303)).
+5. **Open PR** — CI checks the code, but not inside the pinned shell, and v2 web code
+   has no CI job — partial
+   ([#289](https://github.com/sidereal-io/sidereal/issues/289), [#301](https://github.com/sidereal-io/sidereal/issues/301)).
 6. **Bump pins** — Dependabot updates npm, Docker, and Actions, but nothing updates
-   `flake.lock`, `backend/Cargo.lock`, or the Rust toolchain, which is frozen at 1.85
+   `flake.lock`, `server/Cargo.lock`, or the Rust toolchain, which is frozen at 1.85
    — partial ([#287](https://github.com/sidereal-io/sidereal/issues/287),
    [#310](https://github.com/sidereal-io/sidereal/issues/310)).
 

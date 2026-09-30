@@ -5,10 +5,20 @@ on:
     branches:
       - main
       - v0.x
+    paths-ignore:
+      - 'server/**'
+      - 'web/**'
+      - 'openspec/**'
+      - 'docs/**'
   pull_request:
     branches:
       - main
       - v0.x
+    paths-ignore:
+      - 'server/**'
+      - 'web/**'
+      - 'openspec/**'
+      - 'docs/**'
   workflow_dispatch:
 
 env:

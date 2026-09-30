@@ -10,7 +10,7 @@ The development environment gives every contributor and AI agent the same pinned
 
 The development shell SHALL provide these tools on `PATH`:
 
-- Rust at the exact channel named in `backend/rust-toolchain.toml`, with `rustfmt` and `clippy`;
+- Rust at the exact channel named in `server/rust-toolchain.toml`, with `rustfmt` and `clippy`;
 - Node at major version 26;
 - `just`;
 - the `openspec` CLI.
@@ -18,7 +18,7 @@ The development shell SHALL provide these tools on `PATH`:
 #### Scenario: A contributor checks tool versions in the shell
 
 - **WHEN** a contributor runs `nix develop --command sh -c 'rustc --version; node --version; just --version; openspec --version'` at the repo root
-- **THEN** `rustc --version` reports the version in the `channel` field of `backend/rust-toolchain.toml`
+- **THEN** `rustc --version` reports the version in the `channel` field of `server/rust-toolchain.toml`
 - **AND** `node --version` output starts with `v26.`
 - **AND** the `just` and `openspec` commands each exit with status 0
 
@@ -29,11 +29,11 @@ The development shell SHALL provide these tools on `PATH`:
 
 ### Requirement: The Rust version has one source of truth
 
-The development shell SHALL take the Rust version and components from `backend/rust-toolchain.toml` only. Changing the Rust version SHALL NOT require editing any other file.
+The development shell SHALL take the Rust version and components from `server/rust-toolchain.toml` only. Changing the Rust version SHALL NOT require editing any other file.
 
 #### Scenario: A maintainer bumps the Rust version
 
-- **WHEN** a maintainer changes `channel` in `backend/rust-toolchain.toml` to another stable version, and changes no other file
+- **WHEN** a maintainer changes `channel` in `server/rust-toolchain.toml` to another stable version, and changes no other file
 - **THEN** `nix develop --command rustc --version` reports the new version
 
 ### Requirement: The lock file decides every tool version
@@ -72,14 +72,14 @@ For a contributor with Nix and direnv, entering the repo directory SHALL turn th
 
 #### Scenario: The Rust pin changes while the shell is active
 
-- **WHEN** a tester with the shell loaded changes `channel` in `backend/rust-toolchain.toml` to a different stable version, without leaving the repo directory
+- **WHEN** a tester with the shell loaded changes `channel` in `server/rust-toolchain.toml` to a different stable version, without leaving the repo directory
 - **AND** runs `direnv export bash` in the repo directory
 - **THEN** `rustc --version` in that shell reports the new version, not the one from before the edit
 
 #### Scenario: The watch list covers the shell's files
 
 - **WHEN** a tester with the shell loaded runs `direnv status` in the repo directory
-- **THEN** the output lists `backend/rust-toolchain.toml` and each file under `nix/` as watched
+- **THEN** the output lists `server/rust-toolchain.toml` and each file under `nix/` as watched
 - **AND** the output lists `.config/openspec/config.json` and `scripts/skills.sh` as watched
 
 ### Requirement: Contributors can add their own direnv settings
@@ -104,7 +104,7 @@ For a contributor with Nix and direnv, entering the repo directory SHALL turn th
 
 ### Requirement: Nix stays optional
 
-The environment SHALL NOT require Nix for building or checking the repo. For a contributor with direnv but without Nix, entering the repo SHALL produce no error. It SHALL change no environment variables except direnv's own `DIRENV_*` variables and any that the contributor's `.envrc.local` sets. The repo SHALL keep the pin files that tools outside Nix read: `backend/rust-toolchain.toml` for rustup, and `.nvmrc` for Node version managers.
+The environment SHALL NOT require Nix for building or checking the repo. For a contributor with direnv but without Nix, entering the repo SHALL produce no error. It SHALL change no environment variables except direnv's own `DIRENV_*` variables and any that the contributor's `.envrc.local` sets. The repo SHALL keep the pin files that tools outside Nix read: `server/rust-toolchain.toml` for rustup, and `.nvmrc` for Node version managers.
 
 #### Scenario: A contributor has direnv but not Nix
 
@@ -115,7 +115,7 @@ The environment SHALL NOT require Nix for building or checking the repo. For a c
 #### Scenario: A contributor without Nix runs the checks
 
 - **WHEN** a contributor without Nix installs Rust through rustup and installs Node through a version manager reading `.nvmrc`
-- **THEN** rustup selects the channel in `backend/rust-toolchain.toml`
+- **THEN** rustup selects the channel in `server/rust-toolchain.toml`
 - **AND** the version manager selects Node major version 26
 - **AND** `just check` exits with status 0, given that `just` is installed
 
@@ -167,7 +167,7 @@ The repo SHALL state Node major version 26 wherever it names a Node version for 
 
 #### Scenario: No outdated Node version is left in the docs
 
-- **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `backend/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
+- **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `server/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
 - **THEN** the search finds no match
 
 #### Scenario: Every CI workflow reads the Node version from .nvmrc
@@ -415,20 +415,20 @@ Dependabot SHALL check the inputs in `flake.lock` every week. When an input has 
 
 ### Requirement: Dependabot proposes Cargo updates every week
 
-Dependabot SHALL check the crates in `backend/Cargo.lock` every week. When a crate has a newer release, Dependabot SHALL open one grouped pull request for all the updated crates.
+Dependabot SHALL check the crates in `server/Cargo.lock` every week. When a crate has a newer release, Dependabot SHALL open one grouped pull request for all the updated crates.
 
 #### Scenario: The configuration declares the Cargo updates
 
 - **WHEN** a reviewer runs `yq '.updates[] | select(."package-ecosystem" == "cargo")' .github/dependabot.yml`
 - **THEN** the output is exactly one entry
-- **AND** that entry has `directory` set to `/backend` and `schedule.interval` set to `weekly`
+- **AND** that entry has `directory` set to `/server` and `schedule.interval` set to `weekly`
 - **AND** that entry has a group whose `patterns` list is `["*"]`
 
 #### Scenario: Several crates have newer releases
 
 - **WHEN** Dependabot's weekly run finds newer releases for two or more crates
 - **THEN** one open pull request from Dependabot updates all of them
-- **AND** that pull request changes files under `backend/` only
+- **AND** that pull request changes files under `server/` only
 
 ### Requirement: CI builds the shell on every pull request that changes it
 
@@ -436,7 +436,7 @@ A CI job, the flake check, SHALL run `nix flake check` on every pull request tha
 
 - `flake.nix` or `flake.lock`;
 - any file under `nix/`;
-- `backend/rust-toolchain.toml`;
+- `server/rust-toolchain.toml`;
 - the workflow file that defines the flake check.
 
 The flake check SHALL fail when the shell cannot be built.

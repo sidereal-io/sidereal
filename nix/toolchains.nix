@@ -7,7 +7,7 @@
         # The only source of truth for the Rust version (design.md D3):
         # rustup reads the same file.
         rustToolchain =
-          pkgs.rust-bin.fromRustupToolchainFile ../backend/rust-toolchain.toml;
+          pkgs.rust-bin.fromRustupToolchainFile ../server/rust-toolchain.toml;
       in
       [
         rustToolchain

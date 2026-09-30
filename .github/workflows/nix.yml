@@ -6,7 +6,7 @@ on:
       - 'flake.nix'
       - 'flake.lock'
       - 'nix/**'
-      - 'backend/rust-toolchain.toml'
+      - 'server/rust-toolchain.toml'
       - '.github/workflows/nix.yml'
 
 permissions:

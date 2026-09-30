@@ -12,7 +12,7 @@ build/
 *.tsbuildinfo
 
 # Rust build outputs
-backend/target/
+server/target/
 target/
 
 # Environment files (keep .env.example)

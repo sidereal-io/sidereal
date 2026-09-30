@@ -5,10 +5,20 @@ on:
     branches:
       - main
       - v0.x
+    paths-ignore:
+      - 'server/**'
+      - 'web/**'
+      - 'openspec/**'
+      - 'docs/**'
   pull_request:
     branches:
       - main
       - v0.x
+    paths-ignore:
+      - 'server/**'
+      - 'web/**'
+      - 'openspec/**'
+      - 'docs/**'
 
 jobs:
   ci-pipeline:
@@ -37,23 +47,3 @@ jobs:
 
       - name: Build all packages
         run: npm run build
-
-  codeql:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4

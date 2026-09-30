@@ -15,7 +15,7 @@ Sidereal is mid-rewrite, so two stacks live side by side in this repo ([RFC #213
 | Stack | Lives in | What it is | Status |
 |---|---|---|---|
 | **v0.10.x** | `apps/`, `packages/` | The running TypeScript/Hono app — deployed today, and what most work still touches until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)) | Current |
-| **v2** | `backend/` | A new Rust backend ([ADR-009](docs/decisions/ADR-009-backend-language.md)) in a separate cargo workspace | Under active build |
+| **v2** | `server/` | A new Rust backend ([ADR-009](docs/decisions/ADR-009-backend-language.md)) in a separate cargo workspace | Under active build |
 
 The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/decisions/ADR-005-frontend-continuity.md)); only the backend changes language.
 
@@ -27,19 +27,19 @@ The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/de
 
 **Where to read more:**
 
-- **v2 backend layout, prerequisites, and commands** — [`backend/README.md`](backend/README.md).
+- **v2 backend layout, prerequisites, and commands** — [`server/README.md`](server/README.md).
 - **v2 target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
 - **The rest of this file** — describes the v0.10.x stack, plus the v2 constraints and cross-stack workflow in the sections below.
 
 ## Durable constraints (v2 backend)
 
-Invariants for the `backend/` Rust workspace — honor them in every v2 change.
+Invariants for the `server/` Rust workspace — honor them in every v2 change.
 
 - **Dependency direction is one-way.** `plugin-abi` holds the public plugin contracts;
   `core` is the domain-agnostic engine that builds on `plugin-abi` and knows nothing
   about astronomy; `packs/astro` is a first-party pack that depends on `plugin-abi`
   **only, never `core`**; `server` is a thin axum binary that wires `core` + packs.
-  `backend/scripts/check-arch.sh` enforces this and fails the build on a violation
+  `server/scripts/check-arch.sh` enforces this and fails the build on a violation
   ([ADR-001](docs/decisions/ADR-001-plugin-boundary.md),
   [ADR-002](docs/decisions/ADR-002-core-domain-pack-split.md)).
 - **Domain logic lives in packs, never in `core`.** Astronomy — plate solving,
@@ -50,7 +50,7 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
   not by accident.
 - **PostgreSQL only** — no SQLite fallback on the Rust side
   ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
-- **Toolchain is pinned.** Stable Rust 1.85 via `backend/rust-toolchain.toml`;
+- **Toolchain is pinned.** Stable Rust 1.85 via `server/rust-toolchain.toml`;
   **`just check`** (`cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch
   lint) is the gate — green before every PR.
 - **Real forks become ADRs** in `docs/decisions/` (template `ADR-000`). Don't design
@@ -72,9 +72,9 @@ Invariants for the `backend/` Rust workspace — honor them in every v2 change.
   branch and PR with Conventional Commits.
 - **Toolchain is per stack.** v0.10.x: Node 26, npm, Vite/React, Hono, Drizzle —
   gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.
-  v2: cargo workspace under `backend/`, orchestrated by the root `justfile` — gate with
+  v2: cargo workspace under `server/`, orchestrated by the root `justfile` — gate with
   **`just check`** (fmt + clippy `-D warnings` + tests + arch-boundary lint) after every
-  change to `backend/`. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`,
+  change to `server/`. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`,
   `test:`).
 - **Releases are tag-driven** — bump `package.json`, add a `CHANGELOG.md` entry, then
   push a `v*.*.*` tag; the workflow does the rest. Never `gh release create` manually.
