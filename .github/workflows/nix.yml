@@ -1,0 +1,30 @@
+name: nix
+
+on:
+  pull_request:
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'backend/rust-toolchain.toml'
+      - '.github/workflows/nix.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  flake-check:
+    name: flake check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Flake check
+        run: nix flake check
+
+      - name: Tool versions
+        run: nix develop --command sh -c 'openspec --version && node --version && just --version'
