@@ -5,11 +5,11 @@
 
 ## 2. Move the `server` job into the shell (design D3–D6)
 
-- [ ] 2.1 In `.github/workflows/v2.yml`, add `flake.nix`, `flake.lock`, and `nix/**` to the `pull_request` paths. Verify `yq '.on.pull_request.paths' .github/workflows/v2.yml` lists six entries. Run `yq` through `nix shell nixpkgs#yq-go` if it is not installed.
-- [ ] 2.2 Remove the job's `defaults` block, the `rustup show` step, and the five check steps. Add the `Install Nix` step from `nix.yml` after checkout. Verify `grep -n rustup .github/workflows/v2.yml` finds no match.
-- [ ] 2.3 Move the rust-cache step to after `Install Nix`, keep `workspaces: server`, and add `cmd-format: nix develop -c {0}`. Verify the spec scenario "The cache step uses the shell's Rust" prints `nix develop -c {0}`.
-- [ ] 2.4 Add one last step that runs `nix develop --command just check-server`. Verify the spec scenarios "The server job has one check step" and "The server job has no step that installs a tool" print the output they state.
-- [ ] 2.5 Run `actionlint .github/workflows/v2.yml` (`nix shell nixpkgs#actionlint` if it is not installed), and verify it reports no error. Commit the workflow.
+- [x] 2.1 In `.github/workflows/v2.yml`, add `flake.nix`, `flake.lock`, and `nix/**` to the `pull_request` paths. Verify `yq '.on.pull_request.paths' .github/workflows/v2.yml` lists six entries. Run `yq` through `nix shell nixpkgs#yq-go` if it is not installed.
+- [x] 2.2 Remove the job's `defaults` block, the `rustup show` step, and the five check steps. Add the `Install Nix` step from `nix.yml` after checkout. Verify `grep -n rustup .github/workflows/v2.yml` finds no match.
+- [x] 2.3 Move the rust-cache step to after `Install Nix`, keep `workspaces: server`, and add `cmd-format: nix develop -c {0}`. Verify the spec scenario "The cache step uses the shell's Rust" prints `nix develop -c {0}`.
+- [x] 2.4 Add one last step that runs `nix develop --command just check-server`. Verify the spec scenarios "The server job has one check step" and "The server job has no step that installs a tool" print the output they state.
+- [x] 2.5 Run `actionlint .github/workflows/v2.yml` (`nix shell nixpkgs#actionlint` if it is not installed), and verify it reports no error. Commit the workflow.
 
 ## 3. Contributor docs
 

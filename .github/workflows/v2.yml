@@ -5,6 +5,9 @@ on:
     paths:
       - 'server/**'
       - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
       - '.github/workflows/v2.yml'
 
 permissions:
@@ -13,32 +16,18 @@ permissions:
 jobs:
   server:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install pinned Rust toolchain
-        run: rustup show
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
+          cmd-format: nix develop -c {0}
 
-      - name: Format check
-        run: cargo fmt --check
-
-      - name: Clippy (deny warnings)
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test
-
-      - name: Build
-        run: cargo build
-
-      - name: Dependency-direction lint
-        run: bash scripts/check-arch.sh
+      - name: Server gate
+        run: nix develop --command just check-server
