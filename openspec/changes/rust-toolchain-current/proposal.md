@@ -30,13 +30,13 @@ None.
   - "The shell provides the pinned toolchain" takes Rust's exact release from `flake.lock` instead of from `rust-toolchain.toml`.
   - "The Rust version has one source of truth" becomes a rule that Rust follows the latest stable release and that no file names a Rust version.
   - "The shell turns on when you enter the repo" keeps its reload scenario, but no longer assumes `channel` holds an exact release.
-  - "Nix stays optional" says what rustup selects without Nix.
+  - "The flake check reports the shell's tool versions" adds `rustc --version`, because a `flake.lock` update can now change the Rust release.
 
 ## Impact
 
 - **Code and config:** `server/rust-toolchain.toml`, `server/Cargo.toml`, `server/Dockerfile`, and the comment in `nix/toolchains.nix`.
 - **Docs:** `AGENTS.md` (which `CLAUDE.md` links to), `CONTRIBUTING.md`, and `server/README.md`.
 - **Decision record:** ADR-013 says that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". This change reverses that statement, so it needs a decision record.
-- **CI:** no workflow changes. `nix.yml` and `v2.yml` already run when `server/rust-toolchain.toml` or `flake.lock` changes.
+- **CI:** the flake check in `nix.yml` also prints `rustc --version`. The triggers don't change: `nix.yml` and `v2.yml` already run when `server/rust-toolchain.toml` or `flake.lock` changes.
 - **Dependabot:** each weekly `flake.lock` pull request can now change the Rust release. Weekly Cargo updates can no longer fail because a crate needs a newer compiler than 1.85.
 - **Contributors:** the first shell load after this change downloads Rust 1.98.1. Cargo then rebuilds `server/target` once.
