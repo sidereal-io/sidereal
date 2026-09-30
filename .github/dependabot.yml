@@ -50,8 +50,6 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "04:00"
-    reviewers:
-      - "mike" # Update with your GitHub username
     labels:
       - "dependencies"
       - "github-actions"
