@@ -9,7 +9,7 @@ The v2 Rust workspace lives in `backend/`, but the v2 layout puts it in `server/
 - Every live reference to the old path changes to `server/`. This covers the justfile, `.envrc`, the Nix toolchain module, `.gitignore`, `.github/dependabot.yml`, the Nix CI trigger, the arch lint and pack comments, the Dockerfile comments, and the contributor docs.
 - The v2 workflow `backend-rs.yml` becomes `v2.yml`, with one job named `server`. It runs on changes to `server/**`, the `justfile`, or itself, and keeps today's steps.
 - The v0.10.x workflows `ci.yml` and `docker-build-push.yml` skip pull requests that change only `server/**`, `web/**`, `openspec/**`, or `docs/**`.
-- The CodeQL job moves out of `ci.yml` into its own `codeql.yml`, with no path filter. The `main` ruleset requires CodeQL results on every pull request. Without this move, a v2-only pull request would have no CodeQL results and could not merge.
+- The CodeQL job moves out of `ci.yml` into its own `codeql.yml`, with no path filter. CodeQL then keeps scanning every pull request, including v2 pull requests. The v2 web app in `web/` will be TypeScript, which CodeQL analyzes.
 - Unchanged: archived OpenSpec changes, and the word "backend" used as a concept in ADRs and architecture docs.
 
 ## Capabilities

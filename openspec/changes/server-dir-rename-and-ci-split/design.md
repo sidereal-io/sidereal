@@ -6,7 +6,7 @@ See proposal.md for why. This section covers only the current state that shapes 
 - `backend-rs.yml` runs the Rust checks on pull requests that change `backend/**`. It installs Rust through `rustup show` and caches cargo output with `Swatinem/rust-cache`.
 - `ci.yml` holds two jobs: the v0.10.x pipeline (`ci-pipeline`) and CodeQL (`codeql`). Both run on every push and pull request to `main` and `v0.x`.
 - `docker-build-push.yml` builds the v0.10.x image on every pull request, and pushes it on every push to `main`.
-- The `Protect Default` ruleset on `main` has a `code_scanning` rule. It requires CodeQL results before a pull request can merge.
+- The `Protect Default` ruleset targets `main`, but its enforcement is disabled, so no rule applies today. It holds a `code_scanning` rule for CodeQL and no required status checks.
 - The Nix flake reads `backend/rust-toolchain.toml` through `nix/toolchains.nix`. Nix sees only files that git tracks.
 - No CI workflow builds `backend/Dockerfile`, so its build context has no CI caller to update.
 
@@ -44,10 +44,11 @@ Only text that names the directory changes. The word "backend" as a concept stay
 
 A new `.github/workflows/codeql.yml` takes the `codeql` job from `ci.yml` unchanged. It keeps the same triggers: push and pull request to `main` and `v0.x`. It has no `paths` or `paths-ignore` key.
 
-- **Why:** D4 adds `paths-ignore` to `ci.yml`. If CodeQL stayed there, a v2-only pull request would produce no CodeQL results. The ruleset's `code_scanning` rule would then block its merge.
-- **Alternative:** loosen the ruleset. Rejected, because it weakens protection on every pull request.
-- **Alternative:** filter only `docker-build-push.yml`. Rejected, because v2-only pull requests would still run the whole v0.10.x pipeline.
-- The rule matches the CodeQL tool, not a workflow or job name. Moving the job to a new file does not change what the rule sees.
+- **Why:** D4 adds `paths-ignore` to `ci.yml`, including `web/**`. If CodeQL stayed there, it would never scan the v2 web app. That app will be TypeScript, the language this CodeQL job analyzes.
+- **Second reason:** the ruleset holds a `code_scanning` rule. If a maintainer turns enforcement on, a pull request with no CodeQL results cannot merge. An unfiltered workflow always produces results.
+- **Cost:** CodeQL also runs on pull requests that change only Rust code. It scans JavaScript and TypeScript that did not change. The run time is accepted in exchange for the two reasons above.
+- **Alternative:** give CodeQL its own path filter. Rejected, because a path filter would need updating each time a new TypeScript directory appears.
+- The ruleset's rule names the CodeQL tool, not a workflow or job. Moving the job to a new file does not change what the rule sees.
 
 ### D4. Skip the v0.10.x workflows with `paths-ignore`
 
@@ -74,7 +75,8 @@ The rules about which workflow runs for which change go in a new `ci` spec. `dev
 ## Risks / Trade-offs
 
 - **[Risk] Open pull requests and branches that touch `backend/` go stale.** → Only Dependabot PR #318 is open, and it changes `flake.lock` only. Git follows the rename on rebase for most edits.
-- **[Risk] A Dependabot Cargo pull request opened before the merge targets `/backend`.** → Dependabot closes and reopens it against the new directory on its next weekly run. No manual step is needed.
+- **[Risk] A Dependabot Cargo pull request opened before the merge targets `/backend`.** → None is open today. If one is, a maintainer closes it after the merge. Dependabot's next weekly run opens a new one against `/server`.
+- **[Risk] A skipped workflow never reports a status.** If `ci.yml` or `docker-build-push.yml` became a required status check, a v2-only pull request would wait forever. → No check is required today: the ruleset has no required-status-check rule, and `main` has no branch protection. If a maintainer adds one, they add an always-run aggregator job, as the epic's shared decisions already state.
 - **[Risk] Contributors keep a stale `backend/target/` directory.** → Git ignores it, so it causes no errors. `CONTRIBUTING.md` tells contributors to delete it after pulling.
 - **[Risk] The Nix shell misses the new pin file.** → Nix reads only files that git tracks. `git mv` stages the move, and `nix flake check` on this pull request proves the shell still builds.
 - **[Trade-off] This pull request cannot prove the path filters.** It changes root files, so every workflow runs on it. → The next v2-only pull request, likely #289, shows `ci.yml` and `docker-build-push.yml` skipped, and CodeQL still reporting.

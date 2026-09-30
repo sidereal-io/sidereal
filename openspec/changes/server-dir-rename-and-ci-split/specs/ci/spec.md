@@ -51,13 +51,13 @@ The v0.10.x workflows `ci.yml` and `docker-build-push.yml` SHALL NOT run for a p
 
 ### Requirement: Code scanning runs on every pull request
 
-CodeQL SHALL analyze the repo on every pull request to `main` or `v0.x`, and on every push to those branches, whatever files the change touches. The CodeQL workflow SHALL have no path filter, so the `main` ruleset always finds the CodeQL results it requires.
+CodeQL SHALL analyze the repo on every pull request to `main` or `v0.x`, and on every push to those branches, whatever files the change touches. The CodeQL workflow SHALL have no path filter. Every pull request therefore has CodeQL results, including one that changes only v2 code.
 
 #### Scenario: A v2-only pull request gets code scanning results
 
 - **WHEN** a pull request to `main` changes files under `server/` only
-- **THEN** the CodeQL workflow runs on that pull request and uploads its results
-- **AND** the ruleset's code scanning rule does not block the merge for missing results
+- **THEN** the CodeQL workflow runs on that pull request
+- **AND** the pull request's checks list a completed CodeQL analysis
 
 #### Scenario: The CodeQL workflow has no path filter
 
