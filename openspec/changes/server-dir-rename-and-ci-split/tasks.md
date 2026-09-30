@@ -7,12 +7,12 @@
 
 ## 2. CI workflows and Dependabot
 
-- [ ] 2.1 Run `git mv .github/workflows/backend-rs.yml .github/workflows/v2.yml`. Set the workflow `name` to `v2` and the job id to `server`. Set the triggers to `server/**`, `justfile`, and `.github/workflows/v2.yml`. Set the working directory and the rust-cache `workspaces` to `server`. Keep every step. Verify `yq '.jobs | keys' .github/workflows/v2.yml` prints only `server`.
-- [ ] 2.2 Change the `backend/rust-toolchain.toml` trigger in `.github/workflows/nix.yml` to `server/rust-toolchain.toml`. Verify `grep -rn backend .github/workflows/` finds no match.
-- [ ] 2.3 Create `.github/workflows/codeql.yml` with the `codeql` job from `ci.yml`, unchanged, and the same `push` and `pull_request` triggers, with no path filter. Remove the job from `ci.yml`. Verify `yq '.on' .github/workflows/codeql.yml` shows no `paths` or `paths-ignore` key, and `grep -ln codeql-action .github/workflows/` lists only `codeql.yml`.
-- [ ] 2.4 Add `paths-ignore: [server/**, web/**, openspec/**, docs/**]` to both the `push` and `pull_request` triggers of `ci.yml` and `docker-build-push.yml`. Verify with `yq '.on' <file>` for each file.
-- [ ] 2.5 Change the `cargo` entry's `directory` in `.github/dependabot.yml` to `/server`, and its comment if it names the path. Verify the spec's `yq '.updates[] | select(."package-ecosystem" == "cargo")'` scenario shows `directory: /server`.
-- [ ] 2.6 Run `actionlint` on every changed workflow (`nix shell nixpkgs#actionlint` if it is not installed), and verify it reports no error. Commit the CI and Dependabot edits.
+- [x] 2.1 Run `git mv .github/workflows/backend-rs.yml .github/workflows/v2.yml`. Set the workflow `name` to `v2` and the job id to `server`. Set the triggers to `server/**`, `justfile`, and `.github/workflows/v2.yml`. Set the working directory and the rust-cache `workspaces` to `server`. Keep every step. Verify `yq '.jobs | keys' .github/workflows/v2.yml` prints only `server`.
+- [x] 2.2 Change the `backend/rust-toolchain.toml` trigger in `.github/workflows/nix.yml` to `server/rust-toolchain.toml`. Verify `grep -rn backend .github/workflows/` finds no match.
+- [x] 2.3 Create `.github/workflows/codeql.yml` with the `codeql` job from `ci.yml`, unchanged, and the same `push` and `pull_request` triggers, with no path filter. Remove the job from `ci.yml`. Verify `yq '.on' .github/workflows/codeql.yml` shows no `paths` or `paths-ignore` key, and `grep -rlE 'codeql-action/(init|analyze)' .github/workflows/` lists only `codeql.yml`. (Other workflows use `codeql-action/upload-sarif` for Trivy results; that is not a CodeQL job.)
+- [x] 2.4 Add `paths-ignore: [server/**, web/**, openspec/**, docs/**]` to both the `push` and `pull_request` triggers of `ci.yml` and `docker-build-push.yml`. Verify with `yq '.on' <file>` for each file.
+- [x] 2.5 Change the `cargo` entry's `directory` in `.github/dependabot.yml` to `/server`, and its comment if it names the path. Verify the spec's `yq '.updates[] | select(."package-ecosystem" == "cargo")'` scenario shows `directory: /server`.
+- [x] 2.6 Run `actionlint` on every changed workflow (`nix shell nixpkgs#actionlint` if it is not installed), and verify it reports no error. Commit the CI and Dependabot edits.
 
 ## 3. Contributor docs
 

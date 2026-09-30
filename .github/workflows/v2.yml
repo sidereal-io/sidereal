@@ -1,21 +1,21 @@
-name: backend-rs
+name: v2
 
 on:
   pull_request:
     paths:
-      - 'backend/**'
-      - '.github/workflows/backend-rs.yml'
+      - 'server/**'
+      - 'justfile'
+      - '.github/workflows/v2.yml'
 
 permissions:
   contents: read
 
 jobs:
-  check:
-    name: fmt · clippy · test · build
+  server:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: server
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -26,7 +26,7 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          workspaces: server
 
       - name: Format check
         run: cargo fmt --check

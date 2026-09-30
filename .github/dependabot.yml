@@ -68,7 +68,7 @@ updates:
 
   # Enable version updates for the Rust backend
   - package-ecosystem: "cargo"
-    directory: "/backend"
+    directory: "/server"
     schedule:
       interval: "weekly"
       day: "monday"
