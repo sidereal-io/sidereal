@@ -67,3 +67,15 @@ updates:
       nix-inputs:
         patterns:
           - "*"
+
+  # Enable version updates for the Rust backend
+  - package-ecosystem: "cargo"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    groups:
+      cargo-crates:
+        patterns:
+          - "*"
