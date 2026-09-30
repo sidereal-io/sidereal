@@ -1,7 +1,7 @@
 ## 1. Split the recipe (design D1, D2)
 
-- [ ] 1.1 In the `justfile`, move the body of `check` into a new `check-server` recipe, unchanged, and make `check` depend on it with no body. Give each recipe a one-line comment, since `just --list` prints it. Verify `just --show check` contains the line `check: check-server`, and `just --list` shows both recipes.
-- [ ] 1.2 Run `just check` and `just check-server`, and verify both exit with status 0 and run the same four checks. Commit the `justfile`.
+- [x] 1.1 In the `justfile`, move the body of `check` into a new `check-server` recipe, unchanged, and make `check` depend on it with no body. Give each recipe a one-line comment, since `just --list` prints it. Verify `just --show check` contains the line `check: check-server`, and `just --list` shows both recipes.
+- [x] 1.2 Run `just check` and `just check-server`, and verify both exit with status 0 and run the same four checks. Commit the `justfile`.
 
 ## 2. Move the `server` job into the shell (design D3–D6)
 
