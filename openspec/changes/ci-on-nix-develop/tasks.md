@@ -23,4 +23,4 @@
 - [x] 4.2 Prove the gate fails: add a blank line inside a function in one Rust file, run `nix develop --command just check-server`, and verify it exits with a non-zero status at `cargo fmt --check`. Then restore the file and verify `git status --porcelain` prints nothing.
 - [x] 4.3 Run `openspec validate ci-on-nix-develop --strict`, and verify it passes.
 - [ ] 4.4 On the pull request, verify the `v2 / server` job and the `nix` flake check both run and pass. In the rust-cache step's log, verify it loaded the shell from `server/` and that no line reports rustup downloading a toolchain. If the rust-cache step fails, stop and agree a new D5 with the maintainer (design.md, Risks).
-- [ ] 4.5 Record three things in the pull request description: the `server` job's run time, the rust-cache step's run time, and that `ci.yml` also ran because this pull request changes the root `justfile` (#322).
+- [x] 4.5 Record three things in the pull request description: the `server` job's run time, the rust-cache step's run time, and that `ci.yml` also ran because this pull request changes the root `justfile` (#322).
