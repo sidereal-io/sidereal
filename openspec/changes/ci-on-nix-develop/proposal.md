@@ -10,7 +10,7 @@ The `server` job in `v2.yml` installs Rust through rustup and repeats the `just 
 - The `server` job loses its `rustup show` step and its five hand-written check steps.
 - CI stops running `cargo build` as a separate check. Clippy and the tests already compile every target, including the `sidereal-server` binary.
 - `v2.yml` also runs on changes to `flake.nix`, `flake.lock`, and `nix/**`. A change to the shell can change the result of the v2 checks.
-- `Swatinem/rust-cache` stays, with the same settings.
+- `Swatinem/rust-cache` stays. It gains one setting, so it reads the Rust version from the shell and not from rustup.
 - Unchanged: the v0.10.x workflows, `nix.yml`, and the `pull_request`-only trigger. #320 adds runs on pushes to `main`, #301 adds the web gates, and #288 adds a Nix store cache.
 
 ## Capabilities
