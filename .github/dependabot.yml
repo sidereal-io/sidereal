@@ -55,3 +55,15 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+
+  # Enable version updates for Nix flake inputs
+  - package-ecosystem: "nix"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    groups:
+      nix-inputs:
+        patterns:
+          - "*"
