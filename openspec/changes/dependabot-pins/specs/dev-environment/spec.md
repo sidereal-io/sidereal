@@ -36,7 +36,14 @@ Dependabot SHALL check the crates in `backend/Cargo.lock` every week. When a cra
 
 ### Requirement: CI builds the shell on every pull request that changes it
 
-CI SHALL run `nix flake check` on every pull request that changes a file the shell is built from. These files are `flake.nix`, `flake.lock`, any file under `nix/`, and `backend/rust-toolchain.toml`. A change to the workflow file itself SHALL also run the check. The check SHALL fail when the shell cannot be built.
+A CI job, the flake check, SHALL run `nix flake check` on every pull request that changes one of these files:
+
+- `flake.nix` or `flake.lock`;
+- any file under `nix/`;
+- `backend/rust-toolchain.toml`;
+- the workflow file that defines the flake check.
+
+The flake check SHALL fail when the shell cannot be built.
 
 #### Scenario: A pull request breaks the shell
 
@@ -50,7 +57,7 @@ CI SHALL run `nix flake check` on every pull request that changes a file the she
 
 #### Scenario: A pull request does not touch the shell
 
-- **WHEN** a pull request changes none of the listed files
+- **WHEN** a pull request changes none of the files in this requirement's list, including the flake check's own workflow file
 - **THEN** GitHub does not run the flake check on that pull request
 
 ### Requirement: The flake check runs without secrets
@@ -70,9 +77,14 @@ The flake check SHALL use no repository secret. Its workflow SHALL grant the job
 
 ### Requirement: The flake check reports the shell's tool versions
 
-After the shell builds, the flake check SHALL print the versions of `openspec`, Node, and `just` from inside the shell. A reviewer SHALL be able to read them in the job log.
+After the shell builds, the flake check SHALL run `openspec --version`, `node --version`, and `just --version` inside the shell. A reviewer SHALL be able to read their output in the job log. The flake check SHALL fail when any of the three commands fails.
 
 #### Scenario: A reviewer checks what a pin update changed
 
 - **WHEN** the flake check passes on a pull request
 - **THEN** the job log contains the output of `openspec --version`, `node --version`, and `just --version`, each run inside the development shell
+
+#### Scenario: A pin update breaks a tool
+
+- **WHEN** `openspec --version` exits with a non-zero status inside the shell, and the other two commands succeed
+- **THEN** the flake check fails
