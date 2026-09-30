@@ -42,7 +42,7 @@ Alternatives considered:
 
 ### D2. `server/Cargo.toml` loses its `rust-version` field
 
-The server is an application, not a published library. Nobody builds it with an older compiler, so it has no minimum supported version to declare. Clippy reads `rust-version` as that minimum, and skips suggestions that need a newer release. The workspace uses resolver 2, which ignores `rust-version` when it chooses dependency versions.
+The server is an application, not a published library. The only compiler it supports is the release that `flake.lock` decides, which CI uses. It therefore has no separate minimum version to declare. Clippy reads `rust-version` as that minimum, and skips suggestions that need a newer release. The workspace uses resolver 2, which ignores `rust-version` when it chooses dependency versions.
 
 Alternatives considered:
 
@@ -51,13 +51,14 @@ Alternatives considered:
 
 ### D3. The server image installs the toolchain that the file names
 
-`server/Dockerfile` builds from `rust:1-slim-bookworm`. The builder copies `rust-toolchain.toml` alone, runs `rustup toolchain install`, and only then copies the rest of the workspace. Without arguments, `rustup toolchain install` installs the toolchain that the file names.
+`server/Dockerfile` builds from `rust:1-slim-bookworm`. The builder copies the workspace, then runs `rustup toolchain install` and `cargo build` in one `RUN` step. Without arguments, `rustup toolchain install` installs the toolchain that `rust-toolchain.toml` names.
 
-The explicit install replaces rustup's deprecated automatic install. Copying the file first also puts the toolchain in its own image layer. Docker reuses that layer until the file changes, so a source change no longer downloads Rust again. The author built the full image this way on 2026-09-30: rustup installed stable 1.98.1 with no warning, and the container passed its health check.
+The explicit install replaces rustup's deprecated automatic install. Keeping it in the same step as the build means Docker never reuses a toolchain apart from the build it made. A source change therefore always builds with the current stable release. The author built the full image with an explicit install on 2026-09-30: rustup installed stable 1.98.1 with no warning, and the container passed its health check.
 
 Alternatives considered:
 
-- **Rely on rustup's automatic install when `cargo` runs.** It works today, but rustup warns that it is deprecated. It also downloads the toolchain again after every source change.
+- **Rely on rustup's automatic install when `cargo` runs.** It works today, but rustup warns that it is deprecated.
+- **Install the toolchain in its own layer, before copying the source.** Docker would then reuse that layer until `rust-toolchain.toml` changes, which saves the download on each source change. But the file keeps saying `stable`, so a cached layer keeps an old release indefinitely. Code that needs the newer release that CI uses would then fail to build on that machine.
 - **Delete the toolchain file inside the image and use the image's own toolchain.** That saves the second download. But the image's toolchain has no `clippy` or `rustfmt`, and the image would ignore the file that everything else reads.
 - **Keep a release-numbered tag, such as `rust:1.98.1-slim-bookworm`, and let Dependabot's `docker` ecosystem bump it.** The Dockerfile would name a release again, in a second place that can drift.
 
@@ -69,7 +70,7 @@ The flake check already prints the `openspec`, Node and `just` versions inside t
 
 - **`AGENTS.md`:** the "Toolchain is pinned" rule becomes: Rust follows the latest stable release. `server/rust-toolchain.toml` names the `stable` channel, and `flake.lock` decides the exact release in the Nix shell and CI.
 - **`CONTRIBUTING.md`, "With Nix":** step 4 stops claiming that the Nix release matches rustup's.
-- **`CONTRIBUTING.md`, "Without Nix":** rustup installs the latest stable release. Run `rustup update` to match CI.
+- **`CONTRIBUTING.md`, "Without Nix":** rustup installs the latest stable release, and `rustup update` moves to a newer one. CI can lag behind the latest stable release by up to about two weeks. The flake check log shows CI's release.
 - **`CONTRIBUTING.md`, "Reviewing a pin update":** a `flake.lock` update can change the Rust release, and the flake check log shows it. If new clippy lints fail the update, fix them in a separate pull request to `main`, then comment `@dependabot rebase` on the update.
 - **`server/README.md`:** both mentions of 1.85 go.
 
@@ -79,15 +80,18 @@ ADR-013 says that for Rust, the Nix shell and rustup "read the same exact-patch 
 
 ## Risks / Trade-offs
 
-- **[Contributors without Nix can use a different release from CI]** → A contributor's rustup keeps the stable release they last installed. That can be older or newer than CI's release. CI stays the authority, and `CONTRIBUTING.md` tells them to run `rustup update`. The two routes already differ this way for Node patch releases.
+- **[Contributors without Nix can use a different release from CI]** → A contributor's rustup keeps the stable release they last installed. That can be older or newer than CI's release. CI stays the authority, and `CONTRIBUTING.md` says where to find CI's release. The two routes already differ this way for Node patch releases.
+- **[A newer local release can suggest code that CI's release can't compile]** → Without `rust-version`, clippy assumes the local compiler is the minimum. A contributor on a release newer than CI's can get a suggestion that uses a just-stabilized API. CI then fails to compile the pull request. CI catches this before merge, and it can happen only in the week or two before `flake.lock` catches up. Contributors who use the Nix shell never meet it.
+- **[A crate update can need a newer compiler than CI's]** → Dependabot's weekly Cargo pull request can include a crate that requires a Rust release newer than the one in `flake.lock`. That pull request then fails until the next `flake.lock` update merges. This needs a crate to require a release that came out in the last week or two, which is rare. With the old fixed 1.85 pin it was more likely.
 - **[New lints can block the weekly `flake.lock` pull request]** → A new Rust release can add a clippy lint that fails `-D warnings`. The whole `flake.lock` update, including `nixpkgs` and the `openspec` CLI, then waits until someone fixes the lint on `main`. This needs work only when a release adds a lint that the code triggers, not at every release. The 1.85 to 1.98.1 jump added none.
 - **[Rust arrives a week or two late]** → Rust reaches the repo only when the weekly `flake.lock` pull request is merged after `rust-overlay` learns the release. The project wants current Rust, not same-day Rust, so this delay is acceptable.
-- **[A cached Docker layer keeps an old release]** → Docker reuses the toolchain layer while `rust-toolchain.toml` is unchanged. A machine with that cache keeps building with the release it first installed, until it rebuilds without cache. The image is not published yet. Pinning the image's Rust belongs to the story that starts publishing it.
+- **[The server image's Rust release is not reproducible]** → The image builds with whatever release is stable at build time. D3 keeps the toolchain install in the build step, so a cached layer never holds a compiler apart from its build. Every source change downloads the toolchain again, which takes about 10 seconds. The image is not published yet. Pinning the image's Rust belongs to the story that starts publishing it.
+- **[The server image downloads Rust without a committed hash]** → rustup checks each download against the SHA-256 in the Rust channel manifest, which it fetches over HTTPS. No hash in the repo covers it. The current Dockerfile already downloads Rust this way. The dev-environment requirement on verifying remote code covers the Nix shell and `.envrc`, not the server image.
 - **[No CI job builds the server image]** → A broken `server/Dockerfile` would go unnoticed. The tasks include a manual `docker build server/`. A CI job for the image is out of scope.
 - **[Each Rust release costs one cold compile]** → Cargo rebuilds `server/target` when the compiler changes. `Swatinem/rust-cache` keys on the Rust release, so the `v2` server job also misses its cache once per release.
 
 ## Migration Plan
 
 1. Merge this change. The next shell load downloads Rust 1.98.1, and cargo rebuilds `server/target` once.
-2. Contributors without Nix run `rustup update`.
+2. Contributors without Nix run `rustup update` to leave 1.85.
 3. To roll back, revert the merge commit. The exact 1.85.0 pin and `rust-version` return with it.

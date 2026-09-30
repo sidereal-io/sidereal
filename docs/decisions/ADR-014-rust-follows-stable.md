@@ -22,7 +22,7 @@ An automated updater, Dependabot, opens update pull requests once a week, and it
 
 `rust-toolchain.toml` names the `stable` channel instead of an exact release. In the Nix shell and in CI, the lock file decides the exact release: the newest stable release that the locked catalogue knows. New Rust releases arrive with the weekly lock file update, in one pull request.
 
-No other file names a Rust release. The server has no minimum supported Rust version, because nobody builds it with an older compiler.
+No other file names a Rust release. The server declares no minimum supported Rust version. The only compiler it supports is the release that the lock file decides, which CI uses.
 
 ## Consequences
 

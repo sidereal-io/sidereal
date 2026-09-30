@@ -1,8 +1,8 @@
 ## Why
 
-Rust in this repo is frozen at 1.85.0, 13 releases behind the current stable release, 1.98.1. Nothing updates it, and `AGENTS.md` states "Stable Rust 1.85" as a durable rule. The project wants to stay on current stable Rust, the same way it already takes new Node releases.
+The repo pins Rust to 1.85.0, 13 releases behind the current stable release, 1.98.1. Nothing updates the pin, and `AGENTS.md` states "Stable Rust 1.85" as a durable rule. The project wants to stay on current stable Rust, the same way it already takes new Node releases.
 
-An exact pin can't be kept current without manual work. The Nix shell looks Rust up in the `rust-overlay` snapshot locked in `flake.lock`. A Dependabot bump of `rust-toolchain.toml` to a new release would fail its checks until someone merged the weekly `flake.lock` update first and rebased it. That would happen at almost every Rust release, and the maintainer rejected that routine.
+Keeping an exact pin current takes manual work. The Nix shell looks Rust up in the `rust-overlay` snapshot locked in `flake.lock`. A Dependabot bump of `rust-toolchain.toml` to a new release would fail its checks until someone merged the weekly `flake.lock` update first and rebased it. That would happen at almost every Rust release, and the maintainer rejected that routine.
 
 ## What Changes
 
@@ -14,8 +14,8 @@ An exact pin can't be kept current without manual work. The Nix shell looks Rust
   - `server/Dockerfile` builds from `rust:1-slim-bookworm` and installs the toolchain that `rust-toolchain.toml` names;
   - `server/README.md` and `AGENTS.md` stop stating 1.85.
 - `AGENTS.md` states the new rule: Rust follows the latest stable release, and `flake.lock` decides the exact release in the Nix shell and CI.
-- `CONTRIBUTING.md` tells contributors without Nix to run `rustup update` to match CI. It also says what to do when a new Rust release brings clippy lints that fail the weekly `flake.lock` pull request.
-- **BREAKING** for contributors without Nix: rustup no longer selects one exact release. Each contributor gets the stable release they last installed, which can differ from CI's release for a few days.
+- `CONTRIBUTING.md` tells contributors without Nix how to update Rust, and where to find the release that CI uses. It also says what to do when a new Rust release brings clippy lints that fail the weekly `flake.lock` pull request.
+- **BREAKING** for contributors without Nix: rustup no longer selects one exact release. Each contributor gets the stable release they last installed, which can differ from CI's release for up to about two weeks.
 - Unchanged: the Dependabot configuration. It gains no `rust-toolchain` entry, because the `flake.lock` update already carries Rust.
 
 ## Capabilities
