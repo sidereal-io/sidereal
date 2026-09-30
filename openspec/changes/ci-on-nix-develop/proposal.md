@@ -29,6 +29,6 @@ Issue #289 names `dev-environment` as the spec to change. This change uses `ci` 
 
 - **Code and config:** `justfile` and `.github/workflows/v2.yml`.
 - **Docs:** `server/README.md` lists the `just` recipes, so it gains `check-server`.
-- **CI time:** the `server` job takes about 20 seconds today. Installing Nix and building the shell adds about 50 seconds, measured on `nix.yml`.
+- **CI time:** the `server` job takes about 20 seconds today. After this change it takes about 110 seconds, measured on this change's first run. Installing Nix and building the shell account for about 57 of those seconds. The rest is a cold compile and saving the cargo cache.
 - **Dependabot:** the weekly `flake.lock` pull request now runs the `server` job as well as the flake check.
 - **Open work:** #320 and #301 both edit `v2.yml` after this change. #301 adds a `check-web` recipe beside `check-server`.

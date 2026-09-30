@@ -78,7 +78,7 @@ The delta changes the `ci` spec only. See proposal.md, Capabilities, for the rea
 
 ## Risks / Trade-offs
 
-- **[Trade-off] The job takes about three times as long.** It grows from about 20 seconds to about 70. → Accepted. The job still finishes well before the v0.10.x pipeline. #288 can cache the shell later.
+- **[Trade-off] The job takes about five times as long.** It grows from about 20 seconds to about 110. This change's first run took 108 seconds: about 10 to install Nix, 47 to build the shell, 23 to run the gate from a cold cargo cache, and 25 to save the cargo cache. → Accepted. The job still finishes well before the v0.10.x pipeline. #288 can cache the shell later.
 - **[Risk] `cmd-format` behaves differently from the README.** rust-cache runs `cargo metadata` with `server/` as its working directory, and `nix develop` must find the flake from there. Nix searches parent directories up to the git root, so it should. → The first run of this pull request proves it. If it fails, the author stops and agrees a new D5 with the maintainer. Removing `cmd-format` alone is not a fallback: rustup would then install Rust 1.85.0, which the spec forbids.
 - **[Trade-off] The cache key changes when GitHub updates the runner's Rust.** See D5, Limit. The next run then compiles from a cold cache, though the pinned Rust did not change. → Accepted. It costs one slow run about every six weeks, and the checks stay correct.
 - **[Risk] A later target compiles but does not link, and no check notices.** D2 relies on `cargo test` linking every binary. A binary that opts out of tests would lose that cover. → No such target exists. Whoever adds one adds `cargo build` to `check-server` in the same change.
