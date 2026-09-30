@@ -23,7 +23,7 @@
 
 ## 4. Verify the whole change
 
-- [ ] 4.1 Run `git grep -n 'backend/' -- . ':!openspec/changes/archive' ':!apps' ':!packages' ':!CHANGELOG.md' ':!package-lock.json'`, and verify the only matches are this change's own artifacts and the new cleanup line in `CONTRIBUTING.md`.
-- [ ] 4.2 Run `just check` and `nix develop --command just check`, and verify both exit with status 0.
-- [ ] 4.3 Run `openspec validate server-dir-rename-and-ci-split --strict`, and verify it passes.
+- [x] 4.1 Run `git grep -n 'backend/' -- . ':!openspec/changes/archive' ':!apps' ':!packages' ':!CHANGELOG.md' ':!package-lock.json'`, and verify the only matches are this change's own artifacts and the new cleanup line in `CONTRIBUTING.md`.
+- [x] 4.2 Run `just check` and `nix develop --command just check`, and verify both exit with status 0.
+- [x] 4.3 Run `openspec validate server-dir-rename-and-ci-split --strict`, and verify it passes.
 - [ ] 4.4 On the pull request, verify that the `v2 / server`, `nix`, `CodeQL`, and `ci.yml` checks all run and pass. This pull request changes root files, so every workflow runs. Record in the pull request description that the first v2-only pull request must show `ci.yml` and `docker-build-push.yml` skipped and CodeQL still running.
