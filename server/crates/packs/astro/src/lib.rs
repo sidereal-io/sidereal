@@ -3,7 +3,7 @@
 //! The astro pack is compiled into the v2.0 binary (ADR-002 Option A) but codes
 //! against [`sidereal_plugin_abi`] — the same contract a third-party pack would
 //! use — and never against `core` internals. That direction is enforced by
-//! `backend/scripts/check-arch.sh`.
+//! `server/scripts/check-arch.sh`.
 //!
 //! M0 is registration only: the components below are id-bearing stubs with no
 //! behaviour yet (no FITS reading, no plate solving, no ingest).

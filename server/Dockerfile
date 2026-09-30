@@ -3,8 +3,8 @@
 # ---- Build stage: compile the server binary in release mode ----
 FROM rust:1.85-slim-bookworm AS builder
 WORKDIR /build
-# Copy the whole workspace (build context is backend/) and build the server.
-# The builder honors backend/rust-toolchain.toml (pinned 1.85).
+# Copy the whole workspace (build context is server/) and build the server.
+# The builder honors server/rust-toolchain.toml (pinned 1.85).
 COPY . .
 RUN cargo build --release -p sidereal-server
 

@@ -1,9 +1,9 @@
 ## 1. Move the workspace (one commit, design D1)
 
-- [ ] 1.1 Run `git mv backend server`, and verify `git status` shows only renames under `server/`.
-- [ ] 1.2 Update the `justfile`: point every cargo path and the arch lint at `server/`, rename the `backend` recipe to `server`, and fix the header comments. Verify `just --list` shows `server` and no `backend`.
-- [ ] 1.3 Update `.envrc` (the watched pin file and its comment), `nix/toolchains.nix` (the pin file path), and `.gitignore` (`server/target/`). Verify `nix flake check` passes and `direnv status` lists `server/rust-toolchain.toml` as watched.
-- [ ] 1.4 Update the path in comments in `server/Dockerfile`, `server/crates/packs/astro/Cargo.toml`, and `server/crates/packs/astro/src/lib.rs`. Leave the Dockerfile's base image and version text to #310. Verify `just check` passes, then commit the move and these edits together.
+- [x] 1.1 Run `git mv backend server`, and verify `git status` shows only renames under `server/`.
+- [x] 1.2 Update the `justfile`: point every cargo path and the arch lint at `server/`, rename the `backend` recipe to `server`, and fix the header comments. Verify `just --list` shows `server` and no `backend`.
+- [x] 1.3 Update `.envrc` (the watched pin file and its comment), `nix/toolchains.nix` (the pin file path), and `.gitignore` (`server/target/`). Verify `nix flake check` passes and `direnv status` lists `server/rust-toolchain.toml` as watched.
+- [x] 1.4 Update the path in comments in `server/Dockerfile`, `server/crates/packs/astro/Cargo.toml`, and `server/crates/packs/astro/src/lib.rs`. Leave the Dockerfile's base image and version text to #310. Verify `just check` passes, then commit the move and these edits together.
 
 ## 2. CI workflows and Dependabot
 
