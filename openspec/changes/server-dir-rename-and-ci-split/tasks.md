@@ -13,6 +13,7 @@
 - [x] 2.4 Add `paths-ignore: [server/**, web/**, openspec/**, docs/**]` to both the `push` and `pull_request` triggers of `ci.yml` and `docker-build-push.yml`. Verify with `yq '.on' <file>` for each file.
 - [x] 2.5 Change the `cargo` entry's `directory` in `.github/dependabot.yml` to `/server`, and its comment if it names the path. Verify the spec's `yq '.updates[] | select(."package-ecosystem" == "cargo")'` scenario shows `directory: /server`.
 - [x] 2.6 Run `actionlint` on every changed workflow (`nix shell nixpkgs#actionlint` if it is not installed), and verify it reports no error. Commit the CI and Dependabot edits.
+- [x] 2.7 Set `category: /language:javascript-typescript` on the analyze step in `.github/workflows/codeql.yml` (design D3). Verify that `yq '.jobs.codeql.steps[-1].with.category' .github/workflows/codeql.yml` prints `/language:javascript-typescript`, and that `actionlint` reports no error.
 
 ## 3. Contributor docs
 
@@ -27,3 +28,4 @@
 - [x] 4.2 Run `just check` and `nix develop --command just check`, and verify both exit with status 0.
 - [x] 4.3 Run `openspec validate server-dir-rename-and-ci-split --strict`, and verify it passes.
 - [ ] 4.4 On the pull request, verify that the `v2 / server`, `nix`, `CodeQL`, and `ci.yml` checks all run and pass. This pull request changes root files, so every workflow runs. Record in the pull request description that the first v2-only pull request must show `ci.yml` and `docker-build-push.yml` skipped and CodeQL still running.
+- [ ] 4.5 In the pull request description, record two things: the CodeQL result check was skipped on this pull request because `main` has no baseline for the new category, and a maintainer must do migration step 3 after the merge.

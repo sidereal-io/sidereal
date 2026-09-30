@@ -48,7 +48,8 @@ A new `.github/workflows/codeql.yml` takes the `codeql` job from `ci.yml` unchan
 - **Second reason:** the ruleset holds a `code_scanning` rule. If a maintainer turns enforcement on, a pull request with no CodeQL results cannot merge. An unfiltered workflow always produces results.
 - **Cost:** CodeQL also runs on pull requests that change only Rust code. It scans JavaScript and TypeScript that did not change. The run time is accepted in exchange for the two reasons above.
 - **Alternative:** give CodeQL its own path filter. Rejected, because a path filter would need updating each time a new TypeScript directory appears.
-- The ruleset's rule names the CodeQL tool, not a workflow or job. Moving the job to a new file does not change what the rule sees.
+- The ruleset's rule names the CodeQL tool, not a workflow or job. But CodeQL files each analysis under a category, and the default category includes the workflow file's path. Moving the job changes the category from `.github/workflows/ci.yml:codeql` to `.github/workflows/codeql.yml:codeql`.
+- **Pin the category.** The analyze step sets `category: /language:javascript-typescript`. A later rename of the workflow file then keeps the same category, so `main` keeps its baseline.
 
 ### D4. Skip the v0.10.x workflows with `paths-ignore`
 
@@ -80,10 +81,13 @@ The rules about which workflow runs for which change go in a new `ci` spec. `dev
 - **[Risk] Contributors keep a stale `backend/target/` directory.** → Git ignores it, so it causes no errors. `CONTRIBUTING.md` tells contributors to delete it after pulling.
 - **[Risk] The Nix shell misses the new pin file.** → Nix reads only files that git tracks. `git mv` stages the move, and `nix flake check` on this pull request proves the shell still builds.
 - **[Trade-off] This pull request cannot prove the path filters.** It changes root files, so every workflow runs on it. → The next v2-only pull request, likely #289, shows `ci.yml` and `docker-build-push.yml` skipped, and CodeQL still reporting.
+- **[Risk] This pull request has no CodeQL baseline.** `main` has no analysis under the new category, so GitHub skips the CodeQL result check on this pull request. The `codeql` job itself still runs and passes. → This happens once. The first push to `main` after the merge creates the baseline. The ruleset is disabled, so the skipped check blocks nothing.
+- **[Risk] The old category stays on `main` as a stale setup, and its alerts stay open.** → Migration step 3 deletes it.
 - **[Risk] #310 lands first and edits the same lines.** → Whichever story merges second rebases and updates the other's paths. Both issue bodies already say so.
 
 ## Migration Plan
 
 1. Merge this pull request. Nothing deploys, because v2 has no running service.
 2. Each contributor pulls, then runs `rm -rf backend/target`. With direnv, the shell reloads on its own, because `.envrc` now watches `server/rust-toolchain.toml`.
-3. Rollback: revert the merge commit. The rename is a pure move, so a revert restores every path.
+3. After the merge, a maintainer deletes the stale CodeQL setup: open Security → Code scanning → Tool status → CodeQL, then delete the `.github/workflows/ci.yml:codeql` setup. This closes alerts that only the old category holds.
+4. Rollback: revert the merge commit. The rename is a pure move, so a revert restores every path.
