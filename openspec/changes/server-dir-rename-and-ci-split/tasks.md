@@ -16,10 +16,10 @@
 
 ## 3. Contributor docs
 
-- [ ] 3.1 Update the path references in `AGENTS.md`: the stack table, the "Where to read more" link, the durable-constraints section, and the workflow section. Change paths only; the Rust version wording belongs to #310. Verify `grep -n 'backend/' AGENTS.md` finds no match.
-- [ ] 3.2 Update `CONTRIBUTING.md`: the `target` rebuild note, the rustup pin-file path, and the `backend-rs` workflow name at the Cargo pull request note. Add one line telling contributors to run `rm -rf backend/target` after pulling the rename. Verify `grep -n 'backend' CONTRIBUTING.md` shows only the new cleanup line and v0.10.x's own "backend server" wording.
-- [ ] 3.3 Update `server/README.md`: the layout block, the cargo commands, and `just server`. Verify `grep -n 'backend/\|just backend' server/README.md` finds no match.
-- [ ] 3.4 Update `openspec/discovery.md`: the Work & check and Open PR stages no longer list the `backend/` location or v0.10.x CI on v2-only pull requests as gaps, and the Bump pins stage names `server/Cargo.lock`. Verify `grep -n 'backend/' openspec/discovery.md` finds no match. Commit the docs.
+- [x] 3.1 Update the path references in `AGENTS.md`: the stack table, the "Where to read more" link, the durable-constraints section, and the workflow section. Change paths only; the Rust version wording belongs to #310. Verify `grep -n 'backend/' AGENTS.md` finds no match.
+- [x] 3.2 Update `CONTRIBUTING.md`: the `target` rebuild note, the rustup pin-file path, and the `backend-rs` workflow name at the Cargo pull request note. Add one line telling contributors to run `rm -rf backend/target` after pulling the rename. Verify `grep -n 'backend' CONTRIBUTING.md` shows only the new cleanup line and v0.10.x's own "backend server" wording.
+- [x] 3.3 Update `server/README.md`: the layout block, the cargo commands, and `just server`. Verify `grep -n 'backend/\|just backend' server/README.md` finds no match.
+- [x] 3.4 Update `openspec/discovery.md`: the Work & check and Open PR stages no longer list the `backend/` location or v0.10.x CI on v2-only pull requests as gaps, and the Bump pins stage names `server/Cargo.lock`. Verify `grep -n 'backend/' openspec/discovery.md` finds no match. Commit the docs.
 
 ## 4. Verify the whole change
 

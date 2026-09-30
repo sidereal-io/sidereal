@@ -8,7 +8,7 @@ alongside the existing TypeScript stack (`apps/`, `packages/`). See
 ## Crate layout
 
 ```
-backend/
+server/
   Cargo.toml            # workspace manifest (members + shared dep versions)
   rust-toolchain.toml   # pins stable 1.85
   crates/
@@ -57,15 +57,15 @@ curl localhost:5000/healthz     # -> 200 {"status":"ok"}
 | Recipe | What it does |
 |---|---|
 | `just dev` | Backend + frontend together (zero-to-running). |
-| `just backend` | Rust backend only. |
+| `just server` | Rust backend only. |
 | `just frontend` | Vite frontend only. |
 | `just check` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. |
 
-A Rust-only contributor can skip `just` and call cargo directly from `backend/`
+A Rust-only contributor can skip `just` and call cargo directly from `server/`
 (the pinned toolchain is auto-selected there):
 
 ```bash
-cd backend
+cd server
 cargo run -p sidereal-server    # boot the server
 cargo test                      # run the workspace tests
 ```

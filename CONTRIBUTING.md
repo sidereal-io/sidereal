@@ -107,6 +107,9 @@ npm run test           # Run tests
 The repo pins its tools — Rust, Node, `just`, and the `openspec` CLI — through a
 Nix flake. Nix is optional. Pick either route.
 
+If you cloned before the Rust workspace moved from `backend/` to `server/`, run
+`rm -rf backend/target` once after you pull. Git ignores that folder, so it stays behind.
+
 ### With Nix
 
 1. Install [Nix](https://nixos.org/download/) with flakes enabled.
@@ -128,7 +131,7 @@ Nix flake. Nix is optional. Pick either route.
 3. If you used a different major version of Node before, run `npm rebuild` once.
    `better-sqlite3` is a native module built for one Node version, and Nix's
    Node 26 needs its own build.
-4. Expect a full rebuild of `backend/target` the first time you run a Rust
+4. Expect a full rebuild of `server/target` the first time you run a Rust
    command in the shell. The Rust version matches rustup's, but the compiler's
    store path differs, so cargo's cached build data doesn't carry over.
 5. Nothing to run for the OpenSpec agent skills. The shell generates them when
@@ -143,7 +146,7 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
 ### Without Nix
 
-1. Install [rustup](https://rustup.rs/). It reads `backend/rust-toolchain.toml`
+1. Install [rustup](https://rustup.rs/). It reads `server/rust-toolchain.toml`
    and selects the pinned Rust version on its own.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
    and run its "use" command in the repo root to select Node 26.
@@ -234,8 +237,8 @@ Check these points before you merge one:
   regenerates the skills from the CLI, so read the
   [`openspec` release notes](https://github.com/Fission-AI/OpenSpec/releases)
   before you merge an update that changes its version.
-- **Cargo pull requests change `backend/Cargo.lock`.** The existing
-  `backend-rs` workflow checks them, the same as any other backend change.
+- **Cargo pull requests change `server/Cargo.lock`.** The `v2` workflow's
+  `server` job checks them, the same as any other change under `server/`.
 
 ## 📝 Code Standards
 
