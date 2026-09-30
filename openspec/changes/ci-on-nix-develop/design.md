@@ -14,7 +14,7 @@ See proposal.md for why. This section covers only the current state that shapes 
 **Goals:**
 
 - One recipe defines the server gate. CI and contributors both run it.
-- The `server` job uses no Rust other than the one the shell pins.
+- The checks run with the Rust that the shell pins. The job installs no other Rust.
 
 **Non-Goals:**
 
@@ -58,7 +58,8 @@ After the cache step, the job has one `run` step: `nix develop --command just ch
 
 The `Swatinem/rust-cache@v2` step keeps `workspaces: server` and gains `cmd-format: nix develop -c {0}`. It moves to after the Nix install step.
 
-- **Why:** rust-cache runs `rustc -vV` and `cargo metadata` to build its cache key. By default it runs the runner's own copies. In `server/`, the runner's rustup would download Rust 1.85.0 just to answer. `cmd-format` makes rust-cache run both commands inside the shell, so the job uses the pinned Rust only. The rust-cache README documents this setting for Nix.
+- **Why:** rust-cache runs `rustc -vV` and `cargo metadata` to build its cache key. By default it runs the runner's own copies. In `server/`, the runner's rustup would download Rust 1.85.0 just to answer. `cmd-format` makes rust-cache run both commands inside the shell, so the job installs no second Rust. The rust-cache README documents this setting for Nix.
+- **Limit:** rust-cache also asks rustup which toolchains the runner has, and adds each version to the cache key. The shell does not hide the runner's rustup, so the runner's stable Rust stays in the key. This was true before this change, and rust-cache has no setting to turn it off. The runner's Rust never compiles or checks the code.
 - **Cost:** rust-cache loads the shell a few times, at one to three seconds each. Its first call also builds the shell, so that time moves from the check step to the cache step.
 - **Alternative:** leave rust-cache's settings alone, as #289 suggests. Rejected, because a second Rust toolchain in the job is the drift this change removes. The cache key would still change on a Rust bump, because it includes a hash of `rust-toolchain.toml`.
 - **Alternative:** drop rust-cache. Rejected, because #320 makes it useful: once `main` saves a cache, pull requests skip compiling the dependencies.
@@ -78,7 +79,9 @@ The delta changes the `ci` spec only. See proposal.md, Capabilities, for the rea
 ## Risks / Trade-offs
 
 - **[Trade-off] The job takes about three times as long.** It grows from about 20 seconds to about 70. → Accepted. The job still finishes well before the v0.10.x pipeline. #288 can cache the shell later.
-- **[Risk] `cmd-format` behaves differently from the README.** rust-cache runs `cargo metadata` with `server/` as its working directory, and `nix develop` must find the flake from there. Nix searches parent directories up to the git root, so it should. → The first run of this pull request proves it. If it fails, fall back to the default `cmd-format` and record the second toolchain as a known cost.
+- **[Risk] `cmd-format` behaves differently from the README.** rust-cache runs `cargo metadata` with `server/` as its working directory, and `nix develop` must find the flake from there. Nix searches parent directories up to the git root, so it should. → The first run of this pull request proves it. If it fails, the author stops and agrees a new D5 with the maintainer. Removing `cmd-format` alone is not a fallback: rustup would then install Rust 1.85.0, which the spec forbids.
+- **[Trade-off] The cache key changes when GitHub updates the runner's Rust.** See D5, Limit. The next run then compiles from a cold cache, though the pinned Rust did not change. → Accepted. It costs one slow run about every six weeks, and the checks stay correct.
+- **[Risk] A later target compiles but does not link, and no check notices.** D2 relies on `cargo test` linking every binary. A binary that opts out of tests would lose that cover. → No such target exists. Whoever adds one adds `cargo build` to `check-server` in the same change.
 - **[Risk] The shell hook writes to standard output and corrupts what rust-cache reads.** → The hook prints nothing on success, and a failed refresh prints to standard error only. The `dev-environment` spec requires both.
 - **[Risk] A pull request's checks depend on two outside download sites.** The shell's packages come from `cache.nixos.org`, and its Rust toolchain comes from `static.rust-lang.org`. → Today's job already depends on the second. A failed download fails the job visibly, and a rerun fixes it.
 - **[Trade-off] Each run generates the OpenSpec skills.** The hook does this in the CI checkout, which has none. → Accepted: it takes about a second, needs no network, and cannot fail the job.

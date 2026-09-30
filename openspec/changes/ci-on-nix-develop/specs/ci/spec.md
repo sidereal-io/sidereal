@@ -37,17 +37,31 @@ The checks are the Rust format check, clippy with warnings denied, the tests, an
 
 ### Requirement: Every v2 job runs one recipe inside the development shell
 
-Every job in `.github/workflows/v2.yml` SHALL run its checks as one `just` recipe inside the Nix development shell. The job SHALL run no check that the recipe does not run. The job SHALL NOT install Rust, or any other tool the checks use, through a separate step. The `server` job's recipe is `check-server`. `just check` SHALL run `check-server`, so a contributor and CI run the same server gate.
+Every job in `.github/workflows/v2.yml` SHALL meet these four rules:
+
+- The job runs its checks as one `just` recipe inside the Nix development shell.
+- The job runs no check that the recipe does not run.
+- The job has no step that installs Rust, or any other tool the checks use. The shell provides them.
+- A step that caches cargo's build output runs its own Rust commands inside the shell, so it installs no Rust either.
+
+The `server` job's recipe is `check-server`. `just check` SHALL run `check-server`, so a contributor and CI run the same server gate.
+
+The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
 
 #### Scenario: The server job has one check step
 
 - **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/v2.yml`
 - **THEN** the output is exactly one line: `nix develop --command just check-server`
 
-#### Scenario: The server job does not install Rust itself
+#### Scenario: The server job has no step that installs a tool
 
-- **WHEN** a reviewer runs `grep -n rustup .github/workflows/v2.yml`
-- **THEN** the search finds no match
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("uses")) | .uses | sub("@.*", "")' .github/workflows/v2.yml`
+- **THEN** the output is exactly three lines, in this order: `actions/checkout`, `DeterminateSystems/determinate-nix-action`, and `Swatinem/rust-cache`
+
+#### Scenario: The cache step uses the shell's Rust
+
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(.uses == "Swatinem/rust-cache*") | .with.cmd-format' .github/workflows/v2.yml`
+- **THEN** the output is exactly one line: `nix develop -c {0}`
 
 #### Scenario: The local gate runs the same recipe
 
