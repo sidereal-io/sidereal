@@ -50,6 +50,7 @@ A new `.github/workflows/codeql.yml` takes the `codeql` job from `ci.yml` unchan
 - **Alternative:** give CodeQL its own path filter. Rejected, because a path filter would need updating each time a new TypeScript directory appears.
 - The ruleset's rule names the CodeQL tool, not a workflow or job. But CodeQL files each analysis under a category, and the default category includes the workflow file's path. Moving the job changes the category from `.github/workflows/ci.yml:codeql` to `.github/workflows/codeql.yml:codeql`.
 - **Pin the category.** The analyze step sets `category: /language:javascript-typescript`. A later rename of the workflow file then keeps the same category, so `main` keeps its baseline.
+- **Alternative:** pin the old string, `.github/workflows/ci.yml:codeql`. It would keep today's baseline, so this pull request's result check would not skip. Rejected, because the category would then name a file that no longer holds the job. The one-time skip costs nothing while the ruleset is disabled.
 
 ### D4. Skip the v0.10.x workflows with `paths-ignore`
 
@@ -82,12 +83,12 @@ The rules about which workflow runs for which change go in a new `ci` spec. `dev
 - **[Risk] The Nix shell misses the new pin file.** → Nix reads only files that git tracks. `git mv` stages the move, and `nix flake check` on this pull request proves the shell still builds.
 - **[Trade-off] This pull request cannot prove the path filters.** It changes root files, so every workflow runs on it. → The next v2-only pull request, likely #289, shows `ci.yml` and `docker-build-push.yml` skipped, and CodeQL still reporting.
 - **[Risk] This pull request has no CodeQL baseline.** `main` has no analysis under the new category, so GitHub skips the CodeQL result check on this pull request. The `codeql` job itself still runs and passes. → This happens once. The first push to `main` after the merge creates the baseline. The ruleset is disabled, so the skipped check blocks nothing.
-- **[Risk] The old category stays on `main` as a stale setup, and its alerts stay open.** → Migration step 3 deletes it.
+- **[Risk] The old category stays on `main` as a stale setup.** It holds no open alerts. The 10 dismissed CodeQL alerts belong to GitHub's CodeQL default setup, which is off, so this change does not touch their triage. → Migration step 3 deletes the stale setup, so Tool status shows only live setups.
 - **[Risk] #310 lands first and edits the same lines.** → Whichever story merges second rebases and updates the other's paths. Both issue bodies already say so.
 
 ## Migration Plan
 
 1. Merge this pull request. Nothing deploys, because v2 has no running service.
 2. Each contributor pulls, then runs `rm -rf backend/target`. With direnv, the shell reloads on its own, because `.envrc` now watches `server/rust-toolchain.toml`.
-3. After the merge, a maintainer deletes the stale CodeQL setup: open Security → Code scanning → Tool status → CodeQL, then delete the `.github/workflows/ci.yml:codeql` setup. This closes alerts that only the old category holds.
+3. After the merge, a maintainer deletes the stale CodeQL setup: open Security → Code scanning → Tool status → CodeQL, then delete the `.github/workflows/ci.yml:codeql` setup. No alert is open under it, so this closes nothing and loses no triage.
 4. Rollback: revert the merge commit. The rename is a pure move, so a revert restores every path.
