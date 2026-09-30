@@ -27,7 +27,10 @@ server:
 frontend:
     npm run dev:frontend
 
-# Backend checks: format, lint (deny warnings), tests, dependency-direction lint.
-check:
+# The gate to pass before every PR: runs check-server.
+check: check-server
+
+# Server gate: format, lint (deny warnings), tests, dependency-direction lint.
+check-server:
     cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
     server/scripts/check-arch.sh

@@ -197,9 +197,9 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 4. **Work & check** — `just check` runs with pinned Rust, Node, `just`, and
    `openspec`, but it gates only the Rust workspace. v2 has no web frontend to run or
    check — partial ([#300](https://github.com/sidereal-io/sidereal/issues/300), [#301](https://github.com/sidereal-io/sidereal/issues/301), [#302](https://github.com/sidereal-io/sidereal/issues/302), [#303](https://github.com/sidereal-io/sidereal/issues/303)).
-5. **Open PR** — CI checks the code, but not inside the pinned shell, and v2 web code
+5. **Open PR** — CI checks the v2 server code inside the pinned shell, but v2 web code
    has no CI job — partial
-   ([#289](https://github.com/sidereal-io/sidereal/issues/289), [#301](https://github.com/sidereal-io/sidereal/issues/301)).
+   ([#301](https://github.com/sidereal-io/sidereal/issues/301)).
 6. **Bump pins** — Dependabot updates npm, Docker, and Actions, but nothing updates
    `flake.lock`, `server/Cargo.lock`, or the Rust toolchain, which is frozen at 1.85
    — partial ([#287](https://github.com/sidereal-io/sidereal/issues/287),

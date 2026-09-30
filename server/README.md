@@ -59,7 +59,8 @@ curl localhost:5000/healthz     # -> 200 {"status":"ok"}
 | `just dev` | Backend + frontend together (zero-to-running). |
 | `just server` | Rust backend only. |
 | `just frontend` | Vite frontend only. |
-| `just check` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. |
+| `just check` | The gate to pass before every PR. It runs `just check-server`. |
+| `just check-server` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. CI runs this recipe. |
 
 A Rust-only contributor can skip `just` and call cargo directly from `server/`
 (the pinned toolchain is auto-selected there):
