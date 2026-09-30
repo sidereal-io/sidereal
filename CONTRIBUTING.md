@@ -233,6 +233,9 @@ Check these points before you merge one:
 - **Nix pull requests change `flake.lock`.** The flake check CI job builds the
   shell with the new pins. A green check means the shell builds. The job log
   also prints the `openspec`, Node, and `just` versions inside the new shell.
+  The `v2` workflow's `server` job also runs, and it runs `just check-server`
+  inside the new shell. A green check means the server gate passes with the
+  new pins.
 - **A new `openspec` version changes every agent's skills.** The shell
   regenerates the skills from the CLI, so read the
   [`openspec` release notes](https://github.com/Fission-AI/OpenSpec/releases)

@@ -13,9 +13,9 @@
 
 ## 3. Contributor docs
 
-- [ ] 3.1 In `server/README.md`, add a `just check-server` row to the Recipes table, and say that `just check` runs it. Verify the table names both recipes.
-- [ ] 3.2 In `CONTRIBUTING.md`, under "Reviewing a pin update", say that a Nix pull request now also runs the `server` job with the new pins. Verify the section names both the flake check and the `server` job.
-- [ ] 3.3 In `openspec/discovery.md`, update the Open PR stage: v2 CI now runs inside the pinned shell, so drop that gap and its #289 link. Keep the web gap and #301. Verify `grep -n '289' openspec/discovery.md` finds no match in the Open PR stage. Commit the docs.
+- [x] 3.1 In `server/README.md`, add a `just check-server` row to the Recipes table, and say that `just check` runs it. Verify the table names both recipes.
+- [x] 3.2 In `CONTRIBUTING.md`, under "Reviewing a pin update", say that a Nix pull request now also runs the `server` job with the new pins. Verify the section names both the flake check and the `server` job.
+- [x] 3.3 In `openspec/discovery.md`, update the Open PR stage: v2 CI now runs inside the pinned shell, so drop that gap and its #289 link. Keep the web gap and #301. Verify `grep -n '289' openspec/discovery.md` finds no match in the Open PR stage. Commit the docs.
 
 ## 4. Verify the whole change
 
