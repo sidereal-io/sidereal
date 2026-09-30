@@ -6,15 +6,15 @@
 
 ## 2. The flake check workflow
 
-- [ ] 2.1 Create `.github/workflows/nix.yml` with one job, `flake-check`. It runs on `pull_request` events that change `flake.nix`, `flake.lock`, `nix/**`, `backend/rust-toolchain.toml`, or `.github/workflows/nix.yml`. It sets `permissions: contents: read` and uses no secrets. Verify with `grep -n 'secrets\.' .github/workflows/nix.yml`, which must print nothing.
-- [ ] 2.2 Add the job's steps:
+- [x] 2.1 Create `.github/workflows/nix.yml` with one job, `flake-check`. It runs on `pull_request` events that change `flake.nix`, `flake.lock`, `nix/**`, `backend/rust-toolchain.toml`, or `.github/workflows/nix.yml`. It sets `permissions: contents: read` and uses no secrets. Verify with `grep -n 'secrets\.' .github/workflows/nix.yml`, which must print nothing.
+- [x] 2.2 Add the job's steps:
   1. check out the repo;
   2. install Nix with `DeterminateSystems/determinate-nix-action@v3`;
   3. run `nix flake check`;
   4. run `nix develop --command sh -c 'openspec --version && node --version && just --version'`.
 
   Verify locally that steps 3 and 4 exit with status 0.
-- [ ] 2.3 Run the step 4 command with `openspec` replaced by `false`. Verify that the step exits with a non-zero status, as the scenario "A pin update breaks a tool" requires.
+- [x] 2.3 Run the step 4 command with `openspec` replaced by `false`. Verify that the step exits with a non-zero status, as the scenario "A pin update breaks a tool" requires.
 
 ## 3. Review guidance
 
