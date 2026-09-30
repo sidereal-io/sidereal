@@ -22,9 +22,9 @@
 
 ## 4. Verification on GitHub
 
-- [ ] 4.1 On this change's pull request, verify that the flake check runs, passes, and prints the three versions in its job log. This pull request changes the workflow file, so it triggers the check.
-- [ ] 4.2 Push a throwaway commit that breaks `flake.nix` to a scratch branch, and open a draft pull request from it. Verify that the flake check fails. Then close that pull request and delete the branch.
-- [ ] 4.3 Dependabot reads its configuration only from `main`, so the Dependabot checks can run only after merge. Add an "After merge" checklist to this change's pull request description, and verify that it names these four checks:
+- [x] 4.1 On this change's pull request, verify that the flake check runs, passes, and prints the three versions in its job log. This pull request changes the workflow file, so it triggers the check.
+- [x] 4.2 Push a throwaway commit that breaks `flake.nix` to a scratch branch, and open a draft pull request from it. Verify that the flake check fails. Then close that pull request and delete the branch.
+- [x] 4.3 Dependabot reads its configuration only from `main`, so the Dependabot checks can run only after merge. Add an "After merge" checklist to this change's pull request description, and verify that it names these four checks:
   1. open the repo's Dependabot status page (Insights, then Dependency graph, then Dependabot) and confirm that the `nix` and `cargo` entries show no configuration error;
   2. if Dependabot reports the Nix `groups` block as invalid, remove it in a follow-up pull request, as design Risks describes;
   3. after the first weekly run, confirm that the Nix and Cargo pull requests match the scenarios "A flake input has a newer commit" and "Several crates have newer releases";
