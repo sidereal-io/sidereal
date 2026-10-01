@@ -4,6 +4,7 @@
 - **Prior round**: round 1, REVISE. Its blocking finding (F1) was that `just dev` kept running when one half failed. The author fixed F1, F2, F4, and F5, and refuted F3 with a test. Round 2 judged all five resolved.
 - **Reviewer context**: cross-model. Gemini (`gemini-3.1-pro-high`) through the `agy` CLI in plan mode, in a fresh session. The author is Claude.
 - **Tool restrictions**: no tools. Headless plan mode cannot read files, so the author put every reviewed file into the prompt with line numbers. The prompt also held the facts the reviewer could not check: the pnpm 12 pin tests, including `pnpm --dir`; the `just` `[parallel]` timing test; the fail-fast recipe test; the locked nixpkgs versions; and the maintainer's decisions.
+- **Re-check of required changes**: 2026-09-30, same reviewer and restrictions. It covered only F6's severity check and the diff that applied Required Changes 1 to 4. It was not a from-scratch review. Result: F6-severity VERIFIED; RC1 to RC4 VERIFIED; `RECHECK: PASS`.
 - **Artifacts reviewed**: proposal.md, design.md, specs/web-shell, specs/dev-commands, specs/dev-environment, adr.md, the ADR-013 edit, and the round 1 record. Context: the #300 story packet and #298's shared decisions, ADR-005, ADR-007, ADR-013, `justfile`, `nix/toolchains.nix`, the `nix` and `v2` workflows, the server's `lib.rs` and `main.rs`, the root `vite.config.ts`, and the `dev-environment` spec.
 
 ## Findings
@@ -46,11 +47,11 @@ The reviewer recommended REVISE, because it rated F6 critical. The check showed 
 3. **F8.** D3's recipe exits 0 after an interrupt, so `just` reports `interrupted by SIGINT`. D3 states that the nested recipes still print one line each.
 4. **F9.** Name the actor in adr.md:10 and design.md:138. Call the v0.10.x stack "the v0.10.x stack" in the `dev-commands` Purpose.
 
-CHANGES_APPLIED: no
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
-- **F6 (Moderate): fixed by Required Change 1.** The severity drops from critical because Vite's default does not allow every origin.
-- **F7 (Moderate): fixed by Required Change 2.**
+- **F6 (Moderate): fixed by Required Change 1.** The severity drops from critical because Vite's default does not allow every origin. Accepted by reviewer: the re-check verified the severity check against Vite 8.3.1's source.
+- **F7 (Moderate): fixed by Required Change 2.** Verified by the reviewer's re-check.
 - **F8: fixed by Required Change 3, in a different way from the reviewer's proposal.** The test showed that `exit 130` does not remove the error line.
 - **F9: fixed by Required Change 4.**
