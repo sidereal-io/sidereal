@@ -33,7 +33,7 @@ None.
 - **Changed code:** `web/package.json`, `web/pnpm-lock.yaml`, the files in `web/src/`, `web/vite.config.ts` (which gains the Vitest settings), and `web/tsconfig.node.json`.
 - **New files:** `web/eslint.config.ts`, `web/.prettierignore`, and the health screen's test file.
 - **Changed files outside `web/`:** `justfile`, `.github/workflows/v2.yml`, `server/README.md`, `CONTRIBUTING.md`, and `AGENTS.md`.
-- **Dependencies:** `web/` gains dev dependencies only: ESLint and its plugins, Prettier, Vitest, Testing Library, and jsdom. The Nix shell needs no new tool.
+- **Dependencies:** `web/` gains dev dependencies only: ESLint, its plugins, and `jiti` to load its TypeScript config; Prettier; and Vitest, Testing Library, and jsdom. The Nix shell needs no new tool.
 - **Contributors:** `just check` takes a few seconds longer. Its first run in a fresh clone installs `web/` dependencies, which needs network access.
 - **CI:** a change to `server/` now also runs the `web` job, and a change to `web/` also runs the `server` job. A change that touches neither, such as one to `apps/` only, runs neither.
 - **v0.10.x:** no change. Its gate stays `npm run check`.
