@@ -16,8 +16,8 @@
 
 - [x] 4.1 Rewrite the "Toolchain is pinned" rule in `AGENTS.md`: Rust follows the latest stable release, `server/rust-toolchain.toml` names the `stable` channel, and `flake.lock` decides the exact release in the Nix shell and CI. Keep the `just check` gate sentence. Verify: the docs search in 4.4 finds no match in `AGENTS.md`.
 - [x] 4.2 Remove both mentions of 1.85 from `server/README.md`: the crate-layout comment and the rustup prerequisite. Verify: the docs search in 4.4 finds no match in `server/README.md`.
-- [ ] 4.3 Update `CONTRIBUTING.md` as design D5 describes: "With Nix" step 4, "Without Nix" step 1, and a new bullet in "Reviewing a pin update". Verify: each of the three places says what D5 says, and none claims that rustup matches CI.
-- [ ] 4.4 Run the docs search from the spec. Verify: `grep -nE '\b1\.[0-9]{2}(\.[0-9]+)?\b' AGENTS.md README.md server/README.md CONTRIBUTING.md` finds no match.
+- [x] 4.3 Update `CONTRIBUTING.md` as design D5 describes: "With Nix" step 4, "Without Nix" step 1, and a new bullet in "Reviewing a pin update". Verify: each of the three places says what D5 says, and none claims that rustup matches CI.
+- [x] 4.4 Run the docs search from the spec. Verify: `grep -nE '\b1\.[0-9]{2}(\.[0-9]+)?\b' AGENTS.md README.md server/README.md CONTRIBUTING.md` finds no match.
 
 ## 5. Whole-change checks
 

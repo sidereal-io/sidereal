@@ -132,8 +132,9 @@ If you cloned before the Rust workspace moved from `backend/` to `server/`, run
    `better-sqlite3` is a native module built for one Node version, and Nix's
    Node 26 needs its own build.
 4. Expect a full rebuild of `server/target` the first time you run a Rust
-   command in the shell. The Rust version matches rustup's, but the compiler's
-   store path differs, so cargo's cached build data doesn't carry over.
+   command in the shell, and again whenever `flake.lock` brings a new Rust
+   release. The shell's compiler is not the one rustup installed, so cargo's
+   cached build data doesn't carry over.
 5. Nothing to run for the OpenSpec agent skills. The shell generates them when
    it loads, and again only when they are stale. See
    [Agent skills](#agent-skills).
@@ -146,8 +147,13 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
 ### Without Nix
 
-1. Install [rustup](https://rustup.rs/). It reads `server/rust-toolchain.toml`
-   and selects the pinned Rust version on its own.
+1. Install [rustup](https://rustup.rs/). It reads `server/rust-toolchain.toml`,
+   which names the `stable` channel, and uses the latest stable Rust release you
+   have installed. Run `rustup update` to move to a newer release.
+
+   CI can be up to about two weeks behind the latest stable release, because it
+   takes Rust from `flake.lock`. To see CI's release, open the "Tool versions"
+   step in the log of the most recent `nix` flake check run.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
    and run its "use" command in the repo root to select Node 26.
 3. Install [`just`](https://github.com/casey/just).
@@ -232,10 +238,16 @@ Check these points before you merge one:
 
 - **Nix pull requests change `flake.lock`.** The flake check CI job builds the
   shell with the new pins. A green check means the shell builds. The job log
-  also prints the `openspec`, Node, and `just` versions inside the new shell.
+  also prints the Rust, `openspec`, Node, and `just` versions inside the new
+  shell.
   The `v2` workflow's `server` job also runs, and it runs `just check-server`
   inside the new shell. A green check means the server gate passes with the
   new pins.
+- **A `flake.lock` update can bring a new Rust release.** The
+  `rustc --version` line in the flake check log shows the release the update
+  brings. A new release can add clippy lints that fail the `server` job. If it does, fix the
+  lints in a separate pull request to `main`, then comment
+  `@dependabot rebase` on the update.
 - **A new `openspec` version changes every agent's skills.** The shell
   regenerates the skills from the CLI, so read the
   [`openspec` release notes](https://github.com/Fission-AI/OpenSpec/releases)
