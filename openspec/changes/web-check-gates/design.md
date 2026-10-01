@@ -51,7 +51,7 @@ The config ignores `dist/` and `coverage/`. The `lint` script runs `eslint .` wi
 
 - **Why type-aware rules:** they catch async mistakes, which polling UI code tends to make. `no-floating-promises` flags today's unhandled `run()` call in `HealthStatus.tsx`. `web/` is small, so the slower lint costs a second or two.
 - **Why `@eslint-react` and not `eslint-plugin-react`:** eslint-plugin-react does not support ESLint 10. @eslint-react supports it, is written for TypeScript, and has a type-aware preset.
-- **Why the config file is TypeScript:** `tsconfig.node.json` adds it to its `include` list. `tsc -b` then checks it, and ESLint's project service finds types for it. Every config file in `web/` is then type-checked. ESLint loads a `.ts` config through `jiti`, which becomes a dev dependency if ESLint 10 needs it.
+- **Why the config file is TypeScript:** `tsconfig.node.json` adds it to its `include` list. `tsc -b` then checks it, and ESLint's project service finds types for it. Every config file in `web/` is then type-checked. ESLint 10 loads the `.ts` config with Node's built-in type stripping, so `web/` needs no `jiti` package. A test on 2026-10-01, with ESLint 10.11 on Node 26.10 and no `jiti` installed, confirmed it.
 - **Alternative: typescript-eslint `recommended` only.** It is faster and needs no tsconfig wiring, but it misses unhandled promises and unsafe use of `any`. Rejected.
 - **Alternative: ESLint 9 with eslint-plugin-react.** It keeps the most common React plugin, but it starts a new app one major release behind. Rejected.
 
@@ -60,7 +60,7 @@ The config ignores `dist/` and `coverage/`. The `lint` script runs `eslint .` wi
 Prettier runs with no options. `web/` has no Prettier config file. A `web/.prettierignore` lists `pnpm-lock.yaml`, because pnpm owns that file's format. Prettier already skips what `web/.gitignore` lists. The `format:check` script runs `prettier --check .`, and a `format` script runs `prettier --write .` for contributors.
 
 - **Why the defaults:** most v0.10.x files already use them. Components ported from v0.10.x under ADR-005 then need no restyle.
-- **The one-time reformat:** the existing files in `web/` are reformatted in their own commit, with no other change in it. The reformat is then easy to review and to skip in `git blame`.
+- **The one-time reformat:** one commit reformats the existing files in `web/`, with no other change in it. The reformat is then easy to review and to skip in `git blame`.
 - **Alternative: keep the template's style with `semi: false` and `singleQuote: true`.** It avoids the reformat, but `web/` would then differ from most v0.10.x code. Rejected.
 
 ### D4. Test with Vitest, jsdom, and Testing Library

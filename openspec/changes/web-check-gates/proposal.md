@@ -13,7 +13,7 @@ The v2 web shell in `web/` has no gate. Neither `just check` nor CI catches a ty
 - **BREAKING (contributors only):** `just check` now runs `check-web` after `check-server`. Running it needs Node and pnpm, which the Nix shell already provides.
 - The `v2` CI workflow gains a `web` job. The job runs `just check-web` inside the Nix shell, the same way the `server` job runs `just check-server`.
 - The `v2` workflow also runs for changes under `web/`. Both jobs run for any change that triggers the workflow.
-- The existing files in `web/` are reformatted to Prettier's default style. A few lines in `web/src/` change so that they pass the new lint rules. The web shell's behavior stays the same.
+- This change reformats the existing files in `web/` to Prettier's default style. It also changes a few lines in `web/src/` so that they pass the new lint rules. The web shell's behavior stays the same.
 - `web/README.md`, `server/README.md`, `CONTRIBUTING.md`, and `AGENTS.md` describe the new gate.
 
 ## Capabilities
@@ -30,7 +30,8 @@ None.
 
 ## Impact
 
-- **Changed code:** `web/package.json`, `web/pnpm-lock.yaml`, the files in `web/src/`, and new config files in `web/` for ESLint, Prettier, and Vitest.
+- **Changed code:** `web/package.json`, `web/pnpm-lock.yaml`, the files in `web/src/`, `web/vite.config.ts` (which gains the Vitest settings), and `web/tsconfig.node.json`.
+- **New files:** `web/eslint.config.ts`, `web/.prettierignore`, and the health screen's test file.
 - **Changed files outside `web/`:** `justfile`, `.github/workflows/v2.yml`, `server/README.md`, `CONTRIBUTING.md`, and `AGENTS.md`.
 - **Dependencies:** `web/` gains dev dependencies only: ESLint and its plugins, Prettier, Vitest, Testing Library, and jsdom. The Nix shell needs no new tool.
 - **Contributors:** `just check` takes a few seconds longer. Its first run in a fresh clone installs `web/` dependencies, which needs network access.

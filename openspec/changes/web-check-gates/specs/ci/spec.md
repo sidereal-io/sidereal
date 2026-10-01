@@ -13,8 +13,6 @@ A CI job named `server`, in the workflow file `.github/workflows/v2.yml`, SHALL 
 
 The checks are the Rust format check, clippy with warnings denied, the tests, and the dependency-direction lint. The job SHALL fail when any check fails.
 
-The list includes `web/` because GitHub filters paths for a whole workflow, not for each job. Both `v2` jobs therefore run on the same list of files.
-
 #### Scenario: A pull request changes Rust code
 
 - **WHEN** a pull request changes a file under `server/crates/`
