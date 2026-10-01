@@ -1,5 +1,6 @@
-# Sidereal — single command front door spanning the Rust backend and the
-# Vite frontend. See https://github.com/casey/just and server/README.md.
+# Sidereal — the one place to run each stack for development: the v2 server
+# (server/), the v2 web shell (web/), and the v0.10.x stack (apps/, packages/).
+# See https://github.com/casey/just, server/README.md, and web/README.md.
 
 # Show available recipes.
 default:
@@ -13,8 +14,8 @@ skills:
 enter:
     @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
 
-# Run the v2 server and the v2 web shell together. When either one exits,
-# stop the other. POSIX sh, so macOS's /bin/sh runs it too.
+# When either one exits, stop the other. POSIX sh, so macOS's /bin/sh runs it.
+[doc('Run the v2 server and the v2 web shell together.')]
 [group('v2')]
 dev:
     #!/bin/sh
