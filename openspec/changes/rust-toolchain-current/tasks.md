@@ -2,7 +2,7 @@
 
 - [x] 1.1 Set `channel = "stable"` in `server/rust-toolchain.toml`, keeping the `rustfmt` and `clippy` components. Verify: `grep -n '^channel' server/rust-toolchain.toml` prints one line, `channel = "stable"`, and `nix develop --command rustc --version` reports 1.98.1.
 - [x] 1.2 Rewrite the comment in `nix/toolchains.nix` so it no longer calls the file the only source of the Rust version: the file names the channel, and `flake.lock` decides the release. Verify: `nix flake check` exits with status 0.
-- [ ] 1.3 Remove `rust-version` from `server/Cargo.toml`. Verify: `grep -rn 'rust-version' server --include=Cargo.toml` finds nothing, and `nix develop --command just check-server` exits with status 0.
+- [x] 1.3 Remove `rust-version` from `server/Cargo.toml`. Verify: `grep -rn 'rust-version' server --include=Cargo.toml` finds nothing, and `nix develop --command just check-server` exits with status 0.
 
 ## 2. Server image
 
