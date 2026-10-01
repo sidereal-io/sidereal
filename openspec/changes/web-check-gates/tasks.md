@@ -1,11 +1,11 @@
 ## 1. Format
 
 - [x] 1.1 Add Prettier as a dev dependency of `web/`, a `web/.prettierignore` that lists `pnpm-lock.yaml`, and the `format` and `format:check` scripts (D3). Verify that `pnpm format:check` in `web/` fails on today's files.
-- [ ] 1.2 Run `pnpm format` in `web/`, and commit the result on its own with no other change (D3). Verify that `pnpm format:check` exits with status 0 and that `git diff --stat` for the commit touches only reformatted files.
+- [x] 1.2 Run `pnpm format` in `web/`, and commit the result on its own with no other change (D3). Verify that `pnpm format:check` exits with status 0 and that `git diff --stat` for the commit touches only reformatted files.
 
 ## 2. Type check
 
-- [ ] 2.1 Add the `typecheck` script as `tsc -b` (D1). Verify that it exits with status 0. Then verify the `dev-commands` scenarios "A type error in app code" and "A type error in a config file" by running `pnpm typecheck` against a temporary edit, and undo each edit afterwards.
+- [x] 2.1 Add the `typecheck` script as `tsc -b` (D1). Verify that it exits with status 0. Then verify the `dev-commands` scenarios "A type error in app code" and "A type error in a config file" by running `pnpm typecheck` against a temporary edit, and undo each edit afterwards.
 
 ## 3. Lint
 
