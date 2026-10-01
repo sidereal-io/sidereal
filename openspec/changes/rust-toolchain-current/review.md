@@ -1,16 +1,28 @@
 ## Review Metadata
 
-- **Review round**: 1
-- **Prior round**: none
-- **Reviewer context**: cross-model. Gemini (`gemini-3.1-pro-high`) through the `agy` CLI in plan mode, in a fresh session for the review and another for the re-check. The author is Claude.
+- **Review round**: 2
+- **Prior round**: Round 1 (full review) ended APPROVE_WITH_CHANGES, with three Required Changes applied and re-checked. The reviewer had recommended REVISE on F1, F2 and F3; the author refuted F1 and fixed F2 and F3.
+- **Why round 2**: after round 1, the maintainer decided that the change needs no new ADR. The author deleted the drafted ADR-014, corrected one consequence in ADR-013 in place, and edited design.md (D6), proposal.md (Impact) and adr.md. Those edits voided round 1's verdict. Round 2 reviewed only those edits, and was not a from-scratch review.
+- **Reviewer context**: cross-model. Gemini (`gemini-3.1-pro-high`) through the `agy` CLI in plan mode, in a fresh session for each review and each re-check. The author is Claude.
 - **Tool restrictions**: no tools. The first attempt, which let the reviewer read files, produced no output: headless plan mode denied a shell-command call. The author then put every reviewed file, and excerpts of the context files, into the prompt with their line numbers. The author also gave the reviewer the facts it could not check itself: the Nix, clippy and Docker test results from 2026-09-30, and what GitHub documents about Dependabot.
-- **Artifacts reviewed**: proposal.md, design.md, specs/dev-environment/spec.md, adr.md, `docs/decisions/ADR-014-rust-follows-stable.md`, and the note added to ADR-013. Context: `nix/toolchains.nix`, `flake.nix`, the `rust-overlay` entry in `flake.lock`, `server/rust-toolchain.toml`, `server/Cargo.toml`, `server/Dockerfile`, `server/README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `.github/dependabot.yml`, the `nix`, `v2` and `docker-build-push` workflows, the `dev-environment` spec, the personas in `openspec/discovery.md`, ADR-000 and ADR-001.
+- **Artifacts reviewed**: round 1 covered proposal.md, design.md, specs/dev-environment/spec.md, adr.md, the drafted ADR-014, and a note added to ADR-013. Round 2 covered the diff of the no-ADR edits, plus ADR-013 and adr.md in full. Context: `nix/toolchains.nix`, `flake.nix`, the `rust-overlay` entry in `flake.lock`, `server/rust-toolchain.toml`, `server/Cargo.toml`, `server/Dockerfile`, `server/README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `.github/dependabot.yml`, the `nix`, `v2` and `docker-build-push` workflows, the `dev-environment` spec, the personas in `openspec/discovery.md`, ADR-000 and ADR-001.
 
 <!-- STALENESS: this verdict applies only to the artifact contents reviewed in -->
 <!-- this round. Any later edit to proposal.md, design.md, or specs/ (other than -->
 <!-- applying listed Required Changes) VOIDS the verdict and requires a new round. -->
 
 ## Findings
+
+### Round 2
+
+- **N1 (reviewer: Critical). ADR-013 would contradict itself.** The reviewer said the rewritten consequence clashes with ADR-013's Consequence 1: "Tools change only when someone updates that file in a pull request." Refuted. Consequence 1 describes the Nix environment. It was already untrue for contributors without Nix, because `.nvmrc` names only `26`, and ADR-013's original bullet said so. The edit puts Rust where Node already was. *Accepted by reviewer: "the edit expands an existing pattern rather than introducing a novel contradiction to Consequence 1."*
+- **N2 (reviewer: Moderate). adr.md overstated ADR-013's scope.** It said the lock file pins every tool, but ADR-013 also keeps plain pin files for contributors without Nix. Confirmed and fixed: adr.md now names both routes. *Re-checked by reviewer: applied, no new defect.*
+- **N3 (Suggestion). Passive voice.** Fixed in adr.md ("This change corrects one consequence in place") and in the D6 heading. Declined: "no major durable architectural decisions were introduced", which the ADR manifest instruction requires word for word.
+- **N4 (Suggestion). "ADR review completed for this change" is filler.** Declined: the ADR manifest instruction requires the manifest to state it.
+
+The reviewer confirmed that no reference to ADR-014 or to "the adr step" remains, and that the new ADR-013 sentence is true for both Rust and Node.
+
+### Round 1
 
 The reviewer rated F1, F2 and F3 Critical and recommended REVISE. The author checked each finding against the repo. The severities below are the author's, and the reviewer accepted them in the re-check.
 
@@ -40,15 +52,19 @@ The reviewer found no problem with scenario testability, scope, design and spec 
 
 VERDICT: APPROVE_WITH_CHANGES
 
-The reviewer recommended REVISE, on F1, F2 and F3. The author recorded APPROVE_WITH_CHANGES instead. After verification, F1 is refuted, and F2 and F3 each have a small, fully specified fix. The reviewer re-checked the rebuttals and the three changes, and answered `RECHECK: ACCEPTED`.
+Round 2: the reviewer recommended REVISE, on N1 and N2. After verification, N1 is refuted and N2 has a one-sentence fix. The reviewer re-checked both and answered `RECHECK: ACCEPTED`.
+
+Round 1: the reviewer recommended REVISE, on F1, F2 and F3. The author recorded APPROVE_WITH_CHANGES instead. After verification, F1 is refuted, and F2 and F3 each have a small, fully specified fix. The reviewer re-checked the rebuttals and the three changes, and answered `RECHECK: ACCEPTED`.
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-1. **D2 and ADR-014:** state that the only supported compiler is the release that `flake.lock` decides, which CI uses. Add a Risk for a newer local release that suggests code CI's release can't compile.
+1. **D2 and the drafted ADR-014:** state that the only supported compiler is the release that `flake.lock` decides, which CI uses. Add a Risk for a newer local release that suggests code CI's release can't compile.
 2. **D3:** run `rustup toolchain install` and `cargo build` in one `RUN` step, after copying the workspace. Move the separate-layer approach to Alternatives, with F3's failure as the reason. Rewrite the Docker risk.
 3. **D5 and proposal.md:** drop "`rustup update` matches CI". Say that CI can lag the latest stable release by up to about two weeks, and that the flake check log shows CI's release.
 
-All three are applied, and the reviewer re-checked each: "APPLIED", with no new defect.
+All three are applied, and the reviewer re-checked each: "APPLIED", with no new defect. ADR-014 was deleted after round 1, so Required Change 1 now lives in design.md D2 only.
+
+4. **Round 2, adr.md:** say that ADR-013 pins every tool through the lock file in the Nix shell and CI, and keeps plain pin files for contributors without Nix. Applied and re-checked.
 
 CHANGES_APPLIED: yes
 
@@ -60,3 +76,6 @@ CHANGES_APPLIED: yes
 4. **F4: rebutted.** Recorded as a risk in design.md. *Accepted by reviewer: "The dev-environment specification does not apply to the Docker build, and the status quo already uses the same unpinned download mechanism."*
 5. **F5: fixed.** Required Change 3. *Re-checked by reviewer: applied, no new defect.*
 6. **F6: partly declined.** Suggestion; the author may decline it alone.
+7. **N1: rebutted.** *Accepted by reviewer in the round 2 re-check.*
+8. **N2: fixed.** Required Change 4. *Re-checked by reviewer: applied, no new defect.*
+9. **N3 and N4: partly declined.** Suggestions; the template requires the declined wording.
