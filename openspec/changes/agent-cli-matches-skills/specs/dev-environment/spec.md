@@ -16,7 +16,7 @@ The report SHALL print a version only when the value looks like a version number
 A report SHALL name the fix that fits the contributor's machine:
 
 - When `nix` is on `PATH`, the report SHALL say to restart the agent from a shell where direnv has loaded the repo, or with `nix develop --command`. It SHALL NOT suggest `just skills`, because regenerating with a CLI from outside the shell makes the shared skills differ from the pinned CLI.
-- When `nix` is not on `PATH`, the report SHALL say to run `just skills`.
+- When `nix` is not on `PATH`, the report SHALL say to run `just skills`. If the report includes the "no CLI" case, it SHALL first say to install the CLI with `npm install -g @fission-ai/openspec`.
 
 #### Scenario: The CLI matches the skills
 
@@ -65,6 +65,12 @@ A report SHALL name the fix that fits the contributor's machine:
 
 - **WHEN** the check reports a different CLI, and `nix` is not on `PATH`
 - **THEN** standard output names `just skills`
+
+#### Scenario: A contributor without Nix or the CLI gets the install command
+
+- **WHEN** a tester runs the check with neither `nix` nor `openspec` on `PATH`
+- **THEN** standard output names `npm install -g @fission-ai/openspec`
+- **AND** standard output names `just skills` after the install command
 
 #### Scenario: The check changes nothing
 

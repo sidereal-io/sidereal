@@ -88,7 +88,7 @@ The script runs under `set -euo pipefail`, which would end it on the first faile
 
 Before printing a version, the check matches it against a version pattern: digits and dots, with an optional suffix. A value that doesn't match prints as "unreadable". The check never prints raw text from the stamp or the CLI.
 
-The check runs `openspec --version` with `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`. CLI 1.13.1 opens no network connection for `--version` either way, but the hook runs outside the Nix shell, which normally sets the second variable. Setting both keeps a later CLI from contacting the network at every session start.
+The check and the stamp generator get the CLI version through one shared function. It runs `openspec --version` with `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`. Sharing it means both sides always run the CLI with the same settings, so they compare the same output. CLI 1.13.1 opens no network connection for `--version` either way. The hook runs outside the Nix shell, though, and the shell is what normally sets the second variable. Setting both keeps a later CLI from contacting the network at every session start.
 
 - **Why ignore the hashes:** a hash mismatch means the skill settings changed. Its fix is a shell reload, which is a different problem from the one this change solves (see Non-Goals).
 
@@ -98,6 +98,7 @@ The check runs `openspec --version` with `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO
 |---|---|
 | `nix` on `PATH` | Restart the agent from a shell where direnv has loaded the repo, or run `nix develop --command <agent>` |
 | No `nix` | Run `just skills`, then restart the agent |
+| No `nix`, and no CLI | Install the CLI with `npm install -g @fission-ai/openspec`, run `just skills`, then restart the agent |
 
 - **Why:** with Nix, the stamp normally holds the pinned version. Running `just skills` with a global CLI would replace the shared skills. The next shell load would then replace them again, and the two would keep overwriting each other. Without Nix, the stamp holds the contributor's own CLI version, so regenerating is safe.
 - **Alternative: test `IN_NIX_SHELL` or `DIRENV_DIR`.** These show whether the agent is inside the shell. The question that matters is whether the pinned shell is available, and `nix` on `PATH` answers it.
