@@ -9,11 +9,12 @@ The repo today:
 - The `v2` workflow runs on every pull request that changes `web/**`. Its `web` job runs `just check-web`, which installs from the lockfile and then runs the type check, lint, format check, and tests.
 - `web/` uses TypeScript 6.0.3 and typescript-eslint 8.71. The latest TypeScript release is 7.0.2. typescript-eslint supports TypeScript below 6.1 only, and it cannot load TypeScript 7 at all.
 
-We tested Dependabot before writing this design. We ran Dependabot's npm updater locally with the `dependabot` CLI, version 1.91.0, against `web/` on `main`. The test job used the root entry's three groups. The run showed that Dependabot:
+A local test run shows that Dependabot handles `web/` today. The run used the `dependabot` CLI 1.91.0 against `web/` on `main`, with the root entry's three groups. In that run, Dependabot:
 
 - installed pnpm 12.8.2 from the `packageManager` field;
 - read the project's packages from the second lockfile document;
 - wrote a lockfile that still has both documents;
+- listed the packages it tracks, and `pnpm` was not among them, so it left `packageManager` unchanged;
 - opened one grouped pull request, which updated TypeScript from 6.0.3 to 7.0.2;
 - skipped a 1-day-old release of `@eslint-react/eslint-plugin`, because it applies a 3-day minimum release age.
 
@@ -48,7 +49,7 @@ The entry has one `ignore` rule: `dependency-name: "typescript"` with `update-ty
 - **Why**: the test run proposed TypeScript 7.0.2. typescript-eslint cannot load it, so the `web` job would fail. The failing update would sit in the development group, so the whole group's pull request would stay red every week. TypeScript patch and minor updates still arrive.
 - **Why no comment**: the rule is current configuration, not history. When typescript-eslint supports TypeScript 7, someone deletes the rule, and no comment or document needs updating.
 - **Alternative 1**: let the `web` job fail on the TypeScript 7 update. That blocks every other development update in the group.
-- **Alternative 2**: ignore TypeScript minor updates, as the story first suggested. There is no TypeScript 6.1, so that rule would not stop TypeScript 7.
+- **Alternative 2**: ignore TypeScript minor updates, as the story first suggested. That rule would not stop TypeScript 7. Microsoft has also said that 6.0 is the last TypeScript release built on JavaScript and that no 6.1 is planned.
 - **Alternative 3**: install TypeScript 7 as the compiler and keep TypeScript 6 for typescript-eslint. That is a separate decision with its own story.
 
 ### D3. Accept Dependabot's defaults for pnpm
