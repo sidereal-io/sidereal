@@ -13,7 +13,7 @@ The v2 web shell in `web/` has no gate. Neither `just check` nor CI catches a ty
 - **BREAKING (contributors only):** `just check` now runs `check-web` after `check-server`. Running it needs Node and pnpm, which the Nix shell already provides.
 - The `v2` CI workflow gains a `web` job. The job runs `just check-web` inside the Nix shell, the same way the `server` job runs `just check-server`.
 - The `v2` workflow also runs for changes under `web/`. Both jobs run for any change that triggers the workflow.
-- The three existing source files in `web/` are reformatted to Prettier's default style. One line in the health screen changes so that it passes the new lint rules. Its behavior stays the same.
+- The existing files in `web/` are reformatted to Prettier's default style. A few lines in `web/src/` change so that they pass the new lint rules. The web shell's behavior stays the same.
 - `web/README.md`, `server/README.md`, `CONTRIBUTING.md`, and `AGENTS.md` describe the new gate.
 
 ## Capabilities
