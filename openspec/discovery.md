@@ -192,7 +192,8 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    direnv; Dana installs the same tools by hand — supported.
 3. **Get skills** — `just skills` generates the same skills on every machine, and the
    shell refreshes them when it loads. An agent started outside the shell can still
-   run a different `openspec` from the one that generated its skills — partial
+   run a different `openspec` from the one that generated its skills. The project
+   accepts this gap and does not plan to close it — partial
    ([#306](https://github.com/sidereal-io/sidereal/issues/306)).
 4. **Work & check** — `just check` runs with pinned Rust, Node, `just`, and
    `openspec`, but it gates only the Rust workspace. v2 has no web frontend to run or
