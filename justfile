@@ -26,7 +26,7 @@ server:
 # Run the v2 web shell only. Installs from web/pnpm-lock.yaml first.
 [group('v2')]
 web:
-    cd web && pnpm install --frozen-lockfile && pnpm dev
+    cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm dev
 
 # Run the Vite frontend only.
 frontend:
