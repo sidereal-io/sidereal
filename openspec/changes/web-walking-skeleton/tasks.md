@@ -20,7 +20,7 @@
 
 ## 4. Docs
 
-- [ ] 4.1 Write `web/README.md`: how to run the web shell, the network need on the first pnpm run, and that the web shell and the v0.10.x frontend share port 5173. Verify that every command in it runs as written.
+- [x] 4.1 Write `web/README.md`: how to run the web shell, the network need on the first pnpm run, and that the web shell and the v0.10.x frontend share port 5173. Verify that every command in it runs as written.
 - [ ] 4.2 Update `CONTRIBUTING.md`: add pnpm to the Nix shell's tool list, and add the one-time `npm i -g pnpm@12` step for contributors without Nix. Verify that the `dev-environment` scenarios "The contributor docs name no Rust release" and "No outdated Node version is left in the docs" still pass.
 - [ ] 4.3 Update the recipe table in `server/README.md` and the "Run both stacks" line in `AGENTS.md`. Verify that `git grep -n 'just frontend'` finds no match outside `openspec/changes/archive/`.
 
