@@ -11,6 +11,7 @@ CI runs the checks that match what a pull request changes. v2 changes run the v2
 A CI job named `server`, in the workflow file `.github/workflows/v2.yml`, SHALL run the v2 server checks on every pull request that changes one of these files:
 
 - any file under `server/`;
+- any file under `web/`;
 - the root `justfile`;
 - `flake.nix` or `flake.lock`;
 - any file under `nix/`;
@@ -27,6 +28,11 @@ The checks are the Rust format check, clippy with warnings denied, the tests, an
 #### Scenario: A pull request changes only the shell's pins
 
 - **WHEN** a pull request changes `flake.lock` only
+- **THEN** the `server` job runs on that pull request
+
+#### Scenario: A pull request changes only web code
+
+- **WHEN** a pull request changes files under `web/` only
 - **THEN** the `server` job runs on that pull request
 
 #### Scenario: A pull request changes only v0.10.x code
@@ -80,10 +86,10 @@ Every job in `.github/workflows/v2.yml` SHALL meet these four rules:
 
 - The job runs its checks as one `just` recipe inside the Nix development shell.
 - The job runs no check that the recipe does not run.
-- The job has no step that installs Rust, or any other tool the checks use. The shell provides them.
+- The job has no step that installs Rust, Node, pnpm, or any other tool the checks use. The shell provides them.
 - A step that caches cargo's build output runs its own Rust commands inside the shell, so it installs no Rust either.
 
-The `server` job's recipe is `check-server`. `just check` SHALL run `check-server`, so a contributor and CI run the same server gate.
+The `server` job's recipe is `check-server`. The `web` job's recipe is `check-web`. `just check` SHALL run `check-server`, then `check-web`, so a contributor and CI run the same gates.
 
 The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
 
@@ -102,12 +108,48 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(.uses == "Swatinem/rust-cache*") | .with.cmd-format' .github/workflows/v2.yml`
 - **THEN** the output is exactly one line: `nix develop -c {0}`
 
+#### Scenario: The web job has one check step
+
+- **WHEN** a reviewer runs `yq '.jobs.web.steps[] | select(has("run")) | .run' .github/workflows/v2.yml`
+- **THEN** the output is exactly one line: `nix develop --command just check-web`
+
+#### Scenario: The web job has no step that installs a tool
+
+- **WHEN** a reviewer runs `yq '.jobs.web.steps[] | select(has("uses")) | .uses | sub("@.*", "")' .github/workflows/v2.yml`
+- **THEN** the output is exactly two lines, in this order: `actions/checkout` and `DeterminateSystems/determinate-nix-action`
+
 #### Scenario: The local gate runs the same recipe
 
 - **WHEN** a contributor runs `just --show check`
-- **THEN** the output contains the line `check: check-server`
+- **THEN** the output contains the line `check: check-server check-web`
 
 #### Scenario: A check in the recipe fails
 
 - **WHEN** a pull request changes a file under `server/crates/` so that `cargo fmt --check` reports a difference
 - **THEN** the `server` job fails on that pull request
+
+### Requirement: The v2 web checks run when v2 code changes
+
+A CI job named `web`, in the workflow file `.github/workflows/v2.yml`, SHALL run the v2 web checks on every pull request that triggers that workflow. These are the same files that trigger the `server` job.
+
+The checks are the type check, the lint, the format check, and the unit tests of the web shell in `web/`. The job SHALL fail when any check fails.
+
+#### Scenario: A pull request changes web code
+
+- **WHEN** a pull request changes a file under `web/src/`
+- **THEN** the `web` job runs on that pull request
+
+#### Scenario: A pull request changes only server code
+
+- **WHEN** a pull request changes files under `server/` only
+- **THEN** the `web` job runs on that pull request
+
+#### Scenario: A pull request changes only v0.10.x code
+
+- **WHEN** a pull request changes files under `apps/` only
+- **THEN** GitHub does not run the `web` job on that pull request
+
+#### Scenario: A web check fails
+
+- **WHEN** a pull request changes a file under `web/src/` so that the format check reports a difference
+- **THEN** the `web` job fails on that pull request
