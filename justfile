@@ -27,7 +27,8 @@ dev:
     [ -n "$stop" ] && exit 0
     [ $a -eq 0 ] && [ $b -eq 0 ]
 
-# Run the Rust server only (serves GET /healthz).
+# Run the v2 server only (serves GET /healthz).
+[group('v2')]
 server:
     cargo run -p sidereal-server --manifest-path server/Cargo.toml
 
@@ -36,14 +37,22 @@ server:
 web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm dev
 
-# Run the Vite frontend only.
-frontend:
+# Run the whole v0.10.x stack: its server, worker, and frontend.
+[group('v0.10.x')]
+v0-dev:
+    npm run dev
+
+# Run the v0.10.x frontend only.
+[group('v0.10.x')]
+v0-frontend:
     npm run dev:frontend
 
 # The gate to pass before every PR: runs check-server.
+[group('v2')]
 check: check-server
 
 # Server gate: format, lint (deny warnings), tests, dependency-direction lint.
+[group('v2')]
 check-server:
     cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
     server/scripts/check-arch.sh
