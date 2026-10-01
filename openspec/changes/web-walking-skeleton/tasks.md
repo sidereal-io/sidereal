@@ -1,6 +1,6 @@
 ## 1. Toolchain
 
-- [ ] 1.1 Add `pkgs.pnpm_12` to `nix/toolchains.nix`. Verify that `nix develop --command pnpm --version` prints a release starting with `12.`, and that `nix flake check` exits with status 0.
+- [x] 1.1 Add `pkgs.pnpm_12` to `nix/toolchains.nix`. Verify that `nix develop --command pnpm --version` prints a release starting with `12.`, and that `nix flake check` exits with status 0.
 - [ ] 1.2 Add `pnpm --version` to the flake check's "Tool versions" step in `.github/workflows/nix.yml`. Verify by running the step's command locally: it prints five versions and exits with status 0.
 
 ## 2. Web shell
