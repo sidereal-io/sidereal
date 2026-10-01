@@ -16,7 +16,7 @@
 ## 4. Unit tests
 
 - [x] 4.1 Add Vitest, `@testing-library/react`, `@testing-library/dom`, and jsdom as dev dependencies. Add the `test` key to `web/vite.config.ts`, with `defineConfig` imported from `vitest/config` and jsdom as the environment. Add the `test` script as `vitest run` (D4). Verify that `pnpm typecheck` still exits with status 0.
-- [ ] 4.2 Write `web/src/HealthStatus.test.tsx`: stub `fetch`, expect `healthy` for status 200 with `{"status":"ok"}`, and expect `unreachable` for status 500 (D4). Verify every scenario of the `web-shell` requirement "The health screen has unit tests", with nothing listening on port 5000. Break the component temporarily for the two failure scenarios, and undo each change afterwards.
+- [x] 4.2 Write `web/src/HealthStatus.test.tsx`: stub `fetch`, expect `healthy` for status 200 with `{"status":"ok"}`, and expect `unreachable` for status 500 (D4). Verify every scenario of the `web-shell` requirement "The health screen has unit tests", with nothing listening on port 5000. Break the component temporarily for the two failure scenarios, and undo each change afterwards.
 - [ ] 4.3 Verify that `pnpm lint` and `pnpm format:check` pass on the test file and on the changed `vite.config.ts`.
 
 ## 5. Recipes and CI
