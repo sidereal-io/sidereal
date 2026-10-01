@@ -87,10 +87,11 @@ A test of this recipe with stand-in recipes, under Linux's `/bin/sh` (dash), sho
 
 ### D4. `just web` installs from the lockfile, then serves
 
-`just web` runs `pnpm install --frozen-lockfile`, then `pnpm dev`, both in `web/`.
+`just web` runs `pnpm install --frozen-lockfile --reporter=append-only`, then `pnpm dev`, both in `web/`.
 
 - **Why install every time:** a fresh clone then works with one command. pnpm finishes in about a second when nothing changed.
 - **Why `--frozen-lockfile`:** a stale lockfile stops the run instead of being rewritten. Only a deliberate `pnpm install` or `pnpm add` changes the lockfile.
+- **Why `--reporter=append-only`:** pnpm's default reporter redraws its progress lines with `ESC [ 0 J`, which breaks the `dev-commands` rule that `just dev` never clears the terminal. A test during task 3.2 found four of these sequences in `just dev`'s output. With the append-only reporter, it found none.
 
 ### D5. Check health with a timed loop and plain `fetch`
 
