@@ -29,9 +29,6 @@ server/
 - **[just](https://github.com/casey/just)** — the command runner spanning both stacks:
   `cargo install just` (or a system package: `apt install just`, `brew install just`,
   `scoop install just`).
-- **[Node.js](https://nodejs.org/) 26 and [pnpm](https://pnpm.io/) 12** — only
-  needed to run the web shell half of `just dev`. See
-  [`web/README.md`](../web/README.md).
 
 The repo also provides an optional, pinned Nix shell with every prerequisite above.
 See [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
@@ -41,12 +38,10 @@ See [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
 From the **repository root**:
 
 ```bash
-just dev
+just server
 ```
 
-That starts the Rust backend and the v2 web shell together. Open
-<http://localhost:5173>: the page shows `healthy` once the backend is up. The
-backend serves its liveness probe directly, too:
+That builds and starts the Rust backend. It serves its liveness probe once up:
 
 ```bash
 curl localhost:5000/healthz     # -> 200 {"status":"ok"}
@@ -54,15 +49,12 @@ curl localhost:5000/healthz     # -> 200 {"status":"ok"}
 
 ## Recipes
 
-`just` recipes live in the root `justfile`; `just --list` self-documents them.
+`just` recipes live in the root `justfile`. These are the backend's; `just --list`
+shows every recipe in the repo.
 
 | Recipe | What it does |
 |---|---|
-| `just dev` | Rust backend + v2 web shell together (zero-to-running). |
 | `just server` | Rust backend only. |
-| `just web` | v2 web shell only. |
-| `just v0-dev` | The whole v0.10.x stack: its server, worker, and frontend. |
-| `just v0-frontend` | The v0.10.x frontend only. |
 | `just check` | The gate to pass before every PR. It runs `just check-server`. |
 | `just check-server` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. CI runs this recipe. |
 
@@ -83,7 +75,7 @@ cargo test                      # run the workspace tests
 
 ## Notes
 
-- The `justfile` lives at the repo root (not here) because `just dev` spans both
-  the Rust backend and the v2 web shell in `web/`.
+- The `justfile` lives at the repo root (not here) because it runs every part of
+  the repo, not only the backend.
 - `plugin-abi` is intentionally minimal in M0 — trait stubs, not a frozen ABI;
   it is expected to churn until M2.
