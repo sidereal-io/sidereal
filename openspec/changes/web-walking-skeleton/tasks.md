@@ -26,5 +26,5 @@
 
 ## 5. Final check
 
-- [ ] 5.1 Run `just check`, `nix flake check`, and `openspec validate web-walking-skeleton --strict`. Verify that each exits with status 0.
+- [x] 5.1 Run `just check`, `nix flake check`, and `openspec validate web-walking-skeleton --strict`. Verify that each exits with status 0.
 - [ ] 5.2 Walk every scenario in the three delta specs once more on the final commit, and record any that could not run, with the reason, in the PR description.
