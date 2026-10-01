@@ -249,9 +249,9 @@ Check these points before you merge one:
   shell with the new pins. A green check means the shell builds. The job log
   also prints the Rust, `openspec`, Node, pnpm, and `just` versions inside the new
   shell.
-  The `v2` workflow's `server` job also runs, and it runs `just check-server`
-  inside the new shell. A green check means the server gate passes with the
-  new pins.
+  The `v2` workflow's `server` and `web` jobs also run. They run
+  `just check-server` and `just check-web` inside the new shell. Green checks
+  mean both gates pass with the new pins.
 - **A `flake.lock` update can bring a new Rust release.** The
   `rustc --version` line in the flake check log shows the release the update
   brings. A new release can add clippy lints that fail the `server` job. If it does, fix the

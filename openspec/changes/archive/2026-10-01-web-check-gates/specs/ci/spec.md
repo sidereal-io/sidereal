@@ -1,10 +1,4 @@
-# ci Specification
-
-## Purpose
-
-CI runs the checks that match what a pull request changes. v2 changes run the v2 checks, v0.10.x changes run the v0.10.x pipeline, and code scanning runs on every pull request.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: The v2 server checks run when v2 server code changes
 
@@ -44,41 +38,6 @@ The checks are the Rust format check, clippy with warnings denied, the tests, an
 
 - **WHEN** a reviewer lists `.github/workflows/`
 - **THEN** `v2.yml` exists and `backend-rs.yml` does not
-
-### Requirement: The v0.10.x pipeline skips v2-only changes
-
-The v0.10.x workflows `ci.yml` and `docker-build-push.yml` SHALL NOT run for a pull request or a push whose changed files all sit under `server/`, `web/`, `openspec/`, or `docs/`. They SHALL run when at least one changed file sits outside those four directories.
-
-#### Scenario: A pull request changes only v2 code and plans
-
-- **WHEN** a pull request changes files under `server/` and `openspec/` only
-- **THEN** GitHub runs neither `ci.yml` nor `docker-build-push.yml` on that pull request
-
-#### Scenario: A pull request changes v2 code and a root file
-
-- **WHEN** a pull request changes a file under `server/` and also changes `package.json`
-- **THEN** GitHub runs both `ci.yml` and `docker-build-push.yml` on that pull request
-
-#### Scenario: A v2-only merge reaches main
-
-- **WHEN** a commit that changes files under `server/` only is pushed to `main`
-- **THEN** `docker-build-push.yml` does not run, and no new v0.10.x image is pushed
-
-### Requirement: Code scanning runs on every pull request
-
-CodeQL SHALL analyze the repo on every pull request to `main` or `v0.x`, and on every push to those branches, whatever files the change touches. The CodeQL workflow SHALL have no path filter. Every pull request therefore has CodeQL results, including one that changes only v2 code.
-
-#### Scenario: A v2-only pull request gets code scanning results
-
-- **WHEN** a pull request to `main` changes files under `server/` only
-- **THEN** the CodeQL workflow runs on that pull request
-- **AND** the pull request's checks list a completed CodeQL analysis
-
-#### Scenario: The CodeQL workflow has no path filter
-
-- **WHEN** a reviewer reads `.github/workflows/codeql.yml`
-- **THEN** its `on` block contains no `paths` or `paths-ignore` key
-- **AND** no other workflow file defines a CodeQL job
 
 ### Requirement: Every v2 job runs one recipe inside the development shell
 
@@ -127,6 +86,8 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 - **WHEN** a pull request changes a file under `server/crates/` so that `cargo fmt --check` reports a difference
 - **THEN** the `server` job fails on that pull request
+
+## ADDED Requirements
 
 ### Requirement: The v2 web checks run when v2 code changes
 

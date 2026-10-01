@@ -30,6 +30,30 @@ This installs dependencies from `pnpm-lock.yaml`, then starts the dev server on
 `package.json`, run `pnpm install` in `web/` to update the lockfile, and commit
 both files.
 
+## Check it
+
+From the repo root:
+
+```bash
+just check-web
+```
+
+This installs dependencies from `pnpm-lock.yaml`, then runs four checks in
+order. It stops at the first one that fails. `just check` runs it too, after
+the server checks.
+
+To run one check alone, run its script in `web/`:
+
+| Command             | What it checks                                              |
+| ------------------- | ----------------------------------------------------------- |
+| `pnpm typecheck`    | Types in every TypeScript file, including config and tests. |
+| `pnpm lint`         | ESLint rules for TypeScript, React, and hooks.              |
+| `pnpm format:check` | That every file matches Prettier's output.                  |
+| `pnpm test`         | The unit tests, once.                                       |
+
+To fix formatting, run `pnpm format`. To rerun the tests on every save, run
+`pnpm vitest`.
+
 ## Port 5173 is shared with the v0.10.x frontend
 
 This app and the v0.10.x frontend both use port 5173. Run one at a time. If

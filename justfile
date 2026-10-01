@@ -48,12 +48,17 @@ v0-dev:
 v0-frontend:
     npm run dev:frontend
 
-# The gate to pass before every PR: runs check-server.
+# The gate to pass before every PR: runs check-server, then check-web.
 [group('v2')]
-check: check-server
+check: check-server check-web
 
 # Server gate: format, lint (deny warnings), tests, dependency-direction lint.
 [group('v2')]
 check-server:
     cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
     server/scripts/check-arch.sh
+
+# Web gate: install from the lockfile, then type check, lint, format check, tests.
+[group('v2')]
+check-web:
+    cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test

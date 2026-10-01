@@ -53,8 +53,9 @@ Invariants for the `server/` Rust workspace — honor them in every v2 change.
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
   `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
   CI. Never put a Rust release number in a build file or doc. **`just check`**
-  (`cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint) is the
-  gate — green before every PR.
+  is the gate — green before every PR. It runs `check-server` (`cargo fmt --check` +
+  `clippy -D warnings` + `cargo test` + arch lint), then `check-web` (type check +
+  lint + format check + unit tests for `web/`).
 - **Real forks become ADRs** in `docs/decisions/` (template `ADR-000`). Don't design
   past a **Proposed** ADR — get it Accepted first. Each ADR stands alone: it links to
   at most one other ADR and never references issues, milestones, or the RFC.
@@ -74,10 +75,11 @@ Invariants for the `server/` Rust workspace — honor them in every v2 change.
   branch and PR with Conventional Commits.
 - **Toolchain is per stack.** v0.10.x: Node 26, npm, Vite/React, Hono, Drizzle —
   gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.
-  v2: cargo workspace under `server/`, orchestrated by the root `justfile` — gate with
-  **`just check`** (fmt + clippy `-D warnings` + tests + arch-boundary lint) after every
-  change to `server/`. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`,
-  `test:`).
+  v2: cargo workspace under `server/` and pnpm web shell under `web/`, orchestrated by
+  the root `justfile` — gate with **`just check`** (`check-server`, then `check-web`)
+  after every change to `server/` or `web/`. CI runs the same recipes in the `v2`
+  workflow's `server` and `web` jobs. Conventional Commits (`feat:`, `fix:`, `docs:`,
+  `refactor:`, `test:`).
 - **Releases are tag-driven** — bump `package.json`, add a `CHANGELOG.md` entry, then
   push a `v*.*.*` tag; the workflow does the rest. Never `gh release create` manually.
 
