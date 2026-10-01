@@ -6,7 +6,7 @@
 
 ## 2. Server image
 
-- [ ] 2.1 In `server/Dockerfile`, build from `rust:1-slim-bookworm`, run `rustup toolchain install && cargo build --release -p sidereal-server` in one `RUN` step after `COPY . .`, and correct the comment that says "pinned 1.85". Verify: `grep -n '^FROM rust:' server/Dockerfile` names only `rust:1-` tags, and `docker build --progress=plain server/` exits with status 0 and prints no `auto-install` warning.
+- [x] 2.1 In `server/Dockerfile`, build from `rust:1-slim-bookworm`, run `rustup toolchain install && cargo build --release -p sidereal-server` in one `RUN` step after `COPY . .`, and correct the comment that says "pinned 1.85". Verify: `grep -n '^FROM rust:' server/Dockerfile` names only `rust:1-` tags, and `docker build --progress=plain server/` exits with status 0 and prints no `auto-install` warning.
 
 ## 3. Flake check
 
