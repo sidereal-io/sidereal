@@ -13,11 +13,19 @@ skills:
 enter:
     @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
 
-# Zero-to-running: backend + frontend together.
+# Run the v2 server and the v2 web shell together. When either one exits,
+# stop the other. POSIX sh, so macOS's /bin/sh runs it too.
+[group('v2')]
 dev:
-    npx concurrently -n backend,frontend -c blue,green \
-      "cargo run -p sidereal-server --manifest-path server/Cargo.toml" \
-      "npm run dev:frontend"
+    #!/bin/sh
+    just server & s=$!
+    just web & w=$!
+    trap 'stop=1; kill $s $w 2>/dev/null' INT TERM
+    while kill -0 $s 2>/dev/null && kill -0 $w 2>/dev/null; do sleep 1; done
+    kill $s $w 2>/dev/null
+    wait $s; a=$?; wait $w; b=$?
+    [ -n "$stop" ] && exit 0
+    [ $a -eq 0 ] && [ $b -eq 0 ]
 
 # Run the Rust server only (serves GET /healthz).
 server:

@@ -13,7 +13,7 @@
 ## 3. Recipes
 
 - [x] 3.1 Add the `web` recipe in group `v2`: `pnpm install --frozen-lockfile`, then `pnpm dev`, in `web/` (D4). Verify both scenarios of the `dev-commands` requirement "The web shell runs on its own".
-- [ ] 3.2 Replace the `dev` recipe with D3's POSIX `sh` recipe, in group `v2`. Verify every scenario of the `dev-commands` requirement "One command runs the v2 stack", including the fresh-clone scenario in a new clone under `.workspace/`.
+- [x] 3.2 Replace the `dev` recipe with D3's POSIX `sh` recipe, in group `v2`. Verify every scenario of the `dev-commands` requirement "One command runs the v2 stack", including the fresh-clone scenario in a new clone under `.workspace/`.
 - [ ] 3.3 Rename `frontend` to `v0-frontend`, add `v0-dev` (`npm run dev`), and add the `v2` and `v0.10.x` groups (D8). Verify the scenarios of the `dev-commands` requirements "The v0.10.x stack runs by explicit name" and "Recipes are grouped by stack". If the v0.10.x stack cannot start on this machine, record why in the commit message.
 - [ ] 3.4 Update the `justfile`'s header comment so it names the v2 server, the v2 web shell, and the v0.10.x stack. Verify that `just --list` shows the new comment and every recipe under its group.
 - [ ] 3.5 Test `just dev` on macOS with its `/bin/sh`: Ctrl-C stops both halves, and a taken port 5173 stops both. If no Mac is available, record that in the PR description.
