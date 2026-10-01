@@ -10,7 +10,7 @@ alongside the existing TypeScript stack (`apps/`, `packages/`). See
 ```
 server/
   Cargo.toml            # workspace manifest (members + shared dep versions)
-  rust-toolchain.toml   # pins stable 1.85
+  rust-toolchain.toml   # names the stable channel
   crates/
     plugin-abi/         # public plugin contracts a third-party pack also codes against
     core/               # domain-agnostic engine; builds on plugin-abi (no astro)
@@ -23,9 +23,9 @@ server/
 
 ## Prerequisites
 
-- **[rustup](https://rustup.rs/)** — installs cargo and, on first build, auto-selects
-  the toolchain pinned in `rust-toolchain.toml` (stable 1.85). A C linker is also
-  required (`build-essential` on Debian/Ubuntu, Xcode CLT on macOS).
+- **[rustup](https://rustup.rs/)** — installs cargo and the latest stable Rust, which
+  `rust-toolchain.toml` selects. Run `rustup update` to move to a newer release. A C
+  linker is also required (`build-essential` on Debian/Ubuntu, Xcode CLT on macOS).
 - **[just](https://github.com/casey/just)** — the command runner spanning both stacks:
   `cargo install just` (or a system package: `apt install just`, `brew install just`,
   `scoop install just`).
