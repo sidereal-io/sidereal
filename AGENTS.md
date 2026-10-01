@@ -109,6 +109,10 @@ between phases" step.
   says `Closes #<issue>`. An epic is a parent issue, labeled `kind/epic`, with its stories
   as sub-issues; close it once they are all closed. Dependencies are "blocked by"
   links between issues.
+- **Every story carries one MoSCoW priority label:** `priority/must`,
+  `priority/should`, `priority/could`, or `priority/wont`. The label matches the
+  `MoSCoW` line in the story packet; when you change one, change the other in the same
+  edit. Epics and untriaged issues have no priority label.
 
 ## Writing document artifacts — plain language
 

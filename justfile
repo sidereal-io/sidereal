@@ -15,7 +15,7 @@ enter:
     @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
 
 # When either one exits, stop the other. POSIX sh, so macOS's /bin/sh runs it.
-[doc('Run the v2 server and the v2 web shell together.')]
+[doc('Run the v2 server and web together.')]
 [group('v2')]
 dev:
     #!/bin/sh

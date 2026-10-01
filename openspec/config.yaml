@@ -1,14 +1,17 @@
 schema: spec-driven-review
 
 context: |
-  The backlog is GitHub issues, each with its MoSCoW priority; openspec/discovery.md
-  holds personas and journeys. An issue marked "Not yet a story" must be cut into a
-  story packet before it is proposed. When asked to propose the next change without
-  a specific request, list open issues with
+  The backlog is GitHub issues, each with its MoSCoW priority as a `priority/*` label;
+  openspec/discovery.md holds personas and journeys. An issue marked "Not yet a story"
+  must be cut into a story packet before it is proposed. When asked to propose the
+  next change without a specific request, list open issues with
   `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,subIssuesSummary`.
   Skip epic parents (any issue labeled `kind/epic` or with sub-issues), issues with an
-  open blocker, and assigned issues (they are in progress). Take the lowest number
-  and read its story packet with `gh issue view <n> --json body`. When proposing,
+  open blocker, assigned issues (they are in progress), issues labeled `priority/wont`,
+  and issues with no `priority/*` label (they are untriaged). Of the rest, take the
+  highest priority — `priority/must`, then `priority/should`, then `priority/could` —
+  and the lowest number within it. Read its story packet with
+  `gh issue view <n> --json body`. When proposing,
   assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
   say `Closes #<n>`. One story per change.
 
