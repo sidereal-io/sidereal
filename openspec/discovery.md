@@ -184,7 +184,7 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 ```
   Clone ─► Enter env ─► Get skills ─► Work & check ─► Open PR ─► Bump pins (Mo)
     │          │             │              │             │            │
- supported  supported     partial        partial       partial      partial
+ supported  supported     partial        partial       partial     supported
 ```
 
 1. **Clone** — `git clone` works — supported.
@@ -200,9 +200,10 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 5. **Open PR** — CI checks the v2 server code inside the pinned shell, but v2 web code
    has no CI job — partial
    ([#301](https://github.com/sidereal-io/sidereal/issues/301)).
-6. **Bump pins** — Dependabot updates npm, Docker, and Actions, but nothing updates
-   `flake.lock`, `server/Cargo.lock`, or the Rust toolchain, which is frozen at 1.85
-   — partial ([#287](https://github.com/sidereal-io/sidereal/issues/287),
+6. **Bump pins** — Dependabot opens weekly pull requests for npm, Docker, Actions,
+   `flake.lock` and `server/Cargo.lock`. Rust follows the stable channel, so a new
+   Rust release arrives in the `flake.lock` update, and the flake check prints its
+   version — supported ([#287](https://github.com/sidereal-io/sidereal/issues/287),
    [#310](https://github.com/sidereal-io/sidereal/issues/310)).
 
 ## Backlog
