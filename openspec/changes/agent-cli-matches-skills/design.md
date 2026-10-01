@@ -79,9 +79,14 @@ The check reads the stamp's `cli` line and its `skill` lines. It ignores the two
 |---|---|
 | No generated skills | No stamp, no `skill` lines, or a listed folder without `SKILL.md` |
 | No CLI | `command -v openspec` fails |
+| A broken CLI | `openspec --version` exits non-zero |
 | A different CLI | `openspec --version` differs from the stamp's `cli` line |
 
-The check reports every case that applies, one line each, followed by one line with the fix. If the CLI is missing, it skips the version comparison.
+The check reports every case that applies, one line each, followed by one line with the fix. If the CLI is missing or broken, it skips the version comparison.
+
+The script runs under `set -euo pipefail`, which would end it on the first failed command. The `--check` path therefore guards every command it runs, so a failure becomes a reported case and the check still exits 0.
+
+Before printing a version, the check matches it against a version pattern: digits and dots, with an optional suffix. A value that doesn't match prints as "unreadable". The check never prints raw text from the stamp or the CLI.
 
 - **Why ignore the hashes:** a hash mismatch means the skill settings changed. Its fix is a shell reload, which is a different problem from the one this change solves (see Non-Goals).
 
@@ -117,6 +122,8 @@ Each hook runs the script by its path from the repo root, never through `just`.
 ## Risks / Trade-offs
 
 - **Codex might not read a project-level `.codex/hooks.json`, or might not pass standard output to the agent.** → The first task tests both on this machine before any hook is written. If either fails, Codex relies on the `AGENTS.md` instruction, and the spec's Codex scenario changes before implementation.
+- **A session can start while another window regenerates the skills.** Regeneration deletes the stamp and the skill folders, then writes them again, which takes about a second. A session that starts in that window gets a "skills are missing" report. → Accepted. The report is accurate, because the agent really did start without the skills, and its fix is a restart. An agent started from the terminal that is loading the shell can't hit the window, because direnv finishes before the prompt returns.
+- **The stamp is a git-ignored file that anyone with write access can edit.** Its text could carry instructions into the agent's context. → The check prints only version-shaped values (D4). The stamp opens no new route: whoever can edit it can also edit the git-ignored `SKILL.md` files, which the agent reads directly.
 - **An agent might ignore the report.** → The report tells the agent to tell the user first. The `AGENTS.md` instruction repeats the rule.
 - **A contributor might have Nix installed but not use the shell.** → The report then suggests the shell instead of `just skills`. The contributor can still run `just skills` by hand. Suggesting it automatically would put the shared skills at risk for everyone else using the shell.
 - **The hook adds about 0.3 seconds to each session start.** → Accepted. It runs once per session.

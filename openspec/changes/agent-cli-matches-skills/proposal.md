@@ -12,9 +12,10 @@ Since [#275](https://github.com/sidereal-io/sidereal/issues/275), a stamp record
 
 ## What Changes
 
-- **The skills script checks for a mismatch.** `scripts/openspec-skills.sh --check` compares the agent's `openspec --version` with the version in the stamp. It reports one of three problems:
+- **The skills script checks for a mismatch.** `scripts/openspec-skills.sh --check` compares the agent's `openspec --version` with the version in the stamp. It reports these problems:
   - no generated skills;
   - no `openspec` CLI on `PATH`;
+  - a CLI that fails to report its version;
   - a CLI version that differs from the stamp.
 
   The check writes no files, prints its warning to standard output, and always exits 0. It prints nothing when the versions match.
