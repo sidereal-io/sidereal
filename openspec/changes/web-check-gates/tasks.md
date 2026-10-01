@@ -22,7 +22,7 @@
 ## 5. Recipes and CI
 
 - [x] 5.1 Add the `check-web` recipe from D5, in group `v2`, and change `check` to `check: check-server check-web`. Update the `check` recipe's comment to name both gates. Verify every scenario of the `dev-commands` requirement "The web gate fails on any web check error". Run the "Dependencies are not installed yet" scenario after removing `web/node_modules`. Run the stale-lockfile scenario in a scratch clone under `.workspace/`.
-- [ ] 5.2 Verify the `dev-commands` scenario "A reviewer reads the recipe groups" and the `ci` scenario "The local gate runs the same recipe".
+- [x] 5.2 Verify the `dev-commands` scenario "A reviewer reads the recipe groups" and the `ci` scenario "The local gate runs the same recipe".
 - [ ] 5.3 Add `web/**` to the `paths` filter in `.github/workflows/v2.yml`, and add the `web` job from D6, with the same action versions as the `server` job. Verify the `ci` scenarios "The web job has one check step" and "The web job has no step that installs a tool", and that the three `server` job scenarios still pass, with `yq` version 4.
 - [ ] 5.4 Verify that the `web` and `server` jobs both pass on this change's pull request. That pull request changes `web/`, `justfile`, and the workflow file, so it triggers both jobs.
 
