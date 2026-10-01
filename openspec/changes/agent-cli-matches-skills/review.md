@@ -1,10 +1,10 @@
 ## Review Metadata
 
-- **Review round**: 2
-- **Prior round**: round 1 — REVISE. Two critical findings (a regeneration race, and stamp text reaching the agent) and two moderate ones (`set -e` versus exit 0, and scenarios that need a model to answer)
+- **Review round**: 3
+- **Prior round**: round 2 — REVISE. One critical finding: the tracked hooks run a checked-out branch's script. That was the second REVISE in a row, so the review went to the human, who chose to keep the hooks and document the risk. Round 1 was also REVISE
 - **Reviewer context**: cross-model — Gemini (`gemini-3.1-pro-high`) through the Antigravity CLI (`agy`), in a fresh context
-- **Tool restrictions**: read-only — `agy --mode plan`, with no tools. The artifacts, the round 1 record and the relevant source files were embedded in the prompt
-- **Artifacts reviewed**: proposal.md, design.md, specs/dev-environment/spec.md, adr.md, round 1 review.md; scripts/skills.sh, justfile, .envrc, nix/devshell.nix, .agents/skills/.openspec-stamp, .claude/settings.json, AGENTS.md, CONTRIBUTING.md, ADR-013, openspec/specs/dev-environment/spec.md
+- **Tool restrictions**: read-only — `agy --mode plan`, with no tools. The artifacts, the round 2 record and the relevant source files were embedded in the prompt
+- **Artifacts reviewed**: proposal.md, design.md, specs/dev-environment/spec.md, adr.md, round 2 review.md; scripts/skills.sh, justfile, .envrc, nix/devshell.nix, .agents/skills/.openspec-stamp, .claude/settings.json, AGENTS.md, CONTRIBUTING.md, ADR-013, openspec/specs/dev-environment/spec.md
 
 ## Findings
 
@@ -12,30 +12,28 @@ The author verified each finding against the repo. The verification follows each
 
 ### 🔴 Critical (blocking)
 
-1. **Tracked hooks run a branch's own script when an agent session starts.** A contributor who checks out an untrusted branch and starts Claude Code or Codex runs that branch's `scripts/openspec-skills.sh`, with no new prompt.
-   - *Author verification:* CONFIRMED as a real exposure. Claude Code asks once whether to trust a folder, not again on each branch. The repo already carries the same class of risk: direnv runs the branch's skills script on shell load, and `CONTRIBUTING.md` tells contributors to run `direnv deny` before checking out an untrusted branch. Build commands such as `just check` also run a branch's code. The change adds a new automatic trigger, and no artifact mentions it yet.
+1. **`nix develop --command <agent>` skips the shell hook, so the skills never regenerate.** The reviewer says the suggested fix repeats the same report forever.
+   - *Author verification:* REFUTED by test. In a new worktree of this commit, `.agents/skills` held 0 generated folders. Inside `nix develop --command`, it held all 8, with a stamp reading `cli 1.13.1`. The shell hook runs under `--command`. The existing spec also depends on this: its scenario "The refresh fails" runs `nix develop --command true` and expects the hook's warning.
 
 ### 🟡 Moderate
 
-2. **`openspec --version` might contact the npm registry on every session start.**
-   - *Author verification:* REFUTED for the current CLI. Under `strace`, `openspec --version` 1.13.1 opened no network connections, with or without `OPENSPEC_NO_UPDATE_CHECK`. Setting the variable in the check still costs nothing and guards against later versions.
-3. **The Claude Code hook breaks if `CLAUDE_PROJECT_DIR` is unset.**
-   - *Author verification:* mostly REFUTED. Claude Code sets the variable for hooks, and the spec's scenario sets it. A fallback costs nothing.
+2. **Stamp generation doesn't turn off the update check.** The reviewer says an update notice could reach the stamp's `cli` line. The check would then call the recorded version unreadable.
+   - *Author verification:* mostly REFUTED. Under `strace`, `openspec --version` 1.13.1 opened no network connection, so it printed no update notice. A real gap remains: the check and the stamp generator would call the CLI with different settings. One shared function for both calls closes it.
+3. **Without Nix, a missing CLI gets the wrong fix.** The report says to run `just skills`, which then fails and names the install command.
+   - *Author verification:* CONFIRMED. `scripts/skills.sh` lines 47 to 50 stop when the CLI is missing. Without Nix, the "no CLI" report should name `npm install -g @fission-ai/openspec` first.
 
 ### 📌 Suggestions
 
-4. **The Codex hook has no way to find the repo root.** A session started from a subdirectory would fail to find the script.
-   - *Author verification:* CONFIRMED. The design leaves this to the first task. Resolving the path with `git rev-parse --show-toplevel` works from any subdirectory.
-5. **Plain language.** Passive voice in D6 ("The report is written for an agent to read"). Three terms for one concept: "Nix shell", "loaded shell" and "development shell". Passive voice in "A generated skill folder was deleted".
-   - *Author verification:* CONFIRMED for D6 and the mixed terms. The scenario "A generated skill folder was deleted" is existing text, copied unchanged from the main spec into a MODIFIED requirement.
+4. **Contributors without Nix get no report when the skill settings change.**
+   - *Author verification:* OUT-OF-SCOPE. #306 covers a CLI mismatch. The design lists stale settings as a non-goal. Contributors without Nix can already opt in to the refresh through `.envrc.local`.
 
-### Round 1 rebuttal adjudication (by the reviewer)
+### Round 2 adjudication (by the reviewer)
 
-- **Finding 1 (regeneration race):** ACCEPTED by reviewer — it happens only when sessions start at the same moment, the report is accurate, and the fix is safe.
-- **Finding 2 (stamp text in the agent's context):** ACCEPTED by reviewer — the spec now limits the report to version-shaped text.
-- **Findings 3 to 6:** FIXED, as confirmed by the reviewer.
-
-The reviewer could not verify the claims about Claude Code and Codex hook behaviour. It noted that the design records a trust risk for Codex but not for Claude Code.
+- **Finding 1 (hooks run the branch's script):** FIXED — the human's decision is recorded, and `CONTRIBUTING.md` must now carry the warning.
+- **Finding 2 (network call):** FIXED — the check sets `OPENSPEC_NO_UPDATE_CHECK=1`.
+- **Finding 3 (`CLAUDE_PROJECT_DIR` unset):** FIXED — the hook falls back to `git rev-parse`.
+- **Finding 4 (Codex repo root):** FIXED — the hook finds the root with `git rev-parse`.
+- **Finding 5 (plain language):** FIXED.
 
 ## Embedded-Instruction / Injection Attempts
 
@@ -47,13 +45,13 @@ VERDICT: REVISE
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-Not applicable: the verdict is REVISE. This is the second REVISE in a row, so the review stops here and goes to the human.
+Not applicable: the verdict is REVISE. This is the third REVISE in a row, so the review goes to the human again.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-- **Finding 1** — not rebutted. The human decides how to handle it.
-- **Finding 2** — rebutted with `strace` evidence. The author will still set `OPENSPEC_NO_UPDATE_CHECK=1` in the check.
-- **Finding 3** — partly rebutted. The author will add a fallback.
-- **Findings 4 and 5** — the author will fix them.
+- **Finding 1** — rebutted with test evidence. Awaits the reviewer's or the human's acceptance.
+- **Finding 2** — partly rebutted. The author will make the check and the stamp generator share one call to `openspec --version`.
+- **Finding 3** — the author will fix it.
+- **Finding 4** — declined as out of scope.
