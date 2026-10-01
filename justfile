@@ -23,6 +23,11 @@ dev:
 server:
     cargo run -p sidereal-server --manifest-path server/Cargo.toml
 
+# Run the v2 web shell only. Installs from web/pnpm-lock.yaml first.
+[group('v2')]
+web:
+    cd web && pnpm install --frozen-lockfile && pnpm dev
+
 # Run the Vite frontend only.
 frontend:
     npm run dev:frontend
