@@ -10,7 +10,7 @@
 
 ## 3. Flake check
 
-- [ ] 3.1 Add `rustc --version` to the "Tool versions" step in `.github/workflows/nix.yml`, inside the same `nix develop --command` call. Verify: the step's `run` line contains `rustc --version`, and the flake check log on this pull request shows `rustc 1.98.1`.
+- [x] 3.1 Add `rustc --version` to the "Tool versions" step in `.github/workflows/nix.yml`, inside the same `nix develop --command` call. Verify: the step's `run` line contains `rustc --version`, and the flake check log on this pull request shows `rustc 1.98.1`.
 
 ## 4. Docs
 
@@ -23,5 +23,5 @@
 
 - [x] 5.1 Run the full gate in the shell. Verify: `nix develop --command just check` exits with status 0.
 - [x] 5.2 Check that the shell reloads on a channel change. Set `channel = "1.97.1"`, run `direnv export bash`, and check `rustc --version`; then restore `stable`. Verify: the shell reports 1.97.1 after the edit, and `git diff server/rust-toolchain.toml` is empty after the restore.
-- [ ] 5.3 Push and check CI. Verify: the `nix` flake check and the `v2` server job both pass on the pull request.
+- [x] 5.3 Push and check CI. Verify: the `nix` flake check and the `v2` server job both pass on the pull request.
 - [x] 5.4 Validate the change. Verify: `openspec validate rust-toolchain-current --strict` reports the change as valid.
