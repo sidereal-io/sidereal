@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'server/**'
+      - 'web/**'
       - 'justfile'
       - 'flake.nix'
       - 'flake.lock'
@@ -31,3 +32,15 @@ jobs:
 
       - name: Server gate
         run: nix develop --command just check-server
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Web gate
+        run: nix develop --command just check-web
