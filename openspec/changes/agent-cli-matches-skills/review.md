@@ -50,7 +50,9 @@ VERDICT: APPROVE_WITH_CHANGES
 1. **Finding 2:** the design states that the check and the stamp generator get the CLI version through one shared function, which runs `openspec --version` with `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`.
 2. **Finding 3:** without `nix` on `PATH`, a "no CLI" report names `npm install -g @fission-ai/openspec`, then `just skills`. The spec gains a scenario for this case, and design D5 gains a row.
 
-CHANGES_APPLIED: no
+The author applied both changes in commit `953f12a`. Gemini (`gemini-3.1-pro-high`, fresh context, read-only) re-checked only these two items and found both applied, with no contradiction: `RECHECK: PASS`.
+
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
