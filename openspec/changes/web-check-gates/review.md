@@ -19,6 +19,7 @@ None open. The reviewer rated F1 and F2 critical. The checks refuted both.
   - **Check: REFUTED.** design.md D2 already said that `tsconfig.node.json` adds the file to its `include` list. The proposal's Impact list did not name `tsconfig.node.json`. Required Change 1 adds it.
 - **F2. ESLint 10 needs the `jiti` package to load a `.ts` config, and the design does not add it.**
   - **Check: REFUTED by test.** The author installed only ESLint 10.11.0 in an empty folder, with no `jiti`, on Node 26.10.0. ESLint loaded a typed `eslint.config.ts` and applied its rule. Required Change 2 records this in D2.
+  - **Correction during apply: CONFIRMED.** The `web` CI job failed because ESLint could not find `jiti`. The local test had passed only because Node found `jiti` in the repo root's v0.10.x `node_modules`. `web/` now lists `jiti` as a dev dependency, and D2 says so.
 
 ### 🟡 Moderate
 
