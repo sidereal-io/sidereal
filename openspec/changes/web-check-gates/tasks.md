@@ -33,5 +33,5 @@
 
 ## 7. Final check
 
-- [ ] 7.1 Run `just check`, `nix flake check`, and `openspec validate web-check-gates --strict`. Verify that each exits with status 0 and that `git status --porcelain` prints nothing afterwards.
+- [x] 7.1 Run `just check`, `nix flake check`, and `openspec validate web-check-gates --strict`. Verify that each exits with status 0 and that `git status --porcelain` prints nothing afterwards.
 - [ ] 7.2 Walk every scenario in the three delta specs once more on the final commit. Record any that could not run, with the reason, in the PR description.
