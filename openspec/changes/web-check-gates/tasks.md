@@ -29,7 +29,7 @@
 ## 6. Docs
 
 - [x] 6.1 Update `web/README.md` with a "Check it" section: `just check-web`, each `pnpm` script, `pnpm format` to fix formatting, and `pnpm vitest` for watch mode. Verify that every command in it runs as written.
-- [ ] 6.2 Update the recipe table in `server/README.md`, the gate lines in `AGENTS.md`, and the `server` job paragraph in `CONTRIBUTING.md`'s "Reviewing a pin update" section, so each names `check-web` and the `web` job. Verify that `git grep -n 'It runs \`just check-server\`'` finds no match outside `openspec/`.
+- [x] 6.2 Update the recipe table in `server/README.md`, the gate lines in `AGENTS.md`, and the `server` job paragraph in `CONTRIBUTING.md`'s "Reviewing a pin update" section, so each names `check-web` and the `web` job. Verify that `git grep -n 'It runs \`just check-server\`'` finds no match outside `openspec/`.
 
 ## 7. Final check
 
