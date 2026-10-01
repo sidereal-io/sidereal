@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -18,5 +18,9 @@ export default defineConfig({
     proxy: {
       "/healthz": "http://localhost:5000",
     },
+  },
+  // Unit tests run once in a simulated browser DOM, with no server.
+  test: {
+    environment: "jsdom",
   },
 });
