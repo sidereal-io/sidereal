@@ -90,6 +90,12 @@ Claude Code and Codex SHALL run `scripts/openspec-skills.sh --check` when a sess
 - **THEN** standard output names both versions
 - **AND** the command exits with status 0
 
+#### Scenario: The hooks work from a subdirectory
+
+- **WHEN** a tester runs each hook command from the `server` directory, with an `openspec` first on `PATH` whose version differs from the one that generated the skills
+- **THEN** each command's standard output names both versions
+- **AND** each command exits with status 0
+
 #### Scenario: The hooks print nothing when the CLI matches
 
 - **WHEN** a tester runs each hook command the same way, with the `openspec` that generated the skills first on `PATH`
@@ -115,11 +121,19 @@ Claude Code and Codex SHALL run `scripts/openspec-skills.sh --check` when a sess
 
 `CONTRIBUTING.md` SHALL explain how to start an agent so that it runs the pinned `openspec` CLI. It SHALL name two ways: from a shell where direnv has loaded the repo, or with `nix develop --command <agent>`. It SHALL explain what the check's report means and what to do about it.
 
+`CONTRIBUTING.md` SHALL warn that the agent hooks run the checked-out branch's `scripts/openspec-skills.sh` when a session starts. The warning SHALL sit with the existing warning about untrusted branches. It SHALL tell contributors not to start Claude Code or Codex on a branch they don't trust.
+
 #### Scenario: The docs name both ways to start an agent
 
 - **WHEN** a reviewer reads `CONTRIBUTING.md`
 - **THEN** it names `direnv` and `nix develop --command` as ways to start an agent
 - **AND** it names `scripts/openspec-skills.sh --check`
+
+#### Scenario: The docs warn about agent hooks on untrusted branches
+
+- **WHEN** a reviewer reads the warning about untrusted branches in `CONTRIBUTING.md`
+- **THEN** the warning names `direnv deny`
+- **AND** the warning says that starting Claude Code or Codex runs the branch's `scripts/openspec-skills.sh`
 
 ## MODIFIED Requirements
 

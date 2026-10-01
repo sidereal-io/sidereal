@@ -19,11 +19,11 @@ Since [#275](https://github.com/sidereal-io/sidereal/issues/275), a stamp record
   - a CLI version that differs from the stamp.
 
   The check writes no files, prints its warning to standard output, and always exits 0. It prints nothing when the versions match.
-- **The warning names a safe fix.** With Nix installed, it says to restart the agent from the loaded shell. It does not suggest `just skills` in that case: regenerating with the global CLI would make the shared skills differ from the pinned CLI. Without Nix, it says to run `just skills`.
+- **The warning names a safe fix.** With Nix installed, it says to restart the agent from the Nix shell. It does not suggest `just skills` in that case: regenerating with the global CLI would make the shared skills differ from the pinned CLI. Without Nix, it says to run `just skills`.
 - **Claude Code and Codex run the check when a session starts.** A `SessionStart` hook in `.claude/settings.json` and in `.codex/hooks.json` calls the script directly. It does not go through `just`, because `just` may be missing outside the shell.
 - **Other agents get one instruction.** `AGENTS.md` gains one line: if your session didn't start with a skills check, run the check and follow what it prints.
 - **The script gets a clearer name.** `scripts/skills.sh` becomes `scripts/openspec-skills.sh`. `git mv` keeps its history. The `justfile`, `.envrc`, `CONTRIBUTING.md` and the `dev-environment` spec follow the new name. Archived changes keep the old name.
-- **Docs explain how to start an agent.** `CONTRIBUTING.md` gains a section on starting an agent from a shell where direnv has loaded the repo, or with `nix develop --command <agent>`. It also explains the check's warning.
+- **Docs explain how to start an agent.** `CONTRIBUTING.md` gains a section on starting an agent from a shell where direnv has loaded the repo, or with `nix develop --command <agent>`. It also explains the check's warning. The existing warning about untrusted branches grows to cover agents: the hooks run the checked-out branch's script when a session starts.
 
 `just skills` keeps its name. Nothing here is **BREAKING**.
 

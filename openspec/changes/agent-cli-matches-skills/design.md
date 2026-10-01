@@ -88,6 +88,8 @@ The script runs under `set -euo pipefail`, which would end it on the first faile
 
 Before printing a version, the check matches it against a version pattern: digits and dots, with an optional suffix. A value that doesn't match prints as "unreadable". The check never prints raw text from the stamp or the CLI.
 
+The check runs `openspec --version` with `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`. CLI 1.13.1 opens no network connection for `--version` either way, but the hook runs outside the Nix shell, which normally sets the second variable. Setting both keeps a later CLI from contacting the network at every session start.
+
 - **Why ignore the hashes:** a hash mismatch means the skill settings changed. Its fix is a shell reload, which is a different problem from the one this change solves (see Non-Goals).
 
 ### D5. The fix depends on whether `nix` is on `PATH`
@@ -102,7 +104,7 @@ Before printing a version, the check matches it against a version pattern: digit
 
 ### D6. The report speaks to the agent
 
-The report is written for an agent to read. Its first line names the problem and both versions. Its last line tells the agent to tell the user before it follows any `openspec-*` skill, because an agent can't restart itself.
+The check writes the report for an agent to read. The report's first line names the problem and both versions. Its last line tells the agent to tell the user before it follows any `openspec-*` skill, because an agent can't restart itself.
 
 The check prints the report to standard output and exits 0. Claude Code adds a `SessionStart` hook's standard output to the session's context when the hook exits 0. A non-zero exit would show the text only to the user.
 
@@ -110,8 +112,8 @@ The check prints the report to standard output and exits 0. Claude Code adds a `
 
 Each hook runs the script by its path from the repo root, never through `just`.
 
-- Claude Code: `"$CLAUDE_PROJECT_DIR"/scripts/openspec-skills.sh --check`.
-- Codex: the same script. The first task confirms how a Codex project hook finds the repo root.
+- Claude Code: `"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"/scripts/openspec-skills.sh --check`. Claude Code sets `CLAUDE_PROJECT_DIR` for hooks. The fallback covers a tester who runs the command by hand.
+- Codex: `"$(git rev-parse --show-toplevel)"/scripts/openspec-skills.sh --check`. Git finds the repo root from any subdirectory, so a session started in `server/` still finds the script. The first task confirms that Codex runs project hooks from inside the repo.
 
 `just` may be missing outside the Nix shell, which is exactly where the check matters. The script needs only `bash`, `git` and, when installed, `openspec`.
 
@@ -124,6 +126,7 @@ Each hook runs the script by its path from the repo root, never through `just`.
 - **Codex might not read a project-level `.codex/hooks.json`, or might not pass standard output to the agent.** → The first task tests both on this machine before any hook is written. If either fails, Codex relies on the `AGENTS.md` instruction, and the spec's Codex scenario changes before implementation.
 - **A session can start while another window regenerates the skills.** Regeneration deletes the stamp and the skill folders, then writes them again, which takes about a second. A session that starts in that window gets a "skills are missing" report. → Accepted. The report is accurate, because the agent really did start without the skills, and its fix is a restart. An agent started from the terminal that is loading the shell can't hit the window, because direnv finishes before the prompt returns.
 - **The stamp is a git-ignored file that anyone with write access can edit.** Its text could carry instructions into the agent's context. → The check prints only version-shaped values (D4). The stamp opens no new route: whoever can edit it can also edit the git-ignored `SKILL.md` files, which the agent reads directly.
+- **The hooks run the checked-out branch's script when a session starts.** A contributor who checks out an untrusted branch and starts Claude Code or Codex runs that branch's `scripts/openspec-skills.sh`. Claude Code asks once whether to trust the folder, not again for each branch. → Accepted and documented. The repo already carries this class of risk: direnv runs the same script when the shell loads, and build commands such as `just check` run a branch's code. `CONTRIBUTING.md` already tells contributors to run `direnv deny` before checking out an untrusted branch. That warning grows to say: don't start Claude Code or Codex on that branch either.
 - **An agent might ignore the report.** → The report tells the agent to tell the user first. The `AGENTS.md` instruction repeats the rule.
 - **A contributor might have Nix installed but not use the shell.** → The report then suggests the shell instead of `just skills`. The contributor can still run `just skills` by hand. Suggesting it automatically would put the shared skills at risk for everyone else using the shell.
 - **The hook adds about 0.3 seconds to each session start.** → Accepted. It runs once per session.
