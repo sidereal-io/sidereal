@@ -44,7 +44,8 @@ function HealthStatus() {
       next = setTimeout(run, CHECK_INTERVAL_MS);
     }
 
-    run();
+    // run() never rejects: checkHealth turns every error into "unreachable".
+    void run();
 
     return () => {
       stopped = true;
