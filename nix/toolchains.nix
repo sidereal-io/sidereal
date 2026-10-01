@@ -4,8 +4,9 @@
   perSystem = { config, pkgs, lib, ... }: {
     config.sidereal.shell.packages =
       let
-        # The only source of truth for the Rust version (design.md D3):
-        # rustup reads the same file.
+        # The file names the Rust channel, which rustup also reads.
+        # flake.lock decides the release: the newest one the locked
+        # rust-overlay knows.
         rustToolchain =
           pkgs.rust-bin.fromRustupToolchainFile ../server/rust-toolchain.toml;
       in
