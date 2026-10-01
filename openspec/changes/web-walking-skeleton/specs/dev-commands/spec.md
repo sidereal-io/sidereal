@@ -6,7 +6,7 @@ The root `justfile` is the one place to run each stack for development. Its reci
 
 ### Requirement: One command runs the v2 stack
 
-`just dev` SHALL start the v2 server and the v2 web shell together. It SHALL NOT need any package from the root npm workspace. One interrupt, such as Ctrl-C, SHALL stop both.
+`just dev` SHALL start the v2 server and the v2 web shell together. It SHALL NOT need any package from the root npm workspace. One interrupt, such as Ctrl-C, SHALL stop both. When either one exits, `just dev` SHALL stop the other and exit. It SHALL exit with a non-zero status when either one failed.
 
 #### Scenario: A fresh clone runs the v2 stack
 
@@ -20,6 +20,12 @@ The root `justfile` is the one place to run each stack for development. Its reci
 - **WHEN** `just dev` is running and the contributor presses Ctrl-C
 - **THEN** `just` exits
 - **AND** within 5 seconds nothing listens on port 5000 or port 5173
+
+#### Scenario: The web shell fails to start
+
+- **WHEN** another process listens on port 5173, and a contributor runs `just dev`
+- **THEN** `just dev` exits with a non-zero status within 10 seconds
+- **AND** nothing that `just dev` started is still running
 
 ### Requirement: The web shell runs on its own
 

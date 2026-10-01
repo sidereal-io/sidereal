@@ -8,7 +8,7 @@ See proposal.md for why. This section covers only the current state that shapes 
 - The v0.10.x frontend uses Vite's default port, 5173. The v0.10.x server also defaults to port 5000.
 - The root `tsconfig.json` includes only `apps/`, `packages/`, and `tools/scripts/`, so a new `web/` folder stays outside `npm run check`.
 - The locked nixpkgs provides `pnpm_12` at 12.3.4. npm's newest pnpm 12 release is 12.8.2. Node 26 ships without corepack.
-- The pinned `just` is 1.58, which supports the `[parallel]` and `[group]` recipe attributes.
+- The pinned `just` is 1.58, which supports the `[group]` recipe attribute.
 
 ## Goals / Non-Goals
 
@@ -54,22 +54,34 @@ A test during exploration showed how pnpm 12 behaves:
 - **Alternative: pin the exact release in Nix only.** nixpkgs lags npm, and contributors without Nix would have no pin. Rejected.
 - **Alternative: corepack.** Node 26 ships without it. Rejected.
 
-### D3. Run `just dev` with `just`'s `[parallel]` attribute
+### D3. Run `just dev` as a short POSIX shell recipe that stops at the first exit
+
+`just dev` starts `just server` and `just web` in the background. It waits until either one exits, then stops the other and exits with an error if either failed.
 
 ```just
 [group('v2')]
-[parallel]
-dev: server web
+dev:
+    #!/bin/sh
+    just server & s=$!
+    just web & w=$!
+    trap 'kill $s $w 2>/dev/null' INT TERM
+    while kill -0 $s 2>/dev/null && kill -0 $w 2>/dev/null; do sleep 1; done
+    kill $s $w 2>/dev/null
+    wait $s; a=$?; wait $w; b=$?
+    [ $a -eq 0 ] && [ $b -eq 0 ]
 ```
 
-A test during exploration showed how `[parallel]` behaves in `just` 1.58:
+A test of this recipe with stand-in recipes, under Linux's `/bin/sh` (dash), showed:
 
-- One Ctrl-C stops both recipes and leaves no process running.
-- When one recipe fails, the other keeps running until it ends or the contributor presses Ctrl-C. Today's `concurrently` setup behaves the same way.
-- Output has no per-process labels or colours. Cargo and Vite logs differ enough to tell apart.
+- When `web` failed after 2 seconds, `just` printed `web`'s error, stopped `server`, and exited with status 1 within 3 seconds. No process was left running.
+- One SIGINT, as Ctrl-C sends, stopped both recipes and left no process running.
 
-- **Why:** it needs no npm package, so `just dev` no longer depends on the v0.10.x npm tree.
-- **Alternative:** add `concurrently` to `web/` as a dev dependency. It keeps labelled output, but the web shell's manifest would then start the Rust server. Rejected.
+- **Why:** it needs no npm package, so `just dev` no longer depends on the v0.10.x npm tree. A failure in either half stops the whole command, so the contributor sees it.
+- **Why POSIX `sh`:** it runs with macOS's `/bin/sh`, so contributors on a Mac without Nix need no newer bash.
+- **Output:** it has no per-process labels or colours. Cargo and Vite logs differ enough to tell apart.
+- **Alternative: `just`'s `[parallel]` attribute.** It is one line, but `just` waits for every parallel recipe before it reports a failure. The server never ends, so a failed `web` would leave only one line of pnpm or Vite output, which cargo's build output can scroll away. Rejected after the round 1 review.
+- **Alternative: `concurrently --kill-others-on-fail`, as a dev dependency of `web/`.** It keeps labelled output, but the web shell's manifest would then start the Rust server. Rejected.
+- **Alternative: bash's `wait -n`.** It needs bash 4.3 or later, and macOS ships bash 3.2. Rejected.
 
 ### D4. `just web` installs from the lockfile, then serves
 
@@ -82,7 +94,7 @@ A test during exploration showed how `[parallel]` behaves in `just` 1.58:
 
 One React component owns the check. It sends `GET /healthz` with `fetch`, and aborts it after 5 seconds. When a check finishes, it schedules the next one 5 seconds later. It stops when the component unmounts.
 
-The component maps each result to one of three states, as the `web-shell` spec defines. It reads the body as JSON and compares `status` with `"ok"`. It never renders text from the body.
+The component maps each result to one of three states, as the `web-shell` spec defines. It reads the body only after a 200 status. It parses the body as JSON and compares `status` with `"ok"`. Any error along the way maps to `unreachable`: a network error, an abort, or a failed parse. It never renders text from the body.
 
 - **Why a timeout after each check:** checks never overlap, even when the server is slow to answer.
 - **Why plain `fetch`, not a query library:** the data-fetching choice belongs to #282 and its first real data screen. One loop does not justify the dependency.
@@ -98,9 +110,10 @@ The component maps each result to one of three states, as the `web-shell` spec d
 
 ### D7. Keep Vite's defaults for host and port
 
-The web shell keeps Vite's default port, 5173, and its default host, `localhost`. `strictPort` stays off.
+The web shell keeps Vite's default port, 5173, and its default host, `localhost`. `strictPort` is on.
 
-- **Why the default port:** a contributor runs only one stack at a time, so the web shell and the v0.10.x frontend never compete for 5173. If the port is taken, Vite picks the next free port and prints the address.
+- **Why the default port:** a contributor runs only one stack at a time, so the web shell and the v0.10.x frontend never compete for 5173.
+- **Why `strictPort`:** without it, Vite moves to the next free port when 5173 is taken. A contributor who left the v0.10.x frontend running would open 5173 and see the wrong app. With `strictPort`, the web shell stops with an error that names the port.
 - **Why the default host:** the dev server stays reachable only from this machine. The v0.10.x config listens on `0.0.0.0`. The web shell does not copy that.
 
 ### D8. Rename and group the recipes
@@ -122,7 +135,7 @@ The web shell keeps Vite's default port, 5173, and its default host, `localhost`
 - **[Risk] A contributor without Nix installs a different pnpm major.** → `CONTRIBUTING.md` names `pnpm@12`. The `web-shell` spec only promises that a pnpm 12 release switches itself.
 - **[Risk] A later pnpm 12 release changes how it handles `packageManager`.** → `pnpm_12` moves only with `flake.lock`, and the flake check reports its version. A pull request that bumps it shows the change.
 - **[Trade-off] `just dev` output has no labels.** → Accepted to drop the v0.10.x npm dependency.
-- **[Trade-off] When the server fails to build, Vite keeps running.** → The page shows `unreachable`, and Ctrl-C stops both. This matches today's behaviour.
+- **[Risk] The recipe was tested only with Linux's `/bin/sh`.** → It uses only POSIX features. A task tests it on macOS, or records that no Mac was available.
 - **[Risk] Contributors used to `just frontend` or the old `just dev` get a surprise.** → `just --list` shows the new names under their stack groups. `server/README.md` and `AGENTS.md` change with the recipes.
 
 ## Migration Plan

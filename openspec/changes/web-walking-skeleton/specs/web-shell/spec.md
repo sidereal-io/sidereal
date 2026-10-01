@@ -1,10 +1,10 @@
 ## Purpose
 
-The web shell is the v2 web frontend in `web/`. It is a standalone app that shows live state from the v2 server, starting with the server's health.
+The web shell is the v2 user interface in `web/`. It installs and runs on its own, and shows live state from the v2 server, starting with the server's health.
 
 ## ADDED Requirements
 
-### Requirement: The web shell is a standalone app
+### Requirement: The web shell installs and runs on its own
 
 The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run without the root npm workspace. The root `package.json` and `package-lock.json` SHALL NOT refer to `web/`.
 
@@ -31,7 +31,7 @@ The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.y
 #### Scenario: The pin names one exact release
 
 - **WHEN** a reviewer reads the `packageManager` field of `web/package.json`
-- **THEN** the value matches `pnpm@12.<minor>.<patch>`, with both numbers given
+- **THEN** the value matches `pnpm@12.<minor>.<patch>`, where `<minor>` and `<patch>` are numbers
 
 #### Scenario: Another pnpm 12 release runs the pinned one
 
@@ -118,7 +118,7 @@ In development, the web shell SHALL request the server's health at `/healthz` on
 
 ### Requirement: The web shell's dev server stays on this machine
 
-The web shell's dev server SHALL listen on port 5173 when that port is free. It SHALL listen on loopback addresses only.
+The web shell's dev server SHALL listen on port 5173 and on loopback addresses only. When port 5173 is taken, the dev server SHALL stop with an error instead of listening on another port.
 
 #### Scenario: A contributor starts the web shell
 
@@ -126,3 +126,9 @@ The web shell's dev server SHALL listen on port 5173 when that port is free. It 
 - **AND** a tester lists listening TCP sockets with `ss -ltnp`
 - **THEN** the web shell's dev server listens on port 5173
 - **AND** every address it listens on is `127.0.0.1` or `[::1]`
+
+#### Scenario: Port 5173 is taken
+
+- **WHEN** another process listens on port 5173, and a contributor runs `just web`
+- **THEN** the command exits with a non-zero status
+- **AND** the web shell's dev server listens on no port
