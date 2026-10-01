@@ -1,12 +1,12 @@
 ## Purpose
 
-The root `justfile` is the one place to run each stack for development. Its recipes start the v2 server, the v2 web shell, and the v0.10.x app, each by name.
+The root `justfile` is the one place to run each stack for development. Its recipes start the v2 server, the v2 web shell, and the v0.10.x stack, each by name.
 
 ## ADDED Requirements
 
 ### Requirement: One command runs the v2 stack
 
-`just dev` SHALL start the v2 server and the v2 web shell together. It SHALL NOT need any package from the root npm workspace. One interrupt, such as Ctrl-C, SHALL stop both. When either one exits, `just dev` SHALL stop the other and exit. It SHALL exit with a non-zero status when either one failed.
+`just dev` SHALL start the v2 server and the v2 web shell together. It SHALL NOT need any package from the root npm workspace. One interrupt, such as Ctrl-C, SHALL stop both. When either one exits, `just dev` SHALL stop the other and exit. It SHALL exit with a non-zero status when either one failed. `just dev` SHALL NOT clear the terminal, so earlier output, such as a cargo error, stays visible.
 
 #### Scenario: A fresh clone runs the v2 stack
 
@@ -20,6 +20,12 @@ The root `justfile` is the one place to run each stack for development. Its reci
 - **WHEN** `just dev` is running and the contributor presses Ctrl-C
 - **THEN** `just` exits
 - **AND** within 5 seconds nothing listens on port 5000 or port 5173
+
+#### Scenario: The terminal keeps earlier output
+
+- **WHEN** a tester runs `script -qc 'just dev' dev.log` inside the development shell on Linux
+- **AND** stops it with Ctrl-C after the web shell's dev server listens on port 5173
+- **THEN** `dev.log` contains none of these escape sequences: `ESC [ 2 J`, `ESC [ 0 J`, `ESC [ J`, or `ESC c`
 
 #### Scenario: The web shell fails to start
 

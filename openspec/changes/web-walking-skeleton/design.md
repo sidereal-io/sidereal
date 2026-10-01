@@ -64,10 +64,11 @@ dev:
     #!/bin/sh
     just server & s=$!
     just web & w=$!
-    trap 'kill $s $w 2>/dev/null' INT TERM
+    trap 'stop=1; kill $s $w 2>/dev/null' INT TERM
     while kill -0 $s 2>/dev/null && kill -0 $w 2>/dev/null; do sleep 1; done
     kill $s $w 2>/dev/null
     wait $s; a=$?; wait $w; b=$?
+    [ -n "$stop" ] && exit 0
     [ $a -eq 0 ] && [ $b -eq 0 ]
 ```
 
@@ -75,6 +76,7 @@ A test of this recipe with stand-in recipes, under Linux's `/bin/sh` (dash), sho
 
 - When `web` failed after 2 seconds, `just` printed `web`'s error, stopped `server`, and exited with status 1 within 3 seconds. No process was left running.
 - One SIGINT, as Ctrl-C sends, stopped both recipes and left no process running.
+- After an interrupt, the recipe exits 0, and `just` ends with `error: interrupted by SIGINT`. With `exit 130` instead, `just` printed `recipe \`dev\` failed with exit code 130`, which misreports a deliberate stop. The two nested recipes still print one `terminated ... by signal 2` line each.
 
 - **Why:** it needs no npm package, so `just dev` no longer depends on the v0.10.x npm tree. A failure in either half stops the whole command, so the contributor sees it.
 - **Why POSIX `sh`:** it runs with macOS's `/bin/sh`, so contributors on a Mac without Nix need no newer bash.
@@ -105,15 +107,17 @@ The component maps each result to one of three states, as the `web-shell` spec d
 `web/vite.config.ts` forwards `/healthz` to `http://localhost:5000`. The browser only ever talks to the web shell's own origin.
 
 - **Why:** same-origin requests need no CORS setup on the server. ADR-007 leaves the server's CORS and CSRF rules to later work.
+- **CORS off:** `web/vite.config.ts` sets `server.cors: false`. Vite's default CORS rule lets any `localhost` origin read what the dev server serves, including proxied routes. The web shell needs no cross-origin access, so turning CORS off keeps other local apps from reading the server through the proxy.
 - **Why only `/healthz`:** the server has no other routes yet. #282 adds the proxy entries for its API.
 - **Proxy errors:** when the server is down, Vite's proxy answers with status 500 and logs a connection error. The screen shows `unreachable`. The log lines are expected while cargo builds.
 
 ### D7. Keep Vite's defaults for host and port
 
-The web shell keeps Vite's default port, 5173, and its default host, `localhost`. `strictPort` is on.
+The web shell keeps Vite's default port, 5173, and its default host, `localhost`. `strictPort` is on, and `clearScreen` is off.
 
 - **Why the default port:** a contributor runs only one stack at a time, so the web shell and the v0.10.x frontend never compete for 5173.
 - **Why `strictPort`:** without it, Vite moves to the next free port when 5173 is taken. A contributor who left the v0.10.x frontend running would open 5173 and see the wrong app. With `strictPort`, the web shell stops with an error that names the port.
+- **Why `clearScreen` is off:** Vite clears the terminal on startup unless its own process has already written output. Cargo's output comes from another process, so Vite would wipe a build error that cargo printed first.
 - **Why the default host:** the dev server stays reachable only from this machine. The v0.10.x config listens on `0.0.0.0`. The web shell does not copy that.
 
 ### D8. Rename and group the recipes
@@ -135,7 +139,7 @@ The web shell keeps Vite's default port, 5173, and its default host, `localhost`
 - **[Risk] A contributor without Nix installs a different pnpm major.** → `CONTRIBUTING.md` names `pnpm@12`. The `web-shell` spec only promises that a pnpm 12 release switches itself.
 - **[Risk] A later pnpm 12 release changes how it handles `packageManager`.** → `pnpm_12` moves only with `flake.lock`, and the flake check reports its version. A pull request that bumps it shows the change.
 - **[Trade-off] `just dev` output has no labels.** → Accepted to drop the v0.10.x npm dependency.
-- **[Risk] The recipe was tested only with Linux's `/bin/sh`.** → It uses only POSIX features. A task tests it on macOS, or records that no Mac was available.
+- **[Risk] The author tested the recipe only with Linux's `/bin/sh`.** → It uses only POSIX features. A task tests it on macOS, or records that no Mac was available.
 - **[Risk] Contributors used to `just frontend` or the old `just dev` get a surprise.** → `just --list` shows the new names under their stack groups. `server/README.md` and `AGENTS.md` change with the recipes.
 
 ## Migration Plan

@@ -116,6 +116,22 @@ In development, the web shell SHALL request the server's health at `/healthz` on
 - **AND** a tester runs `curl -s http://localhost:5173/healthz`
 - **THEN** the output is `{"status":"ok"}`
 
+### Requirement: The web shell's dev server allows no cross-origin reads
+
+The web shell's dev server SHALL NOT send an `Access-Control-Allow-Origin` header on any response. This covers the responses it forwards from the v2 server. A page from another origin therefore cannot read what the dev server serves.
+
+#### Scenario: Another local origin asks for the server's health
+
+- **WHEN** the v2 server and the web shell are both running
+- **AND** a tester runs `curl -si -H 'Origin: http://localhost:3000' http://localhost:5173/healthz`
+- **THEN** the response headers contain no `Access-Control-Allow-Origin` header
+
+#### Scenario: Another local origin sends a preflight request
+
+- **WHEN** the web shell is running
+- **AND** a tester runs `curl -si -X OPTIONS -H 'Origin: http://localhost:3000' -H 'Access-Control-Request-Method: GET' http://localhost:5173/healthz`
+- **THEN** the response headers contain no `Access-Control-Allow-Origin` header
+
 ### Requirement: The web shell's dev server stays on this machine
 
 The web shell's dev server SHALL listen on port 5173 and on loopback addresses only. When port 5173 is taken, the dev server SHALL stop with an error instead of listening on another port.
