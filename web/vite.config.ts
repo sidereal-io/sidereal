@@ -1,5 +1,5 @@
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -16,7 +16,7 @@ export default defineConfig({
     // The browser asks the web shell's own origin; the dev server forwards
     // to the v2 server.
     proxy: {
-      '/healthz': 'http://localhost:5000',
+      "/healthz": "http://localhost:5000",
     },
   },
-})
+});

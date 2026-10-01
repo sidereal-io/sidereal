@@ -1,4 +1,4 @@
-import HealthStatus from './HealthStatus.tsx'
+import HealthStatus from "./HealthStatus.tsx";
 
 function App() {
   return (
@@ -6,7 +6,7 @@ function App() {
       <h1>Sidereal</h1>
       <HealthStatus />
     </main>
-  )
+  );
 }
 
-export default App
+export default App;
