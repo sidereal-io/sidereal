@@ -21,7 +21,7 @@ The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/de
 
 **v2 builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
 
-**Run both stacks from the root `justfile`.** It is the single front door: `just dev` starts the Rust backend and the Vite frontend together, and `just --list` describes every recipe.
+**Run both stacks from the root `justfile`.** It is the single front door: `just dev` starts the Rust backend and the v2 web shell (`web/`) together, `just v0-dev` runs the v0.10.x stack, and `just --list` describes every recipe under its stack's group.
 
 **An optional, pinned Nix shell provides every tool both stacks need**, including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
 

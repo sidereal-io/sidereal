@@ -1,4 +1,4 @@
-# Rust, Node and just. Specific to Sidereal (design.md D4).
+# Rust, Node, pnpm and just. Specific to Sidereal (design.md D4).
 { ... }:
 {
   perSystem = { config, pkgs, lib, ... }: {
@@ -13,6 +13,7 @@
       [
         rustToolchain
         pkgs.nodejs_26
+        pkgs.pnpm_12
         pkgs.just
       ];
   };

@@ -1,6 +1,6 @@
-# Sidereal v2 backend
+# Sidereal backend
 
-The Rust backend for Sidereal v2, a cargo workspace living as a sibling subtree
+The Rust backend for Sidereal, a cargo workspace living as a sibling subtree
 alongside the existing TypeScript stack (`apps/`, `packages/`). See
 [`docs/architecture.md`](../docs/architecture.md) and
 [ADR-002](../docs/decisions/ADR-002-core-domain-pack-split.md) for the design.
@@ -29,8 +29,6 @@ server/
 - **[just](https://github.com/casey/just)** — the command runner spanning both stacks:
   `cargo install just` (or a system package: `apt install just`, `brew install just`,
   `scoop install just`).
-- **[Node.js](https://nodejs.org/) 26** — only needed to run the frontend half of
-  `just dev`.
 
 The repo also provides an optional, pinned Nix shell with every prerequisite above.
 See [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
@@ -40,11 +38,10 @@ See [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
 From the **repository root**:
 
 ```bash
-just dev
+just server
 ```
 
-That starts the Rust backend and the Vite frontend together. The backend serves
-its liveness probe once up:
+That builds and starts the Rust backend. It serves its liveness probe once up:
 
 ```bash
 curl localhost:5000/healthz     # -> 200 {"status":"ok"}
@@ -52,13 +49,12 @@ curl localhost:5000/healthz     # -> 200 {"status":"ok"}
 
 ## Recipes
 
-`just` recipes live in the root `justfile`; `just --list` self-documents them.
+`just` recipes live in the root `justfile`. These are the backend's; `just --list`
+shows every recipe in the repo.
 
 | Recipe | What it does |
 |---|---|
-| `just dev` | Backend + frontend together (zero-to-running). |
 | `just server` | Rust backend only. |
-| `just frontend` | Vite frontend only. |
 | `just check` | The gate to pass before every PR. It runs `just check-server`. |
 | `just check-server` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. CI runs this recipe. |
 
@@ -79,7 +75,7 @@ cargo test                      # run the workspace tests
 
 ## Notes
 
-- The `justfile` lives at the repo root (not here) because `just dev` spans both
-  the Rust backend and the TypeScript frontend.
+- The `justfile` lives at the repo root (not here) because it runs every part of
+  the repo, not only the backend.
 - `plugin-abi` is intentionally minimal in M0 — trait stubs, not a frozen ABI;
   it is expected to churn until M2.

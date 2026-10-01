@@ -104,7 +104,7 @@ npm run test           # Run tests
 
 ## 🧰 Development Environment
 
-The repo pins its tools — Rust, Node, `just`, and the `openspec` CLI — through a
+The repo pins its tools — Rust, Node, pnpm, `just`, and the `openspec` CLI — through a
 Nix flake. Nix is optional. Pick either route.
 
 If you cloned before the Rust workspace moved from `backend/` to `server/`, run
@@ -156,8 +156,17 @@ it, and it loads after the pinned shell, so your settings take precedence.
    step in the log of the most recent `nix` flake check run.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
    and run its "use" command in the repo root to select Node 26.
-3. Install [`just`](https://github.com/casey/just).
-4. Install the `openspec` CLI, then run `just skills`:
+3. Install pnpm 12 once. The web app in `web/` uses it:
+
+   ```
+   npm i -g pnpm@12
+   ```
+
+   In `web/`, pnpm switches itself to the exact release that
+   `web/package.json` pins, so any pnpm 12 works. See
+   [`web/README.md`](web/README.md).
+4. Install [`just`](https://github.com/casey/just).
+5. Install the `openspec` CLI, then run `just skills`:
 
    ```
    npm install -g @fission-ai/openspec
@@ -166,7 +175,7 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
    The Nix shell pins the CLI version that the repo tests with. Without Nix,
    you get the latest release, so your skill text can differ slightly.
-5. Optional: refresh the skills each time you enter the repo, as the Nix shell
+6. Optional: refresh the skills each time you enter the repo, as the Nix shell
    does. Install [direnv](https://direnv.net/), add this line to `.envrc.local`
    in the repo root, then run `direnv allow`:
 
@@ -238,7 +247,7 @@ Check these points before you merge one:
 
 - **Nix pull requests change `flake.lock`.** The flake check CI job builds the
   shell with the new pins. A green check means the shell builds. The job log
-  also prints the Rust, `openspec`, Node, and `just` versions inside the new
+  also prints the Rust, `openspec`, Node, pnpm, and `just` versions inside the new
   shell.
   The `v2` workflow's `server` job also runs, and it runs `just check-server`
   inside the new shell. A green check means the server gate passes with the

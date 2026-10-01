@@ -27,4 +27,4 @@ jobs:
         run: nix flake check
 
       - name: Tool versions
-        run: nix develop --command sh -c 'rustc --version && openspec --version && node --version && just --version'
+        run: nix develop --command sh -c 'rustc --version && openspec --version && node --version && pnpm --version && just --version'

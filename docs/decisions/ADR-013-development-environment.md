@@ -29,7 +29,7 @@ Sidereal pins its development tools with a **native Nix flake**, built from smal
 
 ## Consequences
 
-- **Every tool version comes from one committed lock file.** Tools change only when someone updates that file in a pull request.
+- **Every tool version comes from a committed pin.** Nix's lock file pins every tool in the shell, and tools change only when someone updates that file in a pull request. Some package managers, such as pnpm, switch themselves to the exact release a project names. For those, the project's own committed files pin and verify the release, and the shell provides a matching major version.
 - **Contributors with Nix need two tools:** Nix and direnv. There is no wrapper tool between them and the flake.
 - **CI can use the standard `nix flake check` command** to hold environment checks.
 - **The setup splits into modules.** A module with nothing specific to Sidereal can move into a shared flake later without changes.
