@@ -11,7 +11,7 @@
 
 - [x] 3.1 Add ESLint 10, `@eslint/js`, typescript-eslint, `@eslint-react/eslint-plugin`, `eslint-plugin-react-hooks`, and `eslint-config-prettier` as dev dependencies. Write `web/eslint.config.ts` with the presets in D2's order, ignore `dist/` and `coverage/`, and add the `lint` script. Add `eslint.config.ts` to the `include` list in `web/tsconfig.node.json`. Verify that `pnpm lint` runs and reports the errors D7 expects, and that `pnpm typecheck` still exits with status 0.
 - [x] 3.2 Fix every lint error in `web/src/` without changing behavior (D7): `void run()` in `HealthStatus.tsx`, and an explicit check for the `root` element in `main.tsx`. Verify that `pnpm lint` exits with status 0, and that the web shell still shows `healthy` with `just dev` running.
-- [ ] 3.3 Verify the `dev-commands` scenarios "A promise is left unhandled" and "A hook is called conditionally" by running `pnpm lint` against a temporary edit. Undo each edit afterwards.
+- [x] 3.3 Verify the `dev-commands` scenarios "A promise is left unhandled" and "A hook is called conditionally" by running `pnpm lint` against a temporary edit. Undo each edit afterwards.
 
 ## 4. Unit tests
 
