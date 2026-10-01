@@ -69,11 +69,11 @@ Vitest reads its settings from the `test` key in `web/vite.config.ts`, which the
 
 Tests sit next to the code they test, such as `src/HealthStatus.test.tsx`. They import `describe`, `it`, `expect`, and `vi` from `vitest`. Vitest's globals stay off. Each test file calls Testing Library's `cleanup` after each test.
 
-`HealthStatus.test.tsx` replaces `fetch` with `vi.stubGlobal`, renders the component, and waits for the state text with `findByText`. One test answers status 200 with `{"status":"ok"}` and expects `healthy`. Another answers status 500 and expects `unreachable`. Real timers run, because the first check starts at once and the component stops checking when the test unmounts it.
+`HealthStatus.test.tsx` replaces `fetch` with `vi.stubGlobal`, renders the component, and waits until `checking` is gone, so the first check has finished. It then finds the expected state text with `getByText`. A test that expected `checking` would otherwise pass at once, because `checking` is the starting state. One test answers status 200 with `{"status":"ok"}` and expects `healthy`. Another answers status 500 and expects `unreachable`. Real timers run, because the first check starts at once and the component stops checking when the test unmounts it.
 
 - **Why jsdom:** it is the most common DOM for Testing Library, and its behavior is well known.
 - **Why explicit imports:** `tsconfig.app.json` covers the tests too. With explicit imports, the app's `types` list needs no test types, so app code cannot use test globals by mistake.
-- **Why no `@testing-library/jest-dom`:** `findByText` fails when the text never appears, so these tests need no extra matchers. #282 can add jest-dom when its tests need richer checks.
+- **Why no `@testing-library/jest-dom`:** `waitFor` and `getByText` fail when the expected text is missing, so these tests need no extra matchers. #282 can add jest-dom when its tests need richer checks.
 - **Alternative: happy-dom.** It is faster, but it differs from browsers in more places. Rejected for now.
 
 ### D5. `check-web` installs, then runs the four checks in order
