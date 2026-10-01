@@ -74,9 +74,9 @@ The flake check already prints the `openspec`, Node and `just` versions inside t
 - **`CONTRIBUTING.md`, "Reviewing a pin update":** a `flake.lock` update can change the Rust release, and the flake check log shows it. If new clippy lints fail the update, fix them in a separate pull request to `main`, then comment `@dependabot rebase` on the update.
 - **`server/README.md`:** both mentions of 1.85 go.
 
-### D6. A new ADR records the stable-channel decision
+### D6. The change corrects ADR-013 in place, with no new ADR
 
-ADR-013 says that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". D1 reverses that statement. The adr step decides how to record it.
+ADR-013 says that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". D1 makes that statement false. The change rewrites that one consequence in ADR-013, so that it covers Rust and Node together. The maintainer decided that D1 needs no ADR of its own: ADR-009 already chooses Rust for the backend, and which Rust release to use is a toolchain setting under ADR-013.
 
 ## Risks / Trade-offs
 

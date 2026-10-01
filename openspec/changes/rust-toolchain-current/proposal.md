@@ -36,7 +36,7 @@ None.
 
 - **Code and config:** `server/rust-toolchain.toml`, `server/Cargo.toml`, `server/Dockerfile`, and the comment in `nix/toolchains.nix`.
 - **Docs:** `AGENTS.md` (which `CLAUDE.md` links to), `CONTRIBUTING.md`, and `server/README.md`.
-- **Decision record:** ADR-013 says that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". This change reverses that statement, so it needs a decision record.
+- **Decision record:** ADR-013 says that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". This change makes that statement false, so the change corrects it in ADR-013. It needs no new ADR.
 - **CI:** the flake check in `nix.yml` also prints `rustc --version`. The triggers don't change: `nix.yml` and `v2.yml` already run when `server/rust-toolchain.toml` or `flake.lock` changes.
 - **Dependabot:** each weekly `flake.lock` pull request can now change the Rust release. Weekly Cargo updates can no longer fail because a crate needs a newer compiler than 1.85.
 - **Contributors:** the first shell load after this change downloads Rust 1.98.1. Cargo then rebuilds `server/target` once.

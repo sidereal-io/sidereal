@@ -5,20 +5,12 @@
 
 ## Review Summary
 
-ADR review completed for this change. The design makes six decisions (D1–D6). One of them, D1, meets the bar for an ADR:
+ADR review completed for this change. The design makes six decisions (D1–D6), and none needs a new ADR.
 
-- **D1 is a real fork.** It chooses the stable channel over an exact pin, and over two other ways to keep an exact pin current. A later engineer could plausibly restore an exact pin to gain reproducibility, without knowing that it brings back a manual merge step at almost every Rust release.
-- **D1 also contradicts an accepted ADR.** ADR-013's Consequences say that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". That statement stops being true.
-
-The other decisions do not meet the bar:
-
-- D2 removes one manifest field. It is cheap to reverse, and follows from D1.
-- D3 changes how one Dockerfile installs Rust. The server image is not published yet.
-- D4 adds one command to the flake check's log.
-- D5 rewrites docs to match D1.
-- D6 is this step.
-
-ADR-013 stays accepted. Its Rust sentence gains a short note that ADR-014 changed it. That is ADR-013's only link to another ADR.
+- **D1, the stable channel, is a toolchain setting under existing ADRs.** ADR-009 already chooses Rust for the backend. ADR-013 already makes the Nix flake's lock file the pin for every development tool in the Nix shell and CI. It also keeps plain pin files, such as `rust-toolchain.toml` and `.nvmrc`, for contributors without Nix. Which Rust release those files and the lock pick is a setting inside these decisions, not a new fork. The maintainer made this call after the author first drafted a separate ADR.
+- **D1 makes one ADR-013 statement false.** ADR-013's Consequences said that for Rust, the Nix shell and rustup "read the same exact-patch pin file, so they can't drift". The change rewrites that consequence in place, so it now covers Rust and Node together. ADR-013 stays accepted, and its decision is unchanged.
+- **D2 to D5 are cheap to reverse.** D2 removes one manifest field. D3 changes how one unpublished Dockerfile installs Rust. D4 adds one command to the flake check's log. D5 rewrites docs to match D1.
+- **D6 is this step.**
 
 ## In-Force ADRs Reviewed
 
@@ -34,10 +26,10 @@ ADR-013 stays accepted. Its Rust sentence gains a short note that ADR-014 change
 - ADR-010 Migration strategy (accepted)
 - ADR-011 Storage tree layout and cross-filesystem moves (accepted)
 - ADR-012 Embedded scripting engine (proposed, not in force)
-- ADR-013 Development environment (accepted). ADR-014 changes its Rust consequence.
+- ADR-013 Development environment (accepted). This change corrects one consequence in place.
 
-No ADR supersedes another. The highest number in use was 013.
+No ADR supersedes another. The highest number in use is 013.
 
 ## New Durable ADRs Created
 
-- [ADR-014: Rust Follows the Latest Stable Release](../../../docs/decisions/ADR-014-rust-follows-stable.md) — status **proposed**. The maintainer must accept it before implementation starts.
+- None - no major durable architectural decisions were introduced.
