@@ -41,17 +41,20 @@ The author verified each finding against the repo. The verification follows each
 
 ## Verdict
 
-VERDICT: REVISE
+The reviewer returned REVISE, the third in a row, so the decision went to the human. The human accepted the author's rebuttal of finding 1, based on the worktree test. With finding 1 resolved, the remaining fixes are small and fully specified. The verdict is therefore APPROVE_WITH_CHANGES, set by the human. The reviewer re-checks only the required changes below.
+
+VERDICT: APPROVE_WITH_CHANGES
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-Not applicable: the verdict is REVISE. This is the third REVISE in a row, so the review goes to the human again.
+1. **Finding 2:** the design states that the check and the stamp generator get the CLI version through one shared function, which runs `openspec --version` with `OPENSPEC_TELEMETRY=0` and `OPENSPEC_NO_UPDATE_CHECK=1`.
+2. **Finding 3:** without `nix` on `PATH`, a "no CLI" report names `npm install -g @fission-ai/openspec`, then `just skills`. The spec gains a scenario for this case, and design D5 gains a row.
 
-CHANGES_APPLIED: n/a
+CHANGES_APPLIED: no
 
 ## Rebuttals
 
-- **Finding 1** — rebutted with test evidence. Awaits the reviewer's or the human's acceptance.
-- **Finding 2** — partly rebutted. The author will make the check and the stamp generator share one call to `openspec --version`.
-- **Finding 3** — the author will fix it.
-- **Finding 4** — declined as out of scope.
+- **Finding 1** — rebutted with test evidence: under `nix develop --command`, a new worktree went from 0 to 8 generated skill folders. **Accepted by the human** as the escalation point, after three REVISE rounds.
+- **Finding 2** — partly rebutted: the CLI prints no update notice for `--version`. Required change 1 closes the remaining gap.
+- **Finding 3** — fixed by required change 2.
+- **Finding 4** — declined as out of scope. A suggestion needs no reviewer sign-off.
