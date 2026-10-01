@@ -50,9 +50,11 @@ Invariants for the `server/` Rust workspace — honor them in every v2 change.
   not by accident.
 - **PostgreSQL only** — no SQLite fallback on the Rust side
   ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
-- **Toolchain is pinned.** Stable Rust 1.85 via `server/rust-toolchain.toml`;
-  **`just check`** (`cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch
-  lint) is the gate — green before every PR.
+- **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
+  `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
+  CI. Never put a Rust release number in a build file or doc. **`just check`**
+  (`cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint) is the
+  gate — green before every PR.
 - **Real forks become ADRs** in `docs/decisions/` (template `ADR-000`). Don't design
   past a **Proposed** ADR — get it Accepted first. Each ADR stands alone: it links to
   at most one other ADR and never references issues, milestones, or the RFC.

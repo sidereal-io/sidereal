@@ -1,12 +1,14 @@
 # syntax=docker/dockerfile:1
 
 # ---- Build stage: compile the server binary in release mode ----
-FROM rust:1.85-slim-bookworm AS builder
+FROM rust:1-slim-bookworm AS builder
 WORKDIR /build
 # Copy the whole workspace (build context is server/) and build the server.
-# The builder honors server/rust-toolchain.toml (pinned 1.85).
+# `rustup toolchain install` installs the toolchain that rust-toolchain.toml
+# names (the stable channel). It shares a step with the build, so a cached
+# layer never keeps an older compiler apart from the build it made.
 COPY . .
-RUN cargo build --release -p sidereal-server
+RUN rustup toolchain install && cargo build --release -p sidereal-server
 
 # ---- Runtime stage: slim image with only the binary ----
 FROM debian:bookworm-slim AS runtime
