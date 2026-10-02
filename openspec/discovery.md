@@ -90,7 +90,7 @@
 
 ## Journey Map
 
-Stage status checked against the code on 2026-09-28. Status describes the v2 backend
+Stage status checked against the code on 2026-10-02. Status describes the v2 backend
 in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -193,19 +193,19 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 3. **Get skills** — `just skills` generates the same skills on every machine, and the
    shell refreshes them when it loads. An agent started outside the shell can still
    run a different `openspec` from the one that generated its skills. The project
-   accepts this gap and does not plan to close it — partial
-   ([#306](https://github.com/sidereal-io/sidereal/issues/306)).
-4. **Work & check** — `just check` runs with pinned Rust, Node, `just`, and
-   `openspec`, but it gates only the Rust workspace. v2 has no web frontend to run or
-   check — partial ([#300](https://github.com/sidereal-io/sidereal/issues/300), [#301](https://github.com/sidereal-io/sidereal/issues/301), [#302](https://github.com/sidereal-io/sidereal/issues/302), [#303](https://github.com/sidereal-io/sidereal/issues/303)).
-5. **Open PR** — CI checks the v2 server code inside the pinned shell, but v2 web code
-   has no CI job — partial
-   ([#301](https://github.com/sidereal-io/sidereal/issues/301)).
-6. **Bump pins** — Dependabot opens weekly pull requests for npm, Docker, Actions,
-   `flake.lock` and `server/Cargo.lock`. Rust follows the stable channel, so a new
-   Rust release arrives in the `flake.lock` update, and the flake check prints its
-   version — supported ([#287](https://github.com/sidereal-io/sidereal/issues/287),
-   [#310](https://github.com/sidereal-io/sidereal/issues/310)).
+   accepts this gap and does not plan to close it — partial.
+4. **Work & check** — `just dev` runs the v2 server and web shell together, and
+   `just check` gates both the Rust workspace and `web/` with pinned tools. The web
+   shell has no shared design system to build screens on, and no browser smoke
+   test — partial ([#302](https://github.com/sidereal-io/sidereal/issues/302),
+   [#303](https://github.com/sidereal-io/sidereal/issues/303)).
+5. **Open PR** — CI checks the v2 server and web code inside the pinned shell, but
+   runs no end-to-end browser check — partial
+   ([#303](https://github.com/sidereal-io/sidereal/issues/303)).
+6. **Bump pins** — Dependabot opens weekly pull requests for npm (root and `web/`),
+   Docker, Actions, `flake.lock` and `server/Cargo.lock`. Rust follows the stable
+   channel, so a new Rust release arrives in the `flake.lock` update, and the flake
+   check prints its version — supported.
 
 ## Backlog
 
