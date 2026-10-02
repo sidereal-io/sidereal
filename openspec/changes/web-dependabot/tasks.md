@@ -1,7 +1,7 @@
 ## 1. Dependabot entry
 
 - [x] 1.1 Add an `npm` entry to `.github/dependabot.yml` for `directory: "/web"`, as design D1 and D2 describe. It runs weekly on Monday at 04:00. Its `groups` block is a copy of the root `npm` entry's block. It has one `ignore` rule for TypeScript major updates and no comment about that rule. Verify the three configuration scenarios in the delta spec with `nix run nixpkgs#yq-go -- '<expression>' .github/dependabot.yml`.
-- [ ] 1.2 Validate the whole file against the Dependabot schema with `uv run --with check-jsonschema check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml`. Verify that it exits with status 0.
+- [x] 1.2 Validate the whole file against the Dependabot schema with `uv run --with check-jsonschema check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml`. Verify that it exits with status 0.
 
 ## 2. Review guidance
 
