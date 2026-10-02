@@ -32,7 +32,7 @@
     "seed:reset": "tsx tools/scripts/seed.ts --reset"
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.1",
+    "@hono/node-server": "^2.1.2",
     "@hookform/resolvers": "^5.9.1",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@neondatabase/serverless": "^1.1.0",
@@ -73,7 +73,7 @@
     "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^13.4.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.10",
     "input-otp": "^1.5.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.47.0",
@@ -91,7 +91,7 @@
     "react-leaflet": "^5.0.0",
     "react-resizable-panels": "^4.14.1",
     "recharts": "^3.10.1",
-    "sharp": "^0.35.4",
+    "sharp": "^0.35.5",
     "tailwind-merge": "^3.7.0",
     "tailwindcss-animate": "^1.0.7",
     "tmp": "^0.2.5",
