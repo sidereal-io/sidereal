@@ -198,6 +198,7 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    `just check` gates both the Rust workspace and `web/` with pinned tools. The web
    shell has no shared design system to build screens on, and no browser smoke
    test — partial ([#302](https://github.com/sidereal-io/sidereal/issues/302),
+   [#338](https://github.com/sidereal-io/sidereal/issues/338),
    [#303](https://github.com/sidereal-io/sidereal/issues/303)).
 5. **Open PR** — CI checks the v2 server and web code inside the pinned shell, but
    runs no end-to-end browser check — partial
