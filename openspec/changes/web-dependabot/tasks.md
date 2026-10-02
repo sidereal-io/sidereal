@@ -9,7 +9,7 @@
 
 ## 3. Verification after merge
 
-- [ ] 3.1 Dependabot reads its configuration only from `main`, so its checks can run only after merge. Add an "After merge" checklist to this change's pull request description. Verify that it names these four checks:
+- [x] 3.1 Dependabot reads its configuration only from `main`, so its checks can run only after merge. Add an "After merge" checklist to this change's pull request description. Verify that it names these four checks:
   1. open the repo's Dependabot status page (Insights, then Dependency graph, then Dependabot) and confirm that the `/web` entry shows no configuration error and its last run succeeded;
   2. after the first run that opens a `/web` pull request, confirm that the pull request matches the scenario "A web package has a newer release" and leaves `packageManager` unchanged;
   3. confirm that no open Dependabot pull request changes the major version of `typescript` in `web/package.json`;
