@@ -5,7 +5,7 @@
 
 ## 2. Review guidance
 
-- [ ] 2.1 Add one bullet to the "Reviewing a pin update" section of `CONTRIBUTING.md`, as design D4 describes. Verify that the bullet names `web/package.json`, `web/pnpm-lock.yaml`, and the `v2` workflow's `web` job, and that it does not mention TypeScript.
+- [x] 2.1 Add one bullet to the "Reviewing a pin update" section of `CONTRIBUTING.md`, as design D4 describes. Verify that the bullet names `web/package.json`, `web/pnpm-lock.yaml`, and the `v2` workflow's `web` job, and that it does not mention TypeScript.
 
 ## 3. Verification after merge
 

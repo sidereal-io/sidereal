@@ -263,6 +263,9 @@ Check these points before you merge one:
   before you merge an update that changes its version.
 - **Cargo pull requests change `server/Cargo.lock`.** The `v2` workflow's
   `server` job checks them, the same as any other change under `server/`.
+- **npm pull requests for `web/` change `web/package.json` and
+  `web/pnpm-lock.yaml`.** The `v2` workflow's `web` job checks them, the same
+  as any other change under `web/`.
 
 ## 📝 Code Standards
 
