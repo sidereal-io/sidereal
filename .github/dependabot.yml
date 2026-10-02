@@ -77,3 +77,26 @@ updates:
       cargo-crates:
         patterns:
           - "*"
+
+  # Enable version updates for the v2 web shell
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@types/*"
+      types:
+        patterns:
+          - "@types/*"
