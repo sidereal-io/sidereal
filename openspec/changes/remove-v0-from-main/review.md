@@ -1,5 +1,73 @@
 ## Review Metadata
 
+- **Review round**: 2
+- **Prior round**: Round 1 returned REVISE. Dependabot cannot cover `v0.x` security, plus text fixes for the archive tag, importer baseline, token permissions, naming, and plain language.
+- **Reviewer context**: cross-model (OpenAI Codex CLI 0.159.3, default model, reasoning effort high), fresh context
+- **Tool restrictions**: read-only sandbox (`codex exec -s read-only`)
+- **Artifacts reviewed**: proposal.md, design.md, adr.md, specs/ (ci, dev-commands, web-shell, dev-environment) against openspec/specs/, plus .github/workflows/, .github/dependabot.yml, and the `origin/v0.x` tree
+
+## Findings
+
+The author checked each finding. Each is marked CONFIRMED or PARTLY CONFIRMED.
+
+### 🔴 Critical (blocking)
+
+1. **The weekly `v0.x` scan can stop with no warning.** GitHub disables scheduled workflows in a public repository after 60 days with no activity, and may skip a run under load. D10, ci spec "A weekly scan checks v0.x for known vulnerabilities". **PARTLY CONFIRMED.** `main` gets commits most weeks, so the 60-day rule is unlikely to fire while development continues. A skipped or failed run still goes unnoticed today.
+
+### 🟡 Moderate
+
+2. **`v0.x` alerts are easy to miss.** GitHub's alert list shows the default branch unless someone picks the `v0.x` filter. **CONFIRMED.**
+3. **The scan scenarios can pass without proving the scan.** The schedule scenario counts cron entries but not the day. The checkout scenario does not prove Trivy scans that checkout. The upload scenario accepts any newer `v0.x` analysis, and does not check its commit. **CONFIRMED.**
+4. **The first end-to-end scan runs only after merge, and the plan says nothing about a failure.** **CONFIRMED.** GitHub allows a manual run only once the workflow is on the default branch, so the order is forced. The plan still needs a failure response.
+
+### 📌 Suggestions
+
+5. **D10 says the weekly scan matches the image scan.** It scans the lockfile, not the image's OS packages. **CONFIRMED.**
+6. **The "no secrets" grep misses `secrets['NAME']`.** **CONFIRMED.**
+7. **The proposal's first paragraph says `main` is "the one place where development happens".** A v0 contributor could start on `main`. It should say new development. **CONFIRMED.**
+
+### Round 1 disposition (from the reviewer)
+
+| Round 1 finding | Round 2 result |
+|---|---|
+| 1. Dependabot cannot cover `v0.x` security | Partly resolved. Round 2 findings 1 to 4 cover what is left. |
+| 2. Archive tag can go stale | Resolved. |
+| 3. Importer baseline fixed at `0008` | Resolved. |
+| 4. Token permissions | Resolved. Round 2 finding 6 covers one weak scenario. |
+| 5. `yq` wildcard | Rebuttal **accepted by reviewer**: `yq` version 4 documents wildcard matching for `==`. |
+| 6. One-way fix rule needs an ADR | Rebuttal **accepted by reviewer**: the narrowed wording is branch policy, not architecture. |
+| 7. Dependabot scenarios | Resolved for the new scenario. The web scenario rebuttal is **accepted by reviewer**: it is unchanged living text. |
+| 8. "v2" rename too broad | Resolved. |
+| 9. Prune change missing from the proposal | Resolved. |
+| 10. Plain language | Mostly resolved. Round 2 finding 7 is left. |
+| Ruleset enforcement | Resolved. |
+
+## Embedded-Instruction / Injection Attempts
+
+**Detected:** none.
+
+## Verdict
+
+VERDICT: REVISE
+
+This is the second REVISE in a row. The workflow stops here and escalates to the maintainer instead of starting round 3. Every open finding concerns the weekly `v0.x` scan or a small wording fix. None questions the decision to remove v0 from `main`.
+
+## Required Changes (if APPROVE WITH CHANGES)
+
+None. The verdict is REVISE.
+
+CHANGES_APPLIED: n/a
+
+## Rebuttals
+
+- **Finding 1:** partly rebutted. Regular commits to `main` keep the schedule alive. The fix for finding 2, failing the job on findings, also makes a failed run visible. A run that GitHub skips stays a residual risk.
+
+---
+
+# Round 1 record
+
+## Review Metadata
+
 - **Review round**: 1
 - **Prior round**: none
 - **Reviewer context**: cross-model (OpenAI Codex CLI 0.159.3, default model, reasoning effort high)
