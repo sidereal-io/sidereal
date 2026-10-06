@@ -20,10 +20,18 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
   const isMobile = useIsMobile();
 
   const plateSolveMutation = useMutation({
-    mutationFn: (imageId: number) => apiRequest("POST", `/api/images/${imageId}/plate-solve`),
+    mutationFn: async (imageId: number): Promise<{ processing: boolean; message?: string }> => {
+      const response = await apiRequest("POST", `/api/plate-solving/images/${imageId}/plate-solve`);
+      if (response.status === 202) {
+        const data = await response.json();
+        return { processing: true, message: data.message };
+      }
+      return { processing: false };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/images"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/plate-solving/jobs"] });
     },
   });
 
@@ -176,6 +184,9 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
                     </Button>
                   )}
                 </div>
+                {plateSolveMutation.data?.processing && (
+                  <p role="status" className="mb-2 text-sm text-muted-foreground">{plateSolveMutation.data.message}</p>
+                )}
                 {image.plateSolved ? (
                   <div className="text-sm text-muted-foreground space-y-1">
                     {image.ra && <div>RA: {image.ra}</div>}
@@ -203,7 +214,7 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
                 ) : (
                   <div className="text-sm text-muted-foreground">
                     <p>No plate solving data available.</p>
-                    <p className="mt-2">Click "Solve" to submit this image to Astrometry.net for plate solving.</p>
+                    {!plateSolveMutation.data?.processing && <p className="mt-2">Click "Solve" to submit this image to Astrometry.net for plate solving.</p>}
                   </div>
                 )}
               </div>
@@ -298,6 +309,9 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
                     </Button>
                   )}
                 </div>
+                {plateSolveMutation.data?.processing && (
+                  <p role="status" className="mb-2 text-sm text-muted-foreground">{plateSolveMutation.data.message}</p>
+                )}
                 {image.plateSolved ? (
                   <div className="text-sm text-muted-foreground space-y-1">
                     {image.ra && <div>RA: {image.ra}</div>}
@@ -325,7 +339,7 @@ export function ImageModal({ image, onClose }: ImageModalProps) {
                 ) : (
                   <div className="text-sm text-muted-foreground">
                     <p>No plate solving data available.</p>
-                    <p className="mt-2">Click "Solve" to submit this image to Astrometry.net for plate solving.</p>
+                    {!plateSolveMutation.data?.processing && <p className="mt-2">Click "Solve" to submit this image to Astrometry.net for plate solving.</p>}
                   </div>
                 )}
               </div>

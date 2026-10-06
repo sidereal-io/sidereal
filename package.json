@@ -138,6 +138,7 @@
     "minimatch": ">=10.2.3",
     "tar-fs": "^2.1.4",
     "rollup": "^4.59.0",
-    "picomatch": ">=4.0.4"
+    "picomatch": ">=4.0.4",
+    "shell-quote": "1.11.0"
   }
 }

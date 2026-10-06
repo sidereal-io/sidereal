@@ -26,14 +26,15 @@ export default (wsManager?: WsManager) => {
       }
 
       // Use the shared service to complete the full plate solving workflow
-      const result = await astrometryService.completePlateSolvingWorkflow(image);
+      const outcome = await astrometryService.completePlateSolvingWorkflow(image);
+      if (outcome.status === 'processing') return c.json(outcome, 202);
 
       return c.json({
         message: 'Image plate solving completed successfully',
         result: {
-          calibration: result.calibration,
-          annotations: result.annotations,
-          machineTags: result.machineTags,
+          calibration: outcome.result.calibration,
+          annotations: outcome.result.annotations,
+          machineTags: outcome.result.machineTags,
         },
       });
     } catch (error) {
@@ -116,7 +117,7 @@ export default (wsManager?: WsManager) => {
   app.post('/update/:jobId', async (c) => {
     try {
       const jobId = parseInt(c.req.param('jobId'));
-      const { status, result } = await astrometryService.checkJobStatus(jobId);
+      const { status, result } = await astrometryService.checkJobStatus(jobId, { resumeProcessing: true });
 
       // Emit real-time update via WebSocket if available
       if (wsManager) {
