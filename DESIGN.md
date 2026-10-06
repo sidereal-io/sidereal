@@ -107,18 +107,10 @@ interface is built for three things:
   regenerate `tokens.css` and the design-token JSON from it. After merge, import
   that JSON into Penpot. Never change a token in Penpot first.
 - **Penpot is the design workspace.** Explore there freely, but a design change
-  is only real once it lands here.
-
-### Penpot files
-
-| File | ID | Use |
-|---|---|---|
-| Sidereal Design System | `3e981c57-46d6-803d-8008-bedef465c177` | The working library: the imported primitive tokens, and components as they are designed. |
-| Sidereal — Stitch reference (archived) | `19c47d73-0a5d-8067-8008-bb320a3db40a` | The earlier full mockup. Reference only: its colors are outdated, so copy nothing from it. |
-
-Agents reach Penpot only through the Penpot MCP plugin, which a person opens in
-the file and connects. Before changing anything, check that the connected file's
-ID matches the working library's ID above. File names can change; IDs don't.
+  is only real once it lands here. The Penpot file is **Sidereal Design System**
+  (ID `3e981c57-46d6-803d-8008-bedef465c177`): it holds the imported primitive
+  tokens and, as they are designed, the components. Agents reach it through the
+  Penpot plugin, which a person connects to the file.
 
 ### Token tiers
 
