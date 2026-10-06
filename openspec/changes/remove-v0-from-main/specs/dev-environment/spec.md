@@ -68,7 +68,7 @@ The repo SHALL state Node major version 26 wherever it names a Node version for 
 
 ### Requirement: Dependabot keeps the v0.x branch up to date
 
-GitHub reads Dependabot's configuration from the default branch only. So `main`'s `.github/dependabot.yml` SHALL declare the v0.10.x updates and aim them at the `v0.x` branch. It SHALL declare exactly three entries with `target-branch` set to `v0.x`: one each for `npm`, `docker`, and `github-actions`, each with `directory` set to `/`. Every other entry SHALL have no `target-branch`, so it updates `main`.
+GitHub reads Dependabot's configuration from the default branch only. So `main`'s `.github/dependabot.yml` SHALL declare the v0.10.x version updates and aim them at the `v0.x` branch. These entries cover version updates only. Security warnings for `v0.x` come from the weekly scan that the `ci` capability defines. It SHALL declare exactly three entries with `target-branch` set to `v0.x`: one each for `npm`, `docker`, and `github-actions`, each with `directory` set to `/`. Every other entry SHALL have no `target-branch`, so it updates `main`.
 
 The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
 
@@ -82,8 +82,7 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **WHEN** a reviewer runs `yq '.updates[] | select(."target-branch" == "v0.x") | .directory' .github/dependabot.yml`
 - **THEN** every line of the output is `/`
 
-#### Scenario: A v0.10.x package has a newer release
+#### Scenario: A v0.10.x version update targets v0.x
 
-- **WHEN** Dependabot's weekly run finds a newer release for a package in the `v0.x` branch's `package.json`
-- **THEN** an open pull request from Dependabot targets the `v0.x` branch
-- **AND** no open pull request from Dependabot targets `main` for that package
+- **WHEN** Dependabot opens a version update pull request that changes the root `package.json` or `package-lock.json`
+- **THEN** that pull request's base branch is `v0.x`

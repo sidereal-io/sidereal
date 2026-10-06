@@ -83,7 +83,7 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 ### Requirement: The server checks run when server code changes
 
-A CI job named `server`, in the workflow file `.github/workflows/ci.yml`, SHALL run the server checks on every pull request and every push to `main` that changes one of these files:
+A CI job named `server` SHALL run the server checks. The job lives in the workflow file `.github/workflows/ci.yml`. It SHALL run on every pull request, and on every push to `main`, that changes one of these files:
 
 - any file under `server/`;
 - any file under `web/`;
@@ -128,7 +128,7 @@ The checks are the Rust format check, clippy with warnings denied, the tests, an
 
 ### Requirement: The web checks run when server or web code changes
 
-A CI job named `web`, in the workflow file `.github/workflows/ci.yml`, SHALL run the web checks on every pull request and every push to `main` that triggers that workflow. These are the same files that trigger the `server` job.
+A CI job named `web` SHALL run the web checks. The job lives in the workflow file `.github/workflows/ci.yml`. It SHALL run on every pull request, and on every push to `main`, that triggers that workflow. The same files trigger the `server` job.
 
 The checks are the type check, the lint, the format check, and the unit tests of the web shell in `web/`. The job SHALL fail when any check fails.
 
@@ -180,16 +180,16 @@ The CodeQL workflow on `main` SHALL NOT name the `v0.x` branch. The `v0.x` branc
 - **WHEN** a reviewer runs `grep -n 'v0.x' .github/workflows/codeql.yml`
 - **THEN** the search finds no match
 
-### Requirement: Main runs no v0.10.x workflows
+### Requirement: Main runs only its own workflows and the v0.x scan
 
-The `.github/workflows/` folder on `main` SHALL hold exactly four workflow files: `ci.yml`, `codeql.yml`, `nix.yml`, and `prune-ghcr.yml`. No workflow on `main` SHALL build or push a container image, or publish a release.
+The `.github/workflows/` folder on `main` SHALL hold exactly five workflow files: `ci.yml`, `codeql.yml`, `nix.yml`, `prune-ghcr.yml`, and `v0-security-scan.yml`. No workflow on `main` SHALL build or push a container image, or publish a release.
 
-`prune-ghcr.yml` stays on `main` because GitHub runs scheduled workflows from the default branch only. It removes old images for both lines.
+`prune-ghcr.yml` and `v0-security-scan.yml` stay on `main` because GitHub runs scheduled workflows from the default branch only.
 
 #### Scenario: A reviewer lists the workflows
 
 - **WHEN** a reviewer lists `.github/workflows/` on `main`
-- **THEN** the folder holds exactly `ci.yml`, `codeql.yml`, `nix.yml`, and `prune-ghcr.yml`
+- **THEN** the folder holds exactly `ci.yml`, `codeql.yml`, `nix.yml`, `prune-ghcr.yml`, and `v0-security-scan.yml`
 
 #### Scenario: A merge to main publishes no image
 
@@ -200,3 +200,52 @@ The `.github/workflows/` folder on `main` SHALL hold exactly four workflow files
 
 - **WHEN** someone pushes a tag that matches `v*.*.*` and points at a commit on `main`
 - **THEN** GitHub starts no release workflow for that tag
+
+### Requirement: Each workflow grants only the token access it needs
+
+`ci.yml` SHALL grant its jobs `contents: read` and no other permission. `codeql.yml` and `v0-security-scan.yml` SHALL grant `contents: read` and `security-events: write`, and no other permission. None of these three workflows SHALL refer to a repository secret.
+
+The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+
+#### Scenario: The CI workflow can only read
+
+- **WHEN** a reviewer runs `yq '[.permissions, .jobs[].permissions] | map(select(. != null))' .github/workflows/ci.yml`
+- **THEN** the output lists only `contents: read`
+
+#### Scenario: The scanning workflows can only read code and write results
+
+- **WHEN** a reviewer runs the same command on `codeql.yml` and on `v0-security-scan.yml`
+- **THEN** each output lists only `contents: read` and `security-events: write`
+
+#### Scenario: No workflow uses a secret
+
+- **WHEN** a reviewer runs `grep -n 'secrets\.' .github/workflows/ci.yml .github/workflows/codeql.yml .github/workflows/v0-security-scan.yml`
+- **THEN** the search finds no match
+
+### Requirement: A weekly scan checks v0.x for known vulnerabilities
+
+Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` SHALL scan the `v0.x` branch's dependencies for known vulnerabilities every week, and SHALL also run on manual dispatch. It SHALL scan the files on `v0.x`, not the files on `main`. It SHALL upload its results to code scanning under the ref `refs/heads/v0.x`. Every action it uses from outside GitHub's `actions/` and `github/` organisations SHALL be pinned to a full 40-character commit SHA.
+
+The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+
+#### Scenario: The scan runs every week
+
+- **WHEN** a reviewer runs `yq '.on | keys' .github/workflows/v0-security-scan.yml`
+- **THEN** the output lists `schedule` and `workflow_dispatch`
+- **AND** `yq '.on.schedule | length' .github/workflows/v0-security-scan.yml` prints `1`
+
+#### Scenario: The scan reads the v0.x branch
+
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "actions/checkout*") | .with.ref' .github/workflows/v0-security-scan.yml`
+- **THEN** the output is exactly one line: `v0.x`
+
+#### Scenario: Third-party actions are pinned
+
+- **WHEN** a reviewer lists every `uses:` value in `v0-security-scan.yml` that does not start with `actions/` or `github/`
+- **THEN** every value ends with `@` followed by 40 hexadecimal characters
+
+#### Scenario: A scan's results appear under v0.x
+
+- **WHEN** the maintainer runs `v0-security-scan.yml` by hand on `main`, and the run finishes
+- **AND** runs `gh api 'repos/sidereal-io/sidereal/code-scanning/analyses?ref=refs/heads/v0.x' --jq '.[0].created_at'`
+- **THEN** the printed time is later than the moment the run started

@@ -1,6 +1,6 @@
 ## Why
 
-`main` holds two stacks: the Rust and React rewrite, and a copy of the v0.10.x TypeScript app. The running v0 line already lives on the `v0.x` branch. Its copy on `main` adds about 265 files, six workflows, and extra Dependabot entries that new work never touches. Removing it makes `main` the one place where development happens, and lets us drop the "v2" label.
+`main` holds two stacks: the Rust and React rewrite, and a copy of the v0.10.x TypeScript app. The running v0 line already lives on the `v0.x` branch. Its copy on `main` adds about 265 files, six workflows, and extra Dependabot entries that new work never touches. Removing it makes `main` the one place where development happens, and lets us drop "v2" as the name of `main`'s stack.
 
 ## What Changes
 
@@ -14,8 +14,10 @@
 - Remove the v0 workflows from `main`: `ci.yml`, `docker-build-push.yml`, `docker-build-test.yml`, and `release.yml`. `v0.x` keeps its own copies, and GitHub runs those for `v0.x` pushes, pull requests, and tags.
 - Rename `v2.yml` to `ci.yml`. It also runs on pushes to `main`, which resolves #320.
 - Point CodeQL at what `main` holds: Rust and TypeScript. Drop its `v0.x` branch filter, because `v0.x` runs CodeQL from its own `ci.yml`.
-- Keep `prune-ghcr.yml` on `main`, because GitHub runs scheduled workflows from the default branch only.
-- Keep the v0 Dependabot entries for npm, Docker, and GitHub Actions in `main`'s config, and aim them at `v0.x` with `target-branch`. GitHub reads Dependabot's config from the default branch only.
+- Keep `prune-ghcr.yml` on `main`, because GitHub runs scheduled workflows from the default branch only. Stop it protecting the `:main` image tag, so the stale image is pruned if nobody deletes it first.
+- Keep the v0 Dependabot entries for npm, Docker, and GitHub Actions in `main`'s config, and aim them at `v0.x` with `target-branch`. GitHub reads Dependabot's config from the default branch only. These entries cover version updates only.
+- Add a weekly workflow on `main` that scans `v0.x`'s dependencies for known vulnerabilities. Dependabot alerts and security updates read the default branch only, so without this scan nothing would warn about a new advisory on `v0.x`.
+- Grant each workflow this change touches only the token access it needs.
 
 **Container images**
 
@@ -25,11 +27,12 @@
 
 **Names and documents**
 
-- Stop calling `main` "v2" in living files. "Sidereal" means `main`, and "v0.10.x" or "the `v0.x` line" means the old app. Living files are the `justfile` recipe groups, the workflows, the living specs, `AGENTS.md`, `CONTRIBUTING.md`, the READMEs, `DESIGN.md`, and `docs/`.
+- Stop using "v2" as the name of `main`'s stack in living files. "Sidereal" means `main`, and "v0.10.x" or "the `v0.x` line" means the old app. Living files are the `justfile` recipe groups, the workflows, the living specs, `AGENTS.md`, `CONTRIBUTING.md`, the READMEs, `DESIGN.md`, `docs/`, and `openspec/`.
+- Keep "v2" where it names a version. The cutover release is still planned as `v2.0.0`.
 - Leave history as written: archived changes, Accepted ADRs, and the titles of the RFC and epics.
 - Open `README.md` with a warning that `main` cannot be installed yet, and point to the `v0.x` branch.
 - Keep `CHANGELOG.md`, with a note that v0.10.x entries continue on `v0.x`.
-- Rewrite `AGENTS.md` for one stack. It states that v0 fixes go to `v0.x` only and are never ported to `main`. The v0 release steps move to `v0.x`'s own docs.
+- Rewrite `AGENTS.md` for one stack. It states that v0 fixes land on `v0.x`, and that `main` takes no v0 code. A bug that exists in both lines is fixed separately in each. The v0 release steps move to `v0.x`'s own docs.
 
 **Issues**
 
@@ -49,16 +52,16 @@ None.
 
 ### Modified Capabilities
 
-- `ci`: remove the requirement "The v0.10.x pipeline skips v2-only changes". Rename the workflow file in every requirement from `v2.yml` to `ci.yml`, and run it on pushes to `main`. Limit code scanning to `main`. Drop the scenarios about pull requests that change only v0.10.x code.
-- `dev-commands`: remove the requirement "The v0.10.x stack runs by explicit name". Rewrite "Recipes are grouped by stack", because only one stack remains. Rename `just dev` and the other recipes' "v2" wording.
-- `web-shell`: remove the scenarios that check the web shell against the v0.10.x tree, because that tree leaves `main`. Rename "v2 server" to "the server".
-- `dev-environment`: rewrite "Every reference to the Node version agrees" without the v0 production image and the v0 CI workflows. Rename the `v2` workflow in the web package update requirement.
+- `ci`: remove the requirement "The v0.10.x pipeline skips v2-only changes". Rename the workflow file from `v2.yml` to `ci.yml`, and run it on pushes to `main`. Limit code scanning to `main`, and add Rust. Require least-privilege tokens. Add the weekly `v0.x` vulnerability scan. Limit `main` to its own workflows and drop the scenarios about pull requests that change only v0.10.x code.
+- `dev-commands`: remove the requirements "The v0.10.x stack runs by explicit name" and "Recipes are grouped by stack". Rename `just dev`'s requirement so it no longer says "v2".
+- `web-shell`: replace "The web shell installs and runs on its own" so it no longer checks the v0.10.x root npm files, which leave `main`.
+- `dev-environment`: replace "Every reference to the Node version agrees" without the v0 production image. Rename the `v2` workflow in the web package update requirement. Add the Dependabot entries that target `v0.x`.
 
 ## Impact
 
 - **Repository:** about 265 tracked files leave `main`. Nothing under `server/` or `web/` depends on them. Only `server/README.md` names `apps/` and `packages/`.
-- **CI:** four workflows leave `main`. One is renamed. Branch rules need no change, because the ruleset requires no named status checks.
-- **Dependabot:** pull requests for v0 dependencies open against `v0.x` instead of `main`.
+- **CI:** four workflows leave `main`, one is renamed, and one is added. The branch ruleset is disabled today, and it requires no named status checks, so no merge rule breaks.
+- **Dependabot:** version update pull requests for v0 dependencies open against `v0.x` instead of `main`. v0 security warnings come from the weekly scan instead of Dependabot alerts.
 - **Images:** pushes to `main` stop publishing the v0 image. Released v0 tags do not change.
 - **Contributors and agents:** `AGENTS.md`, and its links `CLAUDE.md` and `GEMINI.md`, describe one stack. `npm run check` stops being a gate on `main`.
-- **Importer (ADR-010):** the importer must read the released v0 schema, which ends at migration `0008`. It must not read `main`'s unreleased `0011`.
+- **Importer (ADR-010):** the importer must read the schema of the latest v0 release at cutover. Today that schema ends at migration `0008`. The importer must not read `main`'s unreleased `0011`.

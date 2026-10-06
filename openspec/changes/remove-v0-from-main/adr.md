@@ -5,27 +5,22 @@
 
 ## Review Summary
 
-ADR review completed for this change. No major durable architectural decisions were introduced, and no new repository-level ADR files were created.
+ADR review completed for this change. It creates no new repository-level ADR.
 
-The design's decisions are repository maintenance that is cheap to reverse. Reverting the merge restores every removed file, and the archive tag changes nothing when kept or deleted. The one durable policy, that v0 lives only on the `v0.x` branch, carries out ADR-010's decision that the old app goes to maintenance and retires at cutover. It adds no new fork.
+The design's decisions are repository maintenance that is cheap to reverse. Reverting the merge restores every removed file, and the archive tag changes nothing whether it is kept or deleted.
+
+The rule that v0 fixes land on `v0.x` only is the maintainer's working policy, not an architectural fork. The two lines share no code, so `main` cannot take a v0 fix anyway. A bug in both lines is fixed separately in each. The rule carries out ADR-010's decision that the old app goes to maintenance and retires at cutover.
 
 ## In-Force ADRs Reviewed
 
-No ADR supersedes another. The highest number in use is 013.
+No ADR supersedes another. The highest number in use is 013. ADR-012 is Proposed, so it is not in force.
 
-- ADR-001 Plugin boundary (accepted). No effect.
-- ADR-002 Core, domain pack split (accepted). No effect.
-- ADR-003 Asset identity and content revisions (accepted). No effect.
-- ADR-004 Database engine and schema (accepted). No effect.
-- ADR-005 Visual design system (accepted). No effect. Its references to the v0.10.x interface stay as written.
-- ADR-006 Rule engine deferral (accepted). No effect.
-- ADR-007 Security and plugin trust (accepted). No effect.
-- ADR-008 Facet schema and write authority (accepted). No effect.
-- ADR-009 Backend language (accepted). No effect.
-- ADR-010 Migration strategy (accepted). This change follows it: the old app stays in maintenance on `v0.x`. The importer it describes must read the released v0.10.x schema, not the unreleased schema this change archives.
-- ADR-011 Storage tree layout (accepted). No effect.
-- ADR-012 Embedded scripting engine (proposed). Not in force. No effect.
-- ADR-013 Development environment (accepted). This change keeps `.nvmrc`, because ADR-013 requires plain pin files for contributors without Nix. Its description of "two stacks" stays as written, because Accepted ADRs record the decision as made.
+Two ADRs shape this change:
+
+- **ADR-010, Migration strategy (accepted).** The old app stays in maintenance on `v0.x` until cutover. The importer it describes reads the latest released v0 schema at cutover, not the unreleased schema this change archives.
+- **ADR-013, Development environment (accepted).** It requires the plain pin files that contributors without Nix use, so this change keeps `.nvmrc`. Its wording about "two stacks" stays as written, because Accepted ADRs record the decision as it was made.
+
+ADR-001 to ADR-009 and ADR-011 cover the plugin model, the data model, storage, security, the design system, and the backend language. This change touches none of them. ADR-005 refers to the v0.10.x interface, and that wording stays.
 
 ## New Durable ADRs Created
 
