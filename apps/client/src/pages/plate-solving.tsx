@@ -18,7 +18,8 @@ import {
   AlertCircle,
   Info,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  RefreshCw
 } from "lucide-react";
 import { Header } from "@/components/header";
 import type { AstroImage, PlateSolvingJob } from "@shared/schema";
@@ -440,24 +441,28 @@ export default function PlateSolvingPage() {
                   {/* Result details toggle */}
                   {job && (job.status === "processing" || job.status === "success" || job.status === "failed") && (
                     <div className="border-t border-border">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setExpandedJobId(expandedJobId === job.id ? null : job.id);
-                        }}
-                        className="w-full flex items-center justify-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {expandedJobId === job.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                        Details
-                      </button>
-                      {(job.status === "processing" || job.status === "failed") && validRemoteId(job.astrometrySubmissionId) && (
-                        <div className="px-2 pb-2" onClick={e => e.stopPropagation()}>
-                          <Button variant="outline" size="sm" className="w-full text-xs" disabled={checking.has(job.id)} onClick={() => checkStatus(job.id)}>
+                      <div className="flex items-center justify-between gap-1 px-2 py-1.5" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                          className="flex items-center gap-1 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {expandedJobId === job.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          Details
+                        </button>
+                        {(job.status === "processing" || job.status === "failed") && validRemoteId(job.astrometrySubmissionId) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 gap-1 rounded-full border-border bg-transparent px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                            disabled={checking.has(job.id)}
+                            onClick={() => checkStatus(job.id)}
+                          >
+                            <RefreshCw aria-hidden="true" className={`h-3 w-3 ${checking.has(job.id) ? "animate-spin" : ""}`} />
                             {checking.has(job.id) ? "Checking…" : "Check status"}
                           </Button>
-                          {checkErrors.has(job.id) && <p role="alert" className="mt-1 text-xs text-destructive">Couldn’t check status. Try again.</p>}
-                        </div>
-                      )}
+                        )}
+                      </div>
+                      {checkErrors.has(job.id) && <p role="alert" className="px-2 pb-2 text-xs text-destructive">Couldn’t check status. Try again.</p>}
                       {expandedJobId === job.id && (
                         <div className="px-2 pb-2 text-xs space-y-1" onClick={(e) => e.stopPropagation()}>
                           {job.status === "failed" && (
