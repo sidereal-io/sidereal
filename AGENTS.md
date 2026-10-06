@@ -17,7 +17,7 @@ Sidereal is mid-rewrite, so two stacks live side by side in this repo ([RFC #213
 | **v0.10.x** | `apps/`, `packages/` | The running TypeScript/Hono app — deployed today, and what most work still touches until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)) | Current |
 | **v2** | `server/` | A new Rust backend ([ADR-009](docs/decisions/ADR-009-backend-language.md)) in a separate cargo workspace | Under active build |
 
-The frontend stays TypeScript/React through the whole rewrite ([ADR-005](docs/decisions/ADR-005-frontend-continuity.md)); only the backend changes language.
+The frontend stays TypeScript/React through the whole rewrite; only the backend changes language.
 
 **v2 builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
 
@@ -59,6 +59,19 @@ Invariants for the `server/` Rust workspace — honor them in every v2 change.
 - **Real forks become ADRs** in `docs/decisions/` (template `ADR-000`). Don't design
   past a **Proposed** ADR — get it Accepted first. Each ADR stands alone: it links to
   at most one other ADR and never references issues, milestones, or the RFC.
+
+## Durable constraints (v2 web UI)
+
+How v2 screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
+([ADR-005](docs/decisions/ADR-005-visual-design-system.md)).
+
+- **`DESIGN.md` is the source of truth** for every token value and usage rule.
+  Code and the Penpot library follow it.
+- **Use tokens, never raw values.** Add a semantic or component token only when a
+  component first needs it, in the same pull request.
+- **Change a token in `DESIGN.md` first.** Regenerate the token files in the same
+  pull request, and import the token JSON into Penpot after merge. Never change a
+  token in Penpot first.
 
 ## Workflow
 
