@@ -10,17 +10,6 @@ description: Architecture Decision Record (ADR) for how v2 screens look and wher
 
 ## Context
 
-The v2 web interface needs one shared look before its first product screens are
-built. Without one, each screen invents its own styles, and those styles later
-have to be found and removed.
-
-Two visual directions were explored. One used neutral grays, the system UI font,
-and IBM Plex Mono. The other, "Obsidian Deep Space", used violet-tinted
-near-black surfaces, Inter, a monospace data face, and violet, cyan, and amber
-accents. Neither was complete on its own: the first set clear usage rules but
-had a generic look; the second had a distinctive look but no rules for when to
-use each color.
-
 The design has to work in three places at once: in code (`web/`), in a design
 tool (Penpot), and in the context that coding agents read. If more than one of
 those can be edited first, they drift apart.
