@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-10-06
+
+### Fixed
+- **Astrometry polling**: Null job placeholders and processing timestamps no longer produce false solve failures. Both polling paths validate remote IDs and calibration before completing jobs (#309).
+- **Plate solving recovery**: Synchronous polling exhaustion returns HTTP 202 with the existing submission. Check status reuses that submission and can recover historical false failures without another upload.
+- **Plate Solving page**: Added waiting/solving messages, processing details, compact per-record status checks, terminal-only completion dates, and 30-second active-job/focus refresh. The image modal uses the registered solve endpoint and handles HTTP 202.
+
+### Security
+- **shell-quote**: Override the development dependency to 1.11.0 to fix critical command injection via newline-bearing tokens after comments (CVE-2026-102422).
+
 ## [0.10.3] - 2026-09-25
 
 ### Fixed
