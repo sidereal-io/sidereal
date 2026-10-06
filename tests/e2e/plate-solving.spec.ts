@@ -224,13 +224,25 @@ test.describe('Astrometry polling presentation', () => {
     expect(state.requests.filter(r => r.startsWith('POST'))).toEqual([]);
   });
 
-  test('actual ImageModal uses canonical endpoint and presents HTTP 202 separately', async ({ page }) => {
-    await fixture(page);
+  test('actual ImageModal handles processing and refreshes images and stats on successful solve', async ({ page }) => {
+    const state = await fixture(page);
     const posts: string[] = [];
     let processing = true;
     await page.route('**/api/**/plate-solve', async route => {
       posts.push(new URL(route.request().url()).pathname);
-      await route.fulfill(processing ? { status: 202, json: { status: 'processing', message: 'Still processing. Check status later.', jobId: 14, submissionId: '16141301' } } : { status: 200, json: { ra: 0, dec: 0, pixscale: 1, radius: 2, orientation: 0 } });
+      if (processing) {
+        await route.fulfill({ status: 202, json: { status: 'processing', message: 'Still processing. Check status later.', jobId: 14, submissionId: '16141301' } });
+      } else {
+        state.setJobs(state.jobs().map(job => job.id === 14 ? { ...job, status: 'success' } : job));
+        await route.fulfill({ status: 200, json: {
+          message: 'Image plate solving completed successfully',
+          result: {
+            calibration: { ra: 0, dec: 0, pixscale: 1, radius: 2, orientation: 0 },
+            annotations: [],
+            machineTags: [],
+          },
+        } });
+      }
     });
     await page.goto('/');
     await page.evaluate(async () => {
@@ -252,14 +264,23 @@ test.describe('Astrometry polling presentation', () => {
       const root = document.createElement('div'); document.body.append(root);
       createRoot(root).render(React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(ImageModal, { image: { id: 1, title: 'Waiting nebula', plateSolved: false }, onClose: () => {} })));
     });
+    const reads = (path: string) => state.requests.filter(request => request === `GET ${path}`).length;
+    const initialImages = reads('/api/images');
+    const initialStats = reads('/api/stats');
     await page.getByRole('button', { name: 'Solve', exact: true }).click();
     await expect(page.getByText('Still processing. Check status later.', { exact: true })).toBeVisible();
+    await expect.poll(() => reads('/api/images')).toBeGreaterThan(initialImages);
+    await expect.poll(() => reads('/api/stats')).toBeGreaterThan(initialStats);
     expect(posts).toEqual(['/api/plate-solving/images/1/plate-solve']);
     await expect(page.getByText('Click "Solve" to submit this image to Astrometry.net for plate solving.', { exact: true })).toHaveCount(0);
     await page.screenshot({ path: `${screenshotDir}/image-modal-still-processing-component-fixture.png`, fullPage: true });
     processing = false;
+    const processingImages = reads('/api/images');
+    const processingStats = reads('/api/stats');
     await page.getByRole('button', { name: 'Solve', exact: true }).click();
     await expect(page.getByText('Still processing. Check status later.', { exact: true })).toHaveCount(0);
+    await expect.poll(() => reads('/api/images')).toBeGreaterThan(processingImages);
+    await expect.poll(() => reads('/api/stats')).toBeGreaterThan(processingStats);
     expect(posts).toEqual(['/api/plate-solving/images/1/plate-solve', '/api/plate-solving/images/1/plate-solve']);
   });
 });
