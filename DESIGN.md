@@ -88,32 +88,14 @@ components: {}
 ## Overview
 
 Sidereal is a system of record for astrophotographers. Its screens hold raw
-frames, calibration masters, finished images, and dense technical metadata. The
-interface is built for three things:
+frames, calibration masters, finished images, and dense technical metadata.
 
-- **Dark adaptation.** People use Sidereal at night, near a telescope. Surfaces
-  are near-black with a faint violet tint, and the only glows are the ones listed
-  under [Elevation & Depth](#elevation--depth).
-- **Instrument-grade precision.** Thin borders, tabular numbers, and a monospace
-  face for every value a person has to read exactly.
-- **Photographic depth.** Images are the content. Controls and panels stay
-  visually secondary to them.
-
-### How to use this file
+## How to use this file
 
 - **This file is the source of truth** for every token value and usage rule in
   the v2 web interface (`web/`). Code and the Penpot library follow it.
 - **The front matter holds the values.** It follows the
-  [DESIGN.md specification](https://github.com/google-labs-code/design.md):
-  - Colors, spacing, and radii use the specification's `colors`, `spacing`, and
-    `rounded` keys.
-  - Component tokens use the specification's `components` key.
-  - The specification's `typography` key holds complete type styles, which are
-    semantic tokens here, so it stays empty until a component needs one.
-  - Everything else lives under `x-sidereal`, a Sidereal extension: individual
-    type values (family, size, weight, line height, letter spacing), opacity,
-    blur, border width, sizes, and semantic tokens. Only Sidereal's token
-    generator reads `x-sidereal`; other DESIGN.md tools may ignore it.
+  [DESIGN.md specification](https://github.com/google-labs-code/design.md)
 - **A token's CSS name is its key with the `sr` prefix:** `obsidian-950`
   becomes `--sr-obsidian-950`, and `spacing-8` becomes `--sr-spacing-8`.
 - **To change a token,** edit this file first. In the same pull request,
@@ -125,9 +107,7 @@ interface is built for three things:
   tokens and, as they are designed, the components. Agents reach it through the
   Penpot plugin, which a person connects to the file.
 
-Tokens come in three tiers: primitives, semantic tokens, and component tokens.
-Only primitives exist today. [How tokens grow](#how-tokens-grow) explains each
-tier and when to add to it.
+Tokens come in three tiers: **primitives, semantic tokens, and component tokens**.
 
 ## Colors
 
