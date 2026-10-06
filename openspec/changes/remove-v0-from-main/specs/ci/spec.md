@@ -219,33 +219,59 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 #### Scenario: No workflow uses a secret
 
-- **WHEN** a reviewer runs `grep -n 'secrets\.' .github/workflows/ci.yml .github/workflows/codeql.yml .github/workflows/v0-security-scan.yml`
+- **WHEN** a reviewer runs `grep -n 'secrets' .github/workflows/ci.yml .github/workflows/codeql.yml .github/workflows/v0-security-scan.yml`
 - **THEN** the search finds no match
 
 ### Requirement: A weekly scan checks v0.x for known vulnerabilities
 
-Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` SHALL scan the `v0.x` branch's dependencies for known vulnerabilities every week, and SHALL also run on manual dispatch. It SHALL scan the files on `v0.x`, not the files on `main`. It SHALL upload its results to code scanning under the ref `refs/heads/v0.x`. Every action it uses from outside GitHub's `actions/` and `github/` organisations SHALL be pinned to a full 40-character commit SHA.
+Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` fills that gap for the `v0.x` branch's dependency manifests, such as its npm lockfile. It does not scan container images. `v0.x` scans its image on every push and pull request.
+
+The workflow SHALL meet these rules:
+
+- It runs once a week, on Monday, and on manual dispatch.
+- It checks out the `v0.x` branch into the folder `v0x`, and scans that folder's files only.
+- It uploads its results to code scanning with the ref `refs/heads/v0.x`, the commit SHA it checked out, and the category `v0.x-dependencies`.
+- After the upload, it fails the run when it finds a vulnerability rated high or critical. GitHub then reports the failed run to the maintainer.
+- Every action it uses from outside GitHub's `actions/` and `github/` organisations is pinned to a full 40-character commit SHA.
 
 The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
 
-#### Scenario: The scan runs every week
+#### Scenario: The scan runs every Monday
 
 - **WHEN** a reviewer runs `yq '.on | keys' .github/workflows/v0-security-scan.yml`
-- **THEN** the output lists `schedule` and `workflow_dispatch`
-- **AND** `yq '.on.schedule | length' .github/workflows/v0-security-scan.yml` prints `1`
+- **THEN** the output lists exactly `schedule` and `workflow_dispatch`
+- **AND** `yq '.on.schedule[].cron' .github/workflows/v0-security-scan.yml` prints exactly one line, with five fields, whose fifth field is `1`
 
-#### Scenario: The scan reads the v0.x branch
+#### Scenario: The scan checks out v0.x into its own folder
 
-- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "actions/checkout*") | .with.ref' .github/workflows/v0-security-scan.yml`
-- **THEN** the output is exactly one line: `v0.x`
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "actions/checkout*") | .with | [.ref, .path]' .github/workflows/v0-security-scan.yml`
+- **THEN** the output lists exactly `v0.x` and `v0x`
+
+#### Scenario: Every scan step reads the v0.x folder
+
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "aquasecurity/trivy-action*") | .with | [."scan-type", ."scan-ref"]' .github/workflows/v0-security-scan.yml`
+- **THEN** every step in the output lists `fs` and `v0x`
+
+#### Scenario: The upload names v0.x and the commit it scanned
+
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "github/codeql-action/upload-sarif*") | .with' .github/workflows/v0-security-scan.yml`
+- **THEN** the output sets `ref` to `refs/heads/v0.x` and `category` to `v0.x-dependencies`
+- **AND** it sets `sha` to the `commit` output of the checkout step
+
+#### Scenario: A high or critical finding fails the run
+
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.with."exit-code" == "1") | .with.severity' .github/workflows/v0-security-scan.yml`
+- **THEN** the output is exactly one line: `HIGH,CRITICAL`
+- **AND** that step comes after the upload step in the job
 
 #### Scenario: Third-party actions are pinned
 
 - **WHEN** a reviewer lists every `uses:` value in `v0-security-scan.yml` that does not start with `actions/` or `github/`
 - **THEN** every value ends with `@` followed by 40 hexadecimal characters
 
-#### Scenario: A scan's results appear under v0.x
+#### Scenario: A manual run uploads results for the current v0.x commit
 
 - **WHEN** the maintainer runs `v0-security-scan.yml` by hand on `main`, and the run finishes
-- **AND** runs `gh api 'repos/sidereal-io/sidereal/code-scanning/analyses?ref=refs/heads/v0.x' --jq '.[0].created_at'`
-- **THEN** the printed time is later than the moment the run started
+- **AND** runs `gh api 'repos/sidereal-io/sidereal/code-scanning/analyses?ref=refs/heads/v0.x' --jq '[.[] | select(.category == "v0.x-dependencies")][0] | .commit_sha, .created_at'`
+- **THEN** the first printed line equals the output of `git rev-parse origin/v0.x` after `git fetch origin v0.x`
+- **AND** the second printed line is a time later than the moment the run started

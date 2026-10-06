@@ -1,6 +1,6 @@
 ## Why
 
-`main` holds two stacks: the Rust and React rewrite, and a copy of the v0.10.x TypeScript app. The running v0 line already lives on the `v0.x` branch. Its copy on `main` adds about 265 files, six workflows, and extra Dependabot entries that new work never touches. Removing it makes `main` the one place where development happens, and lets us drop "v2" as the name of `main`'s stack.
+`main` holds two stacks: the Rust and React rewrite, and a copy of the v0.10.x TypeScript app. The running v0 line already lives on the `v0.x` branch. Its copy on `main` adds about 265 files, six workflows, and extra Dependabot entries that new work never touches. Removing it makes `main` the one place where new development happens, and lets us drop "v2" as the name of `main`'s stack.
 
 ## What Changes
 
@@ -16,7 +16,7 @@
 - Point CodeQL at what `main` holds: Rust and TypeScript. Drop its `v0.x` branch filter, because `v0.x` runs CodeQL from its own `ci.yml`.
 - Keep `prune-ghcr.yml` on `main`, because GitHub runs scheduled workflows from the default branch only. Stop it protecting the `:main` image tag, so the stale image is pruned if nobody deletes it first.
 - Keep the v0 Dependabot entries for npm, Docker, and GitHub Actions in `main`'s config, and aim them at `v0.x` with `target-branch`. GitHub reads Dependabot's config from the default branch only. These entries cover version updates only.
-- Add a weekly workflow on `main` that scans `v0.x`'s dependencies for known vulnerabilities. Dependabot alerts and security updates read the default branch only, so without this scan nothing would warn about a new advisory on `v0.x`.
+- Add a weekly workflow on `main` that scans `v0.x`'s dependency manifests for known vulnerabilities. Dependabot alerts and security updates read the default branch only, so without this scan nothing would warn about a new advisory on `v0.x`. The run fails on a high or critical finding, so GitHub tells the maintainer.
 - Grant each workflow this change touches only the token access it needs.
 
 **Container images**
