@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,11 @@ import {
 import { Header } from "@/components/header";
 import type { AstroImage, PlateSolvingJob } from "@shared/schema";
 
+// Astrometry identifiers are positive safe integers, including decimal strings.
+function validRemoteId(value: string | null): boolean {
+  return value !== null && /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) > 0;
+}
+
 interface PlateSolvingStats {
   totalJobs: number;
   pendingJobs: number;
@@ -37,6 +42,33 @@ export default function PlateSolvingPage() {
   const [showOnlyUnsolved, setShowOnlyUnsolved] = useState(true);
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
   const queryClient = useQueryClient();
+  const checkingIds = useRef(new Set<number>());
+  const [checking, setChecking] = useState<Set<number>>(new Set());
+  const [checkErrors, setCheckErrors] = useState<Set<number>>(new Set());
+  const previousStatuses = useRef(new Map<number, string>());
+
+  const refreshResults = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/images"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+  };
+
+  const checkStatus = async (jobId: number) => {
+    if (checkingIds.current.has(jobId)) return;
+    checkingIds.current.add(jobId);
+    setChecking(new Set(checkingIds.current));
+    setCheckErrors(errors => { const next = new Set(errors); next.delete(jobId); return next; });
+    try {
+      const response = await fetch(`/api/plate-solving/update/${jobId}`, { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error("Status check failed");
+      queryClient.invalidateQueries({ queryKey: ["/api/plate-solving/jobs"] });
+      refreshResults();
+    } catch {
+      setCheckErrors(errors => new Set(errors).add(jobId));
+    } finally {
+      checkingIds.current.delete(jobId);
+      setChecking(new Set(checkingIds.current));
+    }
+  };
 
   // Fetch images
   const { data: images = [], isLoading: imagesLoading } = useQuery<AstroImage[]>({
@@ -48,7 +80,21 @@ export default function PlateSolvingPage() {
   const { data: jobs = [], isLoading: jobsLoading } = useQuery<PlateSolvingJob[]>({
     queryKey: ["/api/plate-solving/jobs"],
     enabled: true,
+    refetchInterval: query => query.state.data?.some(job => job.status === "pending" || job.status === "processing") ? 30_000 : false,
+    refetchOnWindowFocus: "always",
   });
+
+  useEffect(() => {
+    const completed = jobs.some(job => {
+      const prior = previousStatuses.current.get(job.id);
+      return (prior === "pending" || prior === "processing") && (job.status === "success" || job.status === "failed");
+    });
+    previousStatuses.current = new Map(jobs.map(job => [job.id, job.status]));
+    if (completed) {
+      queryClient.invalidateQueries({ queryKey: ["/api/images"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    }
+  }, [jobs, queryClient]);
 
   // Plate solving mutation
   const plateSolveMutation = useMutation({
@@ -380,7 +426,7 @@ export default function PlateSolvingPage() {
                           {job.status === "success" && <CheckCircle className="mr-1 h-3 w-3" />}
                           {job.status === "failed" && <XCircle className="mr-1 h-3 w-3" />}
                           {job.status === "pending" && <Clock className="mr-1 h-3 w-3" />}
-                          {job.status}
+                          {job.status === "processing" ? (validRemoteId(job.astrometryJobId) ? "Solving" : "Waiting for Astrometry.net") : job.status === "success" ? "Solved" : job.status === "failed" ? "Failed" : "Pending"}
                         </Badge>
                       )}
                     </div>
@@ -392,7 +438,7 @@ export default function PlateSolvingPage() {
                   </div>
 
                   {/* Result details toggle */}
-                  {job && (job.status === "success" || job.status === "failed") && (
+                  {job && (job.status === "processing" || job.status === "success" || job.status === "failed") && (
                     <div className="border-t border-border">
                       <button
                         onClick={(e) => {
@@ -404,6 +450,14 @@ export default function PlateSolvingPage() {
                         {expandedJobId === job.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                         Details
                       </button>
+                      {(job.status === "processing" || job.status === "failed") && validRemoteId(job.astrometrySubmissionId) && (
+                        <div className="px-2 pb-2" onClick={e => e.stopPropagation()}>
+                          <Button variant="outline" size="sm" className="w-full text-xs" disabled={checking.has(job.id)} onClick={() => checkStatus(job.id)}>
+                            {checking.has(job.id) ? "Checking…" : "Check status"}
+                          </Button>
+                          {checkErrors.has(job.id) && <p role="alert" className="mt-1 text-xs text-destructive">Couldn’t check status. Try again.</p>}
+                        </div>
+                      )}
                       {expandedJobId === job.id && (
                         <div className="px-2 pb-2 text-xs space-y-1" onClick={(e) => e.stopPropagation()}>
                           {job.status === "failed" && (
@@ -435,13 +489,13 @@ export default function PlateSolvingPage() {
                               Submitted: {new Date(job.submittedAt).toLocaleString()}
                             </div>
                           )}
-                          {job.completedAt && (
+                          {(job.status === "success" || job.status === "failed") && job.completedAt && (
                             <div className="text-muted-foreground">
                               Completed: {new Date(job.completedAt).toLocaleString()}
                             </div>
                           )}
                           <div className="flex gap-2 pt-1">
-                            {job.astrometrySubmissionId && (
+                            {validRemoteId(job.astrometrySubmissionId) && (
                               <a
                                 href={`https://nova.astrometry.net/status/${job.astrometrySubmissionId}`}
                                 target="_blank"
@@ -451,7 +505,7 @@ export default function PlateSolvingPage() {
                                 Submission
                               </a>
                             )}
-                            {job.astrometryJobId && (
+                            {validRemoteId(job.astrometryJobId) && (
                               <a
                                 href={`https://nova.astrometry.net/annotated_full/${job.astrometryJobId}`}
                                 target="_blank"

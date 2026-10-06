@@ -25,6 +25,17 @@ export class PlateSolvingPage extends BasePage {
     this.emptyState = page.getByText(/no images found/i);
   }
 
+  record(title: string) {
+    return this.imageGrid.locator('.cursor-pointer').filter({ has: this.page.getByRole('heading', { name: title, exact: true }) });
+  }
+
+  stage(title: string, stage: string) { return this.record(title).getByText(stage, { exact: true }); }
+  details(title: string) { return this.record(title).getByRole('button', { name: 'Details', exact: true }); }
+  submission(title: string) { return this.record(title).getByRole('link', { name: 'Submission', exact: true }); }
+  completion(title: string) { return this.record(title).getByText(/^Completed:/); }
+  checkStatus(title: string) { return this.record(title).getByRole('button', { name: 'Check status', exact: true }); }
+  checking(title: string) { return this.record(title).getByRole('button', { name: 'Checking…', exact: true }); }
+
   async goto() {
     await super.goto('/plate-solving');
   }
