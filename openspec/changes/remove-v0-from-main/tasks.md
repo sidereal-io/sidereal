@@ -1,6 +1,6 @@
 ## 1. Archive the unreleased v0 work
 
-- [ ] 1.1 Create the annotated tag `archive/unreleased-v0-main` on `git merge-base HEAD origin/main`, with the message from design D1. The message says the work was never released, that it is not the `v0.x` line, and that `v0.x` holds released v0.10.x. Ask the maintainer before pushing it, then push it. Verify that `git cat-file -t archive/unreleased-v0-main` prints `tag`, and that `git ls-remote --tags origin archive/unreleased-v0-main` prints one line.
+- [x] 1.1 Create the annotated tag `archive/unreleased-v0-main` on `git merge-base HEAD origin/main`, with the message from design D1. The message says the work was never released, that it is not the `v0.x` line, and that `v0.x` holds released v0.10.x. Ask the maintainer before pushing it, then push it. Verify that `git cat-file -t archive/unreleased-v0-main` prints `tag`, and that `git ls-remote --tags origin archive/unreleased-v0-main` prints one line.
 
 ## 2. Remove v0 from main
 
