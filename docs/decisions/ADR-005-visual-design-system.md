@@ -26,12 +26,13 @@ usage rule.
 - **Look:** the Obsidian Deep Space direction, with violet-tinted near-black
   surfaces, Inter for the interface, and Atkinson Hyperlegible Mono for data.
 - **Rules:** violet only for the primary action, selection, focus, and live
-  work; one glow on screen at a time; status colors only in badges; depth from
+  work; one glow on screen at a time; a status shown only inside a badge; depth from
   surface steps and 1px borders, not shadows; square image corners; text
   contrast of at least 4.5:1; dark only.
 - **Format:** `DESIGN.md` follows the open DESIGN.md specification (YAML front
-  matter for values, prose for rules), with an `x-sidereal` extension for values
-  the specification has no key for.
+  matter for values, prose for rules). Values outside the specification's keys,
+  such as individual type values, opacity, and blur, go in an `x-sidereal`
+  extension that only Sidereal's token generator reads.
 - **Tokens in three tiers:** primitives, semantic, and component. The design
   starts with primitives only. A semantic or component token is added by the
   first component that needs it, in the same pull request. A primitive exists
