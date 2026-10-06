@@ -195,10 +195,11 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    run a different `openspec` from the one that generated its skills. The project
    accepts this gap and does not plan to close it — partial.
 4. **Work & check** — `just dev` runs the v2 server and web shell together, and
-   `just check` gates both the Rust workspace and `web/` with pinned tools. The web
-   shell has no shared design system to build screens on, and no browser smoke
+   `just check` gates both the Rust workspace and `web/` with pinned tools.
+   `DESIGN.md` defines the v2 design system, but the web shell doesn't use its
+   tokens yet, has no components to build screens from, and has no browser smoke
    test — partial ([#302](https://github.com/sidereal-io/sidereal/issues/302),
-   [#338](https://github.com/sidereal-io/sidereal/issues/338),
+   [#337](https://github.com/sidereal-io/sidereal/issues/337),
    [#303](https://github.com/sidereal-io/sidereal/issues/303)).
 5. **Open PR** — CI checks the v2 server and web code inside the pinned shell, but
    runs no end-to-end browser check — partial
