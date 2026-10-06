@@ -74,8 +74,13 @@ x-sidereal:
     blur-10: 10px
     blur-12: 12px
     blur-14: 14px
+  border-width:
+    border-width-1: 1px
+  size:
+    size-32: 32px
+    size-1280: 1280px
   semantic: {}
-  component: {}
+components: {}
 ---
 
 # Sidereal design system
@@ -83,24 +88,14 @@ x-sidereal:
 ## Overview
 
 Sidereal is a system of record for astrophotographers. Its screens hold raw
-frames, calibration masters, finished images, and dense technical metadata. The
-interface is built for three things:
+frames, calibration masters, finished images, and dense technical metadata.
 
-- **Dark adaptation.** People use Sidereal at night, near a telescope. Surfaces
-  are near-black with a faint violet tint, and nothing glows without a reason.
-- **Instrument-grade precision.** Thin 1px borders, tabular numbers, and a
-  monospace face for every value a person has to read exactly.
-- **Photographic depth.** Images are the content. Interface chrome stays quiet
-  around them.
-
-### How to use this file
+## How to use this file
 
 - **This file is the source of truth** for every token value and usage rule in
   the v2 web interface (`web/`). Code and the Penpot library follow it.
 - **The front matter holds the values.** It follows the
-  [DESIGN.md specification](https://github.com/google-labs-code/design.md).
-  Values the specification has no key for (type, opacity, blur, and later
-  semantic and component tokens) live under `x-sidereal`.
+  [DESIGN.md specification](https://github.com/google-labs-code/design.md)
 - **A token's CSS name is its key with the `sr` prefix:** `obsidian-950`
   becomes `--sr-obsidian-950`, and `spacing-8` becomes `--sr-spacing-8`.
 - **To change a token,** edit this file first. In the same pull request,
@@ -112,15 +107,7 @@ interface is built for three things:
   tokens and, as they are designed, the components. Agents reach it through the
   Penpot plugin, which a person connects to the file.
 
-### Token tiers
-
-| Tier | What it is | Name pattern | Example |
-|---|---|---|---|
-| 1 · Primitive | A raw value with no meaning | `{category}-{scale}` | `violet-600`, `spacing-8` |
-| 2 · Semantic | A role or purpose | `{category}-{context}-{modifier}` | `color-action-primary` |
-| 3 · Component | One part of one component | `{component}-{element}-{state}` | `button-primary-hover` |
-
-Only Tier 1 exists today. See [How tokens grow](#how-tokens-grow).
+Tokens come in three tiers: **primitives, semantic tokens, and component tokens**.
 
 ## Colors
 
@@ -134,7 +121,7 @@ needs it.
 | The page background | `obsidian-950` | |
 | A raised panel, card, or table row | `obsidian-900` | |
 | A popover, dialog, or menu | `obsidian-850` | Edge it with `obsidian-700`. |
-| A hairline border | `obsidian-800` | Always 1px. |
+| A hairline border | `obsidian-800` | Always `border-width-1`. |
 | Body text | `obsidian-100` | A warm off-white, easier on the eye than pure white. |
 | Secondary text | `obsidian-400` | |
 | Muted text that must still be read: placeholders, metadata keys, timestamps | `obsidian-500` | |
@@ -143,7 +130,7 @@ needs it.
 | A focus ring, selection outline, or live-work glow | `violet-500` | No text on top of it. |
 | Telemetry values: temperature, connection, focal length | `cyan-500` | Data only, never an action. |
 | Exposure and calibration notices | `amber-500` | Data only, never an action. |
-| Status: success, warning, error, info | `emerald-400`, `amber-500`, `red-500`, `cyan-500` | In badges only. |
+| Status: success, warning, error, info | `emerald-400`, `amber-500`, `red-500`, `cyan-500` | Show a status only inside a badge. Outside badges, `amber-500` and `cyan-500` carry only the data uses above. |
 | A ghost button's hover tint | `white` at `opacity-4` | |
 
 ### Contrast
@@ -165,10 +152,12 @@ why filled actions use `violet-600`.
 
 ## Typography
 
-- **Inter** is the interface face: navigation, headings, body copy, dialogs.
-- **Atkinson Hyperlegible Mono** is the data face: FITS header keys and values,
-  coordinates, exposure values, filenames, hashes, timestamps, and logs. It keeps
-  lookalike characters distinct (`0` and `O`, `1`, `l`, and `I`, `5` and `S`).
+- **Inter** (`font-family-sans`) is the interface face: navigation, headings,
+  body copy, dialogs.
+- **Atkinson Hyperlegible Mono** (`font-family-mono`) is the data face: FITS
+  header keys and values, coordinates, exposure values, filenames, hashes,
+  timestamps, and logs. It keeps lookalike characters distinct (`0` and `O`,
+  `1`, `l`, and `I`, `5` and `S`).
 - **Both fonts are self-hosted** with the web shell. Sidereal often runs on a
   home network with no internet access, so it never loads fonts from a font
   service.
@@ -197,19 +186,23 @@ Atkinson Hyperlegible Mono before the first mono style becomes a token.
 
 ### Two layout families, one token set
 
-- **Gallery family:** if a screen's main content is pixels, such as Home, Albums,
-  the asset viewer, the sky map, or first-run setup. Images run edge to edge,
-  chrome is minimal, and controls float over the canvas.
-- **Admin family:** if a screen's main content is text, tables, or forms, such as
-  Pipeline, Targets, Equipment, Locations, or Settings. A fixed sidebar, a
-  content column with a maximum width, and dense tables.
+Every screen uses one of two layout families. Choose by the screen's main
+content:
+
+- **Gallery family:** use it when images are the main content, as on Home,
+  Albums, the asset viewer, and the sky map. First-run setup also uses it. Images
+  run edge to edge, panels are kept to a minimum, and controls float over the
+  images.
+- **Admin family:** use it when text, tables, or forms are the main content, as on
+  Pipeline, Targets, Equipment, Locations, and Settings. It has a fixed sidebar, a
+  content column no wider than `size-1280`, and dense tables.
 
 ### Grid and spacing
 
 - All spacing sits on a 4px grid.
 - Desktop screens use a 12-column grid with `spacing-32` margins and
   `spacing-24` gutters.
-- Tables use compact 32px rows.
+- Table rows are `size-32` tall, for dense data.
 
 | Spacing | Use |
 |---|---|
@@ -222,14 +215,19 @@ Atkinson Hyperlegible Mono before the first mono style becomes a token.
 
 ## Elevation & Depth
 
-Shadows don't work on near-black surfaces, so Sidereal doesn't use them.
+Sidereal shows depth with surface colors and borders. A dark shadow barely shows
+on near-black surfaces, so don't add shadows.
 
 - **Resting depth comes from layering:** `obsidian-950` for the page,
   `obsidian-900` for panels, and `obsidian-850` for popovers. Each layer is edged
-  with a 1px border.
-- **A glow marks something selected, active, or live.** A glow is a color at an
-  opacity with a blur, with no offset and no spread.
-- **Only one glow is on screen at a time.**
+  with a `border-width-1` border.
+- **A glow marks something selected, active, live, or hovered.** A glow is a
+  color at an opacity with a blur, with no offset and no spread. Use only the
+  glows in the table below.
+- **Only one glow is on screen at a time.** A hover glow shows only while the
+  pointer is on the control, and while it shows, it replaces any other glow. When
+  nothing is hovered, a selected item's glow takes priority over an active
+  instrument's glow.
 
 | Glow | Color | Opacity | Blur |
 |---|---|---|---|
@@ -245,7 +243,7 @@ Shadows don't work on near-black surfaces, so Sidereal doesn't use them.
 - **Controls** (buttons, inputs, badges, tags) use `radius-4`.
 - **Containers** (panels, popovers, floating control bars) use `radius-8`.
 - **Pills and dots** (coordinate chips, status dots) use `radius-full`.
-- **Borders are always 1px.**
+- **Borders always use `border-width-1`.**
 
 ## Components
 
@@ -258,10 +256,12 @@ component needs a role this file doesn't name, it adds a semantic token; see
 
 - **Do** use `violet` only for the primary action, the current selection, focus,
   and live work.
-- **Do** keep status colors inside badges.
+- **Do** show a status (success, warning, error, info) only inside a badge.
+  Outside badges, `amber-500` and `cyan-500` carry only their data uses.
 - **Do** show depth with surface steps and borders.
 - **Do** put every value a person must read exactly in the mono face.
-- **Don't** use a raw value in a component when a token exists.
+- **Don't** use a raw value in a component. If a component needs a value that
+  has no token, name its use in this file and add the token first.
 - **Don't** add a shadow, or a second glow.
 - **Don't** round image corners.
 - **Don't** use `obsidian-600` for text anyone needs to read.
@@ -269,29 +269,89 @@ component needs a role this file doesn't name, it adds a semantic token; see
 
 ## How tokens grow
 
-- **Tier 1 · Primitive.** A primitive exists only if this file names a concrete
-  use for it. To add one, give it a use in the relevant section and list it in
-  the front matter.
-- **Tier 2 · Semantic.** Created by the first component that needs the role, in
-  the same pull request. Follow the guidance tables above. A semantic token
-  points to a primitive, for example `color-action-primary` → `{colors.violet-600}`.
-  Once it exists, components use it instead of the primitive.
-- **Tier 3 · Component.** Only when a component must differ from every semantic
-  token. The pull request says why in one line. A component token points to a
-  semantic or primitive token, never to a raw value.
-- **Every token change** updates this file, `tokens.css`, and the design-token
-  JSON in the same pull request, then the JSON is imported into Penpot.
+Tokens come in three tiers. Each tier builds on the one below it. Only Tier 1
+exists today; Tiers 2 and 3 grow one token at a time, when a component first
+needs them.
+
+| Tier | Holds | Name structure | Examples |
+|---|---|---|---|
+| 1 · Primitive (global) | Raw values with no context | `{category}-{scale}` or `{category}-{weight}` | `violet-600`, `spacing-8`, `font-weight-500` |
+| 2 · Semantic (alias) | A role or function | `{category}-{context}-{modifier}` | `color-action-primary`, `color-text-subtle` |
+| 3 · Component | One element of one component | `{component}-{element}-{state}` | `button-primary-hover` |
+
+### Tier 1 · Primitives (global)
+
+A primitive is a raw value, such as a color, a size, or a weight. It says what a
+value **is**, never what it is **for**: `violet-600` is a shade of violet, not
+"the button color".
+
+- **Naming:** colors use a 50–950 scale from light to dark (`obsidian-950` is
+  the darkest). Sizes are named by their value in pixels (`spacing-8` is 8px,
+  `font-size-12` is 12px). Where a number doesn't fit, the step is a word
+  (`radius-full`, `font-family-sans`). A negative value starts with `n`
+  (`letter-spacing-n015` is −0.015em).
+- **Value:** always a raw value, such as `#7C3AED` or `8px`.
+- **When to add one:** only when this file names a concrete use for it. Values
+  with no use yet wait in [Candidates](#candidates).
+- **Who uses it:** semantic tokens. A component may use a primitive directly
+  only until a semantic token for that role exists.
+- **Where it lives:** the `colors`, `spacing`, and `rounded` keys, and under
+  `x-sidereal` for individual type values, opacity, blur, border width, and
+  sizes.
+
+### Tier 2 · Semantic (alias)
+
+A semantic token names a role or function, such as "the color of a primary
+action" or "subtle text". It is an alias: it points to a primitive, so changing
+what a role looks like means changing one reference.
+
+- **Naming:** the category, then the context, then the modifier:
+  `color-action-primary` is a color, for an action, of the primary kind.
+- **Value:** always a reference to a primitive, never a raw value. For example,
+  `color-action-primary` → `{colors.violet-600}`. A reference into `x-sidereal`
+  works only through Sidereal's token generator.
+- **When to add one:** when a component first needs the role, in the same pull
+  request. Start from the usage tables in this file: each row there is a
+  semantic token waiting to be created.
+- **Who uses it:** components. Once a semantic token exists, components use it
+  instead of the primitive it points to.
+- **Where it lives:** `x-sidereal.semantic`.
+
+### Tier 3 · Component
+
+A component token is tied to one element of one component. It exists only when
+no semantic token fits, for example when a button's hover state needs a value
+that no role describes.
+
+- **Naming:** the component, then the element, then the state:
+  `button-primary-hover` is the button's primary variant, on hover.
+- **Value:** each visual property is a reference to a semantic token or a
+  primitive, never a raw value.
+- **When to add one:** only when a component must look different from every
+  semantic token. The pull request says why in one line.
+- **Who uses it:** only the component it is named for.
+- **Where it lives:** the specification's `components` key. The token name is
+  the key, and each visual property sits beneath it, the way the specification
+  structures components. For example, `button-primary-hover` with the property
+  `backgroundColor: "{colors.violet-500}"`. Its CSS name adds the property:
+  `--sr-button-primary-hover-background-color`.
+
+### Changing any token
+
+Edit this file first. In the same pull request, regenerate `tokens.css` and the
+design-token JSON. After merge, import the JSON into Penpot.
 
 ## Candidates
 
-These values appear in the source design but have no use yet. Each becomes a
-primitive when a component gives it one.
+These values come from the Obsidian Deep Space design this system started from.
+None has an approved use in this file yet. Each becomes a primitive when a
+component gives it one.
 
 | Candidate | Value | Source use | Note |
 |---|---|---|---|
 | Frame type: light | `#38BDF8` | LIGHT frame badge | |
 | Frame type: dark | `#818CF8` | DARK frame badge | |
-| Frame type: flat | `#F59E0B` | FLAT frame badge | Same as `amber-500`, which already means "warning". Choose a distinct color. |
+| Frame type: flat | `#F59E0B` | FLAT frame badge | Same value as `amber-500`, which already means "warning". A flat-frame color needs its own value. |
 | Frame type: bias | `#A78BFA` | BIAS frame badge | |
 | Frame type: final | `#EC4899` | FINAL or master badge | |
 | `font-size-24`, `line-height-32` | 24px / 32px | Mobile headline | Mobile layouts are out of scope. |
