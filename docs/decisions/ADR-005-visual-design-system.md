@@ -1,7 +1,7 @@
 ---
 id: adrs-adr005
 date: 2026-10-05
-status: proposed
+status: accepted
 title: 'ADR005: v2 Visual Design System'
 description: Architecture Decision Record (ADR) for how v2 screens look and where that is defined — a DESIGN.md source of truth with tiered tokens, mirrored into code and a Penpot design library.
 ---

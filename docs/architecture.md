@@ -144,8 +144,7 @@ facet query rather than bespoke schema. → [ADR-008](./decisions/ADR-008-facet-
 ## Architecture decisions
 
 Each decision has an ADR in [`docs/decisions/`](./decisions/) with the full context, options, and
-rationale. All are **Accepted** except ADR-005 (visual design system), which is Proposed pending review,
-and ADR-012 (scripting engine), which stays Proposed pending its spike.
+rationale. All are **Accepted** except ADR-012 (scripting engine), which stays Proposed pending its spike.
 
 | ADR | Decision | Status |
 |---|---|---|
@@ -153,7 +152,7 @@ and ADR-012 (scripting engine), which stays Proposed pending its spike.
 | [002](./decisions/ADR-002-core-domain-pack-split.md) | Core / domain-pack seam | Accepted |
 | [003](./decisions/ADR-003-asset-identity-and-content-revisions.md) | Asset identity & content revisions | Accepted |
 | [004](./decisions/ADR-004-database-engine-and-schema.md) | Database engine & schema strategy | Accepted (PostgreSQL-only) |
-| [005](./decisions/ADR-005-visual-design-system.md) | v2 visual design system | **Proposed** — `DESIGN.md` as source of truth |
+| [005](./decisions/ADR-005-visual-design-system.md) | v2 visual design system | Accepted (`DESIGN.md` as source of truth) |
 | [006](./decisions/ADR-006-rule-engine-deferral.md) | Declarative processing & policy deferral | Accepted |
 | [007](./decisions/ADR-007-security-and-plugin-trust.md) | Security & plugin trust | Accepted |
 | [008](./decisions/ADR-008-facet-schema-and-write-authority.md) | Metadata envelope, facets & write authority | Accepted |
