@@ -58,6 +58,9 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ && \
     apk del .build-deps && \
     npm cache clean --force
 
+# Remove package-manager tooling after production dependencies are installed
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
 # Copy built application from builder stage (includes tools, config, and public assets)
 COPY --from=builder /build/dist ./dist
 

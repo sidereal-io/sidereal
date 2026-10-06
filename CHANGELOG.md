@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.10.4] - 2026-10-06
+## [0.10.5] - 2026-10-06
 
 ### Fixed
 - **Astrometry polling**: Null job placeholders and processing timestamps no longer produce false solve failures. Both polling paths validate remote IDs and calibration before completing jobs (#309).
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plate Solving page**: Added waiting/solving messages, processing details, compact per-record status checks, terminal-only completion dates, and 30-second active-job/focus refresh. The image modal uses the registered solve endpoint and handles HTTP 202.
 
 ### Security
+- **Docker runtime**: Remove npm and npx after production dependency installation to eliminate vulnerable bundled tooling. Node and Corepack remain available; `docker exec` commands using npm or npx now require a separate development container.
 - **shell-quote**: Override the development dependency to 1.11.0 to fix critical command injection via newline-bearing tokens after comments (CVE-2026-102422).
 
 ## [0.10.3] - 2026-09-25
