@@ -75,7 +75,7 @@ x-sidereal:
     blur-12: 12px
     blur-14: 14px
   semantic: {}
-  component: {}
+components: {}
 ---
 
 # Sidereal design system
@@ -100,7 +100,8 @@ interface is built for three things:
 - **The front matter holds the values.** It follows the
   [DESIGN.md specification](https://github.com/google-labs-code/design.md).
   Values the specification has no key for (type, opacity, blur, and later
-  semantic and component tokens) live under `x-sidereal`.
+  semantic tokens) live under `x-sidereal`. Component tokens go in the
+  specification's own `components` key.
 - **A token's CSS name is its key with the `sr` prefix:** `obsidian-950`
   becomes `--sr-obsidian-950`, and `spacing-8` becomes `--sr-spacing-8`.
 - **To change a token,** edit this file first. In the same pull request,
@@ -112,15 +113,9 @@ interface is built for three things:
   tokens and, as they are designed, the components. Agents reach it through the
   Penpot plugin, which a person connects to the file.
 
-### Token tiers
-
-| Tier | What it is | Name pattern | Example |
-|---|---|---|---|
-| 1 · Primitive | A raw value with no meaning | `{category}-{scale}` | `violet-600`, `spacing-8` |
-| 2 · Semantic | A role or purpose | `{category}-{context}-{modifier}` | `color-action-primary` |
-| 3 · Component | One part of one component | `{component}-{element}-{state}` | `button-primary-hover` |
-
-Only Tier 1 exists today. See [How tokens grow](#how-tokens-grow).
+Tokens come in three tiers: primitives, semantic tokens, and component tokens.
+Only primitives exist today. [How tokens grow](#how-tokens-grow) explains each
+tier and when to add to it.
 
 ## Colors
 
@@ -269,18 +264,70 @@ component needs a role this file doesn't name, it adds a semantic token; see
 
 ## How tokens grow
 
-- **Tier 1 · Primitive.** A primitive exists only if this file names a concrete
-  use for it. To add one, give it a use in the relevant section and list it in
-  the front matter.
-- **Tier 2 · Semantic.** Created by the first component that needs the role, in
-  the same pull request. Follow the guidance tables above. A semantic token
-  points to a primitive, for example `color-action-primary` → `{colors.violet-600}`.
-  Once it exists, components use it instead of the primitive.
-- **Tier 3 · Component.** Only when a component must differ from every semantic
-  token. The pull request says why in one line. A component token points to a
-  semantic or primitive token, never to a raw value.
-- **Every token change** updates this file, `tokens.css`, and the design-token
-  JSON in the same pull request, then the JSON is imported into Penpot.
+Tokens come in three tiers. Each tier builds on the one below it. Only Tier 1
+exists today; Tiers 2 and 3 grow one token at a time, when a component first
+needs them.
+
+| Tier | Holds | Name structure | Examples |
+|---|---|---|---|
+| 1 · Primitive (global) | Raw values with no context | `{category}-{scale}` or `{category}-{weight}` | `violet-600`, `spacing-8`, `font-weight-500` |
+| 2 · Semantic (alias) | A role or function | `{category}-{context}-{modifier}` | `color-action-primary`, `color-text-subtle` |
+| 3 · Component | One element of one component | `{component}-{element}-{state}` | `button-primary-hover` |
+
+### Tier 1 · Primitives (global)
+
+A primitive is a raw value, such as a color, a size, or a weight. It says what a
+value **is**, never what it is **for**: `violet-600` is a shade of violet, not
+"the button color".
+
+- **Naming:** colors use a 50–950 scale from light to dark (`obsidian-950` is
+  the darkest). Sizes are named by their value in pixels (`spacing-8` is 8px,
+  `font-size-12` is 12px). Where a number doesn't fit, the step is a word
+  (`radius-full`, `font-family-sans`). A negative value starts with `n`
+  (`letter-spacing-n015` is −0.015em).
+- **Value:** always a raw value, such as `#7C3AED` or `8px`.
+- **When to add one:** only when this file names a concrete use for it. Values
+  with no use yet wait in [Candidates](#candidates).
+- **Who uses it:** semantic tokens. A component may use a primitive directly
+  only until a semantic token for that role exists.
+- **Where it lives:** the `colors`, `spacing`, and `rounded` keys, and under
+  `x-sidereal` for type, opacity, and blur.
+
+### Tier 2 · Semantic (alias)
+
+A semantic token names a role or function, such as "the color of a primary
+action" or "subtle text". It is an alias: it points to a primitive, so changing
+what a role looks like means changing one reference.
+
+- **Naming:** the category, then the context, then the modifier:
+  `color-action-primary` is a color, for an action, of the primary kind.
+- **Value:** always a reference to a primitive, never a raw value. For example,
+  `color-action-primary` → `{colors.violet-600}`.
+- **When to add one:** when a component first needs the role, in the same pull
+  request. Start from the usage tables in this file: each row there is a
+  semantic token waiting to be created.
+- **Who uses it:** components. Once a semantic token exists, components use it
+  instead of the primitive it points to.
+- **Where it lives:** `x-sidereal.semantic`.
+
+### Tier 3 · Component
+
+A component token is tied to one element of one component. It exists only when
+no semantic token fits, for example when a button's hover state needs a value
+that no role describes.
+
+- **Naming:** the component, then the element, then the state:
+  `button-primary-hover` is the button's primary variant, on hover.
+- **Value:** a reference to a semantic token or a primitive, never a raw value.
+- **When to add one:** only when a component must look different from every
+  semantic token. The pull request says why in one line.
+- **Who uses it:** only the component it is named for.
+- **Where it lives:** the specification's `components` key.
+
+### Changing any token
+
+Edit this file first. In the same pull request, regenerate `tokens.css` and the
+design-token JSON. After merge, import the JSON into Penpot.
 
 ## Candidates
 
