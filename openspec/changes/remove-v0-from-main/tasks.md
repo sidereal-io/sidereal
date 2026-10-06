@@ -5,7 +5,7 @@
 ## 2. Remove v0 from main
 
 - [x] 2.1 Remove the v0 tree with `git rm -r`: `apps/`, `packages/`, `tools/`, `tests/`, `docker/`, `assets/`, the root `Dockerfile`, `docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.postgres.yml`, `package.json`, `package-lock.json`, `vite.config.ts`, `tailwind.config.ts`, `postcss.config.js`, `drizzle.config.ts`, `tsconfig.json`, `playwright.config.ts`, `components.json`, `test-config.js`, `.env.example`, `.env.worker.example`, `.dockerignore`, and `.trivyignore`. Keep `.nvmrc` (design D8). Verify that `git ls-files package.json package-lock.json apps packages tools tests docker assets` prints nothing.
-- [ ] 2.2 Remove the v0-only lines from `.gitignore`, such as SQLite database files and v0 build output. Keep the lines that `server/` and `web/` need. Verify that `git status --ignored --short server web` lists no tracked file as ignored.
+- [x] 2.2 Remove the v0-only lines from `.gitignore`, such as SQLite database files and v0 build output. Keep the lines that `server/` and `web/` need. Verify that `git status --ignored --short server web` lists no tracked file as ignored.
 - [ ] 2.3 Run `just check` inside the development shell. Verify that it exits with status 0, which shows that nothing in `server/` or `web/` depended on the removed files.
 
 ## 3. Workflows
