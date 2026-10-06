@@ -1,1 +1,0 @@
-ALTER TABLE `astrophotography_images` ADD `original_path` text;
