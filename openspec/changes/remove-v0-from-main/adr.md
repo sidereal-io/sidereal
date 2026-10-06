@@ -7,9 +7,7 @@
 
 ADR review completed for this change. It creates no new repository-level ADR.
 
-The design's decisions are repository maintenance that is cheap to reverse. Reverting the merge restores every removed file, and the archive tag changes nothing whether it is kept or deleted.
-
-The rule that v0 fixes land on `v0.x` only is the maintainer's working policy, not an architectural fork. The two lines share no code, so `main` cannot take a v0 fix anyway. A bug in both lines is fixed separately in each. The rule carries out ADR-010's decision that the old app goes to maintenance and retires at cutover.
+The design's decisions are repository maintenance that is cheap to reverse: reverting the merge restores every removed file. The rule that v0 fixes land on `v0.x` only is working policy, not an architectural fork, and it carries out ADR-010.
 
 ## In-Force ADRs Reviewed
 

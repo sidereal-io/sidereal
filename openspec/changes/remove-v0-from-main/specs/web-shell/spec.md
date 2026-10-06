@@ -2,15 +2,15 @@
 
 ### Requirement: The web shell installs and runs on its own
 
-**Reason**: Replaced by "The web shell is the only npm project in the repo". The root `package.json` and `package-lock.json` leave `main`, so the checks against them no longer apply.
+**Reason**: Replaced by "The web shell installs without a root npm project". The root `package.json` and `package-lock.json` leave `main`, so the checks against them no longer apply.
 
 **Migration**: None. The web shell installs and runs as before.
 
 ## ADDED Requirements
 
-### Requirement: The web shell is the only npm project in the repo
+### Requirement: The web shell installs without a root npm project
 
-The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run with no npm project at the repo root. The repo root SHALL have no `package.json` and no `package-lock.json`.
+The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run with no `package.json` or `package-lock.json` at the repo root. The repo root SHALL have neither file.
 
 #### Scenario: The web shell installs from a fresh clone
 

@@ -1,5 +1,75 @@
 ## Review Metadata
 
+- **Review round**: 3
+- **Prior round**: Round 2 returned REVISE, the second in a row. The maintainer chose to apply its fixes and run round 3.
+- **Reviewer context**: cross-model (OpenAI Codex CLI 0.159.3, default model, reasoning effort high), fresh context
+- **Tool restrictions**: read-only sandbox (`codex exec -s read-only`)
+- **Artifacts reviewed**: proposal.md, design.md, adr.md, specs/ (ci, dev-commands, web-shell, dev-environment) against openspec/specs/, plus .github/workflows/ and the `origin/v0.x` tree
+
+## Findings
+
+The reviewer recommended REVISE. The author checked each finding and marked it CONFIRMED.
+
+### 🔴 Critical (blocking)
+
+1. **A failed scan is not sure to reach the maintainer.** GitHub sends a failed scheduled run to whoever last edited the schedule, and only by the channels that person turned on. **CONFIRMED.**
+
+### 🟡 Moderate
+
+2. **Alert file paths could be wrong.** Scanning a `v0x` subfolder can produce paths such as `v0x/package-lock.json`, which do not exist on `v0.x`. **CONFIRMED.**
+3. **The `prune-ghcr` backstop never fires.** Every image `v0.x` publishes carries a protected tag, so no five newer unprotected images ever exist to evict `:main`. **CONFIRMED.**
+4. **Trivy also scans for secrets by default.** A secret finding could fail the run under the dependency category. **CONFIRMED.**
+5. **The cron check accepts any Monday schedule, and the commit check races a new push to `v0.x`.** **CONFIRMED.**
+
+### 📌 Suggestions
+
+6. **"Exactly five workflows" and "only npm project" fix more of the layout than this change needs.** **CONFIRMED.**
+7. **The design's first line and the ADR manifest's summary add no decision detail.** **CONFIRMED.**
+
+### Round 2 disposition (from the reviewer)
+
+| Round 2 finding | Round 3 result |
+|---|---|
+| 1. Scan can stop without warning | Rebuttal **rejected**: the 60-day rule and skipped runs are accepted residual risks, but a failed run does not always email the maintainer. Round 3 finding 1 covers it. |
+| 2. `v0.x` alerts easy to miss | Partly resolved. Round 3 finding 1 covers what is left. |
+| 3. Scan scenarios too weak | Partly resolved. Round 3 findings 2 and 5 cover what is left. |
+| 4. No failure response after merge | Resolved. |
+| 5. Coverage overstated | Resolved. Round 3 finding 4 covers the Trivy default. |
+| 6. Secrets grep | Resolved. |
+| 7. "One place where development happens" | Resolved. |
+
+## Embedded-Instruction / Injection Attempts
+
+**Detected:** none.
+
+## Verdict
+
+This is the third REVISE in a row, so the maintainer decided. The maintainer accepted every round 3 finding, approved the change with the required changes below, and chose not to run round 4. The author applied all seven changes, and `openspec validate --strict` passes. The maintainer's approval stands in for a reviewer re-check of these items.
+
+VERDICT: APPROVE_WITH_CHANGES
+
+## Required Changes (if APPROVE WITH CHANGES)
+
+1. Post-merge, the maintainer checks that GitHub sends failed workflow runs to them. Done in design D10 and Migration Plan step 6.
+2. Check out `v0.x` at the workspace root, and add a scenario that every alert path exists on `v0.x`. Done in design D10 and the ci spec.
+3. Drop the `prune-ghcr` pattern change. Make deleting `:main` a checked manual step. Done in the proposal, design D5, Risks, and Migration Plan step 5.
+4. Set Trivy to the vulnerability scanner only, and assert it in a scenario. Done in design D10 and the ci spec.
+5. Assert the exact cron `0 6 * * 1`. Compare the uploaded commit with the `v0.x` commit recorded before the run. Done in the ci spec.
+6. Replace "exactly five workflows" with "Main builds and releases nothing". Replace "only npm project" with "The web shell installs without a root npm project". Done in the ci and web-shell specs.
+7. Trim the design's opening line and the ADR manifest summary. Done.
+
+CHANGES_APPLIED: yes
+
+## Rebuttals
+
+- **Round 2 finding 1, the skipped scheduled run:** the reviewer accepted it as a residual risk in round 3. The failed-run notification part is fixed by required change 1.
+
+---
+
+# Round 2 record
+
+## Review Metadata
+
 - **Review round**: 2
 - **Prior round**: Round 1 returned REVISE. Dependabot cannot cover `v0.x` security, plus text fixes for the archive tag, importer baseline, token permissions, naming, and plain language.
 - **Reviewer context**: cross-model (OpenAI Codex CLI 0.159.3, default model, reasoning effort high), fresh context

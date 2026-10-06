@@ -180,16 +180,14 @@ The CodeQL workflow on `main` SHALL NOT name the `v0.x` branch. The `v0.x` branc
 - **WHEN** a reviewer runs `grep -n 'v0.x' .github/workflows/codeql.yml`
 - **THEN** the search finds no match
 
-### Requirement: Main runs only its own workflows and the v0.x scan
+### Requirement: Main builds and releases nothing
 
-The `.github/workflows/` folder on `main` SHALL hold exactly five workflow files: `ci.yml`, `codeql.yml`, `nix.yml`, `prune-ghcr.yml`, and `v0-security-scan.yml`. No workflow on `main` SHALL build or push a container image, or publish a release.
+No workflow on `main` SHALL build or push a container image, or publish a release. `main` SHALL NOT hold the v0.10.x workflows `docker-build-push.yml`, `docker-build-test.yml`, or `release.yml`.
 
-`prune-ghcr.yml` and `v0-security-scan.yml` stay on `main` because GitHub runs scheduled workflows from the default branch only.
+#### Scenario: The v0.10.x workflows are gone
 
-#### Scenario: A reviewer lists the workflows
-
-- **WHEN** a reviewer lists `.github/workflows/` on `main`
-- **THEN** the folder holds exactly `ci.yml`, `codeql.yml`, `nix.yml`, `prune-ghcr.yml`, and `v0-security-scan.yml`
+- **WHEN** a reviewer runs `ls .github/workflows/docker-build-push.yml .github/workflows/docker-build-test.yml .github/workflows/release.yml` on `main`
+- **THEN** the command reports that none of the three files exists
 
 #### Scenario: A merge to main publishes no image
 
@@ -224,14 +222,15 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 ### Requirement: A weekly scan checks v0.x for known vulnerabilities
 
-Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` fills that gap for the `v0.x` branch's dependency manifests, such as its npm lockfile. It does not scan container images. `v0.x` scans its image on every push and pull request.
+Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` fills that gap for the `v0.x` branch's dependency manifests, such as its npm lockfile. It does not scan container images, and it does not look for secrets. `v0.x` scans its image on every push and pull request.
 
-The workflow SHALL meet these rules:
+The workflow lives on `main` because GitHub runs scheduled workflows from the default branch only. It SHALL meet these rules:
 
-- It runs once a week, on Monday, and on manual dispatch.
-- It checks out the `v0.x` branch into the folder `v0x`, and scans that folder's files only.
-- It uploads its results to code scanning with the ref `refs/heads/v0.x`, the commit SHA it checked out, and the category `v0.x-dependencies`.
-- After the upload, it fails the run when it finds a vulnerability rated high or critical. GitHub then reports the failed run to the maintainer.
+- It runs at 06:00 UTC every Monday, and on manual dispatch.
+- It checks out the `v0.x` branch at the root of its workspace. It does not check out `main`.
+- It scans for known vulnerabilities only.
+- It uploads its results to code scanning with the ref `refs/heads/v0.x`, the commit SHA it checked out, and the category `v0.x-dependencies`. Each result names a file path as it appears on the `v0.x` branch.
+- After the upload, it fails the run when it finds a vulnerability rated high or critical.
 - Every action it uses from outside GitHub's `actions/` and `github/` organisations is pinned to a full 40-character commit SHA.
 
 The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
@@ -240,17 +239,18 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 - **WHEN** a reviewer runs `yq '.on | keys' .github/workflows/v0-security-scan.yml`
 - **THEN** the output lists exactly `schedule` and `workflow_dispatch`
-- **AND** `yq '.on.schedule[].cron' .github/workflows/v0-security-scan.yml` prints exactly one line, with five fields, whose fifth field is `1`
+- **AND** `yq '.on.schedule[].cron' .github/workflows/v0-security-scan.yml` prints exactly one line: `0 6 * * 1`
 
-#### Scenario: The scan checks out v0.x into its own folder
+#### Scenario: The scan checks out v0.x at the workspace root
 
 - **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "actions/checkout*") | .with | [.ref, .path]' .github/workflows/v0-security-scan.yml`
-- **THEN** the output lists exactly `v0.x` and `v0x`
+- **THEN** the output lists `v0.x` for `ref`, and `null` for `path`
+- **AND** the job has exactly one checkout step
 
-#### Scenario: Every scan step reads the v0.x folder
+#### Scenario: Every scan step looks for vulnerabilities in the workspace
 
-- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "aquasecurity/trivy-action*") | .with | [."scan-type", ."scan-ref"]' .github/workflows/v0-security-scan.yml`
-- **THEN** every step in the output lists `fs` and `v0x`
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "aquasecurity/trivy-action*") | .with | [."scan-type", ."scan-ref", .scanners]' .github/workflows/v0-security-scan.yml`
+- **THEN** every step in the output lists `fs`, `.`, and `vuln`
 
 #### Scenario: The upload names v0.x and the commit it scanned
 
@@ -269,9 +269,16 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **WHEN** a reviewer lists every `uses:` value in `v0-security-scan.yml` that does not start with `actions/` or `github/`
 - **THEN** every value ends with `@` followed by 40 hexadecimal characters
 
-#### Scenario: A manual run uploads results for the current v0.x commit
+#### Scenario: A manual run uploads results for the v0.x commit it scanned
 
-- **WHEN** the maintainer runs `v0-security-scan.yml` by hand on `main`, and the run finishes
+- **WHEN** the maintainer records the output of `git ls-remote origin refs/heads/v0.x`
+- **AND** runs `v0-security-scan.yml` by hand on `main`, with no push to `v0.x` before the run finishes
 - **AND** runs `gh api 'repos/sidereal-io/sidereal/code-scanning/analyses?ref=refs/heads/v0.x' --jq '[.[] | select(.category == "v0.x-dependencies")][0] | .commit_sha, .created_at'`
-- **THEN** the first printed line equals the output of `git rev-parse origin/v0.x` after `git fetch origin v0.x`
+- **THEN** the first printed line equals the recorded commit SHA
 - **AND** the second printed line is a time later than the moment the run started
+
+#### Scenario: Alerts point at files on v0.x
+
+- **WHEN** a manual run has uploaded at least one result
+- **AND** the maintainer runs `gh api 'repos/sidereal-io/sidereal/code-scanning/alerts?ref=refs/heads/v0.x&tool_name=Trivy' --jq '.[].most_recent_instance.location.path'`
+- **THEN** for every printed path, `git cat-file -e origin/v0.x:<path>` exits with status 0

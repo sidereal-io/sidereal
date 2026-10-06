@@ -14,16 +14,16 @@
 - Remove the v0 workflows from `main`: `ci.yml`, `docker-build-push.yml`, `docker-build-test.yml`, and `release.yml`. `v0.x` keeps its own copies, and GitHub runs those for `v0.x` pushes, pull requests, and tags.
 - Rename `v2.yml` to `ci.yml`. It also runs on pushes to `main`, which resolves #320.
 - Point CodeQL at what `main` holds: Rust and TypeScript. Drop its `v0.x` branch filter, because `v0.x` runs CodeQL from its own `ci.yml`.
-- Keep `prune-ghcr.yml` on `main`, because GitHub runs scheduled workflows from the default branch only. Stop it protecting the `:main` image tag, so the stale image is pruned if nobody deletes it first.
+- Keep `prune-ghcr.yml` on `main`, because GitHub runs scheduled workflows from the default branch only.
 - Keep the v0 Dependabot entries for npm, Docker, and GitHub Actions in `main`'s config, and aim them at `v0.x` with `target-branch`. GitHub reads Dependabot's config from the default branch only. These entries cover version updates only.
-- Add a weekly workflow on `main` that scans `v0.x`'s dependency manifests for known vulnerabilities. Dependabot alerts and security updates read the default branch only, so without this scan nothing would warn about a new advisory on `v0.x`. The run fails on a high or critical finding, so GitHub tells the maintainer.
+- Add a weekly workflow on `main` that scans `v0.x`'s dependency manifests for known vulnerabilities. Dependabot alerts and security updates read the default branch only, so without this scan nothing would warn about a new advisory on `v0.x`. The run fails on a high or critical finding, so the failure shows in the maintainer's workflow notifications.
 - Grant each workflow this change touches only the token access it needs.
 
 **Container images**
 
 - v0 keeps the `ghcr.io/sidereal-io/sidereal` tags it has today, including `:latest`, until cutover.
 - Future releases from `main` use the same image with different tags. A later change defines them.
-- After the removal, the maintainer deletes the stale `:main` image by hand. It was built from v0 code that no release includes.
+- After the removal, the maintainer deletes the stale `:main` image by hand, and checks that it is gone. It was built from v0 code that no release includes, and `prune-ghcr.yml` never deletes it on its own.
 
 **Names and documents**
 
@@ -52,7 +52,7 @@ None.
 
 ### Modified Capabilities
 
-- `ci`: remove the requirement "The v0.10.x pipeline skips v2-only changes". Rename the workflow file from `v2.yml` to `ci.yml`, and run it on pushes to `main`. Limit code scanning to `main`, and add Rust. Require least-privilege tokens. Add the weekly `v0.x` vulnerability scan. Limit `main` to its own workflows and drop the scenarios about pull requests that change only v0.10.x code.
+- `ci`: remove the requirement "The v0.10.x pipeline skips v2-only changes". Rename the workflow file from `v2.yml` to `ci.yml`, and run it on pushes to `main`. Limit code scanning to `main`, and add Rust. Require least-privilege tokens. Add the weekly `v0.x` vulnerability scan. Require that no workflow on `main` builds images or publishes releases. Drop the scenarios about pull requests that change only v0.10.x code.
 - `dev-commands`: remove the requirements "The v0.10.x stack runs by explicit name" and "Recipes are grouped by stack". Rename `just dev`'s requirement so it no longer says "v2".
 - `web-shell`: replace "The web shell installs and runs on its own" so it no longer checks the v0.10.x root npm files, which leave `main`.
 - `dev-environment`: replace "Every reference to the Node version agrees" without the v0 production image. Rename the `v2` workflow in the web package update requirement. Add the Dependabot entries that target `v0.x`.

@@ -1,7 +1,5 @@
 ## Context
 
-See `proposal.md` for why `main` drops v0. This section covers only the facts that shape how.
-
 - **GitHub reads some settings from the default branch only.** Dependabot's configuration, Dependabot alerts and security updates, and scheduled workflows all come from `main`. Push, pull request, and tag workflows come from the branch or commit that triggered them.
 - **`v0.x` is already self-sufficient.** It has its own `ci.yml` (with a CodeQL job), `docker-build-push.yml` (with a Trivy scan), `docker-build-test.yml`, `prune-ghcr.yml`, and `release.yml`. Releases `v0.10.2` to `v0.10.5` were tagged from `v0.x`.
 - **`main`'s v0 code is not `v0.x`'s.** `main` has 60 commits under `apps/`, `packages/`, `tools/`, and `tests/` that no release includes. Its schema runs to migration `0011`. Every release so far stops at `0008`.
@@ -59,12 +57,11 @@ Before the pull request leaves draft, a task compares the tag with the removal c
 - **Why the root `npm` entry keeps its groups:** the `/web` entry's spec requires the same groups as the root entry. Keeping both identical keeps that check meaningful.
 - **Alternative:** drop v0 updates and patch `v0.x` by hand. That would leave fixes waiting for someone to notice them.
 
-### D5. `prune-ghcr.yml` stays, and stops protecting `:main`
+### D5. `prune-ghcr.yml` stays unchanged, and `:main` is deleted by hand
 
-The workflow keeps running weekly from `main`. Its protected-tag pattern drops `main`, so the stale `:main` image becomes ordinary. The workflow then prunes it once five newer tagged images exist.
+The workflow keeps running weekly from `main`, with no edits. It never deletes an image that carries a protected tag, and `main` is one. Every image `v0.x` publishes also carries a protected tag, so no later run would evict `:main` either. The maintainer therefore deletes `:main` by hand after merge, and checks that it is gone.
 
-- **Why:** the maintainer deletes `:main` by hand after merge. The pattern change is a backstop if that step is missed.
-- **Alternative:** keep `main` in the pattern. Then the stale image stays forever unless someone deletes it.
+- **Alternative:** drop `main` from the protected-tag pattern. That only helps once five newer unprotected images exist, and the current publishing pattern never creates them.
 
 ### D6. Spec deltas carry behavior, and wording edits go straight to the specs
 
@@ -91,17 +88,17 @@ Archived changes, Accepted ADRs, and the RFC and epic titles stay as written, be
 
 ### D10. A weekly workflow on `main` scans `v0.x` for known vulnerabilities
 
-`v0-security-scan.yml` runs every Monday and on manual dispatch. It works in four steps:
+`v0-security-scan.yml` runs at 06:00 UTC every Monday, and on manual dispatch. It works in four steps:
 
-1. Check out `v0.x` into the folder `v0x`.
-2. Run Trivy over that folder's files, which covers the npm lockfile, and write SARIF.
+1. Check out `v0.x` at the workspace root. The job needs none of `main`'s files, and file paths in the results then match the `v0.x` branch.
+2. Run Trivy's vulnerability scanner over those files, which covers the npm lockfile, and write SARIF. The secret scanner stays off.
 3. Upload the SARIF to code scanning with `v0.x`'s ref, the checked-out commit, and the category `v0.x-dependencies`. Alerts then appear under the `v0.x` branch.
 4. Run Trivy again on high and critical findings only, and fail the run if it finds any.
 
 The job grants `contents: read` and `security-events: write`, and nothing else. It uses no secrets. Every third-party action is pinned to a full commit SHA, because the job can write security results.
 
 - **Why on `main`:** GitHub runs scheduled workflows from the default branch only. A schedule on `v0.x` would never fire.
-- **Why fail the run:** GitHub's alert list shows the default branch unless someone picks the `v0.x` filter, so an alert alone is easy to miss. A failed scheduled run sends the maintainer an email.
+- **Why fail the run:** GitHub's alert list shows the default branch unless someone picks the `v0.x` filter, so an alert alone is easy to miss. GitHub sends a failed scheduled run to the person who last edited its schedule, by the channels that person turned on. The maintainer commits this workflow and checks that failed-workflow notifications reach them.
 - **Why upload before failing:** the results reach code scanning even when the run fails.
 - **Coverage:** the scan reads dependency manifests, which is what Dependabot alerts covered. It does not scan the image's operating system packages. `v0.x` still scans its image with Trivy on every push and pull request.
 - **Alternatives:** relying on weekly version updates and per-push image scans leaves new advisories unseen between pushes. Keeping v0's lockfile on `main` for Dependabot alerts keeps v0 files on `main`, which this change exists to remove.
@@ -109,9 +106,9 @@ The job grants `contents: read` and `security-events: write`, and nothing else. 
 ## Risks / Trade-offs
 
 - [A contributor or agent opens a v0 fix against `main`] → `AGENTS.md`, `CONTRIBUTING.md`, and the README warning all point to `v0.x`. The fix has no files to change on `main`, so the mistake shows at once.
-- [Someone pulls `:main` expecting current code] → The maintainer deletes `:main` after merge, and D5 removes it anyway if that step is missed.
+- [Someone pulls `:main` expecting current code] → The maintainer deletes `:main` after merge and checks that it is gone (D5).
 - [`v0.x` misses updates during the switch] → The `target-branch` entries and the weekly scan land in the same pull request that removes v0. Their next weekly runs use them.
-- [The weekly scan finds an advisory and nobody acts] → The run fails, and GitHub emails the maintainer. `AGENTS.md` says that `v0.x` alerts sit under the `v0.x` branch filter in the Security tab.
+- [The weekly scan finds an advisory and nobody acts] → The run fails, and GitHub notifies the maintainer, who checked that setting after merge. `AGENTS.md` says that `v0.x` alerts sit under the `v0.x` branch filter in the Security tab.
 - [GitHub skips a scheduled run, or disables the schedule] → GitHub disables schedules in a public repository after 60 days with no activity. `main` gets commits most weeks, so that is unlikely while development continues. A skipped run stays a small risk. The next week's run, or a manual run, covers it.
 - [Rust CodeQL with `build-mode: none` misses findings that a full build would catch] → Accept it for now. It adds Rust scanning where none exists. A later change can switch to a full build if results look thin.
 - [The importer is written against `main`'s unreleased schema] → The archive tag's message and the proposal say the importer reads the latest released v0 schema at cutover.
@@ -123,8 +120,8 @@ The job grants `contents: read` and `security-events: write`, and nothing else. 
 2. Land the removal, the workflow and Dependabot changes, the renames, and the documents as separate commits on this branch.
 3. Run `just check` and `nix flake check`. Confirm that CodeQL reports both languages on the pull request.
 4. Before marking the pull request ready, check the tag against the removal commit's parent (D1).
-5. After merge, the maintainer deletes the `:main` image in GHCR. The maintainer also confirms that Dependabot opens its next v0 pull requests against `v0.x`.
-6. After merge, the maintainer runs `v0-security-scan.yml` once by hand. GitHub only allows a manual run once the workflow is on the default branch. The results must appear under `v0.x` with the current `v0.x` commit. If the run cannot upload, the maintainer fixes the workflow within a week, or reverts the merge. Reverting brings v0's lockfile back to `main`, and Dependabot alerts with it.
+5. After merge, the maintainer deletes the `:main` image in GHCR and checks that the tag is gone. The maintainer also confirms that Dependabot opens its next v0 pull requests against `v0.x`.
+6. After merge, the maintainer runs `v0-security-scan.yml` once by hand. GitHub only allows a manual run once the workflow is on the default branch. The results must appear under `v0.x` with the `v0.x` commit recorded before the run, and alert paths must exist on `v0.x`. The maintainer checks that their GitHub notification settings send failed workflow runs to them. If the run cannot upload, the maintainer fixes the workflow within a week, or reverts the merge. Reverting brings v0's lockfile back to `main`, and Dependabot alerts with it.
 7. Close #322 and #323, and retitle #321 as a `v0.x` issue.
 
 **Rollback:** revert the merge commit. Every removed file comes back from history. The tag can stay or be deleted; it changes nothing either way.
