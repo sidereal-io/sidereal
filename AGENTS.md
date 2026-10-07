@@ -87,6 +87,8 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
   `.agents/skills/openspec-*` folder, so never give an authored skill that prefix.
 - OpenSpec changes carry product behavior. Repo maintenance goes through an ordinary
   branch and PR with Conventional Commits.
+- **Change a version only where it is set.** [`CONTRIBUTING.md`](CONTRIBUTING.md#where-versions-are-set)
+  lists the one file that sets each tool version and product version.
 - **Gate with `just check`** (`check-server`, then `check-web`) after every change
   to `server/` or `web/`. CI runs the same recipes in the `ci` workflow's `server` and
   `web` jobs. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).

@@ -157,6 +157,30 @@ the shell runs code from the working tree: the flake, the `justfile` and
 so a checkout can run a branch's code without asking. After you read the
 branch's changes, run `direnv allow` again.
 
+### Where versions are set
+
+Each version lives in one file. Change it there, and nowhere else.
+
+**Tool versions** decide which tools you build and check with.
+
+| Tool | Set in | How exact |
+|---|---|---|
+| Rust | `server/rust-toolchain.toml` | Names the `stable` channel. In the Nix shell and CI, `flake.lock` decides the exact release. Without Nix, rustup uses the latest stable release you have installed |
+| Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step |
+| pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12 |
+| `just` and `openspec` | `flake.lock` | Exact releases, through the Nix shell |
+
+Never write a Rust release number in a build file or a document. The channel and `flake.lock` decide it.
+
+Dependabot proposes updates to these pins every week: `flake.lock`, `server/Cargo.lock`, and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update).
+
+**Product versions** are Sidereal's own version numbers.
+
+- `version` under `[workspace.package]` in `server/Cargo.toml` sets every crate's version. It is `0.1.0` today.
+- `version` in `web/package.json` is the web interface's. It is `0.0.0` today.
+- `main` has not released yet. Its first release is planned as `v2.0.0`. The change that defines how `main` releases will align these two numbers.
+- Released versions are git tags. The v0.10.x releases are tagged from the `v0.x` branch.
+
 ### Agent skills
 
 AI agents read skills from `.agents/skills`. Claude Code reads the same folder
