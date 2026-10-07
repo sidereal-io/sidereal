@@ -14,7 +14,7 @@ export default defineConfig({
     // cannot read the server through the proxy.
     cors: false,
     // The browser asks the web shell's own origin; the dev server forwards
-    // to the v2 server.
+    // to the server.
     proxy: {
       "/healthz": "http://localhost:5000",
     },

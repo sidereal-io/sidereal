@@ -2,8 +2,8 @@
 
 The browser interface for Sidereal, built with Vite, React, and TypeScript.
 
-It has its own `package.json` and `pnpm-lock.yaml`. It does not use the root
-npm workspace, so you do not need to run `npm install` at the repo root.
+It has its own `package.json` and `pnpm-lock.yaml`, and the repo root has no npm
+project, so you never run `npm install` at the repo root.
 
 ## Before you start
 

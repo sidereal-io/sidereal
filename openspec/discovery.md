@@ -90,7 +90,7 @@
 
 ## Journey Map
 
-Stage status checked against the code on 2026-10-02. Status describes the v2 backend
+Stage status checked against the code on 2026-10-02. Status describes the server
 in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -113,19 +113,19 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    ([#279](https://github.com/sidereal-io/sidereal/issues/279),
    [#280](https://github.com/sidereal-io/sidereal/issues/280)). FITS and XISF header
    reading has no story yet.
-4. **See it** — the asset appears in the browser as it lands — gap: no v2 frontend
+4. **See it** — the asset appears in the browser as it lands — gap: no frontend on `main` yet
    shell ([#282](https://github.com/sidereal-io/sidereal/issues/282)). The v0.10.x
    gallery shows Immich images only.
 5. **Group into sessions** — frames sorted by type, target, filter, and equipment —
    gap.
 6. **Match calibration** — a master dark or flat matched to the lights it fits by
    camera, temperature, gain, and exposure — gap.
-7. **Plate solve** — gap in v2. v0.10.x solves Immich images through Astrometry.net.
+7. **Plate solve** — gap on `main`. v0.10.x solves Immich images through Astrometry.net.
 8. **Trace lineage** — which lights and masters produced a stack — gap
    ([#286](https://github.com/sidereal-io/sidereal/issues/286) exposes the scaffolding
    tables).
 9. **Find & publish** — search by target, filter, or equipment, and publish to Immich,
-   Astrobin, or a static gallery — gap in v2. v0.10.x browses and filters Immich
+   Astrobin, or a static gallery — gap on `main`. v0.10.x browses and filters Immich
    images.
 
 **Self-host journey** (Sam):
@@ -194,14 +194,14 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    shell refreshes them when it loads. An agent started outside the shell can still
    run a different `openspec` from the one that generated its skills. The project
    accepts this gap and does not plan to close it — partial.
-4. **Work & check** — `just dev` runs the v2 server and web shell together, and
+4. **Work & check** — `just dev` runs the server and web shell together, and
    `just check` gates both the Rust workspace and `web/` with pinned tools.
-   `DESIGN.md` defines the v2 design system, but the web shell doesn't use its
+   `DESIGN.md` defines the design system, but the web shell doesn't use its
    tokens yet, has no components to build screens from, and has no browser smoke
    test — partial ([#302](https://github.com/sidereal-io/sidereal/issues/302),
    [#337](https://github.com/sidereal-io/sidereal/issues/337),
    [#303](https://github.com/sidereal-io/sidereal/issues/303)).
-5. **Open PR** — CI checks the v2 server and web code inside the pinned shell, but
+5. **Open PR** — CI checks the server and web code inside the pinned shell, but
    runs no end-to-end browser check — partial
    ([#303](https://github.com/sidereal-io/sidereal/issues/303)).
 6. **Bump pins** — Dependabot opens weekly pull requests for npm (root and `web/`),

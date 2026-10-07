@@ -1,4 +1,4 @@
-//! Sidereal v2 server binary.
+//! Sidereal server binary.
 //!
 //! A thin shell that wires `core` and the compiled-in packs, then serves the
 //! axum app. Real route wiring and pack registration land in later M0/M1 work;

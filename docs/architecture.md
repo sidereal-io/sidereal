@@ -21,7 +21,7 @@ read time. The full current behaviour is catalogued in the
 [analysis package](https://github.com/sidereal-io/sidereal-analysis) (private) — an inventory of what
 not to forget, not a compatibility contract.
 
-What this model **cannot** express, and v2 must:
+What this model **cannot** express, and the rebuild must:
 
 - **Calibration frames in sets** — 50 darks at a temperature/gain/exposure; masters reused for months.
 - **Lights by the hundreds per session**, as FITS/XISF, long before anything is presentable.
@@ -48,7 +48,7 @@ astro product.
 
 ## Core concepts
 
-Seven load-bearing additions that do not exist today; everything else in v2 is a consequence of them.
+Seven load-bearing additions that do not exist today; everything else in the rebuild is a consequence of them.
 
 **Asset** — one logical file. Stable opaque identity, independent of path, so the system reorganising a
 tree never destroys its own references. Carries a small core-owned envelope (`id`, `kind`, `name`) plus
