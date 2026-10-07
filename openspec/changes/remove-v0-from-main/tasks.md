@@ -48,3 +48,10 @@
   3. run `v0-security-scan.yml` by hand, and check the scenarios "A manual run uploads results for the v0.x commit it scanned" and "Alerts point at files on v0.x". If the run cannot upload, fix the workflow within a week, or revert the merge;
   4. confirm that Dependabot's next v0 version updates open against `v0.x`;
   5. close #322 and #323 as obsolete, and retitle #321 as a `v0.x` issue.
+
+## 9. Documentation pass after maintainer review
+
+- [ ] 9.1 Copy the logo from `v0.x`'s `apps/client/public/logo.png` to `docs/assets/logo.png` on `main`. Verify that `cmp` reports the two files identical, and that no file on `main` links to `raw.githubusercontent.com/.../v0.x`.
+- [ ] 9.2 Rewrite `README.md` in the agreed order: logo and badges, warning, intro with the "Perfect for…" line and a link to `docs/architecture.md`, Features (eight bullets, no v0.10.x references), Where to go, Developing on `main`, License, Acknowledgments with the disclaimer, and the centered footer links. Verify that every relative link resolves to a tracked file, and that Features names no version.
+- [ ] 9.3 Add a "Where versions are set" section to `CONTRIBUTING.md`, covering tool versions and product versions, and add a one-line pointer to it in `AGENTS.md`. Verify that every file the section names exists, and that it names no Rust release number.
+- [ ] 9.4 Fix the sentence in `openspec/discovery.md` that task 6.5 broke ("no frontend on `main` yet shell"). Verify that the stage reads as one sentence.
