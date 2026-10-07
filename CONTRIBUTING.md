@@ -7,20 +7,23 @@ Thank you for your interest in contributing to Sidereal! We welcome contribution
 1. **Fork** the repository on GitHub
 2. **Clone** your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/Sidereal.git
-   cd Sidereal
+   git clone https://github.com/YOUR_USERNAME/sidereal.git
+   cd sidereal
    ```
-3. **Install** dependencies:
-   ```bash
-   npm install
-   ```
+3. **Set up** the tools. See [Development Environment](#-development-environment).
 4. **Create** a feature branch:
    ```bash
    git checkout -b feature/your-feature-name
    ```
-5. **Make** your changes
-6. **Test** your changes
-7. **Submit** a pull request
+5. **Make** your changes, and run `just check`
+6. **Submit** a pull request
+
+### Fixing the running v0.10.x app
+
+`main` holds the rebuild of Sidereal. The released app, v0.10.x, lives on the
+[`v0.x` branch](https://github.com/sidereal-io/sidereal/tree/v0.x). To fix it,
+branch from `v0.x` and open your pull request against `v0.x`. Its own
+`CONTRIBUTING.md` explains its setup. `main` takes no v0 code.
 
 ## 📋 Types of Contributions
 
@@ -29,7 +32,7 @@ We welcome several types of contributions:
 ### 🐛 Bug Reports
 - Use the GitHub issue tracker
 - Include detailed reproduction steps
-- Provide environment information (OS, Node.js version, etc.)
+- Say which Sidereal version you run, and provide environment information (OS, browser, etc.)
 - Include logs or screenshots if applicable
 
 ### 💡 Feature Requests
@@ -52,54 +55,17 @@ We welcome several types of contributions:
 - Deployment guides
 - Troubleshooting guides
 
-## 🛠️ Development Setup
+## 🛠️ Development Commands
 
-### Prerequisites
-- Node.js 26
-- npm 10+
-- Git
-- Docker (optional, for database)
+The root `justfile` runs everything. `just --list` describes every recipe.
 
-### Environment Setup
 ```bash
-# Clone and install
-git clone https://github.com/YOUR_USERNAME/Sidereal.git
-cd Sidereal
-npm install
-
-# Setup environment
-cp .env.example .env.local
-# Edit .env.local with your development settings
-
-# Initialize database
-npm run db:generate
-npm run db:migrate
-
-# Start development server
-npm run dev
-```
-
-### Development Commands
-```bash
-# Development
-npm run dev            # Start backend server
-npm run dev:watch      # Start with file watching
-npm run dev:worker     # Start worker process
-npm run dev:all        # Start backend + worker
-
-# Building
-npm run build          # Build for production
-npm run check          # TypeScript type checking
-
-# Database
-npm run db:generate    # Generate migrations
-npm run db:migrate     # Apply migrations
-npm run db:studio      # Open database GUI
-
-# Code Quality
-npm run lint           # ESLint checking
-npm run format         # Prettier formatting
-npm run test           # Run tests
+just dev            # Run the server and the web interface together
+just server         # Run the server only
+just web            # Run the web interface only
+just check          # The gate to pass before every pull request
+just check-server   # Server checks: format, clippy, tests, dependency-direction lint
+just check-web      # Web checks: type check, lint, format check, unit tests
 ```
 
 ## 🧰 Development Environment
@@ -128,14 +94,11 @@ If you cloned before the Rust workspace moved from `backend/` to `server/`, run
 
    Without direnv, run `nix develop` by hand instead. It gives the same shell for
    that one terminal session.
-3. If you used a different major version of Node before, run `npm rebuild` once.
-   `better-sqlite3` is a native module built for one Node version, and Nix's
-   Node 26 needs its own build.
-4. Expect a full rebuild of `server/target` the first time you run a Rust
+3. Expect a full rebuild of `server/target` the first time you run a Rust
    command in the shell, and again whenever `flake.lock` brings a new Rust
    release. The shell's compiler is not the one rustup installed, so cargo's
    cached build data doesn't carry over.
-5. Nothing to run for the OpenSpec agent skills. The shell generates them when
+4. Nothing to run for the OpenSpec agent skills. The shell generates them when
    it loads, and again only when they are stale. See
    [Agent skills](#agent-skills).
 
@@ -249,7 +212,7 @@ Check these points before you merge one:
   shell with the new pins. A green check means the shell builds. The job log
   also prints the Rust, `openspec`, Node, pnpm, and `just` versions inside the new
   shell.
-  The `v2` workflow's `server` and `web` jobs also run. They run
+  The `ci` workflow's `server` and `web` jobs also run. They run
   `just check-server` and `just check-web` inside the new shell. Green checks
   mean both gates pass with the new pins.
 - **A `flake.lock` update can bring a new Rust release.** The
@@ -261,25 +224,27 @@ Check these points before you merge one:
   regenerates the skills from the CLI, so read the
   [`openspec` release notes](https://github.com/Fission-AI/OpenSpec/releases)
   before you merge an update that changes its version.
-- **Cargo pull requests change `server/Cargo.lock`.** The `v2` workflow's
+- **Cargo pull requests change `server/Cargo.lock`.** The `ci` workflow's
   `server` job checks them, the same as any other change under `server/`.
 - **npm pull requests for `web/` change `web/package.json` and
-  `web/pnpm-lock.yaml`.** The `v2` workflow's `web` job checks them, the same
+  `web/pnpm-lock.yaml`.** The `ci` workflow's `web` job checks them, the same
   as any other change under `web/`.
+- **Some pull requests target `v0.x`.** Dependabot sends version updates for
+  the v0.10.x app's npm, Docker and GitHub Actions dependencies to the `v0.x`
+  branch. Review them there, with `v0.x`'s own checks.
 
 ## 📝 Code Standards
 
+### Rust
+- `cargo fmt` formats the code, and `cargo clippy` runs with warnings denied
+- Keep the dependency direction in [`AGENTS.md`](AGENTS.md#durable-constraints-server): packs depend on `plugin-abi`, never on `core`
+- Keep astronomy logic in `packs/astro`, never in `core`
+
 ### TypeScript
 - Use strict TypeScript settings
-- Provide proper type definitions
-- Avoid `any` types when possible
-- Use Zod schemas for validation
-
-### Code Style
-- Follow ESLint and Prettier configurations
-- Use meaningful variable and function names
-- Write clear, concise comments
-- Keep functions small and focused
+- Avoid `any` types
+- Follow the ESLint and Prettier configurations in `web/`
+- Use design tokens from [`DESIGN.md`](DESIGN.md), never raw values
 
 ### Commit Messages
 Use [Conventional Commits](https://www.conventionalcommits.org/):
@@ -293,23 +258,21 @@ test: add unit tests for image processing
 ```
 
 ### File Organization
-- Place components in `apps/client/src/components/`
-- API routes go in `apps/server/src/routes/`
-- Shared types in `packages/shared/src/types/`
-- Database schemas in `packages/shared/src/db/`
+- The server is a cargo workspace in `server/`. Its crates live in `server/crates/`
+- The web interface lives in `web/`, with its source in `web/src/`
 
 ## 🧪 Testing
 
 ### Running Tests
 ```bash
-# Run all tests
-npm run test
+# Run every check, including all tests
+just check
 
-# Run tests in watch mode
-npm run test:watch
+# Run the server tests only
+cd server && cargo test
 
-# Run specific test file
-npm run test -- --testNamePattern="image processing"
+# Run the web tests only
+cd web && pnpm test
 ```
 
 ### Writing Tests
@@ -322,12 +285,9 @@ npm run test -- --testNamePattern="image processing"
 
 ### Before Submitting
 1. **Test** your changes thoroughly
-2. **Run** code quality checks:
+2. **Run** the checks:
    ```bash
-   npm run lint
-   npm run format
-   npm run check
-   npm run test
+   just check
    ```
 3. **Update** documentation if needed
 4. **Add** tests for new functionality
@@ -367,29 +327,11 @@ Brief description of the changes
 
 ## 🏗️ Architecture Guidelines
 
-### Database Changes
-- Use Drizzle ORM for database operations
-- Create migrations for schema changes
-- Test migrations on sample data
-- Consider backward compatibility
-
-### API Design
-- Follow RESTful conventions
-- Use proper HTTP status codes
-- Implement proper error handling
-- Include request/response validation
-
-### Frontend Components
-- Use shadcn/ui components when possible
-- Follow React best practices
-- Implement proper error boundaries
-- Use TypeScript for all components
-
-### Worker Processes
-- Handle errors gracefully
-- Implement proper logging
-- Use queues for background tasks
-- Consider resource limitations
+- Read [`docs/architecture.md`](docs/architecture.md) for the target design, and
+  [`docs/decisions/`](docs/decisions/) for the decisions behind it.
+- Follow the durable constraints in [`AGENTS.md`](AGENTS.md). They apply to people
+  as much as to agents.
+- The server uses PostgreSQL only.
 
 ## 🔒 Security Guidelines
 
@@ -403,14 +345,14 @@ Brief description of the changes
 
 ### Documentation
 - [Project README](README.md)
-- [Docker Documentation](docker/README.md)
-- [API Documentation](docs/api.md)
+- [Server README](server/README.md)
+- [Web README](web/README.md)
+- [Design system](DESIGN.md)
 
 ### External Resources
-- [Node.js Best Practices](https://nodejs.dev/en/learn/)
+- [The Rust Book](https://doc.rust-lang.org/book/)
 - [React Documentation](https://react.dev/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [Drizzle ORM Docs](https://orm.drizzle.team/)
 
 ## 🤝 Community
 
