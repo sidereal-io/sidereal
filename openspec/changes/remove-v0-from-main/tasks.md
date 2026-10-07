@@ -37,7 +37,7 @@
 ## 7. Verification
 
 - [x] 7.1 Run `just check`, `nix flake check`, and `openspec validate --all --strict`. Verify that each exits with status 0.
-- [ ] 7.2 Push the branch. Verify on PR #352 that the `ci` workflow's `server` and `web` jobs pass, that CodeQL reports an analysis for Rust and one for JavaScript and TypeScript, and that the flake check passes.
+- [x] 7.2 Push the branch. Verify on PR #352 that the `ci` workflow's `server` and `web` jobs pass, that CodeQL reports an analysis for Rust and one for JavaScript and TypeScript, and that the flake check passes.
 - [x] 7.3 Re-check the archive tag (design D1). Run `git diff --stat archive/unreleased-v0-main "$(git merge-base HEAD origin/main)" -- apps packages tools tests docker assets`. Verify that it prints nothing. If it prints a change, ask the maintainer before moving the tag.
 
 ## 8. After merge
