@@ -113,8 +113,8 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    ([#279](https://github.com/sidereal-io/sidereal/issues/279),
    [#280](https://github.com/sidereal-io/sidereal/issues/280)). FITS and XISF header
    reading has no story yet.
-4. **See it** — the asset appears in the browser as it lands — gap: no frontend on `main` yet
-   shell ([#282](https://github.com/sidereal-io/sidereal/issues/282)). The v0.10.x
+4. **See it** — the asset appears in the browser as it lands — gap: the web shell shows no assets yet
+   ([#282](https://github.com/sidereal-io/sidereal/issues/282)). The v0.10.x
    gallery shows Immich images only.
 5. **Group into sessions** — frames sorted by type, target, filter, and equipment —
    gap.
