@@ -42,7 +42,7 @@
 
 ## 8. After merge
 
-- [ ] 8.1 Add "Closes #320" and an "After merge" checklist to PR #352's description. Verify that the checklist names these steps:
+- [x] 8.1 Add "Closes #320" and an "After merge" checklist to PR #352's description. Verify that the checklist names these steps:
   1. delete the `ghcr.io/sidereal-io/sidereal:main` image, and check that the tag is gone;
   2. check that GitHub's notification settings send failed workflow runs to the maintainer;
   3. run `v0-security-scan.yml` by hand, and check the scenarios "A manual run uploads results for the v0.x commit it scanned" and "Alerts point at files on v0.x". If the run cannot upload, fix the workflow within a week, or revert the merge;
