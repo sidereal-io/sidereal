@@ -1,4 +1,4 @@
-//! Sidereal v2 server: the axum HTTP shell.
+//! Sidereal server: the axum HTTP shell.
 //!
 //! The router is built here rather than inline in `main` so integration tests
 //! can exercise it without binding a socket. Later middleware (CORS/CSRF/auth,

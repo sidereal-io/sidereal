@@ -1,10 +1,35 @@
-# ci Specification
+## RENAMED Requirements
 
-## Purpose
+- FROM: `### Requirement: Every v2 job runs one recipe inside the development shell`
+- TO: `### Requirement: Every CI job runs one recipe inside the development shell`
 
-CI runs the checks that match what a pull request or a push to `main` changes, and code scanning runs on every pull request. `main` builds and releases nothing, and a weekly scan watches the `v0.x` maintenance branch for known vulnerabilities.
+## REMOVED Requirements
 
-## Requirements
+### Requirement: The v2 server checks run when v2 server code changes
+
+**Reason**: Replaced by "The server checks run when server code changes". The workflow file is now `ci.yml`, it also runs on pushes to `main`, and no scenario mentions v0.10.x code.
+
+**Migration**: None. The `server` job keeps its name, its trigger files, and its checks.
+
+### Requirement: The v2 web checks run when v2 code changes
+
+**Reason**: Replaced by "The web checks run when server or web code changes". The workflow file is now `ci.yml`, it also runs on pushes to `main`, and no scenario mentions v0.10.x code.
+
+**Migration**: None. The `web` job keeps its name, its trigger files, and its checks.
+
+### Requirement: The v0.10.x pipeline skips v2-only changes
+
+**Reason**: The v0.10.x workflows `ci.yml` and `docker-build-push.yml` leave `main`. `main` has no v0.10.x pipeline left to skip.
+
+**Migration**: None on `main`. The `v0.x` branch keeps its own copies of these workflows, and GitHub runs them for pushes and pull requests to `v0.x`.
+
+### Requirement: Code scanning runs on every pull request
+
+**Reason**: Replaced by "Code scanning covers the Rust and TypeScript code on main". CodeQL on `main` now scans Rust as well, and no longer names the `v0.x` branch.
+
+**Migration**: None. The `v0.x` branch runs CodeQL from a job in its own `ci.yml`.
+
+## MODIFIED Requirements
 
 ### Requirement: Every CI job runs one recipe inside the development shell
 
@@ -53,6 +78,8 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 - **WHEN** a pull request changes a file under `server/crates/` so that `cargo fmt --check` reports a difference
 - **THEN** the `server` job fails on that pull request
+
+## ADDED Requirements
 
 ### Requirement: The server checks run when server code changes
 

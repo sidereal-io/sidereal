@@ -2,29 +2,9 @@
 
 ## Purpose
 
-The web shell is the v2 user interface in `web/`. It installs and runs on its own, and shows live state from the v2 server, starting with the server's health.
+The web shell is Sidereal's user interface in `web/`. It installs and runs on its own, and shows live state from the server, starting with the server's health.
 
 ## Requirements
-
-### Requirement: The web shell installs and runs on its own
-
-The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run without the root npm workspace. The root `package.json` and `package-lock.json` SHALL NOT refer to `web/`.
-
-#### Scenario: The web shell installs without the v0.10.x tree
-
-- **WHEN** a contributor clones the repo and runs `pnpm --dir web install --frozen-lockfile`, without running `npm install` first
-- **THEN** the command exits with status 0
-- **AND** the repo root has no `node_modules` folder
-
-#### Scenario: The manifest and lockfile are tracked
-
-- **WHEN** a reviewer runs `git ls-files web/package.json web/pnpm-lock.yaml`
-- **THEN** the output lists both files
-
-#### Scenario: The v0.10.x tree does not refer to the web shell
-
-- **WHEN** a reviewer runs `grep -n '"web/' package.json package-lock.json`
-- **THEN** the search finds no match
 
 ### Requirement: The web shell pins its pnpm release
 
@@ -68,24 +48,24 @@ The screen SHALL show the state's name as visible text. The screen SHALL NOT sho
 
 #### Scenario: The server is running
 
-- **WHEN** the v2 server is running and a user opens the web shell's home page
+- **WHEN** the server is running and a user opens the web shell's home page
 - **THEN** the page shows the text `healthy` within 5 seconds
 
 #### Scenario: The server is not running
 
-- **WHEN** nothing listens on the v2 server's port and a user opens the web shell's home page
+- **WHEN** nothing listens on the server's port and a user opens the web shell's home page
 - **THEN** the page shows the text `unreachable` within 5 seconds
 
 #### Scenario: The server answers with an unexpected body
 
-- **WHEN** a stub on the v2 server's port answers `GET /healthz` with status 200 and the body `{"status":"<b>degraded</b>"}`
+- **WHEN** a stub on the server's port answers `GET /healthz` with status 200 and the body `{"status":"<b>degraded</b>"}`
 - **AND** a user opens the web shell's home page
 - **THEN** the page shows the text `unreachable`
 - **AND** the page text does not contain `degraded`
 
 #### Scenario: The server does not answer
 
-- **WHEN** a stub on the v2 server's port accepts connections to `GET /healthz` but never answers
+- **WHEN** a stub on the server's port accepts connections to `GET /healthz` but never answers
 - **AND** a user opens the web shell's home page
 - **THEN** the page shows the text `unreachable` within 10 seconds
 
@@ -95,36 +75,36 @@ The home screen SHALL check the server's health again 5 seconds after each check
 
 #### Scenario: The server starts after the page opens
 
-- **WHEN** the page shows `unreachable`, and the v2 server then starts
+- **WHEN** the page shows `unreachable`, and the server then starts
 - **THEN** the page shows `healthy` within 10 seconds of the server listening, without a reload
 
 #### Scenario: The server stops while the page is open
 
-- **WHEN** the page shows `healthy`, and the v2 server then stops
+- **WHEN** the page shows `healthy`, and the server then stops
 - **THEN** the page shows `unreachable` within 10 seconds, without a reload
 
 ### Requirement: The web shell reaches the server through its own origin
 
-In development, the web shell SHALL request the server's health at `/healthz` on its own origin. The web shell's dev server SHALL forward `/healthz` to the v2 server at `http://localhost:5000`. The v2 server therefore needs no cross-origin settings for the web shell.
+In development, the web shell SHALL request the server's health at `/healthz` on its own origin. The web shell's dev server SHALL forward `/healthz` to the server at `http://localhost:5000`. The server therefore needs no cross-origin settings for the web shell.
 
 #### Scenario: The browser asks the web shell's origin
 
 - **WHEN** a user opens the web shell's home page at `http://localhost:5173`
 - **THEN** every health request the browser sends goes to `http://localhost:5173/healthz`
 
-#### Scenario: The dev server forwards to the v2 server
+#### Scenario: The dev server forwards to the server
 
-- **WHEN** the v2 server and the web shell are both running
+- **WHEN** the server and the web shell are both running
 - **AND** a tester runs `curl -s http://localhost:5173/healthz`
 - **THEN** the output is `{"status":"ok"}`
 
 ### Requirement: The web shell's dev server allows no cross-origin reads
 
-The web shell's dev server SHALL NOT send an `Access-Control-Allow-Origin` header on any response. This covers the responses it forwards from the v2 server. A page from another origin therefore cannot read what the dev server serves.
+The web shell's dev server SHALL NOT send an `Access-Control-Allow-Origin` header on any response. This covers the responses it forwards from the server. A page from another origin therefore cannot read what the dev server serves.
 
 #### Scenario: Another local origin asks for the server's health
 
-- **WHEN** the v2 server and the web shell are both running
+- **WHEN** the server and the web shell are both running
 - **AND** a tester runs `curl -si -H 'Origin: http://localhost:3000' http://localhost:5173/healthz`
 - **THEN** the response headers contain no `Access-Control-Allow-Origin` header
 
@@ -155,7 +135,7 @@ The web shell's dev server SHALL listen on port 5173 and on loopback addresses o
 
 The web shell SHALL have unit tests for its health screen. The tests SHALL check that the screen shows `healthy` for status 200 with the body `{"status":"ok"}`. They SHALL also check that it shows `unreachable` for a status other than 200.
 
-The tests SHALL run without a v2 server, without a browser, and without network access. They SHALL replace the screen's health request with a stub.
+The tests SHALL run without a server, without a browser, and without network access. They SHALL replace the screen's health request with a stub.
 
 #### Scenario: The tests run with no server
 
@@ -174,3 +154,23 @@ The tests SHALL run without a v2 server, without a browser, and without network 
 - **WHEN** a tester changes the health screen so that any status shows `healthy`
 - **AND** runs `pnpm test` in `web/`
 - **THEN** the command exits with a non-zero status
+
+### Requirement: The web shell installs without a root npm project
+
+The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run with no `package.json` or `package-lock.json` at the repo root. The repo root SHALL have neither file.
+
+#### Scenario: The web shell installs from a fresh clone
+
+- **WHEN** a contributor clones the repo and runs `pnpm --dir web install --frozen-lockfile`
+- **THEN** the command exits with status 0
+- **AND** the repo root has no `node_modules` folder
+
+#### Scenario: The manifest and lockfile are tracked
+
+- **WHEN** a reviewer runs `git ls-files web/package.json web/pnpm-lock.yaml`
+- **THEN** the output lists both files
+
+#### Scenario: The repo root has no npm project
+
+- **WHEN** a reviewer runs `git ls-files package.json package-lock.json`
+- **THEN** the output is empty

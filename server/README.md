@@ -1,7 +1,6 @@
-# Sidereal backend
+# Sidereal server
 
-The Rust backend for Sidereal, a cargo workspace living as a sibling subtree
-alongside the existing TypeScript stack (`apps/`, `packages/`). See
+The Rust server for Sidereal, a cargo workspace. See
 [`docs/architecture.md`](../docs/architecture.md) and
 [ADR-002](../docs/decisions/ADR-002-core-domain-pack-split.md) for the design.
 

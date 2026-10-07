@@ -1,49 +1,57 @@
-name: CI Pipeline
+name: ci
 
 on:
   push:
     branches:
       - main
-      - v0.x
-    paths-ignore:
+    paths:
       - 'server/**'
       - 'web/**'
-      - 'openspec/**'
-      - 'docs/**'
+      - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - '.github/workflows/ci.yml'
   pull_request:
-    branches:
-      - main
-      - v0.x
-    paths-ignore:
+    paths:
       - 'server/**'
       - 'web/**'
-      - 'openspec/**'
-      - 'docs/**'
+      - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - '.github/workflows/ci.yml'
+
+permissions:
+  contents: read
 
 jobs:
-  ci-pipeline:
+  server:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
         with:
-          node-version-file: '.nvmrc'
-          cache: 'npm'
+          workspaces: server
+          cmd-format: nix develop -c {0}
 
-      - name: Install dependencies
-        run: npm install
+      - name: Server gate
+        run: nix develop --command just check-server
 
-      - name: Run type checking
-        run: npm run check
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
-      - name: Run unit tests
-        run: npm run test
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Run server tests
-        run: npm run test:server
-
-      - name: Build all packages
-        run: npm run build
+      - name: Web gate
+        run: nix develop --command just check-web

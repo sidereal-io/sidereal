@@ -15,7 +15,7 @@ context: |
   assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
   say `Closes #<n>`. One story per change.
 
-  v2 UI work in `web/` follows DESIGN.md at the repo root (ADR-005): it is the source
+  UI work in `web/` follows DESIGN.md at the repo root (ADR-005): it is the source
   of truth for every token value and usage rule, and code and Penpot follow it.
 
 rules:

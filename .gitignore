@@ -1,21 +1,17 @@
 # Dependencies
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # Build outputs
 dist/
 build/
 .vite/
-.next/
 *.tsbuildinfo
 
 # Rust build outputs
 server/target/
 target/
 
-# Environment files (keep .env.example)
+# Environment files
 .env
 .env.local
 .env.production
@@ -39,8 +35,6 @@ config/secrets.json
 logs/
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 
 # Runtime data
@@ -49,10 +43,9 @@ pids/
 *.seed
 *.pid.lock
 
-# Coverage directory used by tools like istanbul
+# Coverage
 coverage/
 *.lcov
-.nyc_output/
 
 # Test results
 test-results/
@@ -87,27 +80,8 @@ temp/
 *.7z
 *.rar
 
-# Docker
-docker-compose.override.yml
-docker-compose.immich.yml
-.env.immich
-.docker/
-
-# Documentation (internal/dev only)
-docs/screenshots.md
-
-# Sidereal specific
-sidecars/
-xmp-sidecars/
-uploads/
-images/
-!assets/images/
-thumbnails/
+# Local runtime data
 data/
-
-# Legacy paths
-server/public
-vite.config.ts.*
 
 # Backup files
 *.bak

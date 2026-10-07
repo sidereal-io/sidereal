@@ -1,4 +1,0 @@
-# picomatch ReDoS in Node.js bundled npm (not in application code)
-# Located at /usr/local/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch
-# Will be resolved when Node.js releases an updated base image
-CVE-2026-33671

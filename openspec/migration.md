@@ -94,10 +94,10 @@ frontend contributors productive through a backend language switch.
 
 ## Migration Cutover
 
-v2 is a new data model. The strategy is a **clean break with a one-way importer**, gated on a
+The rebuild is a new data model. The strategy is a **clean break with a one-way importer**, gated on a
 non-negotiable feature set — the decision and its rationale are [ADR-010](../decisions/ADR-010-migration-strategy.md); 
 this doc owns the execution. The TypeScript app moves to maintenance (security and critical fixes only) and is retired 
-at cutover. The importer reads an existing SQLite/Postgres database and storage tree and produces v2 assets — best-effort, 
+at cutover. The importer reads an existing SQLite/Postgres database and storage tree and produces assets in the new model — best-effort, 
 lossy where the models genuinely differ, and it **emits a report of exactly what didn't map**.
 
 ### Non-negotiable before cutover
@@ -139,10 +139,10 @@ failure report — an unaccounted original blocks cutover.
 
 ### Rollback
 
-- **Before M6:** discard the disposable v2 root; v0.10.x and its source tree remain untouched.
+- **Before M6:** discard the disposable new storage root; v0.10.x and its source tree remain untouched.
 - **At M6:** the migration guide requires a verified database and storage backup before import.
 - **After cutover:** rollback restores that backup. The importer is one-way by design.
 
 A verified backup covers **both** stores: the PostgreSQL database (via `pg_dump` or a volume snapshot —
-ADR-004 makes Postgres the only engine) **and** the v2 asset-storage root on disk. Neither alone is
+ADR-004 makes Postgres the only engine) **and** the new asset-storage root on disk. Neither alone is
 complete, and the SQLite-era file-copy guidance no longer covers the database.

@@ -93,7 +93,7 @@ frames, calibration masters, finished images, and dense technical metadata.
 ## How to use this file
 
 - **This file is the source of truth** for every token value and usage rule in
-  the v2 web interface (`web/`). Code and the Penpot library follow it.
+  the web interface (`web/`). Code and the Penpot library follow it.
 - **The front matter holds the values.** It follows the
   [DESIGN.md specification](https://github.com/google-labs-code/design.md)
 - **A token's CSS name is its key with the `sr` prefix:** `obsidian-950`

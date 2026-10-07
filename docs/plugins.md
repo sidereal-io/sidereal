@@ -2,7 +2,7 @@
 
 **Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Part of:** [Architecture](README.md)
 
-Everything Sidereal v2 *does* to a user's files uses the plugin contract. This document defines what
+Everything Sidereal *does* to a user's files uses the plugin contract. This document defines what
 a plugin receives, what it may request, what it returns, and how it proves conformance.
 
 The contract is **transport-independent**. [ADR-001](../decisions/ADR-001-plugin-boundary.md) defines
