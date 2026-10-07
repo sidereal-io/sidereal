@@ -19,7 +19,7 @@
 ## 4. Dependabot
 
 - [x] 4.1 Edit `.github/dependabot.yml` as design D4 describes. Add `target-branch: v0.x` to the root `npm`, `docker`, and `github-actions` entries. Add a second `github-actions` entry for `main` with no `target-branch`. Remove "v2" from the comments. Verify the scenarios of "Dependabot keeps the v0.x branch up to date" and "Dependabot proposes web package updates every week" with yq.
-- [ ] 4.2 Validate the file with `uv run --with check-jsonschema check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml`. Verify that it exits with status 0.
+- [x] 4.2 Validate the file with `uv run --with check-jsonschema check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml`. Verify that it exits with status 0.
 
 ## 5. Development commands
 
