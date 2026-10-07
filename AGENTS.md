@@ -4,36 +4,37 @@ Guidance for AI agents working in this repo. `CLAUDE.md` is a symlink to this fi
 
 ## What this is
 
-**Sidereal** is a self-hosted photo gallery and management system for astrophotographers. It integrates with [Immich](https://immich.app/) to provide plate solving (via Astrometry.net), equipment tracking, and deep-sky imaging metadata management.
+**Sidereal** is a self-hosted photo gallery and management system for astrophotographers. It provides plate solving (via Astrometry.net), equipment tracking, and deep-sky imaging metadata management.
 
-**Stack:** TypeScript monorepo · React 19 + Vite (frontend) · Hono (backend) · Drizzle ORM · SQLite (default) / PostgreSQL · Playwright (E2E)
+**Stack:** Rust server (axum, cargo workspace in `server/`) · React 19 + Vite + TypeScript web interface (pnpm, in `web/`) · PostgreSQL · orchestrated by the root `justfile`
 
-## Current state: v0.10.x and v2 in progress
+## Current state
 
-Sidereal is mid-rewrite, so two stacks live side by side in this repo ([RFC #213](https://github.com/sidereal-io/sidereal/issues/213)). Every change belongs to exactly one of them:
+`main` holds the rebuild of Sidereal ([RFC #213](https://github.com/sidereal-io/sidereal/issues/213)): a Rust server ([ADR-009](docs/decisions/ADR-009-backend-language.md)) and a new web interface. All new development happens here. The first release from `main` is planned as `v2.0.0`.
 
-| Stack | Lives in | What it is | Status |
-|---|---|---|---|
-| **v0.10.x** | `apps/`, `packages/` | The running TypeScript/Hono app — deployed today, and what most work still touches until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)) | Current |
-| **v2** | `server/` | A new Rust backend ([ADR-009](docs/decisions/ADR-009-backend-language.md)) in a separate cargo workspace | Under active build |
+**Sidereal builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
 
-The frontend stays TypeScript/React through the whole rewrite; only the backend changes language.
+**Run everything from the root `justfile`.** `just dev` starts the server and the web interface together, and `just --list` describes every recipe.
 
-**v2 builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
-
-**Run both stacks from the root `justfile`.** It is the single front door: `just dev` starts the Rust backend and the v2 web shell (`web/`) together, `just v0-dev` runs the v0.10.x stack, and `just --list` describes every recipe under its stack's group.
-
-**An optional, pinned Nix shell provides every tool both stacks need**, including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
+**An optional, pinned Nix shell provides every tool,** including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
 
 **Where to read more:**
 
-- **v2 backend layout, prerequisites, and commands** — [`server/README.md`](server/README.md).
-- **v2 target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
-- **The rest of this file** — describes the v0.10.x stack, plus the v2 constraints and cross-stack workflow in the sections below.
+- **Server layout, prerequisites, and commands** — [`server/README.md`](server/README.md).
+- **Target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
 
-## Durable constraints (v2 backend)
+## The v0.x maintenance branch
 
-Invariants for the `server/` Rust workspace — honor them in every v2 change.
+The released app, v0.10.x (TypeScript, Hono, Drizzle), lives only on the `v0.x` branch. It stays in maintenance until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)).
+
+- **v0 fixes land on `v0.x`, never on `main`.** Branch from `v0.x` and target it. `main` takes no v0 code. The two lines share no code, so a bug in both is fixed separately in each.
+- **`v0.x` has its own guide.** Its `AGENTS.md` covers its toolchain, its `npm run check` gate, and its tag-driven releases.
+- **`main` watches `v0.x` in two ways,** because GitHub runs these from the default branch only. `.github/dependabot.yml` sends v0 version updates to `v0.x`. The weekly `v0-security-scan.yml` workflow scans `v0.x` for known vulnerabilities. Its alerts sit in the Security tab under the `v0.x` branch filter, not the default view.
+- **The `archive/unreleased-v0-main` tag** holds v0 work that `main` carried but never released. It is not the `v0.x` line. Don't build on it.
+
+## Durable constraints (server)
+
+Invariants for the `server/` Rust workspace — honor them in every server change.
 
 - **Dependency direction is one-way.** `plugin-abi` holds the public plugin contracts;
   `core` is the domain-agnostic engine that builds on `plugin-abi` and knows nothing
@@ -60,9 +61,9 @@ Invariants for the `server/` Rust workspace — honor them in every v2 change.
   past a **Proposed** ADR — get it Accepted first. Each ADR stands alone: it links to
   at most one other ADR and never references issues, milestones, or the RFC.
 
-## Durable constraints (v2 web UI)
+## Durable constraints (web UI)
 
-How v2 screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
+How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
 ([ADR-005](docs/decisions/ADR-005-visual-design-system.md)).
 
 - **`DESIGN.md` is the source of truth** for every token value and usage rule.
@@ -86,15 +87,11 @@ How v2 screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
   `.agents/skills/openspec-*` folder, so never give an authored skill that prefix.
 - OpenSpec changes carry product behavior. Repo maintenance goes through an ordinary
   branch and PR with Conventional Commits.
-- **Toolchain is per stack.** v0.10.x: Node 26, npm, Vite/React, Hono, Drizzle —
-  gate with **`npm run check`** (TypeScript) after every change to `apps/`/`packages/`.
-  v2: cargo workspace under `server/` and pnpm web shell under `web/`, orchestrated by
-  the root `justfile` — gate with **`just check`** (`check-server`, then `check-web`)
-  after every change to `server/` or `web/`. CI runs the same recipes in the `v2`
-  workflow's `server` and `web` jobs. Conventional Commits (`feat:`, `fix:`, `docs:`,
-  `refactor:`, `test:`).
-- **Releases are tag-driven** — bump `package.json`, add a `CHANGELOG.md` entry, then
-  push a `v*.*.*` tag; the workflow does the rest. Never `gh release create` manually.
+- **Gate with `just check`** (`check-server`, then `check-web`) after every change
+  to `server/` or `web/`. CI runs the same recipes in the `ci` workflow's `server` and
+  `web` jobs. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
+- **`main` does not release yet.** v0.10.x releases are tagged from `v0.x`. A later
+  change defines how `main` releases. Never `gh release create` manually.
 
 ### OpenSpec git workflow
 
