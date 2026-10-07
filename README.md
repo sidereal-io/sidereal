@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/sidereal-io/sidereal/v0.x/apps/client/public/logo.png" width="300">
+  <img src="docs/assets/logo.png" width="300">
   <h1 style="font-size: 55px" align="center">SIDEREAL</h1>
 </p>
 
@@ -12,9 +12,26 @@
 > **Sidereal is being rebuilt on this branch and can't be installed yet.**
 > To run Sidereal today, use the [`v0.x` branch](https://github.com/sidereal-io/sidereal/tree/v0.x), which carries the released v0.10.x line and its patches.
 
-**Sidereal** is a self-hosted photo gallery and management system for astrophotographers. It provides plate solving with [Astrometry.net](https://astrometry.net/), equipment tracking, and metadata for deep-sky imaging.
+**Sidereal** is a self-hosted library for astrophotographers. It manages your images at every stage: calibration frames, raw lights by the hundreds, stacked results, and annotated finals.
 
-This branch, `main`, holds the next version: a Rust server and a React web interface, built around a plugin-based imaging pipeline. The first release from `main` is planned as `v2.0.0`. Until then, everything here is under active development.
+Sidereal reads each file's metadata, groups frames into sessions by target, filter and equipment, matches calibration frames to the lights they fit, and records how every stack was made. It never changes your originals. The stacking itself stays in the tools you already use, such as Siril and PixInsight. Every processing step is a plugin, including the built-in ones.
+
+Perfect for organizing, analyzing, and showcasing your astrophotography collection with full control over your data and infrastructure.
+
+Read more about the design in [`docs/architecture.md`](docs/architecture.md).
+
+## Features
+
+Sidereal is being built to provide:
+
+- **Every stage in one library:** calibration frames, raw lights (FITS and XISF), stacks and annotated finals
+- **Sessions:** frames grouped by night, target, filter and equipment
+- **Calibration matching:** master darks and flats matched to the lights they fit
+- **Lineage:** which lights and masters made each stack
+- **Safe originals:** never changed, checked by content hash, and repairable
+- **Plate solving** with Astrometry.net
+- **Equipment and targets:** telescopes, cameras and filters, plus a deep-sky catalog
+- **Plugins for every step:** working alongside Siril and PixInsight, importing from and publishing to Immich, Astrobin or a static gallery
 
 ## Where to go
 
@@ -28,19 +45,34 @@ This branch, `main`, holds the next version: a Rust server and a React web inter
 
 ## Developing on `main`
 
-Clone the repository, then run the server and the web interface together:
+The server is a Rust cargo workspace in `server/`, and the web interface is a React app in `web/`. The root `justfile` runs both.
+
+### Get set up
+
+Pick one route. [`CONTRIBUTING.md`](CONTRIBUTING.md#-development-environment) has the steps for each.
+
+- **With Nix:** install Nix and direnv, then run `direnv allow` in the repo root. The pinned shell provides every tool.
+- **Without Nix:** install rustup, Node 26 (your version manager reads `.nvmrc`), pnpm 12, and [`just`](https://github.com/casey/just).
+
+### Run it
 
 ```bash
 just dev
 ```
 
-Before opening a pull request, run the checks:
+This starts the server and the web interface together. Open `http://localhost:5173`. Today the page shows the server's health, because the first features are still being built.
+
+### Check it
 
 ```bash
 just check
 ```
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) explains the tools you need, with or without Nix. [`server/README.md`](server/README.md) and [`web/README.md`](web/README.md) cover each part.
+This is the gate for every pull request. It runs the server checks (format, clippy, tests, and the dependency-direction lint), then the web checks (type check, lint, format check, and unit tests). CI runs the same checks.
+
+### How work is planned
+
+Every change starts as a [GitHub issue](https://github.com/sidereal-io/sidereal/issues). Product changes then go through an [OpenSpec](openspec/) change: a proposal, specs, a design, and tasks, all reviewed in one pull request. Commits follow [Conventional Commits](https://www.conventionalcommits.org/). [`CONTRIBUTING.md`](CONTRIBUTING.md) explains the workflow.
 
 Fixes for the running v0.10.x app go to the `v0.x` branch, not `main`.
 
@@ -50,7 +82,18 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## Acknowledgments
 
-- **[Immich](https://immich.app/)**: inspiration and integration for photo management
+- **[Immich](https://immich.app/)**: inspiration, and a place to import from and publish to
 - **[Astrometry.net](https://astrometry.net/)**: plate solving service and algorithms
+- **[Siril](https://siril.org/)** and **[PixInsight](https://pixinsight.com/)**: the stacking tools Sidereal is designed to work alongside
 
 > **Disclaimer**: Sidereal is an independent project. It is not affiliated with, endorsed by, or officially connected to Immich or its developers.
+
+---
+
+<div align="center">
+
+**Built for the astrophotography community**
+
+[Star this repo](https://github.com/sidereal-io/sidereal) | [Report bug](https://github.com/sidereal-io/sidereal/issues) | [Request feature](https://github.com/sidereal-io/sidereal/discussions)
+
+</div>
