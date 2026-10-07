@@ -27,7 +27,7 @@
 
 ## 6. Documents and naming
 
-- [ ] 6.1 Rewrite `README.md` for `main`. Open it with the warning that `main` cannot be installed yet, linking to the `v0.x` branch. Then describe Sidereal briefly and link to `CONTRIBUTING.md`. Verify that it has no v0 install steps and no link into `apps/` or `assets/`.
+- [x] 6.1 Rewrite `README.md` for `main`. Open it with the warning that `main` cannot be installed yet, linking to the `v0.x` branch. Then describe Sidereal briefly and link to `CONTRIBUTING.md`. Verify that it has no v0 install steps and no link into `apps/` or `assets/`.
 - [ ] 6.2 Rewrite `AGENTS.md` for one stack. Keep one short section on `v0.x`: v0 fixes land there, `main` takes no v0 code, and a bug in both lines is fixed separately in each. Say that `v0.x` alerts sit under the `v0.x` branch filter in the Security tab. Move the v0 release steps out, because `main` does not release yet. Verify that `CLAUDE.md` and `GEMINI.md` still link to it.
 - [ ] 6.3 Remove the v0 sections from `CONTRIBUTING.md`, and point v0 contributors to `v0.x`. Keep the `.nvmrc` instructions. Rename the `v2` workflow to `ci`. Verify that it names no `npm run` command.
 - [ ] 6.4 Add a note at the top of `CHANGELOG.md` that v0.10.x entries continue on the `v0.x` branch. Verify that the existing entries are unchanged.
