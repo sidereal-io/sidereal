@@ -1,6 +1,17 @@
-name: v2
+name: ci
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     paths:
       - 'server/**'
@@ -9,7 +20,7 @@ on:
       - 'flake.nix'
       - 'flake.lock'
       - 'nix/**'
-      - '.github/workflows/v2.yml'
+      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
