@@ -6,26 +6,6 @@ The web shell is Sidereal's user interface in `web/`. It installs and runs on it
 
 ## Requirements
 
-### Requirement: The web shell installs and runs on its own
-
-The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run without the root npm workspace. The root `package.json` and `package-lock.json` SHALL NOT refer to `web/`.
-
-#### Scenario: The web shell installs without the v0.10.x tree
-
-- **WHEN** a contributor clones the repo and runs `pnpm --dir web install --frozen-lockfile`, without running `npm install` first
-- **THEN** the command exits with status 0
-- **AND** the repo root has no `node_modules` folder
-
-#### Scenario: The manifest and lockfile are tracked
-
-- **WHEN** a reviewer runs `git ls-files web/package.json web/pnpm-lock.yaml`
-- **THEN** the output lists both files
-
-#### Scenario: The v0.10.x tree does not refer to the web shell
-
-- **WHEN** a reviewer runs `grep -n '"web/' package.json package-lock.json`
-- **THEN** the search finds no match
-
 ### Requirement: The web shell pins its pnpm release
 
 `web/package.json` SHALL name one exact pnpm 12 release in its `packageManager` field. Any pnpm 12 release run in `web/` SHALL run the pinned release instead. `web/pnpm-lock.yaml` SHALL record the pinned release and its hashes.
@@ -174,3 +154,23 @@ The tests SHALL run without a server, without a browser, and without network acc
 - **WHEN** a tester changes the health screen so that any status shows `healthy`
 - **AND** runs `pnpm test` in `web/`
 - **THEN** the command exits with a non-zero status
+
+### Requirement: The web shell installs without a root npm project
+
+The web shell SHALL live in `web/`, with its own `package.json` and `pnpm-lock.yaml`. Git SHALL track both files. The web shell SHALL install and run with no `package.json` or `package-lock.json` at the repo root. The repo root SHALL have neither file.
+
+#### Scenario: The web shell installs from a fresh clone
+
+- **WHEN** a contributor clones the repo and runs `pnpm --dir web install --frozen-lockfile`
+- **THEN** the command exits with status 0
+- **AND** the repo root has no `node_modules` folder
+
+#### Scenario: The manifest and lockfile are tracked
+
+- **WHEN** a reviewer runs `git ls-files web/package.json web/pnpm-lock.yaml`
+- **THEN** the output lists both files
+
+#### Scenario: The repo root has no npm project
+
+- **WHEN** a reviewer runs `git ls-files package.json package-lock.json`
+- **THEN** the output is empty

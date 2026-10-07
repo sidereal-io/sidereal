@@ -193,31 +193,6 @@ The flake SHALL define a development shell for `x86_64-linux`, `aarch64-linux` a
 - **WHEN** a contributor runs `nix flake show --json --all-systems`
 - **THEN** the output contains `devShells.x86_64-linux.default`, `devShells.aarch64-linux.default` and `devShells.aarch64-darwin.default`
 
-### Requirement: Every reference to the Node version agrees
-
-The repo SHALL state Node major version 26 wherever it names a Node version for contributors or for the production image. `.nvmrc` SHALL contain the major version only, so Nix and Node version managers agree. Every CI workflow SHALL read `.nvmrc` rather than hold its own copy of the version, so CI can never drift from it.
-
-#### Scenario: A reviewer checks the documented Node version
-
-- **WHEN** a reviewer reads `.nvmrc`
-- **THEN** the file contains `26` and nothing else except a trailing newline
-
-#### Scenario: No outdated Node version is left in the docs
-
-- **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `server/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
-- **THEN** the search finds no match
-
-#### Scenario: Every CI workflow reads the Node version from .nvmrc
-
-- **WHEN** a reviewer runs `grep -rn node-version .github/workflows/`
-- **THEN** every matching line reads `node-version-file: '.nvmrc'`
-- **AND** no matching line hardcodes a Node version number
-
-#### Scenario: The production image names the same Node version as the shell
-
-- **WHEN** a reviewer runs `grep -n 'FROM node:' Dockerfile`
-- **THEN** every matching line names major version 26
-
 ### Requirement: The skills command gives the same skills on every machine
 
 Running `just skills` SHALL generate the OpenSpec skills from settings the repo defines. For a given CLI version, the result SHALL NOT depend on the contributor's global OpenSpec config, or on generated files left from an earlier run. The command SHALL generate these 8 workflows, as skills only: `propose`, `explore`, `continue`, `apply`, `update`, `sync`, `archive` and `verify`. The generated skills SHALL use only the generic `/openspec-<name>` form to name other skills.
@@ -496,7 +471,7 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **WHEN** Dependabot's weekly run finds a newer release for a package in `web/package.json`
 - **THEN** an open pull request from Dependabot changes `web/pnpm-lock.yaml`
 - **AND** that pull request changes files under `web/` only
-- **AND** the `v2` workflow's `web` job runs on that pull request
+- **AND** the `ci` workflow's `web` job runs on that pull request
 
 #### Scenario: TypeScript has a newer major release
 
@@ -557,3 +532,44 @@ After the shell builds, the flake check SHALL run `rustc --version`, `openspec -
 
 - **WHEN** `openspec --version` exits with a non-zero status inside the shell, and the other four commands succeed
 - **THEN** the flake check fails
+
+### Requirement: Contributors and CI name one Node version
+
+The repo SHALL state Node major version 26 wherever it names a Node version for contributors. `.nvmrc` SHALL contain the major version only, so Nix and Node version managers agree. A CI workflow that sets up Node outside the development shell SHALL read `.nvmrc` rather than hold its own copy of the version, so CI can never drift from it.
+
+#### Scenario: A reviewer checks the documented Node version
+
+- **WHEN** a reviewer reads `.nvmrc`
+- **THEN** the file contains `26` and nothing else except a trailing newline
+
+#### Scenario: No outdated Node version is left in the docs
+
+- **WHEN** a reviewer searches `AGENTS.md`, `README.md`, `server/README.md`, `web/README.md` and `CONTRIBUTING.md` for a Node major version other than 26
+- **THEN** the search finds no match
+
+#### Scenario: A CI workflow that sets up Node reads .nvmrc
+
+- **WHEN** a reviewer runs `grep -rn node-version .github/workflows/`
+- **THEN** every matching line reads `node-version-file: '.nvmrc'`
+- **AND** no matching line hardcodes a Node version number
+
+### Requirement: Dependabot keeps the v0.x branch up to date
+
+GitHub reads Dependabot's configuration from the default branch only. So `main`'s `.github/dependabot.yml` SHALL declare the v0.10.x version updates and aim them at the `v0.x` branch. These entries cover version updates only. Security warnings for `v0.x` come from the weekly scan that the `ci` capability defines. It SHALL declare exactly three entries with `target-branch` set to `v0.x`: one each for `npm`, `docker`, and `github-actions`, each with `directory` set to `/`. Every other entry SHALL have no `target-branch`, so it updates `main`.
+
+The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+
+#### Scenario: The configuration declares the v0.x updates
+
+- **WHEN** a reviewer runs `yq '.updates[] | select(."target-branch" == "v0.x") | ."package-ecosystem"' .github/dependabot.yml`
+- **THEN** the output is exactly three lines: `npm`, `docker`, and `github-actions`
+
+#### Scenario: Every v0.x entry checks the repo root
+
+- **WHEN** a reviewer runs `yq '.updates[] | select(."target-branch" == "v0.x") | .directory' .github/dependabot.yml`
+- **THEN** every line of the output is `/`
+
+#### Scenario: A v0.10.x version update targets v0.x
+
+- **WHEN** Dependabot opens a version update pull request that changes the root `package.json` or `package-lock.json`
+- **THEN** that pull request's base branch is `v0.x`
