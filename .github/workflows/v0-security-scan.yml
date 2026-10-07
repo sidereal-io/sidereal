@@ -1,0 +1,59 @@
+name: v0.x security scan
+
+# Dependabot alerts read the default branch only, so they don't cover the
+# v0.x maintenance branch. This workflow scans v0.x's dependency manifests
+# every week instead. It lives on main because GitHub runs scheduled
+# workflows from the default branch only. It doesn't scan container images;
+# v0.x scans its image on every push and pull request.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out v0.x at the workspace root, so file paths in the results
+      # match the v0.x branch.
+      - name: Checkout v0.x
+        id: checkout
+        uses: actions/checkout@v7
+        with:
+          ref: v0.x
+
+      # Third-party actions are pinned to a full commit SHA, because this
+      # job can write security results. ed142fd is trivy-action v0.36.0.
+      - name: Scan dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          format: sarif
+          output: trivy-v0x.sarif
+
+      # Upload before failing, so the results reach code scanning even when
+      # the run fails. ref and sha file the results under v0.x, not main.
+      - name: Upload results to code scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-v0x.sarif
+          ref: refs/heads/v0.x
+          sha: ${{ steps.checkout.outputs.commit }}
+          category: v0.x-dependencies
+
+      # A failed scheduled run notifies whoever last edited the schedule,
+      # so a high or critical finding can't sit unseen in the Security tab.
+      - name: Fail on high or critical findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
