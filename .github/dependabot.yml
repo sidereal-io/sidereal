@@ -1,8 +1,14 @@
 version: 2
 updates:
-  # Enable version updates for npm
+  # GitHub reads this file from the default branch only, so the first three
+  # entries send version updates for the v0.10.x app to the v0.x branch.
+  # target-branch covers version updates only: Dependabot alerts and security
+  # updates follow main. The weekly v0-security-scan.yml workflow covers v0.x.
+
+  # v0.x: npm
   - package-ecosystem: "npm"
     directory: "/"
+    target-branch: "v0.x"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -27,9 +33,10 @@ updates:
         patterns:
           - "@types/*"
 
-  # Enable version updates for Docker
+  # v0.x: Docker
   - package-ecosystem: "docker"
     directory: "/"
+    target-branch: "v0.x"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -43,7 +50,19 @@ updates:
       - dependency-name: "@types/node"
         versions: ["25.x"]
 
-  # Enable version updates for GitHub Actions
+  # v0.x: GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "v0.x"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # main: GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -54,7 +73,7 @@ updates:
       - "dependencies"
       - "github-actions"
 
-  # Enable version updates for Nix flake inputs
+  # main: Nix flake inputs
   - package-ecosystem: "nix"
     directory: "/"
     schedule:
@@ -66,7 +85,7 @@ updates:
         patterns:
           - "*"
 
-  # Enable version updates for the Rust backend
+  # main: the Rust server
   - package-ecosystem: "cargo"
     directory: "/server"
     schedule:
@@ -78,7 +97,7 @@ updates:
         patterns:
           - "*"
 
-  # Enable version updates for the v2 web shell
+  # main: the web shell
   - package-ecosystem: "npm"
     directory: "/web"
     schedule:
