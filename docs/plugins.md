@@ -1,12 +1,12 @@
 # Plugin Architecture
 
-**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Part of:** [Architecture](README.md)
+**Status:** Proposed · **Tracks:** [RFC #213](https://github.com/sidereal-io/sidereal/issues/213) · **Part of:** [Architecture](architecture.md)
 
 Everything Sidereal v2 *does* to a user's files uses the plugin contract. This document defines what
 a plugin receives, what it may request, what it returns, and how it proves conformance.
 
-The contract is **transport-independent**. [ADR-001](../decisions/ADR-001-plugin-boundary.md) defines
-three execution profiles — built-in Rust, embedded script (Rhai, pending the M0 spike), and an external
+The contract is **transport-independent**. [ADR-001](./decisions/ADR-001-plugin-boundary.md) defines
+three execution profiles — built-in Rust, embedded script (engine pending the scripting spike), and an external
 provider — over the same semantics. Built-ins do not receive an unconstrained private API merely because they are compiled in.
 
 ## Contents
@@ -31,14 +31,15 @@ countermeasure is a rule:
 > **Built-in functionality uses the same semantic contract and conformance suite as third-party
 > functionality. Execution transports may differ; behavior and authority do not.**
 
-Plate solve, rename, move, and tag are the first four built-in Operators and the first consumers of
-the Operator contract. At least two also ship through the embedded-script profile, so the public
-script surface is exercised rather than inferred from a Rust implementation. If a built-in needs a
-capability the interface lacks, the interface grows; it does not get a back door.
+The first local-library path proves Source and Operator behavior with ordinary images. Later
+feature epics grow the same contracts for metadata, tags, solving, and publishing. The embedded
+profile must be exercised by real consumers before a stable designation, as required by ADR-001.
+If a built-in needs a capability the interface lacks, the interface grows through the public boundary.
 
-Source, Operator, and Sink are versioned and frozen **independently**. A capability reaches `v0.1`
-only after at least one realistic implementation works through its public profile and passes that
-capability's conformance suite. An Operator cannot validate the Source or Sink contract by proxy.
+Source, Operator, and Sink are versioned **independently**. Preview contracts can be released while
+implementation evolves, with their compatibility limits documented. A stable contract needs
+realistic implementations through its supported profiles and capability-specific conformance
+evidence. An Operator cannot validate the Source or Sink contract by proxy.
 
 ## Capabilities
 
@@ -73,7 +74,7 @@ facet, artifact, or receipt prerequisites for those goals, and which prior outco
 invalidate. Core's reconciler intersects policy selection, provided outcomes, `accepts`, grants, and
 prerequisites to select eligible work. The Operator neither scans for assets nor chooses what runs
 before or after it. See
-[ADR-006](../decisions/ADR-006-rule-engine-deferral.md).
+[ADR-006](./decisions/ADR-006-rule-engine-deferral.md).
 
 Examples today: plate solve, rename, move, tag, and extract metadata. Later: Siril invocation, AI
 detection, and dedup.
@@ -81,7 +82,7 @@ detection, and dedup.
 An Operator may produce zero, one, or many new assets — thumbnails, master calibration frames, stacks,
 and exports are all ordinary outputs. Operators never rewrite an existing content revision. Byte
 changes produce a new immutable `AssetVersion`; path-only moves remain events on the stable `Asset`.
-See [ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md).
+See [ADR-003](./decisions/ADR-003-asset-identity-and-content-revisions.md).
 
 ### Sink — publishes assets
 
@@ -154,7 +155,7 @@ An Operator returns status, proposed core-managed mutations, zero or more new as
 declarations, external receipts, goal-satisfaction evidence, and log output. Core validates the
 complete result before committing core-managed effects.
 
-Every run is recorded as an [Operation Run](README.md#core-concepts): Operator and version, addressed
+Every run is recorded as an [Operation Run](architecture.md#core-concepts): Operator and version, addressed
 Processing Goals, inputs and input versions, params, outputs, status, side-effect state, and logs.
 
 The execution profiles differ only in how requests and results cross the adapter. Built-in Rust uses
@@ -215,7 +216,7 @@ declarations are a load error; unauthorised writes are rejected.
 
 This separation preserves interoperable queries: calibration matching uses canonical `astro.fits.*`
 values regardless of which compatible reader produced them. The namespace, compatibility, evolution,
-and grant rules are [ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md).
+and grant rules are [ADR-008](./decisions/ADR-008-facet-schema-and-write-authority.md).
 
 ## Conformance suite
 
@@ -242,22 +243,26 @@ semantic suite is a bug in the built-in or interface — never an exemption.
 Each capability contract is versioned independently. Core refuses an incompatible capability at load
 time rather than failing partway through a run.
 
-Operator API v0.1 is targeted for M2 after four built-ins, including at least two through the embedded
-script profile, consume it unchanged. Source API v0.1 follows real watch-folder and Immich Sources.
-Sink API v0.1 follows a real Immich or filesystem-gallery Sink. A `v0.2` of each is expected — a
-freeze buys a stable target, not permanent immutability.
+The [capability roadmap](../openspec/migration.md) introduces executable Source/Operator contracts
+with the first local-library path and Sink behavior with the first publishing consumer. WIP/alpha
+releases may expose those contracts while they evolve. Public availability does not promise a stable
+ABI or prescribe a package registry.
+
+A stable designation requires real consumer and conformance evidence for that capability. The
+embedded-script profile retains ADR-001's requirement for at least two built-in extensions delivered
+through it. Contract stability follows that evidence rather than a retired milestone number.
 
 ---
 
 ## Related decisions
 
-- **[ADR-001](../decisions/ADR-001-plugin-boundary.md)** — execution profiles and installation.
-- **[ADR-002](../decisions/ADR-002-core-domain-pack-split.md)** — the core/domain-pack seam.
-- **[ADR-003](../decisions/ADR-003-asset-identity-and-content-revisions.md)** — stable Assets and immutable
+- **[ADR-001](./decisions/ADR-001-plugin-boundary.md)** — execution profiles and installation.
+- **[ADR-002](./decisions/ADR-002-core-domain-pack-split.md)** — the core/domain-pack seam.
+- **[ADR-003](./decisions/ADR-003-asset-identity-and-content-revisions.md)** — stable Assets and immutable
   AssetVersions.
-- **[ADR-006](../decisions/ADR-006-rule-engine-deferral.md)** — declarative Processing Goals,
+- **[ADR-006](./decisions/ADR-006-rule-engine-deferral.md)** — declarative Processing Goals,
   reconciliation, and policy deferral.
-- **[ADR-007](../decisions/ADR-007-security-and-plugin-trust.md)** — authentication, capability
+- **[ADR-007](./decisions/ADR-007-security-and-plugin-trust.md)** — authentication, capability
   grants, endpoint trust, and secret delivery.
-- **[ADR-008](../decisions/ADR-008-facet-schema-and-write-authority.md)** — facet schema ownership,
+- **[ADR-008](./decisions/ADR-008-facet-schema-and-write-authority.md)** — facet schema ownership,
   write grants, provenance, and evolution.

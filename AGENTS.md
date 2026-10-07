@@ -19,7 +19,11 @@ Sidereal is mid-rewrite, so two stacks live side by side in this repo ([RFC #213
 
 The frontend stays TypeScript/React through the whole rewrite; only the backend changes language.
 
-**v2 builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
+**v2 builds through capabilities and feature epics.** M0 scaffolding is done. The
+post-M0 plan is being rebuilt in [#347](https://github.com/sidereal-io/sidereal/issues/347)
+and [`openspec/migration.md`](openspec/migration.md). Local PNG/JPEG/TIFF files lead
+delivery; all seven capability groups are required before cutover. The design-system
+work in [#337](https://github.com/sidereal-io/sidereal/issues/337) is preserved.
 
 **Run both stacks from the root `justfile`.** It is the single front door: `just dev` starts the Rust backend and the v2 web shell (`web/`) together, `just v0-dev` runs the v0.10.x stack, and `just --list` describes every recipe under its stack's group.
 
@@ -28,7 +32,7 @@ The frontend stays TypeScript/React through the whole rewrite; only the backend 
 **Where to read more:**
 
 - **v2 backend layout, prerequisites, and commands** — [`server/README.md`](server/README.md).
-- **v2 target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
+- **v2 target architecture and capability roadmap** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
 - **The rest of this file** — describes the v0.10.x stack, plus the v2 constraints and cross-stack workflow in the sections below.
 
 ## Durable constraints (v2 backend)
@@ -46,8 +50,8 @@ Invariants for the `server/` Rust workspace — honor them in every v2 change.
   equipment, deep-sky metadata — belongs in `packs/astro`, so `core` stays reusable by
   other packs.
 - **`plugin-abi` is the third-party contract** — treat changes to it as public API. It
-  is intentionally unfrozen and expected to churn until M2; stabilize it deliberately,
-  not by accident.
+  is intentionally unfrozen during preview development. Version and document changes;
+  stabilize each capability with real consumer and conformance evidence.
 - **PostgreSQL only** — no SQLite fallback on the Rust side
   ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
@@ -78,7 +82,7 @@ How v2 screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
 - Planning uses **OpenSpec**: in-flight work lives under `openspec/changes/`;
   durable specs under `openspec/specs/`; decision records under `docs/decisions/`. Use
   the `opsx:*` skills (propose → apply → verify → archive). The product input (a
-  milestone issue such as #217, or an ADR) holds intent; `openspec/discovery.md`
+  capability or feature-epic issue, or an ADR) holds intent; `openspec/discovery.md`
   holds personas and journeys; the backlog is GitHub issues.
 - **Generate OpenSpec skills with `just skills`.** Never run `openspec init` or
   `openspec update` — they read your global config, not the repo's settings. The
@@ -122,8 +126,10 @@ between phases" step.
   rejected PR is just closed and its branch deleted; `main` stays clean.
 - **Every story is an issue.** Its body is the story packet, and the story's PR
   says `Closes #<issue>`. An epic is a parent issue, labeled `kind/epic`, with its stories
-  as sub-issues; close it once they are all closed. Dependencies are "blocked by"
-  links between issues.
+  as sub-issues; close it once they are all closed. Capability parent issues group
+  feature epics. Record cross-epic blockers on epics and within-epic blockers on
+  stories. A story remains blocked while its parent epic has an open blocker;
+  backlog selection must check blocking ancestors as well as the story itself.
 - **Every story carries one MoSCoW priority label:** `priority/must`,
   `priority/should`, `priority/could`, or `priority/wont`. The label matches the
   `MoSCoW` line in the story packet; when you change one, change the other in the same

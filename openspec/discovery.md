@@ -90,7 +90,7 @@
 
 ## Journey Map
 
-Stage status checked against the code on 2026-10-02. Status describes the v2 backend
+Stage status checked against the code on 2026-10-06. Status describes the v2 backend
 in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -98,84 +98,141 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 **Library journey** (Nova):
 
 ```
-  Point at ─► Ingest   ─► Read     ─► See it   ─► Group    ─► Match    ─► Plate    ─► Trace    ─► Find &
-  folder                  metadata                sessions    calibr.     solve       lineage     publish
-     │           │           │           │           │           │           │           │           │
-    gap         gap         gap         gap         gap         gap         gap         gap         gap
+  Connect source → Ingest safely → Read metadata → View images → Describe → Find
+       gap             gap             gap             gap          gap       gap
+                                                                              │
+  Publish ← Trace lineage ← Match calibration ← Group sessions ←───────────────┘
+     gap          gap               gap                gap
 ```
 
-1. **Point at a folder** — Sidereal watches a folder for new files — gap
-   ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
-2. **Ingest** — copy each file, hash it with BLAKE3, skip duplicates, and record an
-   immutable version — gap: no schema and no store yet
-   ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
-3. **Read metadata** — size, format, and dimensions as facets — gap
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-   [#280](https://github.com/sidereal-io/sidereal/issues/280)). FITS and XISF header
-   reading has no story yet.
-4. **See it** — the asset appears in the browser as it lands — gap: no v2 frontend
-   shell ([#282](https://github.com/sidereal-io/sidereal/issues/282)). The v0.10.x
-   gallery shows Immich images only.
-5. **Group into sessions** — frames sorted by type, target, filter, and equipment —
-   gap.
-6. **Match calibration** — a master dark or flat matched to the lights it fits by
-   camera, temperature, gain, and exposure — gap.
-7. **Plate solve** — gap in v2. v0.10.x solves Immich images through Astrometry.net.
-8. **Trace lineage** — which lights and masters produced a stack — gap
-   ([#286](https://github.com/sidereal-io/sidereal/issues/286) exposes the scaffolding
-   tables).
-9. **Find & publish** — search by target, filter, or equipment, and publish to Immich,
-   Astrobin, or a static gallery — gap in v2. v0.10.x browses and filters Immich
-   images.
+1. **Connect a source** — point Sidereal at a local folder or configure another
+   Source plugin, such as Immich — gap. The Source reports candidates; core owns
+   ingestion.
+2. **Ingest safely** — copy files into managed storage, calculate BLAKE3 hashes,
+   preserve source identity, and record immutable versions — gap. Identical content
+   may share stored bytes without making the hash the logical asset identity.
+3. **Read metadata** — inspect file properties and astronomy headers through
+   schema-defined facets, with units and producer provenance — gap. Native FITS
+   and XISF readers are absent, as are generic metadata Operators.
+4. **View images** — browse image previews, open an individual image, zoom and pan,
+   and inspect its metadata — gap. `web/src/App.tsx` only shows server health.
+   v0.10.x has a gallery and OpenSeadragon viewer in `apps/client/src/`.
+5. **Describe** — add tags and additional metadata; edit names, descriptions, and
+   associations — gap. User descriptions and corrections remain distinguishable
+   from extracted observations. v0.10.x has image editors; its tag badges do not
+   establish a complete tag-editing workflow.
+6. **Find** — search and combine criteria such as target, date, frame type, filter,
+   equipment, tags, and processing state — gap. v0.10.x has a mixture of server
+   filters and client-side search, date, and integration filters.
+7. **Group sessions** — associate frames with sessions, targets, equipment,
+   locations, and acquisitions; inspect integration totals — gap. v0.10.x has
+   acquisition entries and equipment relations, but no raw-frame session model.
+8. **Match calibration** — find compatible darks, flats, and masters by their
+   recorded properties — gap.
+9. **Trace lineage** — inspect which exact versions and calibration inputs produced
+   a derived image — gap. Sidereal records or orchestrates external processing;
+   it does not perform calibration or integration mathematics.
+10. **Publish** — choose assets and publish through a Sink plugin, such as Immich,
+    Astrobin, or a static gallery — gap. Removing a remote asset does not delete
+    the managed Sidereal original.
+
+> **Implication**: Raw frames, derived images, and finished images share an asset
+> library. Viewing, descriptions, and retrieval are explicit parts of that path.
+> An Immich integration can provide both Source and Sink capabilities through the
+> same public plugin contracts as other integrations.
+
+**Planning and sky journey** (Nova):
+
+```
+  Set up gear & sites → Explore targets → Check visibility → Frame a shot
+           gap                 gap              gap               gap
+                                                                    │
+  Inspect annotations ← Explore captured images on a sky map ← Plate solve
+           gap                         gap                        gap
+```
+
+1. **Set up gear and sites** — maintain equipment, equipment groups, and named
+   observing locations — gap in v2. v0.10.x implements these in the equipment and
+   locations pages and their server routes.
+2. **Explore targets** — browse and search the catalog, record notes and tags, and
+   see targets already imaged — gap in v2. v0.10.x has the Targets page.
+3. **Check visibility** — evaluate a target for a site and observing time — gap in
+   v2. v0.10.x has location-based visibility and target ordering.
+4. **Frame a shot** — inspect the telescope/camera field of view on an interactive
+   sky atlas — gap in v2. v0.10.x calculates this from equipment specifications in
+   `apps/client/src/pages/sky-map.tsx`.
+5. **Plate solve** — request a solution for one image or a selected batch and
+   inspect progress, failures, and results — gap in v2. v0.10.x submits images to
+   Astrometry.net.
+6. **Explore captured images on a sky map** — pan and zoom an interactive atlas,
+   see images at their sky positions, and open them in the viewer — gap in v2.
+   v0.10.x has an Aladin-based Sky Map page. A usable sky position or plate solution
+   is needed; an unsolved image remains accessible in the library.
+7. **Inspect annotations** — view object labels and plate-solution details on an
+   image — gap in v2. v0.10.x overlays annotations in its image viewer.
+
+> **Implication**: Planning and reviewing captured sky coverage are two uses of
+> the same equipment, location, catalog, and coordinate information. A person can
+> enter at the library or the sky map; a fresh capture need not have a saved plan.
 
 **Self-host journey** (Sam):
 
 ```
-  Install ─► Configure ─► Protect ─► Detect & ─► Back up & ─► Upgrade from
-  (1 cmd)                 originals   repair      restore      v0.10.x
-     │           │            │           │           │            │
-  partial       gap          gap         gap         gap          gap
+  Install → Establish private access → Configure → Protect originals
+  partial              gap                gap               gap
+                                                              │
+  Upgrade from v0.10.x ← Back up & restore ← Diagnose & repair ←┘
+          gap                   gap                  gap
 ```
 
 1. **Install** — Postgres and the app come up together from one command — partial:
-   `server/Dockerfile` and the axum shell exist, with no database or compose bundle
-   ([#285](https://github.com/sidereal-io/sidereal/issues/285)).
-2. **Configure** — storage root and watched folders set through config or environment
-   — gap ([#281](https://github.com/sidereal-io/sidereal/issues/281)). An admin
-   configuration UI has no story yet.
-3. **Protect originals** — ingest copies and never moves, renames, or deletes files in
-   the watched folder — gap ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
-4. **Detect & repair** — a corrupted stored file is found, and the user can adopt,
-   restore, or ignore it — gap ([#284](https://github.com/sidereal-io/sidereal/issues/284)).
-5. **Back up & restore** — a documented, verified backup of both the database and the
-   storage root — gap.
-6. **Upgrade from v0.10.x** — a one-way importer with a dry run and a report of what
-   didn't map — gap.
+   `server/Dockerfile` and the axum shell exist, with no database or compose bundle.
+2. **Establish private access** — set an administrator credential, sign in, and
+   revoke access, with protected HTTP and WebSocket sessions — gap. The current
+   server router serves only `/healthz`; there is no authentication flow.
+3. **Configure** — choose storage, Sources, and processing/publishing integrations
+   and test their connections — gap. v0.10.x has administration forms for Immich
+   and Astrometry.net.
+4. **Protect originals** — ingestion preserves watched files and limits plugins to
+   approved capabilities; inspect processing state and failures — gap.
+5. **Diagnose and repair** — find missing or corrupt objects, inspect their
+   provenance, and deliberately adopt, restore, or ignore a mismatch — gap.
+6. **Back up and restore** — verify a backup of both PostgreSQL and asset storage
+   and restore a usable library — gap.
+7. **Upgrade from v0.10.x** — run a read-only, resumable importer with a dry run,
+   checksum verification, and a report of records or originals that did not map —
+   gap.
 
 **Plugin journey** (Pat):
 
 ```
-  Code to    ─► Read bytes ─► Declare    ─► Register   ─► Run via    ─► Back door  ─► Pass
-  contract      & facets      grants                      executor      refused       conform.
-      │             │             │             │             │             │             │
-   partial         gap           gap        supported        gap           gap           gap
+  Code to contract → Declare capabilities → Register/install → Run
+       partial               gap                partial        gap
+                                                                │
+  Use a published contract ← Pass conformance ← Inspect outcomes ←┘
+             gap                    gap                  gap
 ```
 
-1. **Code to the contract** — implement a Source or Operator against `plugin-abi` —
-   partial: the traits in `server/crates/plugin-abi/src/lib.rs` carry only an id
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-   [#281](https://github.com/sidereal-io/sidereal/issues/281)). The embedded-script
-   profile has no story yet.
-2. **Read bytes & emit facets** — through `AssetContext`: byte access, `emit_facet`,
-   `log`, `is_cancelled` — gap ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
-3. **Declare grants** — a manifest names the facets the plugin may write — gap.
-4. **Register** — `Pack::register` adds the plugin to the `Registry` — supported.
-5. **Run via the executor** — the executor dispatches the plugin and validates its
-   outcome — gap ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
-6. **Back door refused** — a direct store write or forged facet is rejected — gap
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279); proven in CI by
-   [#283](https://github.com/sidereal-io/sidereal/issues/283)).
-7. **Pass conformance** — the plugin passes the shared conformance suite — gap.
+1. **Code to the contract** — implement Source, Operator, or Sink behavior against
+   `plugin-abi` — partial: traits in `server/crates/plugin-abi/src/lib.rs` carry
+   only an id. There is no executable `AssetContext` or script/provider adapter.
+2. **Declare capabilities** — declare schemas, configuration, outcomes, and
+   requested byte, facet, network, or secret access — gap.
+3. **Register or install** — contribute a built-in pack or install an extension
+   with explicit approval of its grants — partial. `Pack::register` and `Registry`
+   work for compiled components, but there is no extension loader or approval flow.
+4. **Run** — core selects eligible work, supplies mediated capabilities, validates
+   results, and commits outcomes — gap. There is no executor, goal state, or
+   reconciler in `server/crates/core/src/lib.rs`.
+5. **Inspect outcomes** — see results, provenance, progress, failures, and
+   cancellation, without ambient access to managed bytes or secrets — gap.
+6. **Pass conformance** — prove authorization, schema compatibility, original
+   safety, and declared side-effect and recovery behavior — gap. The registration
+   test checks ids only.
+7. **Use a released contract** — build against a documented, versioned capability
+   contract and know its compatibility limits — gap. The ABI remains an unfinished
+   scaffolding contract. Preview contracts may evolve; a stable designation needs
+   evidence from real consumers and conformance checks.
 
 ### People who build Sidereal
 

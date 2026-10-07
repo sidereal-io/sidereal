@@ -5,7 +5,7 @@ the load-bearing concepts — and points to, without restating, the documents th
 
 - **Why each decision was made** → the ADRs in [`docs/decisions/`](./decisions/); the
   [decision index](#architecture-decisions) below is their canonical status.
-- **The plan** — milestones, sequencing → [migration.md](../openspec/migration.md)
+- **The plan** — capabilities, feature epics, release checkpoints → [migration.md](../openspec/migration.md)
 - **Cutover execution** — checklist, rollback → [migration.md](../openspec/migration.md).
 - **Current v0.10.x behaviour** → the [analysis package](https://github.com/sidereal-io/sidereal-analysis) — an inventory, not a compatibility contract.
 

@@ -8,8 +8,11 @@ context: |
   `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,subIssuesSummary`.
   Skip epic parents (any issue labeled `kind/epic` or with sub-issues), issues with an
   open blocker, assigned issues (they are in progress), issues labeled `priority/wont`,
-  and issues with no `priority/*` label (they are untriaged). Of the rest, take the
-  highest priority — `priority/must`, then `priority/should`, then `priority/could` —
+  and issues with no `priority/*` label (they are untriaged). For each candidate,
+  inspect `gh issue view <n> --json parent,blockedBy`, follow `parent.number` up
+  the hierarchy, and skip the candidate if it or any ancestor has an open blocker.
+  A story inherits its parent epic's blockers; do not duplicate those links on every
+  child. Of the rest, take the highest priority — `priority/must`, then `priority/should`, then `priority/could` —
   and the lowest number within it. Read its story packet with
   `gh issue view <n> --json body`. When proposing,
   assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
