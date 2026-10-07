@@ -23,7 +23,7 @@
 
 ## 5. Development commands
 
-- [ ] 5.1 Remove the `v0-dev` and `v0-frontend` recipes and every `[group(...)]` attribute from the `justfile`. Rewrite its header comment for one stack. Verify that `just v0-dev` exits with a non-zero status, and that `just --dump --dump-format json` shows no recipe in group `v2` or `v0.10.x`.
+- [x] 5.1 Remove the `v0-dev` and `v0-frontend` recipes and every `[group(...)]` attribute from the `justfile`. Rewrite its header comment for one stack. Verify that `just v0-dev` exits with a non-zero status, and that `just --dump --dump-format json` shows no recipe in group `v2` or `v0.10.x`.
 
 ## 6. Documents and naming
 
