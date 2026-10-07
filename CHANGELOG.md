@@ -5,6 +5,11 @@ All notable changes to Sidereal will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> [!NOTE]
+> Entries for the released v0.10.x line continue on the [`v0.x` branch](https://github.com/sidereal-io/sidereal/blob/v0.x/CHANGELOG.md).
+> The entries below record `main`'s history up to the point where the v0.10.x app left `main`.
+> Some `[Unreleased]` entries later shipped from `v0.x`, and some never shipped. The `v0.x` changelog records what each release contains.
+
 ## [Unreleased]
 
 ### Security
