@@ -5,10 +5,16 @@ context: |
   openspec/discovery.md holds personas and journeys. An issue marked "Not yet a story"
   must be cut into a story packet before it is proposed. When asked to propose the
   next change without a specific request, list open issues with
-  `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,subIssuesSummary`.
+  `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,parent,subIssuesSummary`.
   Skip epic parents (any issue labeled `kind/epic` or with sub-issues), issues with an
   open blocker, assigned issues (they are in progress), issues labeled `priority/wont`,
-  and issues with no `priority/*` label (they are untriaged). Of the rest, take the
+  and issues with no `priority/*` label (they are untriaged). For each candidate,
+  follow its native parent links with `gh issue view <n> --json parent,blockedBy`.
+  Exclude it if any ancestor has an open blocker; continue to the next candidate.
+  AGENTS.md's "Epic planning and issue relationships" section defines the shared
+  planning rules. Epics omit relevant-code sections and repeated workflow rules;
+  identify groundwork and relevant code during exploration and story cutting.
+  Of the eligible stories, take the
   highest priority — `priority/must`, then `priority/should`, then `priority/could` —
   and the lowest number within it. Read its story packet with
   `gh issue view <n> --json body`. When proposing,
