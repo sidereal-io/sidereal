@@ -12,7 +12,7 @@
 
 - [x] 3.1 Delete the v0 workflows `ci.yml`, `docker-build-push.yml`, `docker-build-test.yml`, and `release.yml`. Verify the scenario "The v0.10.x workflows are gone" in the ci delta spec.
 - [x] 3.2 Rename `v2.yml` to `ci.yml` with `git mv`. Set `name: ci`, change its own path in the trigger list, and add a `push` trigger for `main` with the same path filter. Keep `permissions: contents: read`. Verify every scenario of "Every CI job runs one recipe inside the development shell" and "Each workflow grants only the token access it needs" with `nix run nixpkgs#yq-go -- '<expression>' .github/workflows/ci.yml`.
-- [ ] 3.3 Rewrite `codeql.yml` as design D3 describes: a language matrix of `rust` and `javascript-typescript`, `build-mode: none`, branch filters for `main` only, and `contents: read` with `security-events: write`. Verify the scenarios "The CodeQL workflow has no path filter" and "The CodeQL workflow targets main only", and the permissions scenarios.
+- [x] 3.3 Rewrite `codeql.yml` as design D3 describes: a language matrix of `rust` and `javascript-typescript`, `build-mode: none`, branch filters for `main` only, and `contents: read` with `security-events: write`. Verify the scenarios "The CodeQL workflow has no path filter" and "The CodeQL workflow targets main only", and the permissions scenarios.
 - [ ] 3.4 Add `v0-security-scan.yml` as design D10 describes. Pin `aquasecurity/trivy-action` to the full commit SHA of its latest release, found with `gh api`. Verify every yq scenario of "A weekly scan checks v0.x for known vulnerabilities", plus "No workflow uses a secret".
 - [ ] 3.5 Run `nix run nixpkgs#actionlint` on `.github/workflows/`. Verify that it reports no error.
 

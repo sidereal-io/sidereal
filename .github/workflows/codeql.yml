@@ -1,21 +1,30 @@
 name: CodeQL
 
+# The maintenance branch runs its own CodeQL job, in its own ci.yml.
 on:
   push:
     branches:
       - main
-      - v0.x
   pull_request:
     branches:
       - main
-      - v0.x
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
   codeql:
+    name: codeql (${{ matrix.language }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Rust is the server in server/; JavaScript and TypeScript is the
+        # web shell in web/. Neither needs a build for CodeQL to read it.
+        language:
+          - rust
+          - javascript-typescript
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -23,12 +32,10 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: javascript-typescript
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+          languages: ${{ matrix.language }}
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: /language:javascript-typescript
+          category: /language:${{ matrix.language }}
