@@ -32,7 +32,7 @@
 - [x] 6.3 Remove the v0 sections from `CONTRIBUTING.md`, and point v0 contributors to `v0.x`. Keep the `.nvmrc` instructions. Rename the `v2` workflow to `ci`. Verify that it names no `npm run` command.
 - [x] 6.4 Add a note at the top of `CHANGELOG.md` that v0.10.x entries continue on the `v0.x` branch. Verify that the existing entries are unchanged.
 - [x] 6.5 Remove "v2" as the name of `main`'s stack from `server/README.md`, `web/README.md`, `DESIGN.md`, `docs/architecture.md`, `docs/plugins.md`, `openspec/discovery.md`, `openspec/migration.md`, `openspec/config.yaml`, and code comments under `server/` and `web/`. Keep "v2" where it names a version, such as `v2.0.0`. Remove `server/README.md`'s mention of `apps/` and `packages/`. Verify with `git grep -nw v2 -- . ':!openspec/changes/archive' ':!docs/decisions'` that every match names a version or this change.
-- [ ] 6.6 Edit the living specs' wording directly, as design D6 describes. Rewrite the Purpose of `ci`, `dev-commands`, and `web-shell` for one stack. Change "v2 server" to "the server" in web-shell requirements that this change's deltas do not touch. Do not edit any requirement a delta removes, modifies, or renames. Verify with `openspec validate remove-v0-from-main --strict`.
+- [x] 6.6 Edit the living specs' wording directly, as design D6 describes. Rewrite the Purpose of `ci`, `dev-commands`, and `web-shell` for one stack. Change "v2 server" to "the server" in web-shell requirements that this change's deltas do not touch. Do not edit any requirement a delta removes, modifies, or renames. Verify with `openspec validate remove-v0-from-main --strict`.
 
 ## 7. Verification
 

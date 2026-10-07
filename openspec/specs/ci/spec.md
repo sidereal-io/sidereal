@@ -2,7 +2,7 @@
 
 ## Purpose
 
-CI runs the checks that match what a pull request changes. v2 changes run the v2 checks, v0.10.x changes run the v0.10.x pipeline, and code scanning runs on every pull request.
+CI runs the checks that match what a pull request or a push to `main` changes, and code scanning runs on every pull request. `main` builds and releases nothing, and a weekly scan watches the `v0.x` maintenance branch for known vulnerabilities.
 
 ## Requirements
 
