@@ -6,7 +6,7 @@
 
 - [x] 2.1 Remove the v0 tree with `git rm -r`: `apps/`, `packages/`, `tools/`, `tests/`, `docker/`, `assets/`, the root `Dockerfile`, `docker-compose.yml`, `docker-compose.prod.yml`, `docker-compose.postgres.yml`, `package.json`, `package-lock.json`, `vite.config.ts`, `tailwind.config.ts`, `postcss.config.js`, `drizzle.config.ts`, `tsconfig.json`, `playwright.config.ts`, `components.json`, `test-config.js`, `.env.example`, `.env.worker.example`, `.dockerignore`, and `.trivyignore`. Keep `.nvmrc` (design D8). Verify that `git ls-files package.json package-lock.json apps packages tools tests docker assets` prints nothing.
 - [x] 2.2 Remove the v0-only lines from `.gitignore`, such as SQLite database files and v0 build output. Keep the lines that `server/` and `web/` need. Verify that `git status --ignored --short server web` lists no tracked file as ignored.
-- [ ] 2.3 Run `just check` inside the development shell. Verify that it exits with status 0, which shows that nothing in `server/` or `web/` depended on the removed files.
+- [x] 2.3 Run `just check` inside the development shell. Verify that it exits with status 0, which shows that nothing in `server/` or `web/` depended on the removed files.
 
 ## 3. Workflows
 
@@ -36,9 +36,9 @@
 
 ## 7. Verification
 
-- [ ] 7.1 Run `just check`, `nix flake check`, and `openspec validate --all --strict`. Verify that each exits with status 0.
+- [x] 7.1 Run `just check`, `nix flake check`, and `openspec validate --all --strict`. Verify that each exits with status 0.
 - [ ] 7.2 Push the branch. Verify on PR #352 that the `ci` workflow's `server` and `web` jobs pass, that CodeQL reports an analysis for Rust and one for JavaScript and TypeScript, and that the flake check passes.
-- [ ] 7.3 Re-check the archive tag (design D1). Run `git diff --stat archive/unreleased-v0-main "$(git merge-base HEAD origin/main)" -- apps packages tools tests docker assets`. Verify that it prints nothing. If it prints a change, ask the maintainer before moving the tag.
+- [x] 7.3 Re-check the archive tag (design D1). Run `git diff --stat archive/unreleased-v0-main "$(git merge-base HEAD origin/main)" -- apps packages tools tests docker assets`. Verify that it prints nothing. If it prints a change, ask the maintainer before moving the tag.
 
 ## 8. After merge
 
