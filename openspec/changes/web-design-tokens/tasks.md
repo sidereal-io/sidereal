@@ -10,7 +10,7 @@
 ## 3. The `DESIGN.md` reader and the generator
 
 - [x] 3.1 Write `web/scripts/design-md.ts`, which reads `DESIGN.md` and parses its front matter (D2), with unit tests. Verify: the tests pass, including one that fails clearly when the front matter is missing.
-- [ ] 3.2 Write the generator, `web/scripts/tokens.ts`, so that it writes `web/src/styles/tokens.css` as D3 describes, with unit tests written first. Verify: the tests show `--sr-obsidian-950: #0B0A0F`, `--sr-font-size-14: 14px`, `--sr-opacity-45: 0.45`, and one property per primitive.
+- [x] 3.2 Write the generator, `web/scripts/tokens.ts`, so that it writes `web/src/styles/tokens.css` as D3 describes, with unit tests written first. Verify: the tests show `--sr-obsidian-950: #0B0A0F`, `--sr-font-size-14: 14px`, `--sr-opacity-45: 0.45`, and one property per primitive.
 - [ ] 3.3 Add the generator's refusals (D4) with a unit test for each: a semantic token, a component token, a duplicate key, a bad key, a bad `css-prefix`, a value with a refused character, a value that does not fit its group's form, and an unknown `x-sidereal` group. Verify: each spec scenario under "The generator refuses tokens it cannot write yet" passes, and the error names the token.
 - [ ] 3.4 Add the check mode and the `tokens` and `tokens:check` scripts. Generate and commit `web/src/styles/tokens.css`, and list it in `web/.prettierignore`. Verify: `pnpm tokens:check` passes; after a hand edit to `tokens.css`, it fails, prints `pnpm tokens`, and leaves the file unchanged.
 
