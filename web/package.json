@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "tokens": "node scripts/tokens.ts",
-    "tokens:check": "node scripts/tokens.ts --check"
+    "tokens:check": "node scripts/tokens.ts --check",
+    "tokens:penpot": "node scripts/penpot-tokens.ts"
   },
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-mono": "^5.3.0",

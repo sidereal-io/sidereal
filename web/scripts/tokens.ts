@@ -40,15 +40,7 @@ export function main(args: string[]): number {
 // in DESIGN.md's order, grouped by where each token sits in the front matter.
 // Throws a TokenError that names every token it cannot write safely.
 export function buildTokensCss(frontMatter: Record<string, unknown>): string {
-  const problems = findProblems(frontMatter);
-  if (problems.length > 0) {
-    throw new TokenError(
-      [
-        "DESIGN.md holds tokens that tokens.css cannot hold:",
-        ...problems.map((problem) => `  - ${problem}`),
-      ].join("\n"),
-    );
-  }
+  checkTokens(frontMatter);
 
   const prefix = String(extensionOf(frontMatter)["css-prefix"]);
   const lines = [
@@ -69,7 +61,21 @@ export function buildTokensCss(frontMatter: Record<string, unknown>): string {
   return lines.join("\n");
 }
 
-interface TokenGroup {
+// Throws a TokenError that names every token the generators cannot write
+// safely. Returns nothing when every token can be written.
+export function checkTokens(frontMatter: Record<string, unknown>): void {
+  const problems = findProblems(frontMatter);
+  if (problems.length > 0) {
+    throw new TokenError(
+      [
+        "DESIGN.md holds tokens that the token generators cannot write:",
+        ...problems.map((problem) => `  - ${problem}`),
+      ].join("\n"),
+    );
+  }
+}
+
+export interface TokenGroup {
   // Where the group sits in the front matter, such as `colors` or
   // `x-sidereal.font-size`.
   path: string;
@@ -254,7 +260,9 @@ const specGroups = ["colors", "rounded", "spacing"];
 // Keys under x-sidereal that hold settings, not primitive tokens.
 const extensionSettings = ["css-prefix", "semantic"];
 
-function primitiveGroups(frontMatter: Record<string, unknown>): TokenGroup[] {
+export function primitiveGroups(
+  frontMatter: Record<string, unknown>,
+): TokenGroup[] {
   const groups: TokenGroup[] = [];
   for (const path of specGroups) {
     const tokens = frontMatter[path];
