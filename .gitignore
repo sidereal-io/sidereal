@@ -11,6 +11,10 @@ build/
 .next/
 *.tsbuildinfo
 
+# Rust build outputs
+server/target/
+target/
+
 # Environment files (keep .env.example)
 .env
 .env.local
@@ -113,6 +117,15 @@ vite.config.ts.*
 # Working state (plans, caches, scratch) — fully ignored
 .workspace/
 
+# Nix / direnv — flake.nix and flake.lock are committed, this state isn't
+.direnv/
+.envrc.local
+
 # AI tooling
 .claude/settings.local.json
 .claude/worktrees/
+
+# OpenSpec output — `just skills` regenerates these; only authored skills are tracked
+/.agents/skills/openspec-*/
+/.agents/skills/.openspec-target
+/.agents/skills/.openspec-stamp
