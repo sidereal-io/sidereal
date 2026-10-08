@@ -65,7 +65,7 @@ just server         # Run the server only
 just web            # Run the web interface only
 just check          # The gate to pass before every pull request
 just check-server   # Server checks: format, clippy, tests, dependency-direction lint
-just check-web      # Web checks: type check, lint, format check, unit tests
+just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 ```
 
 ## 🧰 Development Environment

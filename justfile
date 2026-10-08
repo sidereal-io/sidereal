@@ -43,6 +43,6 @@ check-server:
     cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
     server/scripts/check-arch.sh
 
-# Web gate: install from the lockfile, then type check, lint, format check, tests.
+# Web gate: install from the lockfile, then type check, lint, format, DESIGN.md lint, token drift, tests.
 check-web:
-    cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test
+    cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test

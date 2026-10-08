@@ -1,0 +1,11 @@
+/*
+ * Page-wide styles. Every value comes from a token in tokens.css, which is
+ * generated from DESIGN.md.
+ */
+
+body {
+  margin: 0;
+  background-color: var(--sr-obsidian-950);
+  color: var(--sr-obsidian-100);
+  font-family: var(--sr-font-family-sans);
+}

@@ -56,7 +56,8 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
   CI. Never put a Rust release number in a build file or doc. **`just check`**
   is the gate — green before every PR. It runs `check-server` (`cargo fmt --check` +
   `clippy -D warnings` + `cargo test` + arch lint), then `check-web` (type check +
-  lint + format check + unit tests for `web/`).
+  lint + format check + `DESIGN.md` lint + token drift check + unit tests for
+  `web/`).
 - **Real forks become ADRs** in `docs/decisions/` (template `ADR-000`). Don't design
   past a **Proposed** ADR — get it Accepted first. Each ADR stands alone: it links to
   at most one other ADR and never references issues, milestones, or the RFC.
@@ -70,9 +71,9 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
   Code and the Penpot library follow it.
 - **Use tokens, never raw values.** Add a semantic or component token only when a
   component first needs it, in the same pull request.
-- **Change a token in `DESIGN.md` first.** Regenerate the token files in the same
-  pull request, and import the token JSON into Penpot after merge. Never change a
-  token in Penpot first.
+- **Change a token in `DESIGN.md` first.** Run `pnpm tokens` in `web/` to
+  regenerate `tokens.css` in the same pull request. Penpot gets the change when
+  an agent next copies the tokens into it. Never change a token in Penpot first.
 
 ## Workflow
 
