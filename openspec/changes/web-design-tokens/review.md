@@ -1,36 +1,32 @@
 ## Review Metadata
 
-- **Review round**: 1
-- **Prior round**: none
+- **Review round**: 2
+- **Prior round**: round 1, REVISE. Findings: CSS injection through copied values, unknown linter warnings passing, an implicit Penpot lag, malformed contrast cells, and a font-loading race. The author fixed all five.
 - **Reviewer context**: cross-model. GPT (`gpt-6-sol`) through the `codex` CLI, in a fresh session, with medium reasoning effort. The author is Claude.
-- **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer read the artifacts and the repo, and changed no file. The prompt summarized the #302 story packet and listed facts the reviewer could not check offline: the linter's results, Fontsource's family names, and the computed contrast ratios.
-- **Artifacts reviewed**: proposal.md, design.md, specs/design-tokens, specs/dev-commands, specs/web-shell, and adr.md. Context: `DESIGN.md`, ADR-005, ADR-013, `AGENTS.md`, `openspec/config.yaml`, `justfile`, and the `web/` package, tsconfig, Vite config, and source files.
+- **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer changed no file. The prompt listed the facts the author verified with the linter, including two new ones for this round.
+- **Artifacts reviewed**: proposal.md, design.md, specs/design-tokens, specs/dev-commands, specs/web-shell, adr.md, and round 1's review.md, for context. Context: `DESIGN.md`, ADR-005, ADR-013, `AGENTS.md`, `openspec/config.yaml`, `justfile`, `.github/workflows/ci.yml`, and the `web/` package, tsconfig, Vite config, and source files.
 
 ## Findings
 
-The author checked each finding. Each one carries the result: CONFIRMED, PARTLY CONFIRMED, REFUTED, or OUT-OF-SCOPE.
+The reviewer confirmed that all five round 1 fixes are present. The author checked each new finding.
 
 ### 🔴 Critical (blocking)
 
-- **F1. The generator copies values into CSS without checking them, so a value can escape its custom property.**
-  - **Check: CONFIRMED, as Moderate.** The author tested `@google/design.md` 0.4.0. It rejects `"#FFF; } body { background: url(https://x.invalid) }"` under `colors` (exit 1). It accepts the same text under `x-sidereal.size` (exit 0). Anyone who can edit `DESIGN.md` can also edit the CSS, so the risk is low. But the spec's "nothing from another origin" rule should not depend on that.
+- **F1. The generator copies `x-sidereal.css-prefix` into every property name, and nothing checks it.**
+  - **Check: CONFIRMED, as Moderate.** D4 checks keys and values, not the prefix. A prefix such as `sr; } body { … } /*` would escape the `:root` block. A harmless rename, such as `sr` to `foo`, would also pass the drift check while breaking every `var(--sr-…)` in `base.css`.
+- **F2. CI does not run when a pull request changes only `DESIGN.md`.**
+  - **Check: CONFIRMED.** The path filters in `.github/workflows/ci.yml` list `server/**`, `web/**`, `justfile`, and the Nix files, but not `DESIGN.md`. A pull request that changes only `DESIGN.md` gets no drift, lint, or contrast check. The current `ci` spec's requirement ("The web checks run when server or web code changes") does not cover it either.
 
 ### 🟡 Moderate
 
-- **F2. The gate allows every linter warning, not only the three known ones.**
-  - **Check: CONFIRMED.** The author added an unknown top-level key, `x-other`. The linter reported a fourth warning (`token-like-ignored` at `x-other`) and exited 0. The story allows only the three known warnings.
-- **F3. Nothing updates Penpot after a token change merges.**
-  - **Check: PARTLY CONFIRMED.** The lag is intended: the maintainer chose to copy tokens at the start of each exploration (#381). But the artifacts do not say that Penpot may lag. The design must state it.
-- **F4. A malformed contrast cell, such as `TBD`, could be skipped silently.**
-  - **Check: CONFIRMED.** The spec says what to do with a number and with `—`, but not with anything else.
-- **F5. The Inter scenario checks the font when the page loads, which can happen before the font finishes loading.**
-  - **Check: CONFIRMED.** `font-display: swap` lets the page render before the font loads. The scenario needs to wait for `document.fonts.ready`.
+- **F3. The contrast spec does not fail a table that has a header but no rows.**
+  - **Check: CONFIRMED.** design.md D6 says the test fails on no rows, but the spec does not require it.
 
 ### 📌 Suggestions
 
-- **F6. Some passages are long and dense.** The reviewer named the proposal's opening, the font decision, the contrast and font requirements, and the ADR manifest's D9 paragraph.
-  - **Check: PARTLY CONFIRMED.** The ADR manifest's D9 paragraph restates the proposal before it reaches the decision. The others are lists or short sentences.
-- **Other surfaces: no finding.** The reviewer found no scope creep, no requirement content lost from the `dev-commands` MODIFIED delta, and no other untestable scenario.
+- **F4. The proposal still says the linter step "allows warnings".**
+  - **Check: CONFIRMED.** The spec and design allow only the three known warnings. The proposal's summary must match.
+- **Other surfaces: no finding.** Plain language, scenario testability, scope, and `dev-commands` delta completeness have no finding. The reviewer noted that the Penpot lag is an explicit bet: it loses if someone uses Penpot's tokens between a merge and the next exploration.
 
 ## Embedded-Instruction / Injection Attempts
 
@@ -42,15 +38,15 @@ VERDICT: REVISE
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-None. The verdict is REVISE. The author fixes the artifacts, and a fresh full review follows.
+None. The verdict is REVISE. This is the second REVISE in a row, so the author stops and asks the maintainer how to go on.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-- **F1:** fixed in round 2, with a severity note. The generator will reject keys and values that could escape a custom property.
-- **F2:** fixed in round 2. The lint step will allow only the three known warnings, each matched by rule and path.
-- **F3:** fixed in round 2. The design will state that Penpot may lag until the next exploration.
-- **F4:** fixed in round 2. The test will reject any cell that is not a ratio, a ratio marked `(fails)`, or `—`.
-- **F5:** fixed in round 2. The scenario will wait for `document.fonts.ready`.
-- **F6:** partly fixed in round 2. The ADR manifest's D9 paragraph will be shortened.
+None yet. The author proposes these fixes to the maintainer:
+
+- **F1:** the generator also refuses a `css-prefix` that holds anything other than lowercase letters. The spec gains a scenario.
+- **F2:** add `DESIGN.md` to both path filters in `.github/workflows/ci.yml`. The change then also modifies the `ci` capability, with a scenario for a pull request that changes only `DESIGN.md`.
+- **F3:** the spec requires the test to fail when the table has no rows or no background columns. It gains a scenario.
+- **F4:** the proposal says that only the three known warnings are allowed.
