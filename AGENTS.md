@@ -128,6 +128,25 @@ between phases" step.
   `MoSCoW` line in the story packet; when you change one, change the other in the same
   edit. Epics and untriaged issues have no priority label.
 
+### Epic planning and issue relationships
+
+- **Epics describe outcomes.** Record the people served, scope, constraints, and
+  exit demonstration. Identify groundwork and relevant code when exploring and
+  cutting stories; do not put a "Relevant code" section in an epic.
+- **Use native GitHub relationships.** Parent/sub-issue links express ownership,
+  blocked-by/blocking links express prerequisites, and relates-to links connect
+  work without blocking it. Do not repeat these workflow rules in epic bodies.
+- **Record blockers where they apply.** An epic-wide prerequisite belongs on the
+  epic; a prerequisite for one story belongs on that story. Do not repeat an epic's
+  blockers on every child or block unrelated stories on a partial prerequisite.
+- **Check ancestor blockers.** Before selecting a story for implementation, inspect
+  its blockers and follow its native parent links to check every ancestor's
+  blockers. An open blocker at any level makes the story ineligible. Exploration
+  may identify and resolve prerequisites before implementation is eligible.
+- **Keep prerequisites current.** Record dependencies found during exploration
+  before dependent implementation starts. A relates-to link does not satisfy a
+  prerequisite or release gate.
+
 ## Writing document artifacts — plain language
 
 Write every document artifact — READMEs, ADRs, GitHub issue bodies/designs, `docs/`,
