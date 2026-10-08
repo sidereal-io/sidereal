@@ -51,7 +51,8 @@ The generator exits with an error, naming the token, in these cases:
 - `x-sidereal.semantic` or `components` holds an entry;
 - two groups share a key;
 - a key holds anything other than lowercase letters, digits, and hyphens;
-- `x-sidereal.css-prefix` holds anything other than lowercase letters;
+- `x-sidereal.css-prefix` is missing or holds anything other than lowercase letters;
+- `typography` holds a text style, or `colors`, `rounded`, or `spacing` is not a map;
 - a value holds a line break, `;`, `{`, `}`, `<`, `\`, or `url(`;
 - a value does not fit its group's form. For example, `font-size` takes whole pixels, and `font-family` takes a font list;
 - an `x-sidereal` group has no known form.
@@ -89,7 +90,7 @@ The generator exits with an error, naming the token, in these cases:
 
 `web/src/styles/base.css` styles `body` with `var(--sr-obsidian-950)`, `var(--sr-obsidian-100)`, and `var(--sr-font-family-sans)`, and removes the browser's default margin. `web/src/main.tsx` imports `tokens.css`, `fonts.css`, and `base.css`, in that order. The health screen's components do not change.
 
-A unit test, `web/scripts/tokens-in-use.test.ts`, reads every stylesheet under `web/src/` except `tokens.css`. It fails when a stylesheet uses, through `var()`, a custom property that no stylesheet defines. It checks every name, whatever its prefix. So after a prefix rename, the old `--sr-…` uses in `base.css` fail. It also catches a removed token that code still uses, and a typo in a `var()`.
+A unit test, `web/scripts/tokens-in-use.test.ts`, reads every stylesheet and TypeScript file under `web/src/`, since a component may use a token in an inline style. It fails when a stylesheet uses, through `var()`, a custom property that no stylesheet defines. It checks every name, whatever its prefix. So after a prefix rename, the old `--sr-…` uses in `base.css` fail. It also catches a removed token that code still uses, and a typo in a `var()`.
 
 **New semantic or component tokens:** none. The body styles use primitives directly, which `DESIGN.md` allows until a semantic token for that role exists.
 

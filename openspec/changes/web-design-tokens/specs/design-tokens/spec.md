@@ -41,9 +41,10 @@ The generator SHALL exit with a non-zero status and write no file when `DESIGN.m
 
 - any entry under `x-sidereal.semantic`;
 - any entry under `components`;
+- any entry under the specification's `typography` key, or a `colors`, `rounded`, or `spacing` key that is not a map;
 - two tokens with the same key in different groups;
 - a key that holds anything other than lowercase letters, digits, and hyphens;
-- an `x-sidereal.css-prefix` that holds anything other than lowercase letters;
+- an `x-sidereal.css-prefix` that is missing, or holds anything other than lowercase letters;
 - a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`;
 - a value that does not fit its group's form, from the table below;
 - an `x-sidereal` group that the table does not name.
@@ -55,7 +56,7 @@ The generator SHALL exit with a non-zero status and write no file when `DESIGN.m
 | `x-sidereal.letter-spacing` | a decimal number of `em`, which may be negative | `-0.015em` |
 | `x-sidereal.opacity` | a number from 0 to 1 | `0.45` |
 | `x-sidereal.font-weight` | a whole number from 1 to 1000 | `600` |
-| `x-sidereal.font-family` | a comma-separated list. Each item is a name in double quotes, or words that each start with a letter or a hyphen | `Inter, -apple-system, "Segoe UI", sans-serif` |
+| `x-sidereal.font-family` | a comma-separated list. Each item is a name in double quotes, or words that each start with a letter or a hyphen. No item may be a CSS-wide keyword, such as `inherit` | `Inter, -apple-system, "Segoe UI", sans-serif` |
 
 Its error message SHALL name the token.
 
@@ -100,7 +101,7 @@ Its error message SHALL name the token.
 
 ### Requirement: Stylesheets use only tokens that exist
 
-The unit tests SHALL fail when a stylesheet under `web/src/` uses, through `var()`, a custom property that no stylesheet under `web/src/` defines. `tokens.css` counts as one of those stylesheets. The test SHALL check every `var()` name, whatever its prefix. The test's output SHALL name the property and the stylesheet that uses it.
+The unit tests SHALL fail when a stylesheet or TypeScript file under `web/src/` uses, through `var()`, a custom property that no stylesheet under `web/src/` defines. `tokens.css` counts as one of those stylesheets. The test SHALL check every `var()` name, whatever its prefix. The test's output SHALL name the property and the file that uses it.
 
 #### Scenario: The prefix changed, but the stylesheets did not
 
@@ -177,6 +178,8 @@ The unit tests SHALL check every cell of the table in `DESIGN.md`'s Contrast sec
 - the table is missing, has no background columns, or has no rows;
 - the table names a token that is not a color in the front matter;
 - a cell holds anything other than a number with one decimal place, that number followed by `(fails)`, or `—`.
+
+The test SHALL read a row that leaves out its outer pipes, as Markdown allows, and SHALL read `DESIGN.md` the same way with either line ending.
 
 A cell that holds `—` claims nothing, and the test SHALL skip it.
 
