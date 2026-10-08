@@ -76,7 +76,7 @@ Take in the input — a file path, an issue (`gh issue view <n>`), pasted text, 
 - Surface goals and non-goals
 - List open questions as they emerge (they land in the parent issue)
 
-**Checkpoint:** the parent issue is public, so confirm, then create it from the parent template in [templates/issue-template.md](templates/issue-template.md): the status line, the input reference, the confirmed scope, and any open questions so far. Title it `Epic: <capability>` for now; Phase 5 may turn it into a single story.
+**Checkpoint:** the parent issue is public, so confirm, then create it from the parent template in [templates/issue-template.md](templates/issue-template.md): the status line, the input reference, the confirmed scope, and any open questions so far. Title it `Epic: <capability>` and create it with issue type `Epic` (`gh issue create --type Epic`) for now; Phase 5 may turn it into a single story.
 
 ### Phase 2: Personas
 
@@ -137,16 +137,16 @@ Each story gets a **story packet** — the story template in [templates/issue-te
 
 **One story or many:**
 
-- **The whole run fits one story** → the parent issue becomes that story: retitle it `<kebab-story-name> — <one-line outcome>` and replace its body with the story template, keeping the status line and input reference. Won't calls go in its Scope `out`.
+- **The whole run fits one story** → the parent issue becomes that story: retitle it `<kebab-story-name> — <one-line outcome>`, change its type to `Story` (`gh issue edit <n> --type Story`), set its priority (below), and replace its body with the story template, keeping the status line and input reference. Won't calls go in its Scope `out`.
 - **More than one story** → the stories are sub-issues of the parent.
 
 **Checkpoint:** preview the new and changed issues as a table (title, blocked by, MoSCoW) and confirm — issues are public. Then create them in dependency order, blockers first:
 
 ```bash
-gh issue create --title "<title>" --body-file <file> --parent <parent#> [--blocked-by <n>,<n>]
+gh issue create --type Story --title "<title>" --body-file <file> --parent <parent#> [--blocked-by <n>,<n>]
 ```
 
-The command prints the issue URL; the number is its last segment. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
+The command prints the issue URL; the number is its last segment. Then set the story's `Priority` issue field to its `MoSCoW` value (`Must`, `Should`, or `Could`); the repository's agent guide (`AGENTS.md`) says how. Never use labels for an issue's type or priority. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
 
 ### Phase 6: Finalize
 
@@ -154,7 +154,7 @@ Remove the status line from the parent issue — only the status line; the `Inpu
 
 Then offer to make propose issue-aware: with the user's confirmation, append a backlog line to the `context:` block of `<root.path>/openspec/config.yaml` (create the block if absent; preserve everything already there):
 
-> Backlog: stories are GitHub issues. When asked to propose the next change without a specific request, take the lowest-numbered open issue that has no sub-issues, no open blocker, and no assignee, and use its body as the story packet. Assign it when proposing, and have the draft PR say `Closes #<n>`. One story per change.
+> Backlog: stories are GitHub issues. When asked to propose the next change without a specific request, take the lowest-numbered open issue that isn't of type `Epic` and has no sub-issues, no open blocker, and no assignee, and use its body as the story packet. Assign it when proposing, and have the draft PR say `Closes #<n>`. One story per change.
 
 OpenSpec injects `context` into every artifact's instructions, so every future propose run will know where the backlog lives without being told. If the user declines, hand off manually:
 
@@ -182,7 +182,7 @@ When `discovery.md` exists and no run is in progress:
    - Re-annotate every journey stage against the code; stages move to `supported` as their stories ship
    - Update the freshness line to today
 2. **Take in what the user brings** — a new PRD, new requirements, changed priorities, learnings from shipped stories. New work is a new run with its own parent issue: Ingest, then MoSCoW and Stories. Revisit Personas and the Journey Map only when the input changes who the product serves or how they use it.
-3. **Priorities of existing stories are revisable too:** update the story's MoSCoW line, with its reason.
+3. **Priorities of existing stories are revisable too:** update the story's MoSCoW line, with its reason, and its `Priority` field in the same step.
 4. **Never silently delete a story.** Close a superseded story as not planned with a one-line reason, so the plan's history stays legible: `gh issue close <n> --reason "not planned" --comment "Superseded by #<m>: <reason>"`.
 
 ---

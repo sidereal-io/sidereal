@@ -2,9 +2,7 @@
 name: Feature
 about: Propose a feature — the design spec lives in this issue body
 title: ""
-labels:
-  - type/feature
-  - status/design
+type: Story
 ---
 
 ## Problem

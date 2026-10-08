@@ -2,9 +2,7 @@
 name: Bug
 about: Report a bug — the fix design lives in this issue body
 title: ""
-labels:
-  - type/bug
-  - status/design
+type: Bug
 ---
 
 ## Problem
