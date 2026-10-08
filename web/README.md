@@ -38,21 +38,43 @@ From the repo root:
 just check-web
 ```
 
-This installs dependencies from `pnpm-lock.yaml`, then runs four checks in
+This installs dependencies from `pnpm-lock.yaml`, then runs six checks in
 order. It stops at the first one that fails. `just check` runs it too, after
 the server checks.
 
 To run one check alone, run its script in `web/`:
 
-| Command             | What it checks                                              |
-| ------------------- | ----------------------------------------------------------- |
-| `pnpm typecheck`    | Types in every TypeScript file, including config and tests. |
-| `pnpm lint`         | ESLint rules for TypeScript, React, and hooks.              |
-| `pnpm format:check` | That every file matches Prettier's output.                  |
-| `pnpm test`         | The unit tests, once.                                       |
+| Command             | What it checks                                                                  |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `pnpm typecheck`    | Types in every TypeScript file, including config, scripts, and tests.           |
+| `pnpm lint`         | ESLint rules for TypeScript, React, and hooks.                                  |
+| `pnpm format:check` | That every file matches Prettier's output.                                      |
+| `pnpm design:lint`  | `DESIGN.md`, with the DESIGN.md linter. Only its three known warnings may pass. |
+| `pnpm tokens:check` | That `src/styles/tokens.css` matches `DESIGN.md`.                               |
+| `pnpm test`         | The unit tests, once, including the check of `DESIGN.md`'s contrast table.      |
 
 To fix formatting, run `pnpm format`. To rerun the tests on every save, run
 `pnpm vitest`.
+
+## Change a design token
+
+[`DESIGN.md`](../DESIGN.md) holds every token value. `src/styles/tokens.css` is
+generated from it, so never edit that file by hand.
+
+1. Edit the token in `DESIGN.md`.
+2. In `web/`, run `pnpm tokens` to regenerate `src/styles/tokens.css`.
+3. Run `just check-web` from the repo root.
+4. Commit `DESIGN.md` and `src/styles/tokens.css` together.
+
+If `pnpm tokens` refuses a token, its message names the token and says what is
+wrong. Semantic and component tokens are refused until the generator can
+resolve references.
+
+When you change a color, update its rows in the table under `### Contrast` in
+`DESIGN.md`. The contrast test checks every ratio in that table.
+
+Stylesheets use tokens through `var()`, such as `var(--sr-obsidian-950)`. A
+test fails if a stylesheet uses a custom property that no stylesheet defines.
 
 ## Port 5173 is shared with the v0.10.x frontend
 

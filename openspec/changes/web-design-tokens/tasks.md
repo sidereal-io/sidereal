@@ -35,7 +35,7 @@
 
 ## 8. Docs
 
-- [ ] 8.1 Explain in `web/README.md` how to change a token: edit `DESIGN.md`, run `pnpm tokens`, then run `just check-web`. Verify: the steps work as written on a scratch token change, which is then reverted.
+- [x] 8.1 Explain in `web/README.md` how to change a token: edit `DESIGN.md`, run `pnpm tokens`, then run `just check-web`. Verify: the steps work as written on a scratch token change, which is then reverted.
 
 ## 9. Final check
 

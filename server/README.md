@@ -56,7 +56,7 @@ shows every recipe in the repo.
 | `just server` | Rust backend only. |
 | `just check` | The gate to pass before every PR. It runs both gates: `just check-server`, then `just check-web`. |
 | `just check-server` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. CI's `server` job runs this recipe. |
-| `just check-web` | The web shell's gate: type check, lint, format check, and unit tests. CI's `web` job runs this recipe. See [`web/README.md`](../web/README.md#check-it). |
+| `just check-web` | The web shell's gate: type check, lint, format check, `DESIGN.md` lint, token drift check, and unit tests. CI's `web` job runs this recipe. See [`web/README.md`](../web/README.md#check-it). |
 
 A Rust-only contributor can skip `just` and call cargo directly from `server/`
 (the pinned toolchain is auto-selected there):

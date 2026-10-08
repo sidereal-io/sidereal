@@ -56,7 +56,8 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
   CI. Never put a Rust release number in a build file or doc. **`just check`**
   is the gate — green before every PR. It runs `check-server` (`cargo fmt --check` +
   `clippy -D warnings` + `cargo test` + arch lint), then `check-web` (type check +
-  lint + format check + unit tests for `web/`).
+  lint + format check + `DESIGN.md` lint + token drift check + unit tests for
+  `web/`).
 - **Real forks become ADRs** in `docs/decisions/` (template `ADR-000`). Don't design
   past a **Proposed** ADR — get it Accepted first. Each ADR stands alone: it links to
   at most one other ADR and never references issues, milestones, or the RFC.
