@@ -2,7 +2,8 @@
 //
 //   pnpm tokens          write the file
 //   pnpm tokens:check    compare the file with DESIGN.md and write nothing
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMap, readDesignMd } from "./design-md.ts";
 
@@ -21,6 +22,7 @@ export function main(args: string[]): number {
   }
 
   if (!args.includes("--check")) {
+    mkdirSync(dirname(tokensCssPath), { recursive: true });
     writeFileSync(tokensCssPath, css);
     return 0;
   }

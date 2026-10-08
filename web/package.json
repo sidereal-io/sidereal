@@ -12,7 +12,9 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tokens": "node scripts/tokens.ts",
+    "tokens:check": "node scripts/tokens.ts --check"
   },
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-mono": "^5.3.0",
