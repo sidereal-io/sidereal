@@ -8,10 +8,11 @@ The issue also changes how tokens reach Penpot. An agent now copies tokens into 
 
 - A token generator in `web/` reads the front matter of `DESIGN.md`, including the `x-sidereal` extension. It writes `web/src/styles/tokens.css`, with one `--sr-{name}` custom property per primitive token. Its check mode compares the file with `DESIGN.md` and writes nothing.
 - `just check-web` gains three checks:
-  - the `DESIGN.md` linter, which fails on errors and allows warnings;
+  - the `DESIGN.md` linter, which fails on any error, and on any warning except the three known ones;
   - a drift check, which fails when `tokens.css` does not match `DESIGN.md`;
   - a contrast test, which fails when any ratio in `DESIGN.md`'s contrast table is wrong.
 - The web shell serves Inter and Atkinson Hyperlegible Mono itself, from Fontsource packages. It loads no font from another site.
+- CI runs the web checks when a pull request changes only `DESIGN.md`. Today such a pull request runs no CI at all.
 - The health screen uses `obsidian-950` for its background, `obsidian-100` for its text, and the sans font. Each value comes through a token.
 - ADR-005 is amended in place: an agent keeps Penpot's tokens current, and `tokens.css` is the only generated file. `DESIGN.md`, `AGENTS.md`, and `openspec/config.yaml` drop the JSON file and the manual import to match.
 
@@ -25,11 +26,12 @@ The issue also changes how tokens reach Penpot. An agent now copies tokens into 
 
 - `dev-commands`: the web gate runs six checks instead of four. The new ones are the `DESIGN.md` linter and the token drift check. The contrast test runs with the unit tests.
 - `web-shell`: the web shell serves its own fonts and styles the health screen through the tokens.
+- `ci`: a change to `DESIGN.md` triggers the CI workflow, and the `web` job runs the two new checks.
 
 ## Impact
 
 - **New files:** the generator, the lint script, and their shared `DESIGN.md` reader under `web/scripts/`; the contrast test and the font-path test; `web/src/styles/tokens.css`, and a base stylesheet with the font rules.
-- **Changed code:** `web/src/main.tsx` (imports the stylesheets), `web/package.json` and `web/pnpm-lock.yaml`, `web/tsconfig.node.json`, `web/.prettierignore`, and `justfile` (`check-web`).
+- **Changed code:** `web/src/main.tsx` (imports the stylesheets), `web/package.json` and `web/pnpm-lock.yaml`, `web/tsconfig.node.json`, `web/.prettierignore`, `justfile` (`check-web`), and `.github/workflows/ci.yml` (path filters).
 - **Dependencies:** two runtime packages, the Fontsource variable packages for the two fonts. Two dev dependencies: the `@google/design.md` linter and a YAML parser. The Nix shell needs no new tool.
 - **Docs:** ADR-005, `DESIGN.md`, `AGENTS.md`, `openspec/config.yaml`, and `web/README.md`.
 - **Contributors:** a token change now needs one more command, the generator, before `just check` passes.

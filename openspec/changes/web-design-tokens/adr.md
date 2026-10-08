@@ -5,7 +5,7 @@
 
 ## Review Summary
 
-ADR review completed for this change. The design makes nine decisions (D1–D9). One of them changes an accepted ADR, and none needs a new ADR file.
+ADR review completed for this change. The design makes ten decisions (D1–D10). One of them changes an accepted ADR, and none needs a new ADR file.
 
 - **D9 amends ADR-005 in place, as the maintainer chose.** The amended point: an agent copies tokens into Penpot over the Penpot MCP server, instead of a person importing a generated JSON file. No code ever produced or read that file. `DESIGN.md` stays the source of truth, and Penpot still follows it. One commit makes the edit, with the matching edits to `DESIGN.md`, `AGENTS.md`, and `openspec/config.yaml`.
 - **D1 to D3 are a small script and its output.** A contributor can replace the generator without touching any code that reads `tokens.css`. The `--sr-` names come from `DESIGN.md`, not from the script.
@@ -14,6 +14,7 @@ ADR review completed for this change. The design makes nine decisions (D1–D9).
 - **D6 is a test.** It encodes the contrast rule that ADR-005 and `DESIGN.md` already state.
 - **D7 follows ADR-005's self-hosting rule.** The family names come from `DESIGN.md`. Changing the font source later touches one stylesheet.
 - **D8 uses primitives directly.** `DESIGN.md` allows this until a semantic token for the role exists.
+- **D10 is a CI path filter.** It is one line in each filter and cheap to reverse.
 
 ## In-Force ADRs Reviewed
 

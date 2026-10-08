@@ -43,6 +43,7 @@ The generator SHALL exit with a non-zero status and write no file when `DESIGN.m
 - any entry under `components`;
 - two tokens with the same key in different groups;
 - a key that holds anything other than lowercase letters, digits, and hyphens;
+- an `x-sidereal.css-prefix` that holds anything other than lowercase letters;
 - a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`.
 
 Its error message SHALL name the token.
@@ -68,6 +69,14 @@ Its error message SHALL name the token.
 - **AND** runs the generator
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `size-1280`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+#### Scenario: A prefix that would escape its block
+
+- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `"sr; } body { color: red } /*"`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `css-prefix`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
 
 ### Requirement: The web gate catches a stale token file
@@ -130,7 +139,8 @@ The unit tests SHALL check every cell of the table in `DESIGN.md`'s Contrast sec
 - the computed ratio, rounded to one decimal place, differs from the number in the cell;
 - the cell is marked `(fails)`, but the computed ratio is at least 4.5;
 - the cell is not marked `(fails)`, but the computed ratio is below 4.5;
-- the table is missing, or names a token that is not a color in the front matter;
+- the table is missing, has no background columns, or has no rows;
+- the table names a token that is not a color in the front matter;
 - a cell holds anything other than a number with one decimal place, that number followed by `(fails)`, or `—`.
 
 A cell that holds `—` claims nothing, and the test SHALL skip it.
@@ -155,6 +165,12 @@ A cell that holds `—` claims nothing, and the test SHALL skip it.
 #### Scenario: A cell holds no claim the test can read
 
 - **WHEN** a tester changes the `obsidian-500` cell on `obsidian-850` from `4.5` to `TBD`
+- **AND** runs `just check-web`
+- **THEN** the command exits with a non-zero status
+
+#### Scenario: The table has no rows
+
+- **WHEN** a tester deletes every row of the contrast table in `DESIGN.md` and keeps its header
 - **AND** runs `just check-web`
 - **THEN** the command exits with a non-zero status
 

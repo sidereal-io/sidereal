@@ -51,10 +51,11 @@ The generator exits with an error, naming the token, in these cases:
 - `x-sidereal.semantic` or `components` holds an entry;
 - two groups share a key;
 - a key holds anything other than lowercase letters, digits, and hyphens;
+- `x-sidereal.css-prefix` holds anything other than lowercase letters;
 - a value holds a line break, `;`, `{`, `}`, `<`, `\`, or `url(`.
 
 - **Why not skip semantic and component tokens?** A skipped token would not reach `tokens.css`. A component could then use a CSS property that does not exist, and no check would notice. The error tells the first semantic token's author to add reference lookup in the same pull request.
-- **Why check keys and values?** The generator copies each value into CSS exactly. Without the check, a value could close its property and add a rule, such as one that loads a file from another site. The linter catches this under `colors`, but not under `x-sidereal`. The author tested both. No current token uses any of the refused characters. The font stacks use quotes and commas, which stay allowed.
+- **Why check keys, values, and the prefix?** The generator copies each of them into CSS exactly. Without the check, a value could close its property and add a rule, such as one that loads a file from another site. The linter catches this under `colors`, but not under `x-sidereal`. The author tested both. No current token uses any of the refused characters. The font stacks use quotes and commas, which stay allowed.
 
 ### D5. The `DESIGN.md` linter is a pinned dev dependency
 
@@ -70,7 +71,7 @@ The generator exits with an error, naming the token, in these cases:
 
 - **Rounding:** the test rounds the ratio half up to one decimal before it compares. The pass or fail mark uses the unrounded ratio. So `obsidian-500` on `obsidian-850` is 4.507: it shows as `4.5` and passes.
 - **Threshold:** every pair in the table is body text, so every cell uses 4.5:1.
-- **A broken table fails loudly.** The test fails when it finds no table, no rows, or a name that is not a color token. It also fails on any cell that is not a one-decimal ratio, that ratio followed by `(fails)`, or `—`. A reformatted table can never pass by checking nothing.
+- **A broken table fails loudly.** The test fails when it finds no table, no background columns, no rows, or a name that is not a color token. It also fails on any cell that is not a one-decimal ratio, that ratio followed by `(fails)`, or `—`. A reformatted table can never pass by checking nothing.
 
 ### D7. The web shell's own `@font-face` rules, using Fontsource's files
 
@@ -96,10 +97,14 @@ The maintainer chose to amend ADR-005, not to replace it with a new ADR. No code
 - **`AGENTS.md`:** the third web UI rule changes the same way.
 - **`openspec/config.yaml`:** the `tasks` rule asks for a task to regenerate `tokens.css`, not a Penpot import.
 
+### D10. CI runs when `DESIGN.md` changes
+
+`.github/workflows/ci.yml` adds `DESIGN.md` to both of its path filters, for pull requests and for pushes to `main`. Today a pull request that changes only `DESIGN.md` triggers no CI. The drift, lint, and contrast checks would then never run on the most common token change. Both jobs share one path filter, so a `DESIGN.md` change also runs the `server` job. That costs a few minutes, and keeps the workflow's single filter, which the `ci` spec requires.
+
 ## Risks / Trade-offs
 
 - **[The specification is alpha, and its linter may add rules.]** → The version is pinned (D5). A new error appears only in the Dependabot pull request that brings it.
-- **[A contributor edits `DESIGN.md` and forgets the generator.]** → The drift check fails and prints the command to run (spec: the web gate catches a stale token file).
+- **[A contributor edits `DESIGN.md` and forgets the generator.]** → The drift check fails and prints the command to run, both locally and in CI (D10).
 - **[A generated file is committed.]** → Two branches that both change tokens conflict in `tokens.css`. The fix is to regenerate after merging `DESIGN.md`.
 - **[The contrast test depends on the table's layout.]** → A layout change fails the test instead of passing silently (D6). The author then updates the parser or the table.
 - **[The fonts are declared from 400 to 600, but each file holds the full weight axis.]** → Download size stays the same. The range only stops the browser from using weights that `DESIGN.md` does not define.
