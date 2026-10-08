@@ -121,13 +121,19 @@ between phases" step.
   spec sync. Make the fixes, re-archive as the last commit, and flip ready again. A
   rejected PR is just closed and its branch deleted; `main` stays clean.
 - **Every story is an issue.** Its body is the story packet, and the story's PR
-  says `Closes #<issue>`. An epic is a parent issue, labeled `kind/epic`, with its stories
+  says `Closes #<issue>`. An epic is a parent issue of type `Epic`, with its stories
   as sub-issues; close it once they are all closed. Dependencies are "blocked by"
   links between issues.
-- **Every story carries one MoSCoW priority label:** `priority/must`,
-  `priority/should`, `priority/could`, or `priority/wont`. The label matches the
-  `MoSCoW` line in the story packet; when you change one, change the other in the same
-  edit. Epics and untriaged issues have no priority label.
+- **Every issue has an issue type:** `Epic`, `Story`, or `Bug`. Set it with
+  `gh issue create --type <type>` or `gh issue edit <n> --type <type>`. Don't use
+  labels for the kind of issue.
+- **Every story carries one MoSCoW priority** in the organization's `Priority` issue
+  field: `Must`, `Should`, `Could`, or `Wont`. It matches the `MoSCoW` line in the
+  story packet; when you change one, change the other in the same edit. `gh` can't
+  set issue fields yet, so use
+  `.agents/skills/discovery/scripts/set-priority.sh <n> <priority>`.
+  `scripts/backlog.sh` lists open issues with their type and priority. Epics and
+  untriaged issues have no priority. Don't use labels for priority.
 
 ### Epic planning and issue relationships
 
