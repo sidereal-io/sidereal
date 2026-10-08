@@ -99,19 +99,22 @@ frames, calibration masters, finished images, and dense technical metadata.
 - **To change a token,** edit this file first. In the same pull request, run
   `pnpm tokens` in `web/` to regenerate `tokens.css`. Never change a token in
   Penpot first.
-- **Penpot is the design workspace.** Explore there freely, but a design change
-  is only real once it lands here. The Penpot file is **Sidereal Design System**
-  (ID `3e981c57-46d6-803d-8008-bedef465c177`): it holds a copy of the primitive
-  tokens and, as they are designed, the components. Agents reach it through the
-  Penpot MCP server and plugin, which a person connects to the file. Before an
-  agent works there, it copies the tokens from this file into Penpot, so Penpot
-  may lag behind this file until then.
-  - **Pages:** `Primitives` shows the primitive tokens, `Components` holds the
-    components, and `Explorations` holds design options a person is comparing.
+- **Penpot is the design workspace.** Draw options there freely, but a design
+  change is only real once it lands here. The Penpot file is **Sidereal Design
+  System** (ID `3e981c57-46d6-803d-8008-bedef465c177`): it holds a copy of the
+  primitive tokens and the options a person is comparing. It keeps no lasting
+  copy of a component; once picked, a component lives here and in code. Agents
+  reach the file through the Penpot MCP server and plugin, which a person
+  connects to the file. Before an agent works there, it copies the tokens from
+  this file into Penpot, so Penpot may lag behind this file until then.
+  - **Pages:** `Tokens` is permanent. It draws every primitive token, each with
+    a sample shape bound to the token, and the copy step redraws it; never edit
+    it by hand. Each decision being compared gets its own temporary page, named
+    `Options: <topic>`, deleted once the decision merges here or is dropped.
   - **Token sets:** `primitives` is a copy of this file's primitive tokens.
     Only the copy step changes it; never edit it by hand. A value being tried
-    out goes in a set named `explore-<topic>`, one set per exploration, never
-    in `primitives`.
+    out goes in a set named `options/<topic>`, with the same topic as its
+    page, never in `primitives`.
 
 Tokens come in three tiers: **primitives, semantic tokens, and component tokens**.
 
@@ -254,9 +257,9 @@ on near-black surfaces, so don't add shadows.
 ## Components
 
 There are no components yet. Each component is built when a screen first needs
-it, styled only through tokens, and designed in Penpot before it is built. When a
-component needs a role this file doesn't name, it adds a semantic token; see
-[How tokens grow](#how-tokens-grow).
+it, styled only through tokens, and drawn as options in Penpot before it is
+built. When a component needs a role this file doesn't name, it adds a semantic
+token; see [How tokens grow](#how-tokens-grow).
 
 ## Do's and Don'ts
 

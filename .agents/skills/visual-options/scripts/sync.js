@@ -1,8 +1,8 @@
-// Makes a Penpot token set match DESIGN.md, then lists the exploration sets.
+// Makes a Penpot token set match DESIGN.md, then lists the options sets.
 // Run it through the Penpot MCP execute_code tool. Put three lines before it:
 //
-//   const setName = "primitives";        // the mirror set DESIGN.md names
-//   const explorePrefix = "explore-";    // the exploration prefix DESIGN.md names
+//   const setName = "primitives";        // the token set DESIGN.md names
+//   const optionsPrefix = "options/";    // the options set prefix DESIGN.md names
 //   const tokens = [ ... ];              // the output of `pnpm tokens:penpot`
 //
 // It creates missing tokens, updates changed values, deletes tokens that are
@@ -33,7 +33,7 @@ for (const token of [...set.tokens]) {
 for (const want of tokens) {
   const token = set.tokens.find((t) => t.name === want.name);
   if (!token) {
-    set.addToken(want);
+    set.addToken({ type: want.type, name: want.name, value: want.value });
     if (!report.retyped.includes(want.name)) report.created.push(want.name);
   } else if (valueOf(token) !== want.value) {
     token.value = want.value;
@@ -47,7 +47,7 @@ return {
   updated: report.updated,
   retyped: report.retyped,
   deleted: report.deleted,
-  exploreSets: catalog.sets
-    .filter((s) => s.name.startsWith(explorePrefix))
+  optionsSets: catalog.sets
+    .filter((s) => s.name.startsWith(optionsPrefix))
     .map((s) => ({ name: s.name, tokens: s.tokens.length })),
 };
