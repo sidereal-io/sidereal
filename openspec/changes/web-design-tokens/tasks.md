@@ -20,7 +20,7 @@
 
 ## 5. The contrast test
 
-- [ ] 5.1 Write `web/scripts/contrast.test.ts` (D6). Verify: it passes on today's `DESIGN.md`, and fails for each failing scenario in the spec: `obsidian-500` set to `#6F6B7C`, a cell changed to `7.5`, a cell changed to `TBD`, a table with no rows, and `(fails)` removed from an `obsidian-600` cell.
+- [x] 5.1 Write `web/scripts/contrast.test.ts` (D6). Verify: it passes on today's `DESIGN.md`, and fails for each failing scenario in the spec: `obsidian-500` set to `#6F6B7C`, a cell changed to `7.5`, a cell changed to `TBD`, a table with no rows, and `(fails)` removed from an `obsidian-600` cell.
 
 ## 6. Fonts and the health screen
 
