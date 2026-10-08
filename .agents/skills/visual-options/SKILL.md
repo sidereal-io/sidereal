@@ -1,9 +1,9 @@
 ---
-name: penpot-design
+name: visual-options
 description: Explore design options in Penpot within DESIGN.md's rules, so a person can compare them and pick one, then write the choice back to DESIGN.md. Use when a person asks to design, explore, or compare options for a component, screen, or token value in Penpot, or to sync Penpot's tokens with DESIGN.md.
 ---
 
-# Penpot design
+# Visual options
 
 `DESIGN.md` is the source of truth for every token value and usage rule.
 Penpot is where options are drawn and compared. A design change is real only
