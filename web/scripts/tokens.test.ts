@@ -69,3 +69,121 @@ describe("buildTokensCss", () => {
     expect(new Map(properties(css)).get("--foo-spacing-4")).toBe("4px");
   });
 });
+
+describe("buildTokensCss refuses tokens it cannot write", () => {
+  // A small, valid front matter that each case changes in one place.
+  function base(): Record<string, Record<string, unknown>> {
+    return {
+      colors: { white: "#FFFFFF" },
+      rounded: { "radius-4": "4px" },
+      spacing: { "spacing-4": "4px" },
+      "x-sidereal": {
+        "css-prefix": "sr",
+        "font-family": {
+          "font-family-sans": 'Inter, -apple-system, "Segoe UI"',
+        },
+        "font-weight": { "font-weight-400": 400 },
+        "letter-spacing": { "letter-spacing-n015": "-0.015em" },
+        opacity: { "opacity-45": 0.45 },
+        size: { "size-1280": "1280px" },
+        semantic: {},
+      },
+      components: {},
+    };
+  }
+
+  it("accepts the base front matter", () => {
+    expect(() => buildTokensCss(base())).not.toThrow();
+  });
+
+  it("refuses a semantic token", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].semantic = {
+      "color-action-primary": "{colors.violet-600}",
+    };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/color-action-primary/);
+  });
+
+  it("refuses a component token", () => {
+    const frontMatter = base();
+    frontMatter.components = {
+      "button-primary-hover": { backgroundColor: "{colors.violet-500}" },
+    };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/button-primary-hover/);
+  });
+
+  it("refuses a key used in two groups", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].size = { "spacing-4": "4px" };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/spacing-4/);
+  });
+
+  it("refuses a key with characters other than a-z, 0-9, and hyphens", () => {
+    const frontMatter = base();
+    frontMatter.spacing = { Spacing_4: "4px" };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/Spacing_4/);
+  });
+
+  it("refuses a prefix with characters other than a-z", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"]["css-prefix"] = "sr; } body { color: red } /*";
+    expect(() => buildTokensCss(frontMatter)).toThrow(/css-prefix/);
+  });
+
+  it.each([";", "{", "}", "<", "\\", "\n", "url("])(
+    "refuses a value that holds %j",
+    (text) => {
+      const frontMatter = base();
+      frontMatter["x-sidereal"]["font-family"] = {
+        "font-family-sans": `Inter${text}x`,
+      };
+      expect(() => buildTokensCss(frontMatter)).toThrow(/font-family-sans/);
+    },
+  );
+
+  it("refuses a value that would escape its property", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].size = {
+      "size-1280": "1px; } body { background: url(https://x.invalid) }",
+    };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/size-1280/);
+  });
+
+  it.each([
+    ["colors", "white", "#FFF"],
+    ["colors", "white", "white"],
+    ["rounded", "radius-4", "4"],
+    ["spacing", "spacing-4", "4.5px"],
+    ["x-sidereal.size", "size-1280", "80rem"],
+    ["x-sidereal.letter-spacing", "letter-spacing-n015", "-0.015px"],
+    ["x-sidereal.opacity", "opacity-45", 1.5],
+    ["x-sidereal.opacity", "opacity-45", "0.45"],
+    ["x-sidereal.font-weight", "font-weight-400", 1001],
+    ["x-sidereal.font-weight", "font-weight-400", 400.5],
+    ["x-sidereal.font-family", "font-family-sans", "12px"],
+    ["x-sidereal.font-family", "font-family-sans", "Inter, 'Segoe UI'"],
+  ])("refuses %s: %s = %j", (path, key, value) => {
+    const frontMatter = base();
+    const group = path.startsWith("x-sidereal.")
+      ? (frontMatter["x-sidereal"][path.slice("x-sidereal.".length)] as Record<
+          string,
+          unknown
+        >)
+      : frontMatter[path];
+    group[key] = value;
+    expect(() => buildTokensCss(frontMatter)).toThrow(new RegExp(key));
+  });
+
+  it("refuses an x-sidereal group with no known form", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].shadow = { "shadow-1": "0 0 4px" };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/shadow/);
+  });
+
+  it("names every problem at once", () => {
+    const frontMatter = base();
+    frontMatter.spacing = { "spacing-4": "four" };
+    frontMatter.colors = { white: "#FFF" };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/white[\s\S]*spacing-4/);
+  });
+});
