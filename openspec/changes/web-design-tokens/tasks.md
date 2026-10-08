@@ -5,7 +5,7 @@
 ## 2. Dependencies and setup
 
 - [x] 2.1 Add `@google/design.md` (exact version) and `yaml` as dev dependencies, and `@fontsource-variable/inter` and `@fontsource-variable/atkinson-hyperlegible-mono` as dependencies, in `web/package.json`. Verify: `pnpm install --frozen-lockfile` passes in `web/` with the updated lockfile.
-- [ ] 2.2 Add `scripts/**/*.ts` to the `include` list in `web/tsconfig.node.json`. Verify: `pnpm typecheck` passes, and fails after a number is assigned to a `string` variable in a file under `web/scripts/`.
+- [x] 2.2 Add `scripts/**/*.ts` to the `include` list in `web/tsconfig.node.json`. Verify: `pnpm typecheck` passes, and fails after a number is assigned to a `string` variable in a file under `web/scripts/`.
 
 ## 3. The `DESIGN.md` reader and the generator
 
