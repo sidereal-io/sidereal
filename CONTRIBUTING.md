@@ -227,6 +227,48 @@ To support another agent, pick the case that fits it:
 - **It needs different skill text:** it needs its own generated set. That takes
   a change to `scripts/skills.sh`.
 
+### Penpot MCP
+
+Agents design v2 screens in the **Sidereal Design System** file in Penpot. They
+reach it through Penpot's MCP server. Each contributor connects it through
+their own claude.ai account, so the repo holds no token and no MCP config.
+
+You need a Penpot account and a claude.ai account, and you must sign in to
+Claude Code with that claude.ai account. The connector doesn't work if you sign
+in with an API key.
+
+1. In Penpot, open **Your account**, then **Integrations**, then **MCP Server**,
+   and turn on MCP.
+2. Create an MCP key, then copy the server URL from the same page. Penpot shows
+   the key only once.
+
+   **The URL contains your key, so treat it like a password.** Don't paste it
+   into the repo, an issue or a chat. Each Penpot user has one key. Creating a
+   new key revokes the old one, so you then repeat step 3 with the new URL.
+3. In claude.ai, open **Settings**, then **Connectors**, and add a custom
+   connector named `Penpot` with the server URL.
+4. Open the Sidereal Design System file in Penpot. Choose **File**, then
+   **MCP Server**, then **Connect**.
+
+   Keep that browser tab open while the agent works. The plugin runs inside the
+   tab. If the browser puts the tab to sleep, the agent's Penpot calls fail
+   until you connect again.
+5. Start Claude Code and run `/mcp`. It lists **claude.ai Penpot** as connected.
+
+If a step is missing, you see one of these:
+
+- **`/mcp` doesn't list claude.ai Penpot:** you signed in to Claude Code with an
+  API key or with another claude.ai account, or the connector isn't added.
+- **The connector is listed, but Penpot calls fail:** the plugin isn't connected
+  in the Sidereal Design System file, or its tab went to sleep. Repeat step 4.
+
+If you set up Penpot by hand in Claude Code before, remove that setup in the
+repo root. Otherwise the agent gets two copies of the Penpot tools:
+
+```
+claude mcp remove penpot -s local
+```
+
 ### Reviewing a pin update
 
 Every Monday, Dependabot may open pull requests that update the pinned tools.
