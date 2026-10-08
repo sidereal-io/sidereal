@@ -23,14 +23,16 @@ The root `justfile` is the one place to run the server and the web shell for dev
 
 ### Requirement: The web gate fails on any web check error
 
-`just check-web` SHALL install the web shell's dependencies from `web/pnpm-lock.yaml`, then run four checks on `web/`:
+`just check-web` SHALL install the web shell's dependencies from `web/pnpm-lock.yaml`, then run six checks on `web/`:
 
-- a type check of every TypeScript file in `web/`, including config files and test files;
+- a type check of every TypeScript file in `web/`, including config files, scripts, and test files;
 - a lint that includes rules which read TypeScript types, and rules for React components and hooks;
 - a format check, which fails when any file differs from the formatter's output;
-- the unit tests.
+- a lint of `DESIGN.md` with the DESIGN.md specification's linter;
+- a token drift check, which fails when `web/src/styles/tokens.css` does not match `DESIGN.md`;
+- the unit tests, including the contrast test for `DESIGN.md`.
 
-`web/package.json` SHALL give each check its own script: `typecheck`, `lint`, `format:check`, and `test`. A contributor can then run one check alone.
+`web/package.json` SHALL give each check its own script: `typecheck`, `lint`, `format:check`, `design:lint`, `tokens:check`, and `test`. A contributor can then run one check alone.
 
 `just check-web` SHALL exit with a non-zero status when any check fails, or when the lockfile does not match `web/package.json`. It SHALL NOT change any file that git tracks.
 
@@ -43,7 +45,7 @@ The root `justfile` is the one place to run the server and the web shell for dev
 #### Scenario: Dependencies are not installed yet
 
 - **WHEN** `web/node_modules` does not exist and a contributor runs `just check-web`
-- **THEN** the command installs the dependencies, runs the four checks, and exits with status 0
+- **THEN** the command installs the dependencies, runs the six checks, and exits with status 0
 
 #### Scenario: A type error in app code
 
@@ -53,6 +55,11 @@ The root `justfile` is the one place to run the server and the web shell for dev
 #### Scenario: A type error in a config file
 
 - **WHEN** a tester assigns a number to a `string` variable in `web/vite.config.ts`, then runs `just check-web`
+- **THEN** the command exits with a non-zero status
+
+#### Scenario: A type error in a script
+
+- **WHEN** a tester assigns a number to a `string` variable in a file under `web/scripts/`, then runs `just check-web`
 - **THEN** the command exits with a non-zero status
 
 #### Scenario: A promise is left unhandled

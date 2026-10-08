@@ -60,6 +60,7 @@ A CI job named `server` SHALL run the server checks. The job lives in the workfl
 
 - any file under `server/`;
 - any file under `web/`;
+- `DESIGN.md` at the repo root;
 - the root `justfile`;
 - `flake.nix` or `flake.lock`;
 - any file under `nix/`;
@@ -103,7 +104,7 @@ The checks are the Rust format check, clippy with warnings denied, the tests, an
 
 A CI job named `web` SHALL run the web checks. The job lives in the workflow file `.github/workflows/ci.yml`. It SHALL run on every pull request, and on every push to `main`, that triggers that workflow. The same files trigger the `server` job.
 
-The checks are the type check, the lint, the format check, and the unit tests of the web shell in `web/`. The job SHALL fail when any check fails.
+The checks are the six checks of `just check-web`: the type check, the lint, the format check, the `DESIGN.md` lint, the token drift check, and the unit tests of the web shell in `web/`. The job SHALL fail when any check fails.
 
 #### Scenario: A pull request changes web code
 
@@ -114,6 +115,16 @@ The checks are the type check, the lint, the format check, and the unit tests of
 
 - **WHEN** a pull request changes files under `server/` only
 - **THEN** the `web` job runs on that pull request
+
+#### Scenario: A pull request changes only DESIGN.md
+
+- **WHEN** a pull request changes `DESIGN.md` only
+- **THEN** the `web` job runs on that pull request
+
+#### Scenario: DESIGN.md changed, but the token file did not
+
+- **WHEN** a pull request changes a token's value in `DESIGN.md` and does not change `web/src/styles/tokens.css`
+- **THEN** the `web` job fails on that pull request
 
 #### Scenario: A pull request changes only documentation
 
