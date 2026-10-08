@@ -1,0 +1,103 @@
+## Context
+
+See proposal.md for why. This section covers only the facts that shape the approach.
+
+- **`DESIGN.md` keeps its values in two places.** The DESIGN.md specification's own keys (`colors`, `rounded`, `spacing`) hold some values. Sidereal's `x-sidereal` extension holds the rest: type values, opacity, blur, border width, and sizes. Today there are 60 primitives and no semantic or component tokens.
+- **The specification's tool, `@google/design.md` 0.4.0, cannot generate the file.** Its `css-vars` export writes `--color-obsidian-950`, not `--sr-obsidian-950`, and it ignores `x-sidereal`.
+- **Its linter already passes.** On today's `DESIGN.md`, it reports no errors and three warnings, and exits with status 0. With an invalid color, it exits with status 1.
+- **Fontsource names its fonts differently from `DESIGN.md`.** The variable packages register `Inter Variable` and `Atkinson Hyperlegible Mono Variable`. `DESIGN.md`'s font stacks start with `Inter` and `Atkinson Hyperlegible Mono`. With Fontsource's standard imports, the browser would never use the self-hosted files.
+- **The repo pins Node 26.** Node 26 runs TypeScript files directly, with no build step.
+- **The web gate does not build the app.** `just check-web` runs type checks, lint, format, and unit tests, but not `vite build`. A broken file path in a stylesheet would not fail the gate on its own.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- A token change takes two steps: edit `DESIGN.md`, then run one command.
+- Each check fails with a message that says what to do next.
+- The generator stays small enough to read in one sitting.
+
+**Non-Goals:**
+
+- A general token pipeline, such as Style Dictionary, with platforms and transforms.
+- Resolving references such as `{colors.violet-600}`. The first semantic token brings that.
+- Checking the ratio sentences under the contrast table. Only the table is checked.
+
+## Decisions
+
+### D1. A small generator in `web/scripts/`, run by Node
+
+`web/scripts/tokens.ts` writes `web/src/styles/tokens.css`. Node runs the file directly. `web/package.json` gains two scripts: `tokens` writes the file, and `tokens:check` compares the file with `DESIGN.md` and writes nothing.
+
+- **Why `web/`:** the script needs a YAML parser, and only `web/` has a package manager. The repo root has no npm project, by design.
+- **Alternative: the specification's exporter.** Rejected, because it uses other names and drops `x-sidereal` (see Context).
+- **Alternative: Style Dictionary.** Rejected. It needs its own config and a transform for `x-sidereal`. That is more code than the generator itself for 60 tokens.
+
+### D2. One shared reader for `DESIGN.md`
+
+`web/scripts/design-md.ts` reads `DESIGN.md`, splits off the front matter between the first two `---` lines, and parses it with the `yaml` package. The generator and the contrast test both use it. So both always read `DESIGN.md` the same way.
+
+### D3. The output is plain, ordered, and owned by the generator
+
+`tokens.css` starts with a comment: the file is generated from `DESIGN.md`, by `pnpm tokens`, and must not be edited. Then one `:root` block lists the properties in `DESIGN.md`'s order, with a comment above each group. Values are copied exactly as `DESIGN.md` writes them. The prefix comes from `x-sidereal.css-prefix`.
+
+- **Prettier skips the file.** `web/.prettierignore` lists it. The generator alone decides its bytes, so the drift check and the format check never disagree.
+- **The type check covers the scripts.** `web/tsconfig.node.json` adds `scripts/**/*.ts` to its `include` list.
+
+### D4. The generator refuses what it cannot write yet
+
+The generator exits with an error, naming the token, when `x-sidereal.semantic` or `components` holds an entry, or when two groups share a key.
+
+- **Why not skip them?** A skipped token would not reach `tokens.css`. A component could then use a CSS property that does not exist, and no check would notice. The error tells the first semantic token's author to add reference lookup in the same pull request.
+
+### D5. The `DESIGN.md` linter is a pinned dev dependency
+
+`web/package.json` lists `@google/design.md` at an exact version. Its `design:lint` script runs `design.md lint ../DESIGN.md`.
+
+- **Why not `npx`?** `npx @google/design.md` fetches the newest release on each run. The specification is in alpha, so a new release could break the gate with no change in the repo. A pinned version changes only through a Dependabot pull request, where any new error shows up.
+- **The gate relies on the exit status.** The linter exits with status 1 on an error and 0 on warnings. The gate needs no list of allowed warnings.
+
+### D6. The contrast test reads the table, not a copy of it
+
+`web/scripts/contrast.test.ts` runs with the unit tests, in Vitest's Node environment. It finds the `### Contrast` section and parses the table's header and rows. It computes each ratio with the WCAG 2 relative-luminance formula, from the front matter's hex values.
+
+- **Rounding:** the test rounds the ratio half up to one decimal before it compares. The pass or fail mark uses the unrounded ratio. So `obsidian-500` on `obsidian-850` is 4.507: it shows as `4.5` and passes.
+- **Threshold:** every pair in the table is body text, so every cell uses 4.5:1.
+- **A broken table fails loudly.** The test fails when it finds no table, no rows, or a name that is not a color token. A reformatted table can never pass by checking nothing.
+
+### D7. The web shell's own `@font-face` rules, using Fontsource's files
+
+`web/src/styles/fonts.css` declares two `@font-face` rules, with the family names `Inter` and `Atkinson Hyperlegible Mono`. Each rule points at its Fontsource package's Latin variable file, `*-latin-wght-normal.woff2`. Each declares `font-weight: 400 600`, `font-display: swap`, and Fontsource's Latin `unicode-range`. Vite bundles the files, so the web shell serves them from its own origin.
+
+- **Why not Fontsource's standard import?** It registers `Inter Variable`, which no font stack in `DESIGN.md` names (see Context).
+- **Alternative: put `Inter Variable` first in `DESIGN.md`'s font stacks.** Rejected. A package's naming would leak into the source of truth, and into Penpot, which knows the font only as `Inter`.
+- **A unit test guards the file paths.** `web/src/styles/fonts.test.ts` checks that each `url()` in `fonts.css` names a file that exists. A Fontsource update that renames a file then fails the gate, not just the running app.
+- **Fontsource is a runtime dependency.** The font files ship with the app, so both packages go under `dependencies`.
+
+### D8. A base stylesheet applies the tokens to the health screen
+
+`web/src/styles/base.css` styles `body` with `var(--sr-obsidian-950)`, `var(--sr-obsidian-100)`, and `var(--sr-font-family-sans)`, and removes the browser's default margin. `web/src/main.tsx` imports `tokens.css`, `fonts.css`, and `base.css`, in that order. The health screen's components do not change.
+
+**New semantic or component tokens:** none. The body styles use primitives directly, which `DESIGN.md` allows until a semantic token for that role exists.
+
+### D9. ADR-005 is amended in place, with the docs that repeat it
+
+The maintainer chose to amend ADR-005, not to replace it with a new ADR. No code ever used the token JSON file, so one changed point does not justify a new record. One commit updates every place that names the JSON file or the manual import:
+
+- **ADR-005:** an agent copies the tokens into Penpot over the Penpot MCP server before it works there. `tokens.css` is the only generated file.
+- **`DESIGN.md`:** "How to use this file" and "Changing any token" say to run `pnpm tokens`, and that Penpot gets its tokens from an agent.
+- **`AGENTS.md`:** the third web UI rule changes the same way.
+- **`openspec/config.yaml`:** the `tasks` rule asks for a task to regenerate `tokens.css`, not a Penpot import.
+
+## Risks / Trade-offs
+
+- **[The specification is alpha, and its linter may add rules.]** → The version is pinned (D5). A new error appears only in the Dependabot pull request that brings it.
+- **[A contributor edits `DESIGN.md` and forgets the generator.]** → The drift check fails and prints the command to run (spec: the web gate catches a stale token file).
+- **[A generated file is committed.]** → Two branches that both change tokens conflict in `tokens.css`. The fix is to regenerate after merging `DESIGN.md`.
+- **[The contrast test depends on the table's layout.]** → A layout change fails the test instead of passing silently (D6). The author then updates the parser or the table.
+- **[The fonts are declared from 400 to 600, but each file holds the full weight axis.]** → Download size stays the same. The range only stops the browser from using weights that `DESIGN.md` does not define.
+- **[Penpot is no longer checked by anything in the repo.]** → Penpot is outside the repo, so no check can reach it anyway. #381 makes the agent copy the tokens at the start of each exploration.
+
+## Migration Plan
+
+No migration is needed. The change adds files and checks. To roll it back, revert the pull request.
