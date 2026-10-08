@@ -39,4 +39,4 @@
 
 ## 9. Final check
 
-- [ ] 9.1 Run `just check`, and walk the failing scenarios in the `design-tokens`, `dev-commands`, and `web-shell` specs that the earlier tasks did not cover. Verify: `just check` exits with status 0, and each walked scenario behaves as the spec says.
+- [x] 9.1 Run `just check`, and walk the failing scenarios in the `design-tokens`, `dev-commands`, and `web-shell` specs that the earlier tasks did not cover. Verify: `just check` exits with status 0, and each walked scenario behaves as the spec says.
