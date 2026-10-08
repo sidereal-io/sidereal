@@ -144,10 +144,9 @@ Each story gets a **story packet** — the story template in [templates/issue-te
 
 ```bash
 gh issue create --type Story --title "<title>" --body-file <file> --parent <parent#> [--blocked-by <n>,<n>]
-scripts/set-priority.sh <n> <Must|Should|Could>
 ```
 
-`gh issue create` prints the issue URL; the number is its last segment. The repository's [scripts/set-priority.sh](../../../scripts/set-priority.sh) sets the organization's `Priority` issue field, which `gh` can't set yet; it must match the story packet's `MoSCoW` line. Never use labels for an issue's type or priority. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
+The command prints the issue URL; the number is its last segment. Then set the story's `Priority` issue field to its `MoSCoW` value (`Must`, `Should`, or `Could`); the repository's agent guide (`AGENTS.md`) says how. Never use labels for an issue's type or priority. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
 
 ### Phase 6: Finalize
 
@@ -183,7 +182,7 @@ When `discovery.md` exists and no run is in progress:
    - Re-annotate every journey stage against the code; stages move to `supported` as their stories ship
    - Update the freshness line to today
 2. **Take in what the user brings** — a new PRD, new requirements, changed priorities, learnings from shipped stories. New work is a new run with its own parent issue: Ingest, then MoSCoW and Stories. Revisit Personas and the Journey Map only when the input changes who the product serves or how they use it.
-3. **Priorities of existing stories are revisable too:** update the story's MoSCoW line, with its reason, and its `Priority` field (`scripts/set-priority.sh <n> <priority>`) in the same step.
+3. **Priorities of existing stories are revisable too:** update the story's MoSCoW line, with its reason, and its `Priority` field in the same step.
 4. **Never silently delete a story.** Close a superseded story as not planned with a one-line reason, so the plan's history stays legible: `gh issue close <n> --reason "not planned" --comment "Superseded by #<m>: <reason>"`.
 
 ---
