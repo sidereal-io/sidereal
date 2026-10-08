@@ -98,14 +98,16 @@ frames, calibration masters, finished images, and dense technical metadata.
   [DESIGN.md specification](https://github.com/google-labs-code/design.md)
 - **A token's CSS name is its key with the `sr` prefix:** `obsidian-950`
   becomes `--sr-obsidian-950`, and `spacing-8` becomes `--sr-spacing-8`.
-- **To change a token,** edit this file first. In the same pull request,
-  regenerate `tokens.css` and the design-token JSON from it. After merge, import
-  that JSON into Penpot. Never change a token in Penpot first.
+- **To change a token,** edit this file first. In the same pull request, run
+  `pnpm tokens` in `web/` to regenerate `tokens.css`. Never change a token in
+  Penpot first.
 - **Penpot is the design workspace.** Explore there freely, but a design change
   is only real once it lands here. The Penpot file is **Sidereal Design System**
-  (ID `3e981c57-46d6-803d-8008-bedef465c177`): it holds the imported primitive
+  (ID `3e981c57-46d6-803d-8008-bedef465c177`): it holds a copy of the primitive
   tokens and, as they are designed, the components. Agents reach it through the
-  Penpot plugin, which a person connects to the file.
+  Penpot MCP server and plugin, which a person connects to the file. Before an
+  agent works there, it copies the tokens from this file into Penpot, so Penpot
+  may lag behind this file until then.
 
 Tokens come in three tiers: **primitives, semantic tokens, and component tokens**.
 
@@ -338,8 +340,9 @@ that no role describes.
 
 ### Changing any token
 
-Edit this file first. In the same pull request, regenerate `tokens.css` and the
-design-token JSON. After merge, import the JSON into Penpot.
+Edit this file first. In the same pull request, run `pnpm tokens` in `web/` to
+regenerate `tokens.css`. Penpot gets the change when an agent next copies the
+tokens into it.
 
 ## Candidates
 

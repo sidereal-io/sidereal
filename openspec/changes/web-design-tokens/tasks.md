@@ -1,6 +1,6 @@
 ## 1. ADR-005 and the docs that repeat it
 
-- [ ] 1.1 Amend ADR-005 in place, as design.md D9 describes: an agent copies tokens into Penpot over the Penpot MCP server, Penpot may lag until then, and `tokens.css` is the only generated file. In the same commit, update `DESIGN.md` ("How to use this file" and "Changing any token"), the third web UI rule in `AGENTS.md`, and the `tasks` rule in `openspec/config.yaml`. Verify: `grep -n -i "json\|import" DESIGN.md AGENTS.md openspec/config.yaml docs/decisions/ADR-005-visual-design-system.md` finds no remaining mention of a token JSON file or a manual Penpot import.
+- [x] 1.1 Amend ADR-005 in place, as design.md D9 describes: an agent copies tokens into Penpot over the Penpot MCP server, Penpot may lag until then, and `tokens.css` is the only generated file. In the same commit, update `DESIGN.md` ("How to use this file" and "Changing any token"), the third web UI rule in `AGENTS.md`, and the `tasks` rule in `openspec/config.yaml`. Verify: `grep -n -i "json\|import" DESIGN.md AGENTS.md openspec/config.yaml docs/decisions/ADR-005-visual-design-system.md` finds no remaining mention of a token JSON file or a manual Penpot import.
 
 ## 2. Dependencies and setup
 

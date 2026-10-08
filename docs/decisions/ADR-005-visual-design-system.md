@@ -37,9 +37,10 @@ usage rule.
   starts with primitives only. A semantic or component token is added by the
   first component that needs it, in the same pull request. A primitive exists
   only if `DESIGN.md` names a use for it.
-- **Code and design follow `DESIGN.md`.** `tokens.css` and a W3C design-token
-  JSON file are generated from it and checked against it. The Penpot library
-  imports that JSON and is never edited first.
+- **Code and design follow `DESIGN.md`.** `tokens.css` is generated from it and
+  checked against it; it is the only generated file. Before an agent works in
+  the Penpot library, it copies the tokens from `DESIGN.md` into Penpot over the
+  Penpot MCP server. Penpot's tokens are never edited first.
 - **Fonts are self-hosted** with the web shell.
 - **Nothing visual is ported from the v0.10.x interface.**
 
@@ -49,9 +50,10 @@ usage rule.
   the same file is what gets injected into design and planning prompts.
 - The token set stays small. Most roles don't exist as tokens until a component
   needs them, so early components may each add one or two semantic tokens.
-- Every token change touches `DESIGN.md`, the generated files, and the Penpot
-  library. The generation and checks make the first two cheap; the Penpot import
-  is a manual step after merge.
+- Every token change touches `DESIGN.md` and `tokens.css`. The generator and
+  the checks make that cheap. Penpot gets the change when an agent next copies
+  the tokens, so it may lag behind `DESIGN.md` until someone works there. No code
+  reads Penpot's tokens, so the lag affects only design work.
 - The DESIGN.md specification is still at version alpha. If it changes, the
   front matter may need to follow. The `x-sidereal` extension is ignored by the
   specification's own exporters, so Sidereal's generator must read it directly.

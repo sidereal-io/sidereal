@@ -30,7 +30,7 @@ rules:
       each with one line on why no existing token fits. Write "none" if it adds none.
   tasks:
     - When a change adds or changes a token, include tasks to edit DESIGN.md first,
-      regenerate the token files, and import the token JSON into Penpot after merge.
+      then regenerate tokens.css with `pnpm tokens` in web/.
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.

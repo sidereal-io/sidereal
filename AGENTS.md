@@ -70,9 +70,9 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
   Code and the Penpot library follow it.
 - **Use tokens, never raw values.** Add a semantic or component token only when a
   component first needs it, in the same pull request.
-- **Change a token in `DESIGN.md` first.** Regenerate the token files in the same
-  pull request, and import the token JSON into Penpot after merge. Never change a
-  token in Penpot first.
+- **Change a token in `DESIGN.md` first.** Run `pnpm tokens` in `web/` to
+  regenerate `tokens.css` in the same pull request. Penpot gets the change when
+  an agent next copies the tokens into it. Never change a token in Penpot first.
 
 ## Workflow
 
