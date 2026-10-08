@@ -6,7 +6,8 @@ context: |
   issue field;
   openspec/discovery.md holds personas and journeys. An issue marked "Not yet a story"
   must be cut into a story packet before it is proposed. When asked to propose the
-  next change without a specific request, list open issues with `scripts/backlog.sh`.
+  next change without a specific request, list the open backlog with the command in
+  AGENTS.md ("Read and set priority through the REST API").
   Skip epic parents (any issue of type `Epic` or with sub-issues), issues with an
   open blocker, assigned issues (they are in progress), issues with priority `Wont`,
   and issues with no priority (they are untriaged). For each candidate,

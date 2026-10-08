@@ -146,7 +146,7 @@ Each story gets a **story packet** — the story template in [templates/issue-te
 gh issue create --type Story --title "<title>" --body-file <file> --parent <parent#> [--blocked-by <n>,<n>]
 ```
 
-The command prints the issue URL; the number is its last segment. Then set the story's `Priority` issue field to its `MoSCoW` value (`Must`, `Should`, or `Could`); the repository's agent guide (`AGENTS.md`) says how. Never use labels for an issue's type or priority. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
+The command prints the issue URL; the number is its last segment. Then set the story's `Priority` issue field to its `MoSCoW` value (`Must`, `Should`, or `Could`); the repository's agent guide (`AGENTS.md`) says how. Never use labels for an issue's type or priority. Stop at the first error, including a failed priority update. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate. If the issue was created but its priority wasn't set, set it on that issue; don't create the issue again.
 
 ### Phase 6: Finalize
 

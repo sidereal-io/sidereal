@@ -131,10 +131,27 @@ between phases" step.
 - **Every story, bug, and chore carries one MoSCoW priority** in the organization's
   `Priority` issue field: `Must`, `Should`, `Could`, or `Wont`. A story's priority
   matches the `MoSCoW` line in its story packet; when you change one, change the
-  other in the same edit. `gh` can't read or set issue fields yet:
-  `scripts/set-priority.sh <n> <priority>` sets one, and `scripts/backlog.sh` lists
-  open issues with their type and priority. Epics and untriaged issues have no
-  priority. Don't use labels for priority.
+  other in the same edit. Epics and untriaged issues have no priority. Don't use
+  labels for priority.
+- **Read and set priority through the REST API.** `gh` has no issue-field commands
+  yet, but `gh api` reaches them. To set an issue's priority:
+
+  ```bash
+  gh api --method POST 'repos/{owner}/{repo}/issues/<n>/issue-field-values' \
+    -F "issue_field_values[][field_id]=$(gh api 'orgs/{owner}/issue-fields' --jq '.[] | select(.name == "Priority") | .id')" \
+    -f 'issue_field_values[][value]=<Must|Should|Could|Wont>'
+  ```
+
+  To list the open backlog — one line per issue, with its type, priority,
+  assignees, number of sub-issues, and number of open blockers:
+
+  ```bash
+  gh api 'repos/{owner}/{repo}/issues' -X GET -f state=open -f per_page=100 --paginate \
+    --jq '.[] | select(.pull_request | not) | {number, title, type: .type.name,
+      priority: ([.issue_field_values[]? | select(.issue_field_name == "Priority") | .single_select_option.name][0]),
+      assignees: [.assignees[].login], subIssues: .sub_issues_summary.total,
+      openBlockers: .issue_dependencies_summary.blocked_by}'
+  ```
 
 ### Epic planning and issue relationships
 
