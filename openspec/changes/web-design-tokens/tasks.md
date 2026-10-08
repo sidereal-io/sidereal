@@ -31,7 +31,7 @@
 ## 7. The gate and CI
 
 - [x] 7.1 Add `design:lint` and `tokens:check` to the `check-web` recipe in `justfile`. Verify: `just check-web` exits with status 0 on a clean checkout, and `git status --porcelain` prints nothing afterwards.
-- [ ] 7.2 Add `DESIGN.md` to both path filters in `.github/workflows/ci.yml` (D10). Verify: the pull request's `server` and `web` jobs both run and pass.
+- [x] 7.2 Add `DESIGN.md` to both path filters in `.github/workflows/ci.yml` (D10). Verify: the pull request's `server` and `web` jobs both run and pass.
 
 ## 8. Docs
 
