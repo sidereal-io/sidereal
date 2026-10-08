@@ -27,11 +27,13 @@ describe("buildPenpotTokens on DESIGN.md", () => {
 
   it("writes the tokens Penpot was missing", () => {
     expect(named.get("border-width-1")).toEqual({
+      group: "border-width",
       type: "borderWidth",
       name: "border-width-1",
       value: "1",
     });
     expect(named.get("size-32")).toEqual({
+      group: "size",
       type: "sizing",
       name: "size-32",
       value: "32",
@@ -49,7 +51,7 @@ describe("buildPenpotTokens on DESIGN.md", () => {
 describe("buildPenpotTokens", () => {
   const base = { "css-prefix": "sr" };
 
-  it("maps each group to a Penpot type and drops px", () => {
+  it("maps each group to a Penpot type, names the group, and drops px", () => {
     const tokens = buildPenpotTokens({
       colors: { "obsidian-950": "#0B0A0F" },
       rounded: { "radius-full": "9999px" },
@@ -64,14 +66,39 @@ describe("buildPenpotTokens", () => {
       },
     });
     expect(tokens).toEqual([
-      { type: "color", name: "obsidian-950", value: "#0B0A0F" },
-      { type: "borderRadius", name: "radius-full", value: "9999" },
-      { type: "spacing", name: "spacing-8", value: "8" },
-      { type: "fontWeights", name: "font-weight-600", value: "600" },
-      { type: "fontSizes", name: "font-size-14", value: "14" },
-      { type: "dimension", name: "line-height-20", value: "20" },
-      { type: "opacity", name: "opacity-45", value: "0.45" },
-      { type: "dimension", name: "blur-8", value: "8" },
+      {
+        group: "colors",
+        type: "color",
+        name: "obsidian-950",
+        value: "#0B0A0F",
+      },
+      {
+        group: "rounded",
+        type: "borderRadius",
+        name: "radius-full",
+        value: "9999",
+      },
+      { group: "spacing", type: "spacing", name: "spacing-8", value: "8" },
+      {
+        group: "font-weight",
+        type: "fontWeights",
+        name: "font-weight-600",
+        value: "600",
+      },
+      {
+        group: "font-size",
+        type: "fontSizes",
+        name: "font-size-14",
+        value: "14",
+      },
+      {
+        group: "line-height",
+        type: "dimension",
+        name: "line-height-20",
+        value: "20",
+      },
+      { group: "opacity", type: "opacity", name: "opacity-45", value: "0.45" },
+      { group: "blur", type: "dimension", name: "blur-8", value: "8" },
     ]);
   });
 

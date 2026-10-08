@@ -1,5 +1,5 @@
-// Prints DESIGN.md's primitive tokens as the list that the Penpot sync reads:
-// a JSON array of { type, name, value }, in DESIGN.md's order.
+// Prints DESIGN.md's primitive tokens as the list that the Penpot scripts
+// read: a JSON array of { group, type, name, value }, in DESIGN.md's order.
 //
 //   pnpm tokens:penpot
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,9 @@ import { readDesignMd } from "./design-md.ts";
 import { TokenError, checkTokens, primitiveGroups } from "./tokens.ts";
 
 export interface PenpotToken {
+  // The DESIGN.md group the token comes from, such as `colors` or
+  // `line-height`. The Tokens page draws one board per group.
+  group: string;
   // A Penpot token type, such as `color` or `fontSizes`.
   type: string;
   name: string;
@@ -44,8 +47,14 @@ export function buildPenpotTokens(
         `${group.path} has no Penpot type. Add one to penpotTypes in web/scripts/penpot-tokens.ts, or add the group to skippedGroups.`,
       );
     }
+    const groupName = group.path.split(".").at(-1) ?? group.path;
     for (const [name, value] of Object.entries(group.tokens)) {
-      tokens.push({ type, name, value: penpotValue(group.path, value) });
+      tokens.push({
+        group: groupName,
+        type,
+        name,
+        value: penpotValue(group.path, value),
+      });
     }
   }
   return tokens;
