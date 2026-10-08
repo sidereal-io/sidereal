@@ -8,21 +8,6 @@ Guidance for AI agents working in this repo. `CLAUDE.md` is a symlink to this fi
 
 **Stack:** Rust server (axum, cargo workspace in `server/`) · React 19 + Vite + TypeScript web interface (pnpm, in `web/`) · PostgreSQL · orchestrated by the root `justfile`
 
-## Current state
-
-`main` holds the rebuild of Sidereal ([RFC #213](https://github.com/sidereal-io/sidereal/issues/213)): a Rust server ([ADR-009](docs/decisions/ADR-009-backend-language.md)) and a new web interface. All new development happens here. The first release from `main` is planned as `v2.0.0`.
-
-**Sidereal builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
-
-**Run everything from the root `justfile`.** `just dev` starts the server and the web interface together, and `just --list` describes every recipe.
-
-**An optional, pinned Nix shell provides every tool,** including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
-
-**Where to read more:**
-
-- **Server layout, prerequisites, and commands** — [`server/README.md`](server/README.md).
-- **Target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
-
 ## The v0.x maintenance branch
 
 The released app, v0.10.x (TypeScript, Hono, Drizzle), lives only on the `v0.x` branch. It stays in maintenance until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)).
