@@ -1,8 +1,9 @@
 schema: spec-driven-review
 
 context: |
-  The backlog is GitHub issues. Each has an issue type (`Epic`, `Story`, or `Bug`),
-  and each story has its MoSCoW priority in the `Priority` issue field;
+  The backlog is GitHub issues. Each has an issue type (`Epic`, `Story`, `Bug`, or
+  `Chore`), and each story, bug, and chore has its MoSCoW priority in the `Priority`
+  issue field;
   openspec/discovery.md holds personas and journeys. An issue marked "Not yet a story"
   must be cut into a story packet before it is proposed. When asked to propose the
   next change without a specific request, list open issues with `scripts/backlog.sh`.

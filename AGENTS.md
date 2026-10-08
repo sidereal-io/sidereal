@@ -124,13 +124,14 @@ between phases" step.
   says `Closes #<issue>`. An epic is a parent issue of type `Epic`, with its stories
   as sub-issues; close it once they are all closed. Dependencies are "blocked by"
   links between issues.
-- **Every issue has an issue type:** `Epic`, `Story`, or `Bug`. Set it with
-  `gh issue create --type <type>` or `gh issue edit <n> --type <type>`. Don't use
-  labels for the kind of issue.
-- **Every story carries one MoSCoW priority** in the organization's `Priority` issue
-  field: `Must`, `Should`, `Could`, or `Wont`. It matches the `MoSCoW` line in the
-  story packet; when you change one, change the other in the same edit. `gh` can't
-  set issue fields yet, so use
+- **Every issue has an issue type:** `Epic`, `Story`, `Bug`, or `Chore`. A `Chore`
+  is repo maintenance — CI, tooling, dependencies, the dev environment — that gives
+  no persona anything new. Set the type with `gh issue create --type <type>` or
+  `gh issue edit <n> --type <type>`. Don't use labels for the kind of issue.
+- **Every story, bug, and chore carries one MoSCoW priority** in the organization's
+  `Priority` issue field: `Must`, `Should`, `Could`, or `Wont`. A story's priority
+  matches the `MoSCoW` line in its story packet; when you change one, change the
+  other in the same edit. `gh` can't set issue fields yet, so use
   `.agents/skills/discovery/scripts/set-priority.sh <n> <priority>`.
   `scripts/backlog.sh` lists open issues with their type and priority. Epics and
   untriaged issues have no priority. Don't use labels for priority.
