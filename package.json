@@ -109,7 +109,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/better-sqlite3": "^9.6.0",
     "@types/leaflet": "^1.9.22",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.4",
     "@types/openseadragon": "^6.0.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
