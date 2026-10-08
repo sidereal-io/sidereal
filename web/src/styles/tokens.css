@@ -62,9 +62,7 @@
   /* x-sidereal.letter-spacing */
   --sr-letter-spacing-n015: -0.015em;
   --sr-letter-spacing-n010: -0.01em;
-  --sr-letter-spacing-010: 0.01em;
-  --sr-letter-spacing-020: 0.02em;
-  --sr-letter-spacing-080: 0.08em;
+  --sr-letter-spacing-060: 0.06em;
 
   /* x-sidereal.opacity */
   --sr-opacity-4: 0.04;

@@ -61,9 +61,7 @@ x-sidereal:
   letter-spacing:
     letter-spacing-n015: -0.015em
     letter-spacing-n010: -0.01em
-    letter-spacing-010: 0.01em
-    letter-spacing-020: 0.02em
-    letter-spacing-080: 0.08em
+    letter-spacing-060: 0.06em
   opacity:
     opacity-4: 0.04
     opacity-20: 0.2
@@ -182,13 +180,13 @@ token when a component first needs it.
 | body-lg | sans | `font-size-16` | `line-height-24` | `font-weight-400` | |
 | body-md | sans | `font-size-14` | `line-height-20` | `font-weight-400` | |
 | body-sm | sans | `font-size-12` | `line-height-18` | `font-weight-400` | |
-| mono-lg | mono | `font-size-14` | `line-height-20` | `font-weight-500` | `letter-spacing-020` |
-| mono-md | mono | `font-size-12` | `line-height-18` | `font-weight-400` | `letter-spacing-010` |
-| mono-sm (chips, tags) | mono | `font-size-11` | `line-height-16` | `font-weight-400` | `letter-spacing-020` |
-| label-caps (chips, tags) | mono | `font-size-10` | `line-height-14` | `font-weight-600` | `letter-spacing-080` |
+| mono-lg | mono | `font-size-14` | `line-height-20` | `font-weight-500` | |
+| mono-md | mono | `font-size-12` | `line-height-18` | `font-weight-400` | |
+| mono-sm (chips, tags) | mono | `font-size-11` | `line-height-16` | `font-weight-400` | |
+| label-caps (chips, tags) | mono | `font-size-10` | `line-height-14` | `font-weight-600` | `letter-spacing-060` |
 
-The mono letter spacing was set for a different monospace face. Check it against
-Atkinson Hyperlegible Mono before the first mono style becomes a token.
+Mono text has no letter spacing: Atkinson Hyperlegible Mono is already widely
+spaced. Only all-caps labels are tracked out, by `letter-spacing-060`.
 
 ## Layout
 
