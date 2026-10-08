@@ -63,10 +63,10 @@ The generator exits with an error, naming the token, in these cases:
 
 ### D5. The `DESIGN.md` linter is a pinned dev dependency
 
-`web/package.json` lists `@google/design.md` at an exact version. Its `design:lint` script runs `web/scripts/design-lint.ts`. That script runs the linter on `../DESIGN.md` and reads the linter's JSON report.
+`web/package.json` lists `@google/design.md` at an exact version. Its `design:lint` script runs `web/scripts/design-lint.ts`. That script calls the package's `lint()` function on `../DESIGN.md` and reads its findings. It does not start the linter's command-line tool.
 
 - **Why not `npx`?** `npx @google/design.md` fetches the newest release on each run. The specification is in alpha, so a new release could break the gate with no change in the repo. A pinned version changes only through a Dependabot pull request, where any new finding shows up.
-- **Why read the report, not just the exit status?** The linter exits with status 0 on any number of warnings. The author added an unknown top-level key, and the linter reported a fourth warning and still exited with 0. The script fails on any error, and on any warning that is not in its list of three known warnings. It matches each by rule and path, so a second ignored key, for example, still fails. The script prints each unexpected finding.
+- **Why read the findings, not just the exit status?** The linter exits with status 0 on any number of warnings. The author added an unknown top-level key, and the linter reported a fourth warning and still exited with 0. The script fails on any error, and on any warning that is not in its list of three known warnings. It matches each by rule and path, so a second ignored key, for example, still fails. The script prints each unexpected finding.
 - **A known warning may disappear.** The first typography token, for example, removes `missing-typography`. The gate still passes, and the author can drop that entry from the list.
 
 ### D6. The contrast test reads the table, not a copy of it
