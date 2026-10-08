@@ -82,14 +82,14 @@ The generator exits with an error, naming the token, in these cases:
 
 - **Why not Fontsource's standard import?** It registers `Inter Variable`, which no font stack in `DESIGN.md` names (see Context).
 - **Alternative: put `Inter Variable` first in `DESIGN.md`'s font stacks.** Rejected. A package's naming would leak into the source of truth, and into Penpot, which knows the font only as `Inter`.
-- **A unit test guards the file paths.** `web/src/styles/fonts.test.ts` checks that each `url()` in `fonts.css` names a file that exists. A Fontsource update that renames a file then fails the gate, not just the running app.
+- **A unit test guards the file paths.** `web/scripts/fonts.test.ts` checks that each `url()` in `fonts.css` names a file that exists. A Fontsource update that renames a file then fails the gate, not just the running app.
 - **Fontsource is a runtime dependency.** The font files ship with the app, so both packages go under `dependencies`.
 
 ### D8. A base stylesheet applies the tokens to the health screen
 
 `web/src/styles/base.css` styles `body` with `var(--sr-obsidian-950)`, `var(--sr-obsidian-100)`, and `var(--sr-font-family-sans)`, and removes the browser's default margin. `web/src/main.tsx` imports `tokens.css`, `fonts.css`, and `base.css`, in that order. The health screen's components do not change.
 
-A unit test, `web/src/styles/tokens-in-use.test.ts`, reads every stylesheet under `web/src/` except `tokens.css`. It fails when a stylesheet uses, through `var()`, a custom property that no stylesheet defines. It checks every name, whatever its prefix. So after a prefix rename, the old `--sr-…` uses in `base.css` fail. It also catches a removed token that code still uses, and a typo in a `var()`.
+A unit test, `web/scripts/tokens-in-use.test.ts`, reads every stylesheet under `web/src/` except `tokens.css`. It fails when a stylesheet uses, through `var()`, a custom property that no stylesheet defines. It checks every name, whatever its prefix. So after a prefix rename, the old `--sr-…` uses in `base.css` fail. It also catches a removed token that code still uses, and a typo in a `var()`.
 
 **New semantic or component tokens:** none. The body styles use primitives directly, which `DESIGN.md` allows until a semantic token for that role exists.
 

@@ -24,9 +24,9 @@
 
 ## 6. Fonts and the health screen
 
-- [ ] 6.1 Write `web/src/styles/fonts.css` with the two `@font-face` rules (D7), and `web/src/styles/fonts.test.ts`. Verify: the test passes, and fails when a file name in a `url()` is misspelled.
+- [ ] 6.1 Write `web/src/styles/fonts.css` with the two `@font-face` rules (D7), and `web/scripts/fonts.test.ts`. Verify: the test passes, and fails when a file name in a `url()` is misspelled.
 - [ ] 6.2 Write `web/src/styles/base.css`, and import `tokens.css`, `fonts.css`, and `base.css` in `web/src/main.tsx` (D8). Verify in a browser on `just dev`: the computed body styles are `rgb(11, 10, 15)`, `rgb(245, 244, 239)`, and a font family that starts with `Inter`; after `await document.fonts.ready`, Inter shows as loaded; the network log shows no request to another origin.
-- [ ] 6.3 Write `web/src/styles/tokens-in-use.test.ts` (D8). Verify: it passes; it fails, naming `--sr-obsidian-950`, after `css-prefix` changes to `foo` and the generator runs; it fails, naming `--sr-obsidian-100`, after `obsidian-100` is removed and the generator runs.
+- [ ] 6.3 Write `web/scripts/tokens-in-use.test.ts` (D8). Verify: it passes; it fails, naming `--sr-obsidian-950`, after `css-prefix` changes to `foo` and the generator runs; it fails, naming `--sr-obsidian-100`, after `obsidian-100` is removed and the generator runs.
 
 ## 7. The gate and CI
 
