@@ -44,7 +44,18 @@ The generator SHALL exit with a non-zero status and write no file when `DESIGN.m
 - two tokens with the same key in different groups;
 - a key that holds anything other than lowercase letters, digits, and hyphens;
 - an `x-sidereal.css-prefix` that holds anything other than lowercase letters;
-- a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`.
+- a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`;
+- a value that does not fit its group's form, from the table below;
+- an `x-sidereal` group that the table does not name.
+
+| Group | Form of each value | Example |
+|---|---|---|
+| `colors` | a hex color: `#` and 6 hex digits | `#0B0A0F` |
+| `rounded`, `spacing`, and `x-sidereal`'s `font-size`, `line-height`, `blur`, `border-width`, and `size` | a whole number of pixels | `14px` |
+| `x-sidereal.letter-spacing` | a decimal number of `em`, which may be negative | `-0.015em` |
+| `x-sidereal.opacity` | a number from 0 to 1 | `0.45` |
+| `x-sidereal.font-weight` | a whole number from 1 to 1000 | `600` |
+| `x-sidereal.font-family` | a comma-separated list. Each item is a name in double quotes, or words that each start with a letter or a hyphen | `Inter, -apple-system, "Segoe UI", sans-serif` |
 
 Its error message SHALL name the token.
 
@@ -71,6 +82,14 @@ Its error message SHALL name the token.
 - **AND** its output contains `size-1280`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
 
+#### Scenario: A value that does not fit its group
+
+- **WHEN** a tester changes `font-family-sans` under `x-sidereal.font-family` in `DESIGN.md` to `12px`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `font-family-sans`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
 #### Scenario: A prefix that would escape its block
 
 - **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `"sr; } body { color: red } /*"`
@@ -78,6 +97,22 @@ Its error message SHALL name the token.
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `css-prefix`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+### Requirement: Stylesheets use only tokens that exist
+
+The unit tests SHALL fail when a stylesheet under `web/src/` uses, through `var()`, a custom property that no stylesheet under `web/src/` defines. `tokens.css` counts as one of those stylesheets. The test SHALL check every `var()` name, whatever its prefix. The test's output SHALL name the property and the stylesheet that uses it.
+
+#### Scenario: The prefix changed, but the stylesheets did not
+
+- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `foo`, runs the generator, and runs `just check-web`
+- **THEN** the command exits with a non-zero status
+- **AND** its output contains `--sr-obsidian-950`
+
+#### Scenario: A token in use was removed
+
+- **WHEN** a tester removes `obsidian-100` from `DESIGN.md`, runs the generator, and runs `just check-web`
+- **THEN** the command exits with a non-zero status
+- **AND** its output contains `--sr-obsidian-100`
 
 ### Requirement: The web gate catches a stale token file
 

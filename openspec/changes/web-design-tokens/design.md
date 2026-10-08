@@ -52,10 +52,13 @@ The generator exits with an error, naming the token, in these cases:
 - two groups share a key;
 - a key holds anything other than lowercase letters, digits, and hyphens;
 - `x-sidereal.css-prefix` holds anything other than lowercase letters;
-- a value holds a line break, `;`, `{`, `}`, `<`, `\`, or `url(`.
+- a value holds a line break, `;`, `{`, `}`, `<`, `\`, or `url(`;
+- a value does not fit its group's form. For example, `font-size` takes whole pixels, and `font-family` takes a font list;
+- an `x-sidereal` group has no known form.
 
 - **Why not skip semantic and component tokens?** A skipped token would not reach `tokens.css`. A component could then use a CSS property that does not exist, and no check would notice. The error tells the first semantic token's author to add reference lookup in the same pull request.
 - **Why check keys, values, and the prefix?** The generator copies each of them into CSS exactly. Without the check, a value could close its property and add a rule, such as one that loads a file from another site. The linter catches this under `colors`, but not under `x-sidereal`. The author tested both. No current token uses any of the refused characters. The font stacks use quotes and commas, which stay allowed.
+- **Why check each group's form?** The linter ignores `x-sidereal`, so nothing else checks those values. A `font-family-sans` of `12px` would pass the drift check, but the browser would drop the font. The forms live in the generator, one per group. A new group fails until its author adds a form, which keeps the list complete.
 
 ### D5. The `DESIGN.md` linter is a pinned dev dependency
 
@@ -85,6 +88,8 @@ The generator exits with an error, naming the token, in these cases:
 ### D8. A base stylesheet applies the tokens to the health screen
 
 `web/src/styles/base.css` styles `body` with `var(--sr-obsidian-950)`, `var(--sr-obsidian-100)`, and `var(--sr-font-family-sans)`, and removes the browser's default margin. `web/src/main.tsx` imports `tokens.css`, `fonts.css`, and `base.css`, in that order. The health screen's components do not change.
+
+A unit test, `web/src/styles/tokens-in-use.test.ts`, reads every stylesheet under `web/src/` except `tokens.css`. It fails when a stylesheet uses, through `var()`, a custom property that no stylesheet defines. It checks every name, whatever its prefix. So after a prefix rename, the old `--sr-…` uses in `base.css` fail. It also catches a removed token that code still uses, and a typo in a `var()`.
 
 **New semantic or component tokens:** none. The body styles use primitives directly, which `DESIGN.md` allows until a semantic token for that role exists.
 

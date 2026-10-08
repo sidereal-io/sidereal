@@ -1,32 +1,32 @@
 ## Review Metadata
 
-- **Review round**: 2
-- **Prior round**: round 1, REVISE. Findings: CSS injection through copied values, unknown linter warnings passing, an implicit Penpot lag, malformed contrast cells, and a font-loading race. The author fixed all five.
+- **Review round**: 3
+- **Prior round**: round 2, REVISE. Findings: an unchecked `css-prefix`, no CI run for a change to `DESIGN.md` alone, a contrast table with no rows, and the proposal's wording on warnings. The maintainer approved all four fixes and a third round. Round 1 was also REVISE.
 - **Reviewer context**: cross-model. GPT (`gpt-6-sol`) through the `codex` CLI, in a fresh session, with medium reasoning effort. The author is Claude.
-- **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer changed no file. The prompt listed the facts the author verified with the linter, including two new ones for this round.
-- **Artifacts reviewed**: proposal.md, design.md, specs/design-tokens, specs/dev-commands, specs/web-shell, adr.md, and round 1's review.md, for context. Context: `DESIGN.md`, ADR-005, ADR-013, `AGENTS.md`, `openspec/config.yaml`, `justfile`, `.github/workflows/ci.yml`, and the `web/` package, tsconfig, Vite config, and source files.
+- **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer changed no file.
+- **Re-check of required changes**: 2026-10-07, same reviewer, two passes. It covered only RC1, RC2, and defects the edits could add; it was not a from-scratch review. Pass 1: RC2 VERIFIED; RC1 NOT VERIFIED, because the test looked only for the current prefix; and one new defect, a D4 sentence that read as if valid forms were invalid. The author fixed both. Pass 2: RC1 VERIFIED, D4 wording VERIFIED, no new defect, `RECHECK: PASS`.
+- **Artifacts reviewed**: proposal.md, design.md, specs/design-tokens, specs/dev-commands, specs/web-shell, specs/ci, adr.md, and round 2's review.md, for context. Context: `DESIGN.md`, ADR-005, ADR-013, `AGENTS.md`, `openspec/config.yaml`, `justfile`, `.github/workflows/ci.yml`, the current `ci`, `dev-commands`, and `web-shell` specs, and the `web/` package and source files.
 
 ## Findings
 
-The reviewer confirmed that all five round 1 fixes are present. The author checked each new finding.
+The reviewer confirmed that every fix from rounds 1 and 2 is present. It found no lost content in the three MODIFIED deltas, and no untestable scenario. The author checked each new finding.
 
 ### 🔴 Critical (blocking)
 
-- **F1. The generator copies `x-sidereal.css-prefix` into every property name, and nothing checks it.**
-  - **Check: CONFIRMED, as Moderate.** D4 checks keys and values, not the prefix. A prefix such as `sr; } body { … } /*` would escape the `:root` block. A harmless rename, such as `sr` to `foo`, would also pass the drift check while breaking every `var(--sr-…)` in `base.css`.
-- **F2. CI does not run when a pull request changes only `DESIGN.md`.**
-  - **Check: CONFIRMED.** The path filters in `.github/workflows/ci.yml` list `server/**`, `web/**`, `justfile`, and the Nix files, but not `DESIGN.md`. A pull request that changes only `DESIGN.md` gets no drift, lint, or contrast check. The current `ci` spec's requirement ("The web checks run when server or web code changes") does not cover it either.
+None.
 
 ### 🟡 Moderate
 
-- **F3. The contrast spec does not fail a table that has a header but no rows.**
-  - **Check: CONFIRMED.** design.md D6 says the test fails on no rows, but the spec does not require it.
+- **F1. A prefix rename passes every check but breaks the health screen.**
+  - **Check: CONFIRMED.** If `css-prefix` changes from `sr` to `foo`, the generator writes `--foo-*`. `base.css` still uses `var(--sr-*)`, so the screen loses its colors and font. No check fails.
+- **F2. `x-sidereal` values are not checked, so `font-family-sans: 12px` passes.**
+  - **Check: CONFIRMED.** The linter ignores `x-sidereal`, and D4 checks only for characters that could escape a property. The browser drops an invalid font value, and the health screen loses Inter.
 
 ### 📌 Suggestions
 
-- **F4. The proposal still says the linter step "allows warnings".**
-  - **Check: CONFIRMED.** The spec and design allow only the three known warnings. The proposal's summary must match.
-- **Other surfaces: no finding.** Plain language, scenario testability, scope, and `dev-commands` delta completeness have no finding. The reviewer noted that the Penpot lag is an explicit bet: it loses if someone uses Penpot's tokens between a merge and the next exploration.
+- **F3. The proposal's first paragraph and the design's D3 each hold several points.**
+  - **Check: declined.** Each sentence is short and holds one idea. D3 sets out its two side rules as bullets.
+- **Penpot lag.** The reviewer again noted that the lag is an explicit bet. The design states it as intended.
 
 ## Embedded-Instruction / Injection Attempts
 
@@ -34,19 +34,17 @@ The reviewer confirmed that all five round 1 fixes are present. The author check
 
 ## Verdict
 
-VERDICT: REVISE
+VERDICT: APPROVE_WITH_CHANGES
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-None. The verdict is REVISE. This is the second REVISE in a row, so the author stops and asks the maintainer how to go on.
+1. **RC1 (F1):** specify and test what happens when `css-prefix` changes. The author chose a unit test that fails when any stylesheet under `web/src/` uses, through `var()`, a custom property that no stylesheet defines, whatever its prefix. It is a new design-tokens requirement with two scenarios (a prefix rename, and a removed token still in use), plus a paragraph in D8.
+2. **RC2 (F2):** add a gate check for extension values, including a case where `font-family-sans: 12px` must fail. The author chose to have the generator check each value against its group's form, given in a table in the spec. It also refuses any `x-sidereal` group with no known form. A new scenario covers `font-family-sans: 12px`, and D4 explains the reason. The author checked that every value in today's `DESIGN.md` fits its form.
 
-CHANGES_APPLIED: n/a
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
-None yet. The author proposes these fixes to the maintainer:
-
-- **F1:** the generator also refuses a `css-prefix` that holds anything other than lowercase letters. The spec gains a scenario.
-- **F2:** add `DESIGN.md` to both path filters in `.github/workflows/ci.yml`. The change then also modifies the `ci` capability, with a scenario for a pull request that changes only `DESIGN.md`.
-- **F3:** the spec requires the test to fail when the table has no rows or no background columns. It gains a scenario.
-- **F4:** the proposal says that only the three known warnings are allowed.
+- **F1:** fixed by RC1.
+- **F2:** fixed by RC2.
+- **F3:** declined (suggestion), as described above.
