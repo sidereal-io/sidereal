@@ -7,6 +7,7 @@
 // would otherwise pass unnoticed.
 import { lint, type Finding } from "@google/design.md/linter";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { designMdPath } from "./design-md.ts";
 
 // Warnings DESIGN.md has on purpose, matched by rule and path.
@@ -50,7 +51,9 @@ export function unexpectedFindings(findings: Finding[]): Finding[] {
   });
 }
 
-// Runs main() when Node runs this file directly.
-if (import.meta.main) {
+// Runs main() when Node runs this file directly, as `node scripts/<file>.ts`.
+// It compares paths instead of using import.meta.main, which older Node
+// releases lack: there, the check would silently do nothing.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exitCode = main();
 }

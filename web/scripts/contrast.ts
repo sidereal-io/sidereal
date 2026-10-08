@@ -106,18 +106,23 @@ function relativeLuminance(hex: string): number {
 function findContrastTable(
   body: string,
 ): [string[], ...string[][]] | undefined {
-  const lines = body.split("\n");
+  const lines = body.split(/\r?\n/);
   const heading = lines.findIndex((line) => line.trim() === "### Contrast");
   if (heading === -1) return undefined;
 
   const table: string[][] = [];
   for (const line of lines.slice(heading + 1)) {
-    if (line.startsWith("#")) break;
-    if (!line.startsWith("|")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#")) break;
+    // A table starts at a line with a leading pipe. After that, a row may
+    // leave out its outer pipes, as Markdown allows.
+    const isRow =
+      trimmed.startsWith("|") || (table.length > 0 && trimmed.includes("|"));
+    if (!isRow) {
       if (table.length > 0) break;
       continue;
     }
-    const cells = line.trim().slice(1, -1).split("|");
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|");
     if (cells.every((cell) => /^\s*:?-+:?\s*$/.test(cell))) continue;
     table.push(cells);
   }

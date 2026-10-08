@@ -75,6 +75,20 @@ describe("checkContrastTable", () => {
     ]);
   });
 
+  it("checks a row written without outer pipes", () => {
+    const text = edit(
+      "| `obsidian-400` text | 7.2 | 6.8 | 6.4 |",
+      "`obsidian-400` text | 7.5 | 6.8 | 6.4",
+    );
+    expect(checkContrastTable(text)).toEqual([
+      "obsidian-400 on obsidian-950: the table says 7.5, but the ratio is 7.17",
+    ]);
+  });
+
+  it("reads DESIGN.md with CRLF line endings", () => {
+    expect(checkContrastTable(designMd.replaceAll("\n", "\r\n"))).toEqual([]);
+  });
+
   it("fails when the table is missing", () => {
     const text = edit("### Contrast", "### Contrast notes");
     expect(checkContrastTable(text)).toEqual([

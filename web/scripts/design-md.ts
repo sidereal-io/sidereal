@@ -21,7 +21,8 @@ export function readDesignMd(path: string = designMdPath): DesignMd {
 }
 
 export function parseDesignMd(text: string): DesignMd {
-  const lines = text.split("\n");
+  // Split on either line ending, so a CRLF checkout reads the same.
+  const lines = text.split(/\r?\n/);
   const closing = lines.indexOf("---", 1);
   if (lines[0] !== "---" || closing === -1) {
     throw new Error(

@@ -2,22 +2,22 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-interface Stylesheet {
+interface SourceFile {
   // The path a contributor would look for, such as src/styles/base.css.
   name: string;
   text: string;
 }
 
-// Lists each custom property a stylesheet uses through var() that no
-// stylesheet defines, as "<property> in <stylesheet>". It checks every name,
+// Lists each custom property a source file uses through var() that no
+// stylesheet defines, as "<property> in <file>". It checks every name,
 // whatever its prefix, so a renamed prefix or a removed token fails here.
-function undefinedProperties(stylesheets: Stylesheet[]): string[] {
+function undefinedProperties(files: SourceFile[]): string[] {
   const defined = new Set(
-    stylesheets.flatMap(({ text }) =>
+    files.flatMap(({ text }) =>
       [...text.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]),
     ),
   );
-  return stylesheets.flatMap(({ name, text }) =>
+  return files.flatMap(({ name, text }) =>
     [...text.matchAll(/var\(\s*(--[\w-]+)/g)]
       .map((match) => match[1])
       .filter((property) => !defined.has(property))
@@ -25,26 +25,27 @@ function undefinedProperties(stylesheets: Stylesheet[]): string[] {
   );
 }
 
-// Every .css file under web/src/.
-function readStylesheets(): Stylesheet[] {
+// Every stylesheet and TypeScript file under web/src/. Components may use a
+// token through var() in an inline style, so they are checked too.
+function readSourceFiles(): SourceFile[] {
   const src = new URL("../src/", import.meta.url);
   return readdirSync(src, { recursive: true, encoding: "utf8" })
-    .filter((path) => path.endsWith(".css"))
+    .filter((path) => /\.(css|ts|tsx)$/.test(path))
     .map((path) => ({
       name: `src/${path}`,
       text: readFileSync(new URL(path, src), "utf8"),
     }));
 }
 
-describe("the web shell's stylesheets", () => {
+describe("the web shell's source files", () => {
   it("include the token file and at least one stylesheet that uses it", () => {
-    const names = readStylesheets().map(({ name }) => name);
+    const names = readSourceFiles().map(({ name }) => name);
     expect(names).toContain("src/styles/tokens.css");
     expect(names).toContain("src/styles/base.css");
   });
 
   it("use only custom properties that a stylesheet defines", () => {
-    expect(undefinedProperties(readStylesheets())).toEqual([]);
+    expect(undefinedProperties(readSourceFiles())).toEqual([]);
   });
 });
 
@@ -71,6 +72,20 @@ describe("undefinedProperties", () => {
     };
     expect(undefinedProperties([tokens, base])).toEqual([
       "--sr-obsidian-100 in base.css",
+    ]);
+  });
+
+  it("finds a token used in a component's inline style", () => {
+    const tokens = {
+      name: "tokens.css",
+      text: ":root { --sr-obsidian-950: #0B0A0F; }",
+    };
+    const component = {
+      name: "Panel.tsx",
+      text: 'const style = { color: "var(--sr-obsidian-100)" };',
+    };
+    expect(undefinedProperties([tokens, component])).toEqual([
+      "--sr-obsidian-100 in Panel.tsx",
     ]);
   });
 

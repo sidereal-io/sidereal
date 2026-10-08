@@ -27,7 +27,9 @@ export function main(args: string[]): number {
     return 0;
   }
 
-  if (readIfExists(tokensCssPath) === css) return 0;
+  // Compare without carriage returns, so a checkout with CRLF line endings
+  // does not count as drift.
+  if (readIfExists(tokensCssPath)?.replaceAll("\r\n", "\n") === css) return 0;
   console.error(
     "web/src/styles/tokens.css does not match DESIGN.md. Run `pnpm tokens` in web/ to regenerate it.",
   );
@@ -82,7 +84,8 @@ function findProblems(frontMatter: Record<string, unknown>): string[] {
   const problems: string[] = [];
   const extension = extensionOf(frontMatter);
 
-  if (!/^[a-z]+$/.test(String(extension["css-prefix"]))) {
+  const prefix = extension["css-prefix"];
+  if (typeof prefix !== "string" || !/^[a-z]+$/.test(prefix)) {
     problems.push(
       "x-sidereal.css-prefix must hold lowercase letters only, such as `sr`",
     );
@@ -100,6 +103,23 @@ function findProblems(frontMatter: Record<string, unknown>): string[] {
       problems.push(
         `${key} (in ${path}): the generator cannot resolve references yet. Add reference lookup to web/scripts/tokens.ts in the same pull request.`,
       );
+    }
+  }
+
+  // The specification's typography group holds whole text styles, which
+  // tokens.css cannot hold as single properties yet.
+  if (
+    isMap(frontMatter.typography) &&
+    Object.keys(frontMatter.typography).length > 0
+  ) {
+    problems.push(
+      "typography holds text styles, which the generator cannot write yet. Add support to web/scripts/tokens.ts in the same pull request.",
+    );
+  }
+  for (const path of specGroups) {
+    const tokens = frontMatter[path];
+    if (tokens !== undefined && !isMap(tokens)) {
+      problems.push(`${path} must be a map of tokens`);
     }
   }
 
@@ -186,16 +206,29 @@ const fontWeight: ValueForm = {
 
 // Each item is a name in double quotes, or words that each start with a
 // letter or a hyphen: `Inter, -apple-system, "Segoe UI", sans-serif`.
+// A CSS-wide keyword, such as `inherit`, would make the custom property
+// itself inherit or reset, not hold a font list.
+const cssWideKeywords = [
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "revert-layer",
+  "default",
+];
+
 const fontFamily: ValueForm = {
   description:
-    'a comma-separated font list, where each item is a name in double quotes or plain words, such as Inter, "Segoe UI", sans-serif',
+    'a comma-separated font list, where each item is a name in double quotes or plain words other than a CSS-wide keyword such as inherit, for example Inter, "Segoe UI", sans-serif',
   fits: (value) =>
     typeof value === "string" &&
-    value
-      .split(",")
-      .every((item) =>
-        /^("[^"]+"|[A-Za-z-][\w-]*( [A-Za-z-][\w-]*)*)$/.test(item.trim()),
-      ),
+    value.split(",").every((item) => {
+      const name = item.trim();
+      return (
+        /^("[^"]+"|[A-Za-z-][\w-]*( [A-Za-z-][\w-]*)*)$/.test(name) &&
+        !cssWideKeywords.includes(name.toLowerCase())
+      );
+    }),
 };
 
 // The form each primitive group's values must take. An x-sidereal group that
@@ -249,8 +282,9 @@ function readIfExists(path: string): string | undefined {
   }
 }
 
-// Runs main() when Node runs this file directly. It sits last, so every
-// constant above is initialized before main() reads it.
-if (import.meta.main) {
+// Runs main() when Node runs this file directly, as `node scripts/<file>.ts`.
+// It compares paths instead of using import.meta.main, which older Node
+// releases lack: there, the check would silently do nothing.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   process.exitCode = main(process.argv.slice(2));
 }

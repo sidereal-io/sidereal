@@ -11,6 +11,14 @@ describe("parseDesignMd", () => {
     expect(body).toBe("\n# Title\n");
   });
 
+  it("reads CRLF line endings", () => {
+    const { frontMatter, body } = parseDesignMd(
+      '---\r\ncolors:\r\n  white: "#FFFFFF"\r\n---\r\n# Title\r\n',
+    );
+    expect(frontMatter).toEqual({ colors: { white: "#FFFFFF" } });
+    expect(body).toBe("# Title\n");
+  });
+
   it("fails when there is no front matter", () => {
     expect(() => parseDesignMd("# Title\n")).toThrow(/no front matter/);
   });

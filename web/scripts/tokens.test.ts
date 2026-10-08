@@ -174,6 +174,43 @@ describe("buildTokensCss refuses tokens it cannot write", () => {
     expect(() => buildTokensCss(frontMatter)).toThrow(new RegExp(key));
   });
 
+  it("refuses a missing prefix", () => {
+    const frontMatter = base();
+    delete frontMatter["x-sidereal"]["css-prefix"];
+    expect(() => buildTokensCss(frontMatter)).toThrow(/css-prefix/);
+  });
+
+  it("refuses typography text styles", () => {
+    const frontMatter = base();
+    frontMatter.typography = { "body-md": { fontSize: "14px" } };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/typography/);
+  });
+
+  it("accepts an empty typography group", () => {
+    const frontMatter = base();
+    frontMatter.typography = {};
+    expect(() => buildTokensCss(frontMatter)).not.toThrow();
+  });
+
+  it("refuses a spec group that is not a map", () => {
+    const frontMatter: Record<string, unknown> = base();
+    frontMatter.colors = ["#000000"];
+    expect(() => buildTokensCss(frontMatter)).toThrow(/colors must be a map/);
+  });
+
+  it.each([
+    "inherit",
+    "initial",
+    "unset",
+    "revert",
+    "revert-layer",
+    "Inter, INHERIT",
+  ])("refuses the CSS-wide keyword font list %j", (value) => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"]["font-family"] = { "font-family-sans": value };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/font-family-sans/);
+  });
+
   it("refuses an x-sidereal group with no known form", () => {
     const frontMatter = base();
     frontMatter["x-sidereal"].shadow = { "shadow-1": "0 0 4px" };
