@@ -108,6 +108,12 @@ frames, calibration masters, finished images, and dense technical metadata.
   Penpot MCP server and plugin, which a person connects to the file. Before an
   agent works there, it copies the tokens from this file into Penpot, so Penpot
   may lag behind this file until then.
+  - **Pages:** `Primitives` shows the primitive tokens, `Components` holds the
+    components, and `Explorations` holds design options a person is comparing.
+  - **Token sets:** `primitives` is a copy of this file's primitive tokens.
+    Only the copy step changes it; never edit it by hand. A value being tried
+    out goes in a set named `explore-<topic>`, one set per exploration, never
+    in `primitives`.
 
 Tokens come in three tiers: **primitives, semantic tokens, and component tokens**.
 
