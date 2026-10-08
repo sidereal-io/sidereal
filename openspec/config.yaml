@@ -1,25 +1,32 @@
 schema: spec-driven-review
 
 context: |
-  The backlog is GitHub issues, each with its MoSCoW priority as a `priority/*` label;
+  The backlog is GitHub issues. Each story's MoSCoW priority is the organization's
+  normal issue field named Priority, not a label or a project field;
   openspec/discovery.md holds personas and journeys. An issue marked "Not yet a story"
   must be cut into a story packet before it is proposed. When asked to propose the
-  next change without a specific request, list open issues with
-  `gh issue list --state open --limit 200 --json number,title,labels,assignees,blockedBy,parent,subIssuesSummary`.
-  Skip epic parents (any issue labeled `kind/epic` or with sub-issues), issues with an
-  open blocker, assigned issues (they are in progress), issues labeled `priority/wont`,
-  and issues with no `priority/*` label (they are untriaged). For each candidate,
-  follow its native parent links with `gh issue view <n> --json parent,blockedBy`.
-  Exclude it if any ancestor has an open blocker; continue to the next candidate.
+  next change without a specific request, read all open issues and their normal
+  issue fields with
+  `gh api 'repos/{owner}/{repo}/issues' --method GET -f state=open -f per_page=100 --paginate`.
+  Ignore entries containing `pull_request`. Read Priority from the entry in
+  `issue_field_values` whose `issue_field_name` is `Priority`, using
+  `single_select_option.name`. Skip epic parents (any issue labeled `kind/epic` or
+  with `sub_issues_summary.total` greater than zero), assigned issues (they are in
+  progress), Priority `Wont`, and issues with no recognized Priority value (they
+  are untriaged). Do not fall back to priority labels or Project Priority. If the
+  API request fails, report the failure rather than treating the backlog as empty.
+  For each candidate, inspect its blockers and follow its native parent links with
+  `gh issue view <n> --json parent,blockedBy`.
+  Exclude it if it or any ancestor has an open blocker; continue to the next candidate.
   AGENTS.md's "Epic planning and issue relationships" section defines the shared
   planning rules. Epics omit relevant-code sections and repeated workflow rules;
   identify groundwork and relevant code during exploration and story cutting.
-  Of the eligible stories, take the
-  highest priority — `priority/must`, then `priority/should`, then `priority/could` —
-  and the lowest number within it. Read its story packet with
-  `gh issue view <n> --json body`. When proposing,
-  assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
-  say `Closes #<n>`. One story per change.
+  Of the eligible stories, take the highest Priority — `Must`, then `Should`,
+  then `Could` — and the lowest number within it. Read its story packet with
+  `gh issue view <n> --json body`. Priority must match the packet's MoSCoW line;
+  resolve any disagreement before proposing. When proposing, assign the issue
+  (`gh issue edit <n> --add-assignee @me`) and have the draft PR say `Closes #<n>`.
+  One story per change.
 
   UI work in `web/` follows DESIGN.md at the repo root (ADR-005): it is the source
   of truth for every token value and usage rule, and code and Penpot follow it.

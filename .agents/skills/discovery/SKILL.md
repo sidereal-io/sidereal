@@ -119,7 +119,7 @@ Bucket the capabilities the journey surfaced into **Must / Should / Could / Won'
 - Push back on Must inflation: if everything is a Must, nothing is
 - Won't is a decision, not a dumping ground — record why
 
-**Checkpoint:** write the MoSCoW section of the parent issue.
+**Checkpoint:** write the MoSCoW section of the parent issue. Each story also carries its priority in the organization’s normal issue field named `Priority`; do not use priority labels or project fields.
 
 ### Phase 5: Stories
 
@@ -146,7 +146,22 @@ Each story gets a **story packet** — the story template in [templates/issue-te
 gh issue create --title "<title>" --body-file <file> --parent <parent#> [--blocked-by <n>,<n>]
 ```
 
-The command prints the issue URL; the number is its last segment. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
+The command prints the issue URL; the number is its last segment. Set the new story's normal issue `Priority` field to match its packet before creating the next story. Find the field ID and options with `gh api orgs/{owner}/issue-fields`; choose the field named `Priority`. Use `Must`, `Should`, `Could`, or `Wont` (Won't in prose), never a priority label or project field.
+
+Write the field update to a working JSON file, replacing `123` with the discovered field ID and `Must` with the story's priority:
+
+```json
+{"issue_field_values":[{"field_id":123,"value":"Must"}]}
+```
+
+Use POST to preserve other issue fields, then verify the saved value:
+
+```bash
+gh api --method POST 'repos/{owner}/{repo}/issues/<n>/issue-field-values' --input <priority-file>
+gh api 'repos/{owner}/{repo}/issues/<n>/issue-field-values'
+```
+
+Epics have no Priority value; a parent converted into a single story needs one. Stop at the first error, including a field update. Before retrying creation, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate. If creation succeeded but the field update failed, update the existing issue.
 
 ### Phase 6: Finalize
 
@@ -154,7 +169,7 @@ Remove the status line from the parent issue — only the status line; the `Inpu
 
 Then offer to make propose issue-aware: with the user's confirmation, append a backlog line to the `context:` block of `<root.path>/openspec/config.yaml` (create the block if absent; preserve everything already there):
 
-> Backlog: stories are GitHub issues. When asked to propose the next change without a specific request, take the lowest-numbered open issue that has no sub-issues, no open blocker, and no assignee, and use its body as the story packet. Assign it when proposing, and have the draft PR say `Closes #<n>`. One story per change.
+> Backlog: stories are GitHub issues. When asked to propose the next change without a specific request, read normal issue Priority values with `gh api repos/{owner}/{repo}/issues --method GET -f state=open -f per_page=100 --paginate`. Exclude pull requests, epics, issues with no recognized Priority or Priority Wont, assigned issues, and issues with an open blocker on themselves or any ancestor. Choose by Priority (Must, Should, Could), then lowest issue number, and use its body as the story packet. Assign it when proposing, and have the draft PR say `Closes #<n>`. One story per change.
 
 OpenSpec injects `context` into every artifact's instructions, so every future propose run will know where the backlog lives without being told. If the user declines, hand off manually:
 
@@ -182,7 +197,7 @@ When `discovery.md` exists and no run is in progress:
    - Re-annotate every journey stage against the code; stages move to `supported` as their stories ship
    - Update the freshness line to today
 2. **Take in what the user brings** — a new PRD, new requirements, changed priorities, learnings from shipped stories. New work is a new run with its own parent issue: Ingest, then MoSCoW and Stories. Revisit Personas and the Journey Map only when the input changes who the product serves or how they use it.
-3. **Priorities of existing stories are revisable too:** update the story's MoSCoW line, with its reason.
+3. **Priorities of existing stories are revisable too:** update the story's normal issue `Priority` field and its MoSCoW line together, with the reason.
 4. **Never silently delete a story.** Close a superseded story as not planned with a one-line reason, so the plan's history stays legible: `gh issue close <n> --reason "not planned" --comment "Superseded by #<m>: <reason>"`.
 
 ---
