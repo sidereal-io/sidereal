@@ -44,18 +44,25 @@ See proposal.md for why. This section covers only the facts that shape the appro
 - **Prettier skips the file.** `web/.prettierignore` lists it. The generator alone decides its bytes, so the drift check and the format check never disagree.
 - **The type check covers the scripts.** `web/tsconfig.node.json` adds `scripts/**/*.ts` to its `include` list.
 
-### D4. The generator refuses what it cannot write yet
+### D4. The generator refuses what it cannot write safely
 
-The generator exits with an error, naming the token, when `x-sidereal.semantic` or `components` holds an entry, or when two groups share a key.
+The generator exits with an error, naming the token, in these cases:
 
-- **Why not skip them?** A skipped token would not reach `tokens.css`. A component could then use a CSS property that does not exist, and no check would notice. The error tells the first semantic token's author to add reference lookup in the same pull request.
+- `x-sidereal.semantic` or `components` holds an entry;
+- two groups share a key;
+- a key holds anything other than lowercase letters, digits, and hyphens;
+- a value holds a line break, `;`, `{`, `}`, `<`, `\`, or `url(`.
+
+- **Why not skip semantic and component tokens?** A skipped token would not reach `tokens.css`. A component could then use a CSS property that does not exist, and no check would notice. The error tells the first semantic token's author to add reference lookup in the same pull request.
+- **Why check keys and values?** The generator copies each value into CSS exactly. Without the check, a value could close its property and add a rule, such as one that loads a file from another site. The linter catches this under `colors`, but not under `x-sidereal`. The author tested both. No current token uses any of the refused characters. The font stacks use quotes and commas, which stay allowed.
 
 ### D5. The `DESIGN.md` linter is a pinned dev dependency
 
-`web/package.json` lists `@google/design.md` at an exact version. Its `design:lint` script runs `design.md lint ../DESIGN.md`.
+`web/package.json` lists `@google/design.md` at an exact version. Its `design:lint` script runs `web/scripts/design-lint.ts`. That script runs the linter on `../DESIGN.md` and reads the linter's JSON report.
 
-- **Why not `npx`?** `npx @google/design.md` fetches the newest release on each run. The specification is in alpha, so a new release could break the gate with no change in the repo. A pinned version changes only through a Dependabot pull request, where any new error shows up.
-- **The gate relies on the exit status.** The linter exits with status 1 on an error and 0 on warnings. The gate needs no list of allowed warnings.
+- **Why not `npx`?** `npx @google/design.md` fetches the newest release on each run. The specification is in alpha, so a new release could break the gate with no change in the repo. A pinned version changes only through a Dependabot pull request, where any new finding shows up.
+- **Why read the report, not just the exit status?** The linter exits with status 0 on any number of warnings. The author added an unknown top-level key, and the linter reported a fourth warning and still exited with 0. The script fails on any error, and on any warning that is not in its list of three known warnings. It matches each by rule and path, so a second ignored key, for example, still fails. The script prints each unexpected finding.
+- **A known warning may disappear.** The first typography token, for example, removes `missing-typography`. The gate still passes, and the author can drop that entry from the list.
 
 ### D6. The contrast test reads the table, not a copy of it
 
@@ -63,7 +70,7 @@ The generator exits with an error, naming the token, when `x-sidereal.semantic` 
 
 - **Rounding:** the test rounds the ratio half up to one decimal before it compares. The pass or fail mark uses the unrounded ratio. So `obsidian-500` on `obsidian-850` is 4.507: it shows as `4.5` and passes.
 - **Threshold:** every pair in the table is body text, so every cell uses 4.5:1.
-- **A broken table fails loudly.** The test fails when it finds no table, no rows, or a name that is not a color token. A reformatted table can never pass by checking nothing.
+- **A broken table fails loudly.** The test fails when it finds no table, no rows, or a name that is not a color token. It also fails on any cell that is not a one-decimal ratio, that ratio followed by `(fails)`, or `—`. A reformatted table can never pass by checking nothing.
 
 ### D7. The web shell's own `@font-face` rules, using Fontsource's files
 
@@ -84,7 +91,7 @@ The generator exits with an error, naming the token, when `x-sidereal.semantic` 
 
 The maintainer chose to amend ADR-005, not to replace it with a new ADR. No code ever used the token JSON file, so one changed point does not justify a new record. One commit updates every place that names the JSON file or the manual import:
 
-- **ADR-005:** an agent copies the tokens into Penpot over the Penpot MCP server before it works there. `tokens.css` is the only generated file.
+- **ADR-005:** an agent copies the tokens into Penpot over the Penpot MCP server before it works there. Penpot may lag behind `DESIGN.md` until then. `tokens.css` is the only generated file.
 - **`DESIGN.md`:** "How to use this file" and "Changing any token" say to run `pnpm tokens`, and that Penpot gets its tokens from an agent.
 - **`AGENTS.md`:** the third web UI rule changes the same way.
 - **`openspec/config.yaml`:** the `tasks` rule asks for a task to regenerate `tokens.css`, not a Penpot import.
@@ -96,7 +103,7 @@ The maintainer chose to amend ADR-005, not to replace it with a new ADR. No code
 - **[A generated file is committed.]** → Two branches that both change tokens conflict in `tokens.css`. The fix is to regenerate after merging `DESIGN.md`.
 - **[The contrast test depends on the table's layout.]** → A layout change fails the test instead of passing silently (D6). The author then updates the parser or the table.
 - **[The fonts are declared from 400 to 600, but each file holds the full weight axis.]** → Download size stays the same. The range only stops the browser from using weights that `DESIGN.md` does not define.
-- **[Penpot is no longer checked by anything in the repo.]** → Penpot is outside the repo, so no check can reach it anyway. #381 makes the agent copy the tokens at the start of each exploration.
+- **[Penpot lags behind `DESIGN.md` after a token change merges.]** → This lag is intended. Penpot gets the new tokens at the start of the next exploration, when an agent copies them (#381). Between explorations, no work reads Penpot's tokens: code reads `tokens.css`, and `tokens.css` comes from `DESIGN.md`. No check in the repo can reach Penpot.
 
 ## Migration Plan
 

@@ -28,7 +28,7 @@ The issue also changes how tokens reach Penpot. An agent now copies tokens into 
 
 ## Impact
 
-- **New files:** the generator and its shared `DESIGN.md` reader under `web/scripts/`, the contrast test, `web/src/styles/tokens.css`, and a base stylesheet with the font rules.
+- **New files:** the generator, the lint script, and their shared `DESIGN.md` reader under `web/scripts/`; the contrast test and the font-path test; `web/src/styles/tokens.css`, and a base stylesheet with the font rules.
 - **Changed code:** `web/src/main.tsx` (imports the stylesheets), `web/package.json` and `web/pnpm-lock.yaml`, `web/tsconfig.node.json`, `web/.prettierignore`, and `justfile` (`check-web`).
 - **Dependencies:** two runtime packages, the Fontsource variable packages for the two fonts. Two dev dependencies: the `@google/design.md` linter and a YAML parser. The Nix shell needs no new tool.
 - **Docs:** ADR-005, `DESIGN.md`, `AGENTS.md`, `openspec/config.yaml`, and `web/README.md`.

@@ -6,7 +6,8 @@ The web shell SHALL serve the font files for Inter and Atkinson Hyperlegible Mon
 
 #### Scenario: Inter loads from the web shell
 
-- **WHEN** a user opens the web shell's home page and the page finishes loading
+- **WHEN** a user opens the web shell's home page
+- **AND** `await document.fonts.ready` resolves in the browser console
 - **THEN** `[...document.fonts].some(f => f.family === "Inter" && f.status === "loaded")` returns `true` in the browser console
 - **AND** the browser's network log shows that the Inter font file came from the web shell's origin
 
@@ -17,7 +18,8 @@ The web shell SHALL serve the font files for Inter and Atkinson Hyperlegible Mon
 
 #### Scenario: Nothing loads from another origin
 
-- **WHEN** a user opens the web shell's home page and the page finishes loading
+- **WHEN** a user opens the web shell's home page
+- **AND** `await document.fonts.ready` resolves in the browser console
 - **THEN** the browser's network log shows no request to any origin other than the web shell's
 
 ### Requirement: The health screen uses the design tokens
