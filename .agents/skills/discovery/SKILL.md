@@ -147,7 +147,7 @@ gh issue create --type Story --title "<title>" --body-file <file> --parent <pare
 scripts/set-priority.sh <n> <Must|Should|Could>
 ```
 
-`gh issue create` prints the issue URL; the number is its last segment. [scripts/set-priority.sh](scripts/set-priority.sh) sets the organization's `Priority` issue field, which `gh` can't set yet; it must match the story packet's `MoSCoW` line. Never use labels for an issue's type or priority. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
+`gh issue create` prints the issue URL; the number is its last segment. The repository's [scripts/set-priority.sh](../../../scripts/set-priority.sh) sets the organization's `Priority` issue field, which `gh` can't set yet; it must match the story packet's `MoSCoW` line. Never use labels for an issue's type or priority. Stop at the first error. Before retrying, search for the title (`gh issue list --state all --search "<title> in:title"`) so you never create a duplicate.
 
 ### Phase 6: Finalize
 

@@ -131,10 +131,10 @@ between phases" step.
 - **Every story, bug, and chore carries one MoSCoW priority** in the organization's
   `Priority` issue field: `Must`, `Should`, `Could`, or `Wont`. A story's priority
   matches the `MoSCoW` line in its story packet; when you change one, change the
-  other in the same edit. `gh` can't set issue fields yet, so use
-  `.agents/skills/discovery/scripts/set-priority.sh <n> <priority>`.
-  `scripts/backlog.sh` lists open issues with their type and priority. Epics and
-  untriaged issues have no priority. Don't use labels for priority.
+  other in the same edit. `gh` can't read or set issue fields yet:
+  `scripts/set-priority.sh <n> <priority>` sets one, and `scripts/backlog.sh` lists
+  open issues with their type and priority. Epics and untriaged issues have no
+  priority. Don't use labels for priority.
 
 ### Epic planning and issue relationships
 
