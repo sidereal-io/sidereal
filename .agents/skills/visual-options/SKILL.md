@@ -43,7 +43,7 @@ the person.
    run `pnpm tokens:penpot` in `web/`. It prints a JSON array of
    `{ type, name, value }` built from `DESIGN.md`. If it fails, `DESIGN.md`
    holds a token it cannot write: report the error and stop.
-2. **Run the sync.** Read `sync.js`, in this skill's folder. Call the Penpot
+2. **Run the sync.** Read `scripts/sync.js`, in this skill's folder. Call the Penpot
    `execute_code` tool with three lines followed by the contents of `sync.js`:
 
    ```js
