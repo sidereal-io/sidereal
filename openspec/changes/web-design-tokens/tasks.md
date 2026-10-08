@@ -16,7 +16,7 @@
 
 ## 4. The `DESIGN.md` lint
 
-- [ ] 4.1 Write `web/scripts/design-lint.ts` and the `design:lint` script (D5). It fails on any error, and on any warning except the three known ones, matched by rule and path. Verify: `pnpm design:lint` passes on today's `DESIGN.md`; it fails with an `x-other` key, printing `x-other`; it fails with `obsidian-950` set to `"#GGGGGG"`.
+- [x] 4.1 Write `web/scripts/design-lint.ts` and the `design:lint` script (D5). It fails on any error, and on any warning except the three known ones, matched by rule and path. Verify: `pnpm design:lint` passes on today's `DESIGN.md`; it fails with an `x-other` key, printing `x-other`; it fails with `obsidian-950` set to `"#GGGGGG"`.
 
 ## 5. The contrast test
 
