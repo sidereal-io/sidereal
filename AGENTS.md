@@ -8,21 +8,6 @@ Guidance for AI agents working in this repo. `CLAUDE.md` is a symlink to this fi
 
 **Stack:** Rust server (axum, cargo workspace in `server/`) · React 19 + Vite + TypeScript web interface (pnpm, in `web/`) · PostgreSQL · orchestrated by the root `justfile`
 
-## Current state
-
-`main` holds the rebuild of Sidereal ([RFC #213](https://github.com/sidereal-io/sidereal/issues/213)): a Rust server ([ADR-009](docs/decisions/ADR-009-backend-language.md)) and a new web interface. All new development happens here. The first release from `main` is planned as `v2.0.0`.
-
-**Sidereal builds in milestones.** M0 (scaffolding) is done. M1 — the core spine and first plugins ([#217](https://github.com/sidereal-io/sidereal/issues/217)) — is in `status/design`.
-
-**Run everything from the root `justfile`.** `just dev` starts the server and the web interface together, and `just --list` describes every recipe.
-
-**An optional, pinned Nix shell provides every tool,** including `just` itself. `just check` works the same inside it or with each tool installed by hand. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-environment).
-
-**Where to read more:**
-
-- **Server layout, prerequisites, and commands** — [`server/README.md`](server/README.md).
-- **Target architecture and milestone plan** — [`docs/architecture.md`](docs/architecture.md) and [`openspec/migration.md`](openspec/migration.md).
-
 ## The v0.x maintenance branch
 
 The released app, v0.10.x (TypeScript, Hono, Drizzle), lives only on the `v0.x` branch. It stays in maintenance until cutover ([ADR-010](docs/decisions/ADR-010-migration-strategy.md)).
@@ -131,10 +116,27 @@ between phases" step.
 - **Every story, bug, and chore carries one MoSCoW priority** in the organization's
   `Priority` issue field: `Must`, `Should`, `Could`, or `Wont`. A story's priority
   matches the `MoSCoW` line in its story packet; when you change one, change the
-  other in the same edit. `gh` can't read or set issue fields yet:
-  `scripts/set-priority.sh <n> <priority>` sets one, and `scripts/backlog.sh` lists
-  open issues with their type and priority. Epics and untriaged issues have no
-  priority. Don't use labels for priority.
+  other in the same edit. Epics and untriaged issues have no priority. Don't use
+  labels for priority.
+- **Read and set priority through the REST API.** `gh` has no issue-field commands
+  yet, but `gh api` reaches them. To set an issue's priority:
+
+  ```bash
+  gh api --method POST 'repos/{owner}/{repo}/issues/<n>/issue-field-values' \
+    -F "issue_field_values[][field_id]=$(gh api 'orgs/{owner}/issue-fields' --jq '.[] | select(.name == "Priority") | .id')" \
+    -f 'issue_field_values[][value]=<Must|Should|Could|Wont>'
+  ```
+
+  To list the open backlog — one line per issue, with its type, priority,
+  assignees, number of sub-issues, and number of open blockers:
+
+  ```bash
+  gh api 'repos/{owner}/{repo}/issues' -X GET -f state=open -f per_page=100 --paginate \
+    --jq '.[] | select(.pull_request | not) | {number, title, type: .type.name,
+      priority: ([.issue_field_values[]? | select(.issue_field_name == "Priority") | .single_select_option.name][0]),
+      assignees: [.assignees[].login], subIssues: .sub_issues_summary.total,
+      openBlockers: .issue_dependencies_summary.blocked_by}'
+  ```
 
 ### Epic planning and issue relationships
 
