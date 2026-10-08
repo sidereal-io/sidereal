@@ -23,7 +23,7 @@ The issue also changes how tokens reach Penpot. An agent now copies tokens into 
 
 ### Modified Capabilities
 
-- `dev-commands`: the web gate runs seven checks instead of four. The new ones are the `DESIGN.md` linter, the token drift check, and the contrast test.
+- `dev-commands`: the web gate runs six checks instead of four. The new ones are the `DESIGN.md` linter and the token drift check. The contrast test runs with the unit tests.
 - `web-shell`: the web shell serves its own fonts and styles the health screen through the tokens.
 
 ## Impact
