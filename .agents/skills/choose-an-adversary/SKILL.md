@@ -1,11 +1,11 @@
 ---
 name: choose-an-adversary
-description: Use when a review must be run by a different model family than the one that authored the work — an independent adversary, not a self-review. Called by critique skills that need real independence.
+description: Use when a review must be run by a different model family than the one that authored the work — an independent adversary, not a self-review. Called by the OpenSpec `review` artifact and by `peer-code-review`.
 ---
 
 # Choosing an Adversary
 
-A critic that inherits the author's reasoning just confirms it. Independence is a property of the model family that answers, not the CLI that launches it. This skill picks an independent family, runs the critique read-only, and hands the raw findings back. The caller verifies and presents them.
+A reviewer that inherits the author's reasoning just confirms it. Independence is a property of the model family that answers, not the CLI that launches it. This skill picks an independent family, runs the review read-only, and hands the raw findings back. The caller verifies and presents them.
 
 ## Establish the author family
 
@@ -25,7 +25,13 @@ Take the first family that is not the author's and whose executor is installed (
 | `claude` | `claude` | model choice |
 | `gemini` | `agy` | folded into model choice |
 
-Order: `gpt` → `claude` → `gemini`. If the only installed family is the author's, stop and report "no independent adversary available" so the caller can fall back to an in-session critique.
+Order: `gpt` → `claude` → `gemini`. If the only installed family is the author's, stop and report "no independent adversary available". The caller then falls back as the next section says.
+
+## Small reviews and fallbacks
+
+A bounded, single-unit review with no new contracts may run in the same session. Say plainly that it ran in-session and was not independent, so the reader knows it is weaker. The same applies when no other family is installed.
+
+The OpenSpec `review` artifact is the exception. It must never be written in the context that wrote the plan, however small the change. When no other family is installed, a fresh-context subagent writes it, and its Review Metadata says so.
 
 ## Scale the scrutiny
 
@@ -41,20 +47,20 @@ Use the reviewer's strongest reasoning model. Run `low` and `medium` in the fore
 
 ## Run it read-only
 
-Write the critique prompt to a scratch file. Run from the work's directory. Every recipe below is read-only.
+Write the review prompt to a scratch file. Run from the work's directory. Every recipe below is read-only.
 
 ```bash
 # codex — read-only sandbox; reasoning is its own dial
 codex exec -s read-only -m <model> -c model_reasoning_effort="<tier>" \
-  -o <scratch>/critique-raw.md - < <scratch>/critique-prompt.md
+  -o <scratch>/review-raw.md - < <scratch>/review-prompt.md
 
 # claude — plan mode is read-only
 claude -p --permission-mode plan --model <model> \
-  < <scratch>/critique-prompt.md > <scratch>/critique-raw.md
+  < <scratch>/review-prompt.md > <scratch>/review-raw.md
 
 # agy — plan mode is read-only; the prompt is the value of -p and comes last
 agy --mode plan --model "<a gemini model from agy models>" --print-timeout <timeout> \
-  -p "$(cat <scratch>/critique-prompt.md)" > <scratch>/critique-raw.md
+  -p "$(cat <scratch>/review-prompt.md)" > <scratch>/review-raw.md
 ```
 
 This costs real tokens. Never loop it. Re-run only when the work or the question changed. If an executor errors or runs out of credit, fall to the next family and tell the caller about the substitution.

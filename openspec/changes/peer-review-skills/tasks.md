@@ -5,7 +5,7 @@
 
 ## 2. Choosing the reviewer
 
-- [ ] 2.1 Update `.agents/skills/choose-an-adversary/SKILL.md`. Drop "critique skills" from its description and body. Add the small-review rule, with its exception for the `review` artifact and the fresh-context subagent fallback, as design.md describes. Verify: `grep -n critique .agents/skills/choose-an-adversary/SKILL.md` finds nothing, and the skill states the rule and the exception.
+- [x] 2.1 Update `.agents/skills/choose-an-adversary/SKILL.md`. Drop "critique skills" from its description and body. Add the small-review rule, with its exception for the `review` artifact and the fresh-context subagent fallback, as design.md describes. Verify: `grep -n critique .agents/skills/choose-an-adversary/SKILL.md` finds nothing, and the skill states the rule and the exception.
 
 ## 3. Code review
 
