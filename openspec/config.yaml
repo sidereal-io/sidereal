@@ -37,7 +37,7 @@ rules:
 operations:
   apply:
     guidance:
-      - When every task is done, run the `cross-review` skill on the branch before
+      - When every task is done, run the `peer-code-review` skill on the branch before
         verify. It hands the code to another model family's reviewer and fixes
         confirmed findings.
 
