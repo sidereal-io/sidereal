@@ -1,6 +1,6 @@
 ## 1. Review rules
 
-- [ ] 1.1 Move the rules from `.agents/skills/peer-code-review/rules/CLAUDE.md` to a new `REVIEW.md` at the repo root, and delete the `rules/` folder. Keep the rules' wording. Verify: `git ls-files .agents/skills/peer-code-review` lists only `SKILL.md`, and `REVIEW.md` holds the change fit, tests, and simplicity sections.
+- [x] 1.1 Move the rules from `.agents/skills/peer-code-review/rules/CLAUDE.md` to a new `REVIEW.md` at the repo root, and delete the `rules/` folder. Keep the rules' wording. Verify: `git ls-files .agents/skills/peer-code-review` lists only `SKILL.md`, and `REVIEW.md` holds the change fit, tests, and simplicity sections.
 - [ ] 1.2 Add one line to `AGENTS.md`'s workflow section: "When you review code, also apply the review rules in `REVIEW.md`." Verify: `grep -n "REVIEW.md" AGENTS.md` finds the line, and `CLAUDE.md` is still a link to `AGENTS.md`.
 
 ## 2. Choosing the reviewer
