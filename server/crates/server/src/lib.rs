@@ -1,23 +1,34 @@
-//! Sidereal server: the axum HTTP shell.
-//!
-//! The router is built here rather than inline in `main` so integration tests
-//! can exercise it without binding a socket. Later middleware (CORS/CSRF/auth,
-//! ADR-007) attaches to this router via tower layers.
-
-use axum::{routing::get, Json, Router};
+//! The HTTP shell exposes fixed liveness and readiness responses.
+use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use serde_json::{json, Value};
+use sidereal_core::database::Database;
 
-/// Build the application router.
+pub mod config;
+
+/// Liveness is independent of database availability.
 pub fn app() -> Router {
     Router::new().route("/healthz", get(healthz))
 }
 
-/// `GET /healthz` → `200 {"status":"ok"}`.
-///
-/// The M0 liveness probe that proves the stack boots end to end; it also
-/// doubles as the Docker healthcheck target (#233).
+/// Production routes are constructed only after database initialization.
+pub fn app_with_database(database: Database) -> Router {
+    app().merge(
+        Router::new()
+            .route("/readyz", get(readyz))
+            .with_state(database),
+    )
+}
+
 async fn healthz() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
-
-pub mod config;
+async fn readyz(State(database): State<Database>) -> (StatusCode, Json<Value>) {
+    if database.ready().await {
+        (StatusCode::OK, Json(json!({"status":"ready"})))
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"status":"not_ready"})),
+        )
+    }
+}
