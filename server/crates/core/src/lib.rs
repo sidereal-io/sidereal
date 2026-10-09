@@ -24,3 +24,5 @@ mod tests {
 #[cfg(test)]
 #[path = "database/test_support.rs"]
 mod test_support;
+
+pub mod database;

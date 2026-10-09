@@ -19,3 +19,5 @@ pub fn app() -> Router {
 async fn healthz() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
+
+pub mod config;
