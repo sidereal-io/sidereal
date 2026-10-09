@@ -30,6 +30,9 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      - name: Test security workflow reporting and digest selection
+        run: node --test --test-isolation=none tools/scripts/security-workflows.test.mjs
+
       - name: Build all packages
         run: npm run build
 
