@@ -43,8 +43,10 @@ VERDICT: APPROVE_WITH_CHANGES
 2. **RC2 (F2):** Have `peer-code-review` find the author from the `Co-Authored-By` lines in `<base>..HEAD`, and pick a family that wrote none of the commits. `peer-plan-review` keeps the plan's provenance. State this in the proposal and the design.
 3. **RC3 (F3):** Have the **Code review** section name the reviewed commit. Have the archive guidance re-run `peer-code-review` when later commits change files outside `openspec/changes/`. State this in the proposal and the design.
 4. **RC4 (F4):** Drop `test-plan` from the template comment, and narrow the non-goal in the proposal and the design to the structure of review.md.
+5. **RC5 (maintainer request, after apply):** When no other family is installed, run the author's own family's tool as a new process for a fresh context, in both skills and the `review` instruction. Never review in the author's own session.
+6. **RC6 (maintainer request, after apply):** Code review runs once, after apply. The archive check lists fix commits in the **Code review** section and does not re-run the review for them or for artifact-only commits.
 
-CHANGES_APPLIED: yes
+CHANGES_APPLIED: no
 
 ## Rebuttals
 
@@ -53,3 +55,4 @@ CHANGES_APPLIED: yes
 - **F3:** fixed by RC3.
 - **F4:** fixed by RC4. The template edit itself lands in task 7.4.
 - **Re-check suggestion (cost note):** fixed. design.md now matches the archive rule.
+- **RC5, RC6:** maintainer requests after apply, to be re-checked.

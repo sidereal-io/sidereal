@@ -9,7 +9,7 @@ ADR review completed for this change. The design makes five decisions, and none 
 
 - **Code review runs after apply, not as an artifact.** Two guidance entries in `openspec/config.yaml` hold it: one for apply, and one for archive. Moving it costs two edits.
 - **`peer-plan-review` holds the method, and the schema keeps the OpenSpec checks.** Both are text, and the removed skills can be restored from git.
-- **A review runs in-session only when no other family is installed.** It is one paragraph in each review skill.
+- **With no other family installed, a review runs as a new process of the author's family.** It is one paragraph in each review skill.
 - **Each review skill holds its own reviewer table.** The tables are text in two skills that agents read. Changing the order or a fallback is a text edit.
 - **Review rules live in a root `REVIEW.md`, and `AGENTS.md` points to it.** It is one file and one sentence. Moving the rules elsewhere costs two edits.
 

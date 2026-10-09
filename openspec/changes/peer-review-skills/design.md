@@ -34,7 +34,7 @@ Three command-line tools can run a review. Only two have a built-in code reviewe
 
 The `review` artifact stays where it is, because it must block `tasks`. Code review runs from the apply guidance in `openspec/config.yaml`, once every task is done. Its fixes land as commits, and its findings go in the pull request under **Code review**.
 
-The apply guidance is advice that an agent can miss, so archive guidance adds a second check. The **Code review** section names the commit it reviewed. Before archiving, the agent runs `peer-code-review` first when the section is missing, or when later commits change files outside `openspec/changes/`. Commits that only touch the change's own artifacts, such as the archive, do not need a new review.
+The apply guidance is advice that an agent can miss, so archive guidance adds a second check. The **Code review** section names the commit it reviewed. The section also lists the fix commit for each confirmed finding. Before archiving, the agent runs `peer-code-review` only when the section is missing, or when a later commit changes files outside `openspec/changes/` and is not a listed fix. Fixing a finding, or touching only the change's own artifacts, never starts a second review. So code review runs once per change, after apply.
 
 *Alternative: a `code-review` artifact.* It would have to depend on `tasks`, so OpenSpec would mark it ready before any code exists. `openspec-ff-change` would then write it against code that is not there yet. Artifacts plan the work; they do not follow it.
 
@@ -76,11 +76,13 @@ The `review` instruction keeps what only fits an OpenSpec change: scenario testa
 
 *Alternative: the method in the schema, with no plan review skill.* Nothing outside OpenSpec could then run it.
 
-### Fallbacks when no other family is installed
+### Fallback when no other family is installed: a new process
 
-A review runs in the same session only when no other family is installed. The result says plainly that it was not independent.
+When no other family is installed, each skill runs the author's own family's tool as a new process: `codex exec` or `codex review`, `claude -p`, or `agy`. A new process starts from a fresh context, without the author's reasoning, and code review still uses the built-in reviewer. The result says plainly that it was not independent. No review runs in the author's own session.
 
-The `review` artifact is the exception: it must not be written in the context that wrote the plan. A fresh-context subagent writes it instead, and its metadata says so.
+This also meets the `review` artifact's rule that the review must not be written in the context that wrote the plan.
+
+*Alternative: a fresh-context subagent.* How to start one depends on the agent's tools, while a command line runs the same everywhere.
 
 *Alternative: keep `critique`'s rule for small reviews,* which let a bounded, single-unit review run in the same session. It spared small edits outside OpenSpec from a cross-model run. Those triggers go away, and the rule's only remaining effect would be to let a small change skip its cross-model code review.
 
@@ -116,4 +118,4 @@ The pointer costs other sessions one sentence. It names code review, so plan rev
 - **The review tools change their flags.** `codex review` and `/code-review` are young, and their options may move. → Each skill treats an error like a missing tool: it tries the next family, and it reports any substitution.
 - **No automatic review for skills and designs written outside a change.** `critique` used to catch those. → Anyone can ask for `peer-plan-review` by hand. Skill changes that go through an OpenSpec change still get a plan review and a code review.
 - **This change is reviewed by the method it removes.** Rounds 1 and 2 used `critique`'s method through `choose-an-adversary`. → Round 3 uses the same method, written into the prompt. The next change uses `peer-plan-review`.
-- **Each change costs one more cross-model review.** A code review takes several minutes and real tokens. → `peer-code-review` runs once per branch, and again only when later commits change files outside `openspec/changes/`.
+- **Each change costs one more cross-model review.** A code review takes several minutes and real tokens. → `peer-code-review` runs once per change. Fix commits and artifact edits never start a second review; only rework outside them does.

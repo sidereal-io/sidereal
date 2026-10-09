@@ -20,13 +20,13 @@ Each OpenSpec change gets two independent reviews: a plan review before tasks, a
 - Add one line to `AGENTS.md` that tells any agent to apply `REVIEW.md` when it reviews code. Both built-in reviewers follow it, so `peer-code-review` passes no rules on the command line.
 - Run `peer-code-review` from the apply guidance in `openspec/config.yaml`. Name it in the workflow in `AGENTS.md`: propose, apply, review, verify, archive.
 - Have the **Code review** section in the pull request name the commit it reviewed.
-- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section. It runs `peer-code-review` first when the section is missing, or when later commits change files outside `openspec/changes/`.
+- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section. This check does not start a second review. It runs `peer-code-review` only when the section is missing, or when a later commit changes files outside `openspec/changes/` and is not a listed fix for a finding.
 
 **Both reviews**
 
 - Run every reviewer read-only.
 - Find the author of the work under review. `peer-code-review` reads the `Co-Authored-By` lines of the branch's commits, and picks a family that wrote none of them. `peer-plan-review` reads the plan's provenance.
-- Review in the same session only when no other family is installed, and say the review was not independent. The `review` artifact uses a fresh-context subagent instead.
+- When no other family is installed, run the author's own family's tool as a new process, so the review starts from a fresh context. Say the review was not independent. Never review in the author's own session.
 - Remove the `critique` and `choose-an-adversary` skills. Each review skill now holds what they held.
 
 **Not in scope**
