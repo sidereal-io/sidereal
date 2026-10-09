@@ -10,7 +10,7 @@
 
 - [x] 2.1 Add sqlx dependencies within the existing crate boundaries and track embedded migration inputs; verify compilation, migration rebuilds, and the architecture check.
 - [x] 2.2 Parse required database configuration and positive startup and migration timeouts; verify missing, malformed, and invalid values fail before connecting, with 30-second defaults.
-- [ ] 2.3 Implement the approved local exceptions and verified TLS defaults; verify loopback, sockets, named hosts, multiple hosts, explicit modes, and rejection of unsafe modes.
+- [x] 2.3 Implement the approved local exceptions and verified TLS defaults; verify loopback, sockets, named hosts, multiple hosts, explicit modes, and rejection of unsafe modes.
 - [ ] 2.4 Add the local TLS test fixture and test CA; verify valid certificates connect and untrusted or wrong-host certificates fail without plaintext fallback or database writes.
 - [ ] 2.5 Map startup errors to safe categories and operator actions; verify captured output excludes distinctive credentials, connection strings, and raw database messages.
 

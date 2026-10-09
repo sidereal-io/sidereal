@@ -104,3 +104,82 @@ fn seconds(value: Option<&str>) -> Result<Duration, DatabaseError> {
     Ok(Duration::from_secs(seconds))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn transport_policy() {
+        for (value, expected) in [
+            ("postgres://localhost/db", PgSslMode::Disable),
+            ("postgres://127.0.0.2/db", PgSslMode::Disable),
+            ("postgres://[::1]/db", PgSslMode::Disable),
+            (
+                "postgres:///db?host=/var/run/postgresql",
+                PgSslMode::Disable,
+            ),
+            ("postgres://db/db", PgSslMode::VerifyFull),
+            (
+                "postgres://user@%2Fvar%2Frun%2Fpostgresql/db",
+                PgSslMode::Disable,
+            ),
+            ("postgres://localhost,localhost/db", PgSslMode::Disable),
+            ("postgres://loopback.example/db", PgSslMode::VerifyFull),
+            ("postgres:///db?host=localhost,db", PgSslMode::VerifyFull),
+            (
+                "postgres:///db?host=localhost,127.0.0.1",
+                PgSslMode::Disable,
+            ),
+            ("postgres://db/db?sslmode=disable", PgSslMode::Disable),
+            ("postgres://db/db?sslmode=verify-ca", PgSslMode::VerifyCa),
+            (
+                "postgres://localhost/db?sslmode=verify-full",
+                PgSslMode::VerifyFull,
+            ),
+        ] {
+            assert_eq!(
+                std::mem::discriminant(
+                    &DatabaseConfig::parse(Some(value), None, None)
+                        .unwrap()
+                        .options
+                        .get_ssl_mode()
+                ),
+                std::mem::discriminant(&expected)
+            );
+        }
+        for mode in ["allow", "prefer", "require", "invalid"] {
+            assert!(DatabaseConfig::parse(
+                Some(&format!("postgres://db/db?sslmode={mode}")),
+                None,
+                None
+            )
+            .is_err());
+        }
+        assert!(DatabaseConfig::parse(
+            Some("postgres://db/db?sslmode=disable&ssl-mode=require"),
+            None,
+            None
+        )
+        .is_err());
+    }
+    #[test]
+    fn configuration_fails_before_connections() {
+        assert!(matches!(
+            DatabaseConfig::parse(None, None, None),
+            Err(DatabaseError::MissingConfiguration)
+        ));
+        for value in ["bad-distinctive-password", "http://secret.example/db"] {
+            assert!(DatabaseConfig::parse(Some(value), None, None).is_err());
+        }
+        for value in ["0", "-1", "", "1.5", "invalid"] {
+            assert!(
+                DatabaseConfig::parse(Some("postgres://localhost/db"), Some(value), None).is_err()
+            );
+            assert!(
+                DatabaseConfig::parse(Some("postgres://localhost/db"), None, Some(value)).is_err()
+            );
+        }
+        let config = DatabaseConfig::parse(Some("postgres://localhost/db"), None, None).unwrap();
+        assert_eq!(config.startup_timeout, Duration::from_secs(30));
+        assert_eq!(config.migration_timeout, Duration::from_secs(30));
+    }
+}
