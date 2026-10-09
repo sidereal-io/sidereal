@@ -4,6 +4,7 @@
 - **Prior round**: none
 - **Reviewer context**: cross-model. GPT (`gpt-6-sol`) through the `codex` CLI, in a fresh session, with medium reasoning effort. The author is Claude. The prompt used `critique`'s method and the `review` instruction's checks.
 - **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer changed no file.
+- **Re-check of required changes**: 2026-10-09, same reviewer, one pass. It covered only RC1 to RC5, the F5 rebuttal, and defects the edits could add; it was not a from-scratch review. RC1 to RC5 VERIFIED, F5 rebuttal ACCEPTED, and one new Suggestion: adr.md still described code review as one guidance entry. The author fixed it. `RECHECK: PASS`.
 - **Artifacts reviewed**: proposal.md, design.md, adr.md, specs/dev-environment. Context: `.agents/skills/critique`, `.agents/skills/choose-an-adversary`, `.agents/skills/peer-code-review` and its rules file, `openspec/schemas/spec-driven-review/schema.yaml` and `templates/review.md`, `openspec/config.yaml`, `AGENTS.md`, `CONTRIBUTING.md`, and the current `dev-environment` spec.
 
 ## Findings
@@ -47,13 +48,14 @@ VERDICT: APPROVE_WITH_CHANGES
 4. **RC4 (F4):** State in the design that the reviewer marks every blocking finding Critical, as the template's "Critical (blocking)" heading already says.
 5. **RC5 (maintainer request):** Move the code review rules to `REVIEW.md` at the repo root, and add one line to `AGENTS.md` that tells reviewers to apply it. Drop the `rules/` folder and the rules flags from `peer-code-review`. Record in the design the throwaway-repo test that chose this route. Update the matching line in adr.md.
 
-CHANGES_APPLIED: no
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
-- **F1:** to be fixed by RC1.
-- **F2:** to be fixed by RC2.
-- **F3:** to be fixed by RC3.
-- **F4:** to be fixed by RC4.
-- **F5:** rebutted, as described above. Awaiting the reviewer's acceptance at the re-check.
+- **F1:** fixed by RC1.
+- **F2:** fixed by RC2.
+- **F3:** fixed by RC3.
+- **F4:** fixed by RC4.
+- **F5:** rebutted, as described above. Accepted by reviewer: the proposal now says agents follow the reviews, and no tool enforces them.
 - **F6:** declined (suggestion), as described above.
+- **Re-check suggestion (adr.md described code review as one guidance entry):** fixed. adr.md now names the apply and archive entries.
