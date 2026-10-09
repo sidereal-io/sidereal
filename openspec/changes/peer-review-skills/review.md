@@ -5,6 +5,7 @@
 - **Reviewer context**: cross-model. GPT (`gpt-6-sol`) through the `codex` CLI, in a fresh session, with medium reasoning effort. The author is Claude. The prompt used the method that design.md gives `peer-plan-review`, and the `review` instruction's checks.
 - **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer changed no file.
 - **Re-check of required changes**: 2026-10-09, same reviewer, one pass, scoped to RC1 to RC4 and defects the edits could add. All four VERIFIED. One new Suggestion: the design's cost note still said a review re-runs only after behavior changes, while the archive rule re-runs it after any commit outside `openspec/changes/`. The author aligned the note. `RECHECK: PASS`.
+- **Re-check of RC5 to RC7**: 2026-10-09, same reviewer, three passes, scoped to the maintainer's requests after apply. Pass 1 failed: the Gemini fallback, and fix commits that could carry unreviewed code (RC7 and a tighter RC6 followed). Pass 2 failed: nothing checked a fix commit's diff. Pass 3, after the `git show` check was added: RC5 to RC7 VERIFIED, no new defect, `RECHECK: PASS`.
 - **Artifacts reviewed**: proposal.md, design.md, adr.md, specs/dev-environment, and tasks.md as it stood. Context: `.agents/skills/choose-an-adversary`, `.agents/skills/peer-code-review`, the removed `critique` skill, `REVIEW.md`, `AGENTS.md`, `CONTRIBUTING.md`, `openspec/config.yaml`, `openspec/schemas/spec-driven-review/schema.yaml` and `templates/review.md`, and the current `dev-environment` spec.
 
 ## Findings
@@ -47,7 +48,7 @@ VERDICT: APPROVE_WITH_CHANGES
 6. **RC6 (maintainer request, after apply):** Code review runs once, after apply. The archive check lists fix commits in the **Code review** section and does not re-run the review for them or for artifact-only commits. A fix commit changes only what its finding names, and the archive check reads each listed fix commit's diff to confirm it.
 7. **RC7 (re-check of RC5):** For a `gemini` author with no other family installed, the fallback is a new `agy` process with the review prompt.
 
-CHANGES_APPLIED: no
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
@@ -56,4 +57,4 @@ CHANGES_APPLIED: no
 - **F3:** fixed by RC3.
 - **F4:** fixed by RC4. The template edit itself lands in task 7.4.
 - **Re-check suggestion (cost note):** fixed. design.md now matches the archive rule.
-- **RC5, RC6:** maintainer requests after apply, to be re-checked.
+- **RC5 to RC7:** applied; re-checked and passed on the third pass.
