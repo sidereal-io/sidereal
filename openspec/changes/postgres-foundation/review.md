@@ -152,4 +152,25 @@ CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-None yet. The author must fix or rebut every Critical and Moderate finding (C1–C11) before round 2. A rebuttal of a Critical or Moderate finding counts only after the reviewer accepts it. The author may decline a suggestion (C12–C14) without the reviewer's sign-off.
+Author revisions, 2026-10-09. These changes await the independent reviewer's re-check; they do not replace the round-one verdict.
+
+- **C1 — fixed, awaiting reviewer:** The scope decision is recorded on [#394](https://github.com/sidereal-io/sidereal/issues/394#issuecomment-6071730280). The design and ADR manifest link it. #389 now records the same boundary.
+- **C2 — fixed, awaiting reviewer:** The spec defines local unencrypted defaults, verified TLS for other hosts, explicit unencrypted opt-in, rejected unsafe modes, and certificate scenarios.
+- **C3 — fixed, awaiting reviewer:** The design defines normalized schema fields and excludes owner names, grants, OIDs, and storage identifiers. A generation recipe and comparison test supply the expected schema. Restore and dependency-update scenarios cover retained records; privileges receive separate checks.
+- **C4 — fixed, awaiting reviewer:** Startup and migration deadlines are configurable positive values. Long or nontransactional domain migrations need a separate design before domain tables appear.
+- **C5 — fixed, awaiting reviewer:** Sidereal uses PostgreSQL's two-int4 advisory-lock namespace. Preflight, bootstrap, and sqlx migration execution use the same unpooled connection. Success unlocks and closes it; failure closes it.
+- **C6 — fixed, awaiting reviewer:** The design names private version-policy, migration-source, and deadline test helpers. The specs enumerate the initial application tables, bound readiness recovery, permit scheduling tolerance, and cover missing test configuration.
+- **C7 — fixed, awaiting reviewer:** Every development scenario has a prepared-database precondition. Root URL recipes and documented exports provide worktree-specific runtime and test settings.
+- **C8 — fixed, awaiting reviewer:** Readiness uses its own single-connection pool and one-check semaphore. Excess probes return 503. The Docker liveness probe remains independent.
+- **C9 — noted, awaiting reviewer:** The design explicitly defers pack migration composition until the first pack table is proposed. No domain tables enter this foundation.
+- **C10 — fixed, awaiting reviewer:** One planned image pin feeds the same root fixture recipes in development and CI. The design explains containers versus Nix services and schedules prerequisite and version-table documentation.
+- **C11 — fixed, awaiting reviewer:** The capability spec requires a transaction per migration and rejection of nontransactional sources before execution. This is a durable behavior requirement rather than a new architectural ADR.
+- **C12 — applied suggestion:** Unsupported-version errors name PostgreSQL 18 and advise selecting a supported database without downgrading data.
+- **C13 — applied suggestion:** The fixture initializes a separate test role. Cleanup handles assertions and unwind; killed-process leftovers use fixture-only cleanup. Direct-cargo examples receive the same prerequisite.
+- **C14 — applied suggestion:** The documents use migration table, migration records, and identity row consistently. The fixture description and preservation scenario now state what they test.
+
+### Round-two status
+
+The full independent re-review has not run. Automatic approval review rejected transferring the revised artifacts and relevant source files to Claude without explicit payload-and-destination authorization.
+The round-one verdict remains REVISE, and the author has not generated tasks. No second-round verdict is claimed.
+
