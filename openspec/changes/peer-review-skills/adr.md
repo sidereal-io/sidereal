@@ -5,11 +5,12 @@
 
 ## Review Summary
 
-ADR review completed for this change. The design makes four decisions, and none needs an ADR. Each one lives in a skill, the schema, or the OpenSpec config. Each is cheap to reverse, and the file that holds it says what it does.
+ADR review completed for this change. The design makes five decisions, and none needs an ADR. Each one lives in a skill, the schema, or the OpenSpec config. Each is cheap to reverse, and the file that holds it says what it does.
 
 - **Code review runs after apply, not as an artifact.** Two guidance entries in `openspec/config.yaml` hold it: one for apply, and one for archive. Moving it costs two edits.
-- **The plan review method moves into the schema.** It is a few lines of instruction text, and `critique` can be restored from git.
-- **`choose-an-adversary` picks the reviewing family.** It is a skill that agents read. Changing the order or the fallback is a text edit.
+- **`peer-plan-review` holds the method, and the schema keeps the OpenSpec checks.** Both are text, and the removed skills can be restored from git.
+- **A review runs in-session only when no other family is installed.** It is one paragraph in each review skill.
+- **Each review skill holds its own reviewer table.** The tables are text in two skills that agents read. Changing the order or a fallback is a text edit.
 - **Review rules live in a root `REVIEW.md`, and `AGENTS.md` points to it.** It is one file and one sentence. Moving the rules elsewhere costs two edits.
 
 ## In-Force ADRs Reviewed
