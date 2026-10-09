@@ -1,31 +1,58 @@
-//! Sidereal server binary.
-//!
-//! A thin shell that wires `core` and the compiled-in packs, then serves the
-//! axum app. Real route wiring and pack registration land in later M0/M1 work;
-//! for now it boots the app and serves `GET /healthz`.
-
+//! Configure and initialize PostgreSQL before binding any HTTP listener.
+use sidereal_server::{app_with_database, config::DatabaseConfig};
 use std::net::SocketAddr;
 
-use sidereal_server::app;
-
-/// Server port. Defaults to 5000 (see CLAUDE.md); override with `PORT`.
-const DEFAULT_PORT: u16 = 5000;
-
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let config = DatabaseConfig::from_env()?;
+    let database = sidereal_core::database::initialize(
+        config.options,
+        config.startup_timeout,
+        config.migration_timeout,
+    )
+    .await?;
     let port = std::env::var("PORT")
         .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(5000);
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => listener,
+        Err(error) => {
+            database.close().await;
+            return Err(error.into());
+        }
+    };
     println!(
         "sidereal-server listening on {addr} (core abi {}, astro pack abi {})",
         sidereal_core::abi_version(),
-        sidereal_pack_astro::abi_version(),
+        sidereal_pack_astro::abi_version()
     );
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app()).await?;
+    let result = axum::serve(listener, app_with_database(database.clone()))
+        .with_graceful_shutdown(shutdown())
+        .await;
+    database.close().await;
+    result?;
     Ok(())
+}
+
+async fn shutdown() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install termination handler");
+        tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=terminate.recv()=>{} }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }
