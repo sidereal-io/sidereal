@@ -14,7 +14,7 @@
 
 ## 4. Plan review in the schema
 
-- [ ] 4.1 In the `review` instruction in `openspec/schemas/spec-driven-review/schema.yaml`, replace the lines that call `critique` and map its output. Add the four-step method, the step that picks the reviewer through `choose-an-adversary`, the fresh-context subagent fallback, and the rule that every blocking finding is Critical. Drop the stale `test-plan` mentions. Change no other verdict rule. Verify: `git grep -n -E "critique|test-plan" -- openspec/schemas` finds nothing, `git diff main -- openspec/schemas/spec-driven-review/templates/review.md` is empty, and the diff of `schema.yaml` touches only the `review` instruction.
+- [x] 4.1 In the `review` instruction in `openspec/schemas/spec-driven-review/schema.yaml`, replace the lines that call `critique` and map its output. Add the four-step method, the step that picks the reviewer through `choose-an-adversary`, the fresh-context subagent fallback, and the rule that every blocking finding is Critical. Drop the stale `test-plan` mentions. Change no other verdict rule. Verify: `git grep -n -E "critique|test-plan" -- openspec/schemas/spec-driven-review/schema.yaml` finds nothing (a comment in `templates/review.md` still names `test-plan`, and stays, because the template must not change), `git diff main -- openspec/schemas/spec-driven-review/templates/review.md` is empty, and the diff of `schema.yaml` touches only the `review` instruction.
 
 ## 5. Remove `critique`
 
