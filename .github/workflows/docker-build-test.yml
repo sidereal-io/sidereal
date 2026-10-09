@@ -3,12 +3,10 @@ name: Test Docker Build
 permissions:
   contents: read
   pull-requests: write
-  security-events: write  # For uploading SARIF files
 
 on:
   pull_request:
     branches:
-      - main
       - v0.x
     paths:
       - 'Dockerfile'
@@ -105,28 +103,10 @@ jobs:
         id: smoke-test
         run: ./docker/smoke-test.sh sidereal:test-${{ github.event.pull_request.number }}
 
-      - name: Scan for vulnerabilities (SARIF)
-        id: security-scan
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: sidereal:test-${{ github.event.pull_request.number }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'  # Don't fail the build, just report vulnerabilities
-          scan-type: 'image'
-          hide-progress: false
-
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v4
-        if: always() && hashFiles('trivy-results.sarif') != ''
-        with:
-          sarif_file: 'trivy-results.sarif'
-          category: 'trivy-pr'
-
       - name: Generate vulnerability report
-        uses: aquasecurity/trivy-action@master
-        if: always()  # Generate report even if previous scan failed
+        id: security-report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        if: always()  # Report failures even when an earlier build step failed
         with:
           image-ref: sidereal:test-${{ github.event.pull_request.number }}
           format: 'table'
@@ -181,7 +161,7 @@ jobs:
               appBuild: '${{ steps.app-build.outcome }}',
               dockerBuild: '${{ steps.build.outcome }}',
               smokeTest: '${{ steps.smoke-test.outcome }}',
-              securityScan: '${{ steps.security-scan.outcome }}'
+              securityReport: '${{ steps.security-report.outcome }}'
             };
             
             // Check if any steps failed
@@ -192,6 +172,9 @@ jobs:
             }
             
             try {
+              if (stepOutcomes.securityReport !== 'success') {
+                throw new Error('Vulnerability report step did not succeed');
+              }
               const trivyReport = fs.readFileSync('trivy-report.txt', 'utf8');
               if (trivyReport.trim()) {
                 // Count vulnerabilities by severity
@@ -199,7 +182,7 @@ jobs:
                 const highCount = (trivyReport.match(/HIGH/g) || []).length;
                 const mediumCount = (trivyReport.match(/MEDIUM/g) || []).length;
                 
-                if (criticalCount > 0) {
+                if (criticalCount > 0 && failedSteps.length === 0) {
                   statusIcon = '⚠️';
                   statusText = `${criticalCount} critical vulnerabilities found`;
                 } else if (highCount > 0 && failedSteps.length === 0) {
@@ -221,6 +204,8 @@ jobs:
                 vulnerabilitySection = '\n\n### 🔍 Security Scan\n✅ **No vulnerabilities found!**';
               }
             } catch (e) {
+              statusIcon = '❌';
+              if (failedSteps.length === 0) statusText = 'Vulnerability scan report not available';
               vulnerabilitySection = '\n\n### 🔍 Security Scan\n⚠️ **Vulnerability scan report not available**';
             }
             

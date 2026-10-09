@@ -3,11 +3,9 @@ name: CI Pipeline
 on:
   push:
     branches:
-      - main
       - v0.x
   pull_request:
     branches:
-      - main
       - v0.x
 
 jobs:
@@ -32,6 +30,9 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      - name: Test security workflow reporting and digest selection
+        run: node --test --test-isolation=none tools/scripts/security-workflows.test.mjs
+
       - name: Build all packages
         run: npm run build
 
@@ -48,9 +49,9 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+          build-mode: none
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
+        with:
+          category: v0.x/codeql/javascript-typescript
