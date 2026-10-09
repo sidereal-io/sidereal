@@ -79,7 +79,9 @@ The server SHALL apply pending migrations automatically before serving HTTP.
 It SHALL accept only successful migration history matching a prefix of the bundled history.
 It SHALL reject unknown versions, changed migration checksums, missing history entries, or mismatched schema objects before writes.
 The server SHALL never reset the database or execute downgrade migrations.
-Each bundled migration SHALL run in one transaction, including its migration record.
+Each bundled migration SHALL run in one transaction, including its essential migration record fields.
+The `execution_time` field SHALL be best-effort timing metadata; sqlx MAY update it after commit or leave its sentinel after interruption.
+Compatibility checks SHALL NOT reject an otherwise valid migration because of its timing metadata.
 The initial transaction SHALL also create the migration table and identity row.
 The server SHALL reject migrations that disable transactions before applying them.
 Concurrent server startups SHALL apply each migration exactly once.
