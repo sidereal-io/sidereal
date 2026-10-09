@@ -18,7 +18,7 @@ The dependency job uploads SARIF before failing on high or critical findings. Bo
 
 ## Verification and rollout
 
-Pre-merge validation uses `deli -- actionlint` and `deli -- just check`. The shared change in `openspec/changes/security-scan-categories/` carries the category contract; archive syncs it into `openspec/specs/ci/spec.md`. Pre-merge checks do not prove live baseline comparison.
+Pre-merge validation uses `deli -- actionlint` and `deli -- just check`. The shared change in `openspec/changes/archive/2026-10-09-security-scan-categories/` carries the category contract; the contract is synced into `openspec/specs/ci/spec.md`. Pre-merge checks do not prove live baseline comparison.
 
 After the user merges both PRs, follow the pending runtime checklist on #321:
 
@@ -35,4 +35,4 @@ Historical `trivy-main` uploads describe the previous TypeScript app; the latest
 
 Retire exact obsolete identities. Do not delete all results by language: current `main` still needs JavaScript/TypeScript coverage. Keep the maintenance dependency scan configured throughout replacement.
 
-`main` has no container or release workflow. PR #403 targets `v0.x` and carries its source, container, and release categories. PR #402 carries main configuration and the shared OpenSpec lifecycle. Both remain draft until verification and archive; the user owns both merges.
+`main` has no container or release workflow. PR #403 targets `v0.x` and carries its source, container, and release categories. PR #402 carries main configuration and the shared OpenSpec lifecycle. Pre-merge verification and archive are complete. Both PRs are ready for review; the user owns both merges.
