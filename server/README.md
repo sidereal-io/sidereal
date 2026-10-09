@@ -37,20 +37,15 @@ curl localhost:5000/readyz   # 200 {"status":"ready"}, or 503 {"status":"not_rea
 Press Ctrl+C to stop both. If either recipe exits, the other keeps running until you stop it.
 Prepare the fixture and exports before running it.
 
-## Verify changes and retained state
+## Verify changes and manage fixture data
 
 ```sh
 just check          # Complete server and web gates
-just db-demo        # Restart server and PostgreSQL; compare every migration-record field
 just db-schema      # Regenerate committed normalized schema descriptions
 just db-down        # Stop this fixture while retaining its volume
 just db-test-clean  # Remove this fixture's killed-test leftovers only
 just db-clean       # Explicitly delete this fixture's volume and all its data
 ```
-
-The demo uses only the fixture's demo database, regardless of an inherited
-`DATABASE_URL`. It cleans up spawned servers after failure or interruption.
-Scratch files stay under `.workspace/`.
 
 Database tests use unique temporary databases with a separate supervisor for cleanup
 on success and assertion failure. Missing or unreachable `TEST_DATABASE_URL` fails

@@ -154,7 +154,7 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
 Both routes pass the same `just check` gate. Prepare the PostgreSQL fixture and export
 `DATABASE_URL` and `TEST_DATABASE_URL` using the commands above. Docker Engine or
-Docker Desktop with Compose v2 or newer runs the fixture; Node runs `just db-demo`; OpenSSL generates local fixture certificates.
+Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates local fixture certificates.
 See [server setup](server/README.md) for container-free test prerequisites.
 
 **Run `direnv deny` before you check out a branch you don't trust.** Loading

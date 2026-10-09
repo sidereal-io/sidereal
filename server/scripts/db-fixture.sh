@@ -16,7 +16,6 @@ case "${1:-}" in
     up) sh "$root/server/scripts/db-tls.sh"; compose up -d --wait --wait-timeout 90 ;;
     down) compose down ;;
     stop) compose stop postgres ;;
-    demo-records) compose exec -T -e PGPASSWORD=fixture_demo postgres psql -h 127.0.0.1 -U fixture_demo -d fixture_demo -Atqc "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m" ;;
     orphan-clean)
         compose exec -T postgres psql -U fixture_admin -d fixture_control -v ON_ERROR_STOP=1 <<'SQL'
 SELECT format('DROP DATABASE %I WITH (FORCE)', datname) FROM pg_database WHERE starts_with(datname, 'sidereal_test_') AND datdba = (SELECT oid FROM pg_roles WHERE rolname = 'fixture_test');
@@ -26,6 +25,5 @@ SQL
     clean) compose down --volumes ;;
     url) printf 'postgresql://fixture_runtime:fixture_runtime@127.0.0.1:%s/fixture_runtime?sslmode=disable\n' "$SIDEREAL_DB_PORT" ;;
     test-url) printf 'postgresql://fixture_test:fixture_test@127.0.0.1:%s/fixture_control?sslmode=disable\n' "$SIDEREAL_DB_PORT" ;;
-    demo-url) printf 'postgresql://fixture_demo:fixture_demo@127.0.0.1:%s/fixture_demo?sslmode=disable\n' "$SIDEREAL_DB_PORT" ;;
-    *) echo 'Expected up, down, stop, clean, url, test-url, demo-url, demo-records, or orphan-clean' >&2; exit 1 ;;
+    *) echo 'Expected up, down, stop, clean, url, test-url, or orphan-clean' >&2; exit 1 ;;
 esac

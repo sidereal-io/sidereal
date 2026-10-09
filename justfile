@@ -59,10 +59,6 @@ check-server:
 check-web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test
 
-# Demonstrate retained migration records across server and PostgreSQL restarts.
-db-demo:
-    @node server/scripts/db-demo.mjs
-
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:
     @sh server/scripts/db-fixture.sh orphan-clean

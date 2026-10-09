@@ -138,18 +138,11 @@ Readiness SHALL use database capacity separate from operational requests.
 - **WHEN** a caller sends `POST`, `PUT`, `PATCH`, or `DELETE` to either health route
 - **THEN** the server returns 405 and database objects and rows remain unchanged
 
-### Requirement: Retained-state demonstration
+### Requirement: Retained fixture data and database regression tests
 
-Root recipes SHALL provide a PostgreSQL fixture with retained data and a repeatable retained-state demonstration.
-The demonstration SHALL restart both the server and PostgreSQL against the same fixture volume.
-It SHALL compare migration records and return nonzero on any mismatch or readiness failure.
+Root recipes SHALL provide a PostgreSQL fixture with retained data.
 Stopping the fixture SHALL preserve its volume. Only an explicitly named cleanup recipe SHALL delete fixture data.
 Database integration tests SHALL run in the server gate and SHALL fail when their database prerequisite is unavailable.
-
-#### Scenario: Retained migration state
-- **WHEN** a contributor runs `just db-demo`
-- **THEN** the command exits zero after initial and repeated startup, server restart, and PostgreSQL restart
-- **AND** its migration-record comparison confirms identical versions, checksums, and timestamps
 
 #### Scenario: Fixture stop preserves records
 - **WHEN** a contributor stops and starts the database fixture without invoking its cleanup recipe
