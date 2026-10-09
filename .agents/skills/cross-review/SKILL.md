@@ -19,14 +19,14 @@ Establish the author family as `choose-an-adversary` does: a provenance note, th
 | Author family | Reviewer | Command |
 |---|---|---|
 | `claude` | Codex | `codex review --base <base>` |
-| `gpt` | Claude Code | `claude -p --permission-mode plan "/code-review high <base>...HEAD"` |
+| `gpt` | Claude Code | `claude -p --permission-mode plan "/code-review high <base>...HEAD" < /dev/null` |
 | `gemini` | Codex | `codex review --base <base>` |
 
 `<base>` is the branch this one merges into: the pull request's base (`gh pr view --json baseRefName`), else the parent branch of a stacked story, else `main`.
 
 Commit or stash first. Both commands review commits, not the working tree.
 
-Run from the repo root and write the output to `.workspace/cross-review-raw.md`. A review can take many minutes, so run it in the background with a long timeout.
+Run from the repo root and write the output to `.workspace/cross-review-raw.md`. A review can take many minutes, so run it in the background with a long timeout. When `/code-review` finds nothing, its whole output is `(none)`. That is a clean result, not a failure.
 
 Both reviewers read `AGENTS.md` (Claude through the `CLAUDE.md` link), so they see the repo's invariants without extra instructions. Neither accepts a custom checklist. `openspec-verify-change` checks that the code matches the change's artifacts.
 
