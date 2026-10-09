@@ -34,6 +34,13 @@ rules:
     - When a change adds or changes a token, include tasks to edit DESIGN.md first,
       then regenerate tokens.css with `pnpm tokens` in web/.
 
+operations:
+  apply:
+    guidance:
+      - When every task is done, run the `cross-review` skill on the branch before
+        verify. It hands the code to another model family's reviewer and fixes
+        confirmed findings.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
