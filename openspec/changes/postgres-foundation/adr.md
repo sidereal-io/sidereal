@@ -1,16 +1,18 @@
 # ADR Review Manifest
 
 - Status: completed
-- Review date: 2026-10-08
+- Review date: 2026-10-09
 
 ## Review Summary
 
 ADR review completed for this change. The highest existing sequence number is 013.
 No ADR declares a supersession relationship.
 The design implements the accepted database and crate-boundary decisions without choosing a new engine or architecture.
-Dedicated database ownership follows this story's requirement. PostgreSQL version support, bootstrap details, and probe deadlines remain change-level design choices.
-The user confirmed that this database story has no authentication prerequisite.
-Auth planning owns ADR-007's broad sequencing wording; this change preserves the limited health-only HTTP surface.
+Dedicated database ownership and transactional migrations are requirements in the capability spec.
+Transport defaults, PostgreSQL version support, schema checks, and deadlines remain reversible configuration or implementation choices.
+The container fixture supports both development routes; it does not replace ADR-013's build-tool environment.
+The [recorded scope decision](https://github.com/sidereal-io/sidereal/issues/394#issuecomment-6071730280) permits the health-only database foundation before authentication.
+Auth planning owns ADR-007's broad sequencing wording and later access controls. Packaging story #389 records the same boundary.
 
 ## In-Force ADRs Reviewed
 
