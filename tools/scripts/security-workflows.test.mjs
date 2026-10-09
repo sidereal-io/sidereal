@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import vm from 'node:vm';
 
@@ -51,3 +53,43 @@ test('a successful step without a report is not a successful security check', as
 test('findings do not hide other build failures', async () => {
   assert.match(await comment('success', 'CRITICAL', 'failure'), /step\(s\) failed/);
 });
+
+const buildWorkflow = readFileSync(new URL('../../.github/workflows/docker-build-push.yml', import.meta.url), 'utf8');
+const selection = buildWorkflow.split('      - name: Select immutable scan image\n')[1]
+  .split('        run: |\n')[1].split('\n      - name:')[0]
+  .split('\n').map(line => line.slice(10)).join('\n');
+const scratch = new URL('../../.workspace/', import.meta.url);
+mkdirSync(scratch, { recursive: true });
+const digest = 'a'.repeat(64);
+
+for (const [name, entries, successful] of [
+  ['valid digest', [digest], true],
+  ['no digest', [], false],
+  ['multiple digests', [digest, 'b'.repeat(64)], false],
+  ['malformed digest', ['sha256-invalid'], false],
+  ['non-hex digest', ['g'.repeat(64)], false],
+  ['hidden extra file', [digest, '.extra'], false],
+]) {
+  test(`scan target: ${name}`, () => {
+    const directory = mkdtempSync(new URL('scan-test-', scratch).pathname);
+    try {
+      const digestDir = join(directory, 'digests');
+      mkdirSync(digestDir);
+      for (const entry of entries) writeFileSync(join(digestDir, entry), '');
+      const output = join(directory, 'output');
+      const result = spawnSync('bash', ['-c', selection], {
+        env: { ...process.env, DIGEST_DIR: digestDir, GITHUB_OUTPUT: output,
+          REGISTRY: 'ghcr.io', IMAGE_NAME: 'fixture/sidereal' },
+        encoding: 'utf8',
+      });
+      if (successful) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(readFileSync(output, 'utf8'), `image-ref=ghcr.io/fixture/sidereal@sha256:${digest}\n`);
+      } else {
+        assert.notEqual(result.status, 0, 'Unsafe scan target accepted');
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+}

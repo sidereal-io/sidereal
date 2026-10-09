@@ -257,10 +257,37 @@ jobs:
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
+      # Select only this run's AMD64 artifact, independently of the merged manifest.
+      - name: Download AMD64 scan digest
+        uses: actions/download-artifact@v8
+        with:
+          name: digests-linux-amd64
+          path: ${{ runner.temp }}/amd64-scan-digest
+
+      - name: Select immutable scan image
+        id: scan-image
+        shell: bash
+        env:
+          DIGEST_DIR: ${{ runner.temp }}/amd64-scan-digest
+        run: |
+          set -euo pipefail
+          shopt -s nullglob dotglob
+          digests=("$DIGEST_DIR"/*)
+          if (( ${#digests[@]} != 1 )); then
+            echo "Expected exactly one AMD64 digest file" >&2
+            exit 1
+          fi
+          digest=${digests[0]##*/}
+          if [[ ! -f "${digests[0]}" || -L "${digests[0]}" || ! "$digest" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Invalid AMD64 digest file" >&2
+            exit 1
+          fi
+          echo "image-ref=$REGISTRY/$IMAGE_NAME@sha256:$digest" >> "$GITHUB_OUTPUT"
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          image-ref: ${{ steps.scan-image.outputs.image-ref }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
