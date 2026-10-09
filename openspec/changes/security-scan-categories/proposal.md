@@ -9,6 +9,7 @@ Trivy cannot compare PR findings with `v0.x` because PR and branch scans use dif
 - Remove unnecessary CodeQL autobuild on `v0.x`, and reuse Trivy installation within jobs.
 - Pin maintenance Trivy action references and restrict maintenance branch triggers to `v0.x`.
 - Preserve release filtering, dependency scan attribution, permissions, and severity gates.
+- Scan the branch build's immutable digest so findings remain associated with the correct commit.
 - Establish replacement baselines before retiring old setups. Verify PR comparison with a controlled vulnerability fixture.
 
 ## Capabilities

@@ -17,6 +17,8 @@ PR and target-branch uploads SHALL share the category for their code line and sc
 
 PR uploads SHALL use the PR ref and analyzed commit. Sharing a category SHALL NOT redirect PR results to the target branch ref.
 
+Branch container scans SHALL analyze the immutable AMD64 image digest produced by the same workflow run. Their uploads SHALL retain that run's branch ref and commit SHA.
+
 #### Scenario: Main CodeQL matches its branch baseline
 
 - **WHEN** a successful PR analysis and its main baseline analyze the same language
@@ -41,6 +43,12 @@ PR uploads SHALL use the PR ref and analyzed commit. Sharing a category SHALL NO
 - **WHEN** release validation uploads results for two different release tags
 - **THEN** both analysis records use `v0.x/trivy/release-image`
 - **AND** each record keeps its own tag ref and analyzed commit
+
+#### Scenario: Two pushes overlap while publishing the branch image
+
+- **WHEN** a newer push replaces the mutable branch image tag before an earlier run scans
+- **THEN** the earlier scan uses its own uploaded AMD64 build digest
+- **AND** its analysis record retains the earlier run's commit SHA
 
 ### Requirement: Maintenance scans preserve existing checks and policies
 
@@ -85,7 +93,11 @@ Every maintenance Trivy action reference SHALL use a reviewed full commit SHA. C
 
 Maintainers SHALL record the exact tool, category, analysis key, ref, timestamp, and finding count before retiring a setup.
 
-Maintainers SHALL verify replacement branch uploads before deleting retired setups. For PR-capable targets, they SHALL also verify a subsequent PR comparison.
+Maintainers SHALL verify replacement uploads before deleting retired setups. Branch targets require successful branch analyses; release validation requires a successful analysis on a legitimate release tag.
+
+For every PR-capable target, maintainers SHALL also verify a subsequent PR comparison. This includes both main CodeQL languages, maintenance CodeQL, and maintenance container analysis.
+
+Maintainers SHALL retain the retired release setup until a legitimate release produces replacement evidence. They SHALL NOT create a release solely to verify this migration.
 
 A controlled PR SHALL demonstrate a new container finding under `v0.x/trivy/image`. The fixture SHALL NOT remain in the final implementation branch.
 
@@ -102,6 +114,12 @@ Maintainers SHALL delete only the recorded retired setups. Current main source c
 
 - **WHEN** a replacement setup has no successful target-branch analysis
 - **THEN** the migration inventory records its predecessor as retained
+
+#### Scenario: Release replacement has no legitimate tag analysis
+
+- **WHEN** no legitimate release has uploaded a successful `v0.x/trivy/release-image` analysis
+- **THEN** the migration inventory records the old release setup as retained
+- **AND** the migration creates no release solely to retire that setup
 
 #### Scenario: Historical TypeScript main results are retired
 
