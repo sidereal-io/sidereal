@@ -40,6 +40,10 @@ operations:
       - When every task is done, run the `peer-code-review` skill on the branch before
         verify. It hands the code to another model family's reviewer and fixes
         confirmed findings.
+  archive:
+    guidance:
+      - Before archiving, check the pull request description for a **Code review**
+        section. If it is missing, run the `peer-code-review` skill first.
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
