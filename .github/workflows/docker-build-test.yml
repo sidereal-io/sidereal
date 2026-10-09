@@ -172,6 +172,9 @@ jobs:
             }
             
             try {
+              if (stepOutcomes.securityReport !== 'success') {
+                throw new Error('Vulnerability report step did not succeed');
+              }
               const trivyReport = fs.readFileSync('trivy-report.txt', 'utf8');
               if (trivyReport.trim()) {
                 // Count vulnerabilities by severity
@@ -179,7 +182,7 @@ jobs:
                 const highCount = (trivyReport.match(/HIGH/g) || []).length;
                 const mediumCount = (trivyReport.match(/MEDIUM/g) || []).length;
                 
-                if (criticalCount > 0) {
+                if (criticalCount > 0 && failedSteps.length === 0) {
                   statusIcon = '⚠️';
                   statusText = `${criticalCount} critical vulnerabilities found`;
                 } else if (highCount > 0 && failedSteps.length === 0) {
@@ -201,6 +204,8 @@ jobs:
                 vulnerabilitySection = '\n\n### 🔍 Security Scan\n✅ **No vulnerabilities found!**';
               }
             } catch (e) {
+              statusIcon = '❌';
+              if (failedSteps.length === 0) statusText = 'Vulnerability scan report not available';
               vulnerabilitySection = '\n\n### 🔍 Security Scan\n⚠️ **Vulnerability scan report not available**';
             }
             
