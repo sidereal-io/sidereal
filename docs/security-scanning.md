@@ -10,7 +10,7 @@ The maintenance workflows identify `v0.x` and the scan target with fixed categor
 | `docker-build-push.yml` | PR and branch containers | `v0.x/trivy/image` |
 | `release.yml` | Tagged release validation | `v0.x/trivy/release-image` |
 
-The weekly dependency scan lives on `main` and uses `v0.x/trivy/dependencies`. It uploads against the maintenance ref and checked-out SHA. PR #402 carries that workflow and the shared OpenSpec change; PR #403 carries maintenance implementation. Both track #321.
+The weekly dependency scan lives on `main` and uses `v0.x/trivy/dependencies`. It uploads against the maintenance ref and checked-out SHA. PR #402 carries that workflow and the archived shared OpenSpec change; PR #403 carries maintenance implementation. Both track #321.
 
 Categories never include PR numbers, feature branches, or release versions. PR and release uploads keep their event ref and SHA; sharing a category does not redirect PR results to `v0.x`.
 
@@ -35,4 +35,4 @@ After the user merges both PRs, follow the pending runtime checklist on #321:
 5. Retain the previous release setup until the next legitimate release tag has a successful `v0.x/trivy/release-image` analysis. Record its analysis URL and tag SHA. Never create a release solely for migration verification.
 6. Retire only inventoried setups whose replacements and applicable PR comparisons passed, using Security → Code scanning → Tool status. Keep #321 open until both migrations and cleanup are verified.
 
-The shared OpenSpec workflow is propose → apply → verify → archive. Both PRs remain draft until pre-merge verification and archive; the user owns the merges. Durable specs sync during archive in #402.
+The shared OpenSpec workflow is propose → apply → verify → archive. Pre-merge verification and archive are complete. The shared change is archived at `openspec/changes/archive/2026-10-09-security-scan-categories/` in #402, with its durable CI spec synced. Both PRs are ready for review; the user owns the merges.
