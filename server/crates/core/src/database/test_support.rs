@@ -10,6 +10,7 @@ use std::{
 };
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
+static CLEANUP: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub(super) struct TestDatabase {
     pub options: PgConnectOptions,
@@ -40,6 +41,7 @@ impl TestDatabase {
                 .enable_all()
                 .build()
                 .unwrap();
+            let creation = CLEANUP.lock().unwrap_or_else(|error| error.into_inner());
             let connection = runtime.block_on(async {
                 let mut conn = tokio::time::timeout(
                     Duration::from_secs(5),
@@ -54,6 +56,7 @@ impl TestDatabase {
                     .map_err(|_| ())?;
                 Ok::<_, ()>(conn)
             });
+            drop(creation);
             let Ok(mut conn) = connection else {
                 let _ = ready_tx.send(false);
                 return;
@@ -61,6 +64,7 @@ impl TestDatabase {
             if ready_tx.send(true).is_ok() {
                 let _ = cleanup_rx.recv();
             }
+            let _cleanup = CLEANUP.lock().unwrap_or_else(|error| error.into_inner());
             runtime.block_on(async {
                 sqlx::query(AssertSqlSafe(format!("DROP DATABASE {name} WITH (FORCE)")))
                     .execute(&mut conn)

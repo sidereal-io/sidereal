@@ -141,3 +141,42 @@ async fn damaged_history_identity_and_schema_do_not_change() {
     assert_eq!(init(&db).await, Err(DatabaseError::Ownership));
     assert_eq!(before, schema(&mut conn).await.unwrap());
 }
+
+#[tokio::test]
+async fn repeated_and_concurrent_startup_preserve_every_record_field() {
+    let db = TestDatabase::new();
+    let (first, second) = tokio::join!(init(&db), init(&db));
+    first.unwrap();
+    second.unwrap();
+    let mut conn = connection(&db).await;
+    let before = records(&mut conn).await;
+    init(&db).await.unwrap();
+    assert_eq!(before, records(&mut conn).await);
+    // sqlx's timing sentinel is explicitly accepted and never repaired.
+    conn.execute("UPDATE public._sqlx_migrations SET execution_time = -1")
+        .await
+        .unwrap();
+    let sentinel = records(&mut conn).await;
+    init(&db).await.unwrap();
+    assert_eq!(sentinel, records(&mut conn).await);
+}
+
+#[tokio::test]
+async fn cancelling_startup_releases_session_locks() {
+    let db = TestDatabase::new();
+    let migrator = injected("SELECT pg_sleep(10)", false, false);
+    assert!(tokio::time::timeout(
+        Duration::from_millis(150),
+        initialize_with(
+            &db.options,
+            Duration::from_secs(2),
+            Duration::from_secs(20),
+            &migrator,
+            &baselines(),
+            None
+        )
+    )
+    .await
+    .is_err());
+    init(&db).await.unwrap();
+}
