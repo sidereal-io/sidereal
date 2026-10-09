@@ -4,7 +4,7 @@
 - **Prior round**: round 2, a scoped re-check of RC6 (drop the small-review rule), PASS. Round 1 was APPROVE_WITH_CHANGES with RC1 to RC5, re-checked and passed. The plan was then revised to add `peer-plan-review` and remove `choose-an-adversary`, which voided those verdicts.
 - **Reviewer context**: cross-model. GPT (`gpt-6-sol`) through the `codex` CLI, in a fresh session, with medium reasoning effort. The author is Claude. The prompt used the method that design.md gives `peer-plan-review`, and the `review` instruction's checks.
 - **Tool restrictions**: read-only sandbox (`codex exec -s read-only`). The reviewer changed no file.
-- **Re-check of required changes**: <!-- pending -->
+- **Re-check of required changes**: 2026-10-09, same reviewer, one pass, scoped to RC1 to RC4 and defects the edits could add. All four VERIFIED. One new Suggestion: the design's cost note still said a review re-runs only after behavior changes, while the archive rule re-runs it after any commit outside `openspec/changes/`. The author aligned the note. `RECHECK: PASS`.
 - **Artifacts reviewed**: proposal.md, design.md, adr.md, specs/dev-environment, and tasks.md as it stood. Context: `.agents/skills/choose-an-adversary`, `.agents/skills/peer-code-review`, the removed `critique` skill, `REVIEW.md`, `AGENTS.md`, `CONTRIBUTING.md`, `openspec/config.yaml`, `openspec/schemas/spec-driven-review/schema.yaml` and `templates/review.md`, and the current `dev-environment` spec.
 
 ## Findings
@@ -44,7 +44,7 @@ VERDICT: APPROVE_WITH_CHANGES
 3. **RC3 (F3):** Have the **Code review** section name the reviewed commit. Have the archive guidance re-run `peer-code-review` when later commits change files outside `openspec/changes/`. State this in the proposal and the design.
 4. **RC4 (F4):** Drop `test-plan` from the template comment, and narrow the non-goal in the proposal and the design to the structure of review.md.
 
-CHANGES_APPLIED: no
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
@@ -52,3 +52,4 @@ CHANGES_APPLIED: no
 - **F2:** fixed by RC2.
 - **F3:** fixed by RC3.
 - **F4:** fixed by RC4. The template edit itself lands in task 7.4.
+- **Re-check suggestion (cost note):** fixed. design.md now matches the archive rule.
