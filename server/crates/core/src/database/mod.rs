@@ -45,3 +45,5 @@ impl From<sqlx::Error> for DatabaseError {
     }
 }
 
+mod startup;
+pub use startup::{initialize, Database};

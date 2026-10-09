@@ -87,3 +87,37 @@ async fn verified_tls_rejects_untrusted_and_wrong_host_certificates_without_writ
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn unrelated_objects_and_versions_are_rejected_without_writes() {
+    for object in ["CREATE TABLE public.foreign_data (value text); INSERT INTO public.foreign_data VALUES ('keep')", "CREATE VIEW public.foreign_view AS SELECT 1", "CREATE FUNCTION public.foreign_function() RETURNS int LANGUAGE SQL AS 'SELECT 1'", "CREATE EXTENSION hstore", "CREATE SCHEMA foreign_schema", "CREATE TYPE public.foreign_enum AS ENUM ('keep')", "CREATE SEQUENCE public.foreign_sequence"] {
+        let db = TestDatabase::new(); let mut conn = connection(&db).await;
+        conn.execute(AssertSqlSafe(object)).await.unwrap();
+        let before = schema(&mut conn).await.unwrap();
+        assert!(init(&db).await.is_err());
+        assert_eq!(before, schema(&mut conn).await.unwrap());
+        if object.starts_with("CREATE TABLE") {
+            assert_eq!(sqlx::query_scalar::<_,String>("SELECT value FROM public.foreign_data").fetch_one(&mut conn).await.unwrap(), "keep");
+        }
+    }
+    for version in [170000, 190000] {
+        assert_eq!(version_policy(version), Err(DatabaseError::Version));
+        let db = TestDatabase::new();
+        let mut conn = connection(&db).await;
+        let before = schema(&mut conn).await.unwrap();
+        assert_eq!(
+            initialize_with(
+                &db.options,
+                Duration::from_secs(2),
+                Duration::from_secs(2),
+                &MIGRATOR,
+                &baselines(),
+                Some(version)
+            )
+            .await,
+            Err(DatabaseError::Version)
+        );
+        assert_eq!(before, schema(&mut conn).await.unwrap());
+    }
+    assert!(version_policy(180006).is_ok());
+}
