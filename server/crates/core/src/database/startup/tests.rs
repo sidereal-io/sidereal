@@ -121,3 +121,23 @@ async fn unrelated_objects_and_versions_are_rejected_without_writes() {
     }
     assert!(version_policy(180006).is_ok());
 }
+
+#[tokio::test]
+async fn damaged_history_identity_and_schema_do_not_change() {
+    for damage in ["UPDATE public._sqlx_migrations SET version=99", "UPDATE public._sqlx_migrations SET checksum='bad'::bytea", "DELETE FROM public._sqlx_migrations", "UPDATE public._sqlx_migrations SET success=false", "DELETE FROM public.sidereal_metadata", "ALTER TABLE public.sidereal_metadata ADD COLUMN unexpected text", "ALTER TABLE public.sidereal_metadata DROP CONSTRAINT sidereal_metadata_format_version_check; UPDATE public.sidereal_metadata SET format_version=2"] {
+        let db=TestDatabase::new(); init(&db).await.unwrap(); let mut conn=connection(&db).await;
+        conn.execute(AssertSqlSafe(damage)).await.unwrap();
+        let before=schema(&mut conn).await.unwrap(); let history=records(&mut conn).await;
+        let identity: String=sqlx::query_scalar("SELECT coalesce(jsonb_agg(to_jsonb(m)),'[]')::text FROM public.sidereal_metadata m").fetch_one(&mut conn).await.unwrap();
+        assert!(init(&db).await.is_err());
+        assert_eq!(before,schema(&mut conn).await.unwrap()); assert_eq!(history,records(&mut conn).await);
+        let after: String=sqlx::query_scalar("SELECT coalesce(jsonb_agg(to_jsonb(m)),'[]')::text FROM public.sidereal_metadata m").fetch_one(&mut conn).await.unwrap();
+        assert_eq!(identity,after);
+    }
+    let db = TestDatabase::new();
+    let mut conn = connection(&db).await;
+    conn.execute(INITIAL_TABLE).await.unwrap();
+    let before = schema(&mut conn).await.unwrap();
+    assert_eq!(init(&db).await, Err(DatabaseError::Ownership));
+    assert_eq!(before, schema(&mut conn).await.unwrap());
+}
