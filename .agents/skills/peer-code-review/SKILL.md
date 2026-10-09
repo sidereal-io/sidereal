@@ -10,38 +10,58 @@ Have a different model family review the branch's code. A reviewer from the auth
 ## When to apply
 
 - **After apply.** Every task in an OpenSpec change is done. Review before `openspec-verify-change`, so verify checks the fixed code.
-- **Before archive.** The pull request has no **Code review** section yet.
+- **Before archive.** The pull request has no **Code review** section, or later commits change files outside `openspec/changes/`.
 - **On request.** Someone asks for a code review of a branch.
 
-## Pick the reviewer
-
-Use `choose-an-adversary` to establish the author family and pick the reviewing family. It also covers the fallbacks: the next family when an executor is missing or fails, and an in-session review when no other family is installed.
-
-## Run the review
-
-Commit or stash first. The commands review commits, not the working tree.
+## Find the author
 
 `<base>` is the branch this one merges into: the pull request's base (`gh pr view --json baseRefName`), else the parent branch of a stacked story, else `main`.
 
-Run from the repo root. Every command is read-only, and none takes extra rules. The repo's review rules live in `REVIEW.md`, and `AGENTS.md` tells every reviewer to apply them. Claude reads `AGENTS.md` through the `CLAUDE.md` link.
+Read who wrote the code from its commits:
+
+```bash
+git log --format='%(trailers:key=Co-Authored-By,valueonly)' <base>..HEAD | sort -u
+```
+
+Every family named there is an author. Pick a reviewer from a family that wrote none of the commits. When the commits name no model, the author is this session's family. If you did not write them, ask. Do not guess: a wrong answer turns the review into a rubber stamp.
+
+## Pick the reviewer
+
+| Author | Reviewer | Command |
+|---|---|---|
+| `claude` | `gpt` | `codex -s read-only review` |
+| `gpt` | `claude` | `claude -p "/code-review ..." --permission-mode plan` |
+| `gemini` | `gpt` | `codex -s read-only review` |
+
+When the reviewer's tool is missing (`command -v`) or fails, try the next family that wrote none of the commits: `gpt`, then `claude`, then `gemini` through `agy`. Report any substitution.
+
+When no other family is installed, review in the same session against `REVIEW.md`, and say plainly that the review was not independent.
+
+## Run the review
+
+Commit or stash first. The commands review commits, not the working tree. Run from the repo root.
+
+Every command is read-only, and none takes extra rules. The repo's review rules live in `REVIEW.md`, and `AGENTS.md` tells every reviewer to apply them. Claude reads `AGENTS.md` through the `CLAUDE.md` link. Name the output after the branch, so parallel sessions do not collide.
 
 ```bash
 # gpt: Codex's built-in reviewer, in a read-only sandbox.
-codex -s read-only review --base <base> > .workspace/peer-code-review-raw.md 2>&1
+codex -s read-only review --base <base> > .workspace/<branch>-code-review-raw.md 2>&1
 
 # claude: Claude Code's built-in reviewer, in plan mode.
 claude -p "/code-review high <base>...HEAD" --permission-mode plan \
-  < /dev/null > .workspace/peer-code-review-raw.md 2>&1
+  < /dev/null > .workspace/<branch>-code-review-raw.md 2>&1
 
 # gemini: no built-in reviewer, so run a prompt in plan mode.
 agy --mode plan --model "<a gemini model from agy models>" --print-timeout <timeout> \
   -p "Review the changes in git diff <base>...HEAD for correctness bugs. Apply the review rules in REVIEW.md. For each finding, give the file, the line, the defect, and the scenario where it bites." \
-  > .workspace/peer-code-review-raw.md 2>&1
+  > .workspace/<branch>-code-review-raw.md 2>&1
 ```
+
+Note the commit you reviewed: `git rev-parse --short HEAD`.
 
 A review can take many minutes, so run it in the background with a long timeout. When `/code-review` finds nothing, its whole output is `(none)`. That is a clean result, not a failure.
 
-This costs real tokens. Run it once per branch. Run it again only after a rework that changes behavior, never to chase a clean result.
+This costs real tokens. Run it once per branch. Run it again only when later commits change files outside `openspec/changes/`, never to chase a clean result.
 
 ## Act on the findings
 
@@ -55,4 +75,4 @@ Fix each confirmed finding in its own commit with its real type (`fix:`, `refact
 
 ## Report
 
-List every finding with its verdict, most severe first. Name the reviewer and say whether the review was independent. Put the same list in the pull request description under **Code review**, so the person who merges sees what was found and refuted.
+List every finding with its verdict, most severe first. Name the reviewer, the commit it reviewed, and whether the review was independent. Put the same list in the pull request description under **Code review**, so the person who merges sees what was found and refuted.
