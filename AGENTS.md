@@ -68,6 +68,7 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
   skill between apply and verify. The product input (a
   milestone issue such as #217, or an ADR) holds intent; `openspec/discovery.md`
   holds personas and journeys; the backlog is GitHub issues.
+- When you review code, also apply the review rules in `REVIEW.md`.
 - **Generate OpenSpec skills with `just skills`.** Never run `openspec init` or
   `openspec update` — they read your global config, not the repo's settings. The
   `openspec-` prefix is reserved for generated skills: `just skills` deletes any
