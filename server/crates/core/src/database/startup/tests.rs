@@ -414,3 +414,44 @@ async fn unresponsive_connection_deadline_closes_socket() {
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+async fn readiness_is_bounded_consistent_and_read_only() {
+    let db = TestDatabase::new();
+    let database = initialize(
+        db.options.clone(),
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+    )
+    .await
+    .unwrap();
+    assert!(database.ready().await);
+    let permit = database.permit.acquire().await.unwrap();
+    let start = Instant::now();
+    assert!(!database.ready().await);
+    assert!(start.elapsed() < Duration::from_millis(100));
+    drop(permit);
+    let mut conn = connection(&db).await;
+    let history = records(&mut conn).await;
+    conn.execute("UPDATE public._sqlx_migrations SET version=99")
+        .await
+        .unwrap();
+    assert!(!database.ready().await);
+    conn.execute("UPDATE public._sqlx_migrations SET version=1")
+        .await
+        .unwrap();
+    assert!(database.ready().await);
+    assert_eq!(history, records(&mut conn).await);
+    let mut tx = conn.begin().await.unwrap();
+    tx.execute("LOCK TABLE public._sqlx_migrations IN ACCESS EXCLUSIVE MODE")
+        .await
+        .unwrap();
+    let start = Instant::now();
+    assert!(!database.ready().await);
+    assert!(start.elapsed() < Duration::from_millis(2250));
+    tx.rollback().await.unwrap();
+    let start = Instant::now();
+    assert!(database.ready().await);
+    assert!(start.elapsed() < Duration::from_secs(5));
+    database.close().await;
+}
