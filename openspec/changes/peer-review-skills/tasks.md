@@ -19,7 +19,7 @@
 ## 5. Remove `critique`
 
 - [x] 5.1 Delete `.agents/skills/critique/`, and name `peer-code-review` instead of `critique` as the example of an authored skill in `CONTRIBUTING.md`. Verify: `git grep -n critique -- ':!openspec/changes' ':!openspec/specs/dev-environment'` finds nothing. The archive step updates the `dev-environment` spec.
-- [ ] 5.2 Check the `dev-environment` delta scenarios. Verify: after `just skills`, `git status --porcelain` prints nothing, `.claude/skills/peer-code-review/SKILL.md` exists, and a second `just skills` changes no file under `.agents/skills`.
+- [x] 5.2 Check the `dev-environment` delta scenarios. Verify: after `just skills`, `git status --porcelain` prints nothing, `.claude/skills/peer-code-review/SKILL.md` exists, and a second `just skills` changes no file under `.agents/skills`.
 
 ## 6. Final checks
 
