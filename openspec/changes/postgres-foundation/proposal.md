@@ -8,6 +8,7 @@ Sam needs durable database state before deployment packaging and administrator s
 - Apply forward-only migrations during startup, with ownership and compatibility checks before any database writes.
 - Serialize concurrent startup and preserve migration state across server and database restarts.
 - Keep `/healthz` for liveness and add `/readyz` for database readiness.
+- Define verified TLS defaults, with explicit opt-in for unencrypted database connections.
 - Report startup failures without exposing credentials or resetting existing state.
 - Add root recipes, real database tests, and operator guidance for the retained-state demonstration.
 - **BREAKING**: Running the server now requires database configuration and compatible PostgreSQL.
@@ -26,10 +27,12 @@ Sam needs durable database state before deployment packaging and administrator s
 
 Core owns domain-agnostic database checks and migrations. The server wires configuration, startup, and health routes.
 The change adds sqlx dependencies, database test infrastructure, root recipes, and server documentation.
-CI supplies PostgreSQL for the existing server gate.
+CI starts the same database fixture for the existing server gate.
+One image pin supplies the fixture in development and CI.
 
 ## Non-goals
 
 This change excludes application packaging, browser changes, authentication, library tables, plugin execution, and backup tooling.
 The database fixture supports development and testing. Compose plus `.env` remains the planned product installation path.
 Auth planning owns ADR-007 wording and security sequencing. This story exposes only health checks and performs migrations at startup.
+The [recorded scope decision](https://github.com/sidereal-io/sidereal/issues/394#issuecomment-6071730280) states this boundary.
