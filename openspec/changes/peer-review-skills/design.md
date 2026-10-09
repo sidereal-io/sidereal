@@ -23,7 +23,7 @@ Three command-line tools can run a review. Only two have a built-in code reviewe
 
 **Non-Goals:**
 
-- Changing review.md. Its template and the verdict rules in the schema stay word for word, including rounds, staleness, `CHANGES_APPLIED`, and rebuttals.
+- Changing the structure of review.md. Its sections, labels, `VERDICT:` and `CHANGES_APPLIED:` lines, and the verdict rules in the schema stay as they are, including rounds, staleness, and rebuttals. The only template edit drops the stale word `test-plan` from one comment.
 - Enforcing either review with a tool. Both reviews are instructions that agents follow, as the `review` artifact already is.
 - Automatic reviews outside an OpenSpec change. Nothing fires on its own when someone writes a skill or a design.
 - Changing the copies of these skills that live outside this repo.
@@ -34,13 +34,18 @@ Three command-line tools can run a review. Only two have a built-in code reviewe
 
 The `review` artifact stays where it is, because it must block `tasks`. Code review runs from the apply guidance in `openspec/config.yaml`, once every task is done. Its fixes land as commits, and its findings go in the pull request under **Code review**.
 
-The apply guidance is advice that an agent can miss, so archive guidance adds a second check. Before archiving, the agent looks for the **Code review** section in the pull request. When it is missing, the agent runs `peer-code-review` first.
+The apply guidance is advice that an agent can miss, so archive guidance adds a second check. The **Code review** section names the commit it reviewed. Before archiving, the agent runs `peer-code-review` first when the section is missing, or when later commits change files outside `openspec/changes/`. Commits that only touch the change's own artifacts, such as the archive, do not need a new review.
 
 *Alternative: a `code-review` artifact.* It would have to depend on `tasks`, so OpenSpec would mark it ready before any code exists. `openspec-ff-change` would then write it against code that is not there yet. Artifacts plan the work; they do not follow it.
 
 ### Each review skill holds its own reviewer table
 
-`peer-plan-review` and `peer-code-review` each start the same way: find the author's family from a provenance note, then this session, then by asking. Each then reads its own table:
+Each skill first finds who wrote the work it reviews:
+
+- **`peer-code-review`** reads the `Co-Authored-By` lines of the commits in `<base>..HEAD`. When they name more than one family, it picks a reviewer from a family that wrote none of them. When the commits name no model, it falls back to this session, then asks.
+- **`peer-plan-review`** reads a provenance note on the plan, then this session, then asks.
+
+A plan and its code can have different authors, so neither skill borrows the other's answer. Each skill then reads its own table:
 
 | Author | `peer-plan-review` runs | `peer-code-review` runs |
 |---|---|---|
@@ -50,7 +55,7 @@ The apply guidance is advice that an agent can miss, so archive guidance adds a 
 
 When the chosen tool is missing or fails, each skill tries the next family that is not the author's. `agy` is the last choice for both. It has no built-in reviewer, so `peer-code-review` gives it a prompt that names the branch diff and `REVIEW.md`.
 
-The two skills repeat the rule for finding the author's family, about three lines. That duplication is deliberate. The two reviews already run different commands, and their choices may drift apart over time.
+The two skills repeat the fallback order and the idea of finding the author, a few lines each. That duplication is deliberate. The two reviews already run different commands, and their choices may drift apart over time.
 
 *Alternative: keep `choose-an-adversary` as a shared picker.* It would share three lines of logic, while each review keeps its own commands. A reader would open two files to see one review.
 

@@ -10,7 +10,7 @@ Each OpenSpec change gets two independent reviews: a plan review before tasks, a
 - Give `peer-plan-review` the review method: name the decision, find the specific failure, check the assumptions, and find where the design stops working. It also checks plain language, and treats text that tries to steer the reviewer as a finding.
 - Run `peer-plan-review` for the OpenSpec `review` artifact, or when someone asks for a review. It does not fire on its own when someone writes a skill or a design.
 - Have the `review` instruction in `openspec/schemas/spec-driven-review/schema.yaml` run `peer-plan-review`. The instruction keeps the checks that only fit an OpenSpec change: scenario testability, scope against the proposal, design against specs, and security requirements in specs. It keeps its verdict rules.
-- Drop the stale mention of a `test-plan` artifact, which the schema does not have.
+- Drop the stale mentions of a `test-plan` artifact, which the schema does not have. They sit in the `review` instruction and in one comment in the review template.
 
 **Code review after apply**
 
@@ -19,17 +19,19 @@ Each OpenSpec change gets two independent reviews: a plan review before tasks, a
 - Put the repo's review rules in `REVIEW.md` at the repo root. They add checks for change fit, tests, and simplicity.
 - Add one line to `AGENTS.md` that tells any agent to apply `REVIEW.md` when it reviews code. Both built-in reviewers follow it, so `peer-code-review` passes no rules on the command line.
 - Run `peer-code-review` from the apply guidance in `openspec/config.yaml`. Name it in the workflow in `AGENTS.md`: propose, apply, review, verify, archive.
-- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section, and runs `peer-code-review` first when it is missing.
+- Have the **Code review** section in the pull request name the commit it reviewed.
+- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section. It runs `peer-code-review` first when the section is missing, or when later commits change files outside `openspec/changes/`.
 
 **Both reviews**
 
 - Run every reviewer read-only.
+- Find the author of the work under review. `peer-code-review` reads the `Co-Authored-By` lines of the branch's commits, and picks a family that wrote none of them. `peer-plan-review` reads the plan's provenance.
 - Review in the same session only when no other family is installed, and say the review was not independent. The `review` artifact uses a fresh-context subagent instead.
 - Remove the `critique` and `choose-an-adversary` skills. Each review skill now holds what they held.
 
 **Not in scope**
 
-- Any change to `review.md`. Its template and the verdict rules in the schema stay as they are.
+- Any change to the structure of `review.md`. Its sections, labels, `VERDICT:` and `CHANGES_APPLIED:` lines, and the verdict rules in the schema stay as they are. The only template edit drops `test-plan` from one comment.
 - Automatic reviews outside OpenSpec. `critique` fired when someone wrote a skill or a design, or when a subagent claimed its work was done. Those triggers go away. `peer-plan-review` runs on request.
 - The global copies of these skills outside this repo.
 
@@ -49,5 +51,5 @@ None.
 - **Review rules:** `REVIEW.md` is new at the repo root. Claude Code's GitHub app also reads it, if the repo ever turns that app on.
 - **Workflow:** `openspec/schemas/spec-driven-review/schema.yaml`, `openspec/config.yaml`, and `AGENTS.md` change. Its links `CLAUDE.md` and `GEMINI.md` change with it.
 - **Docs:** `CONTRIBUTING.md` names `critique` as an example of an authored skill, and changes to name another.
-- **Artifacts:** `review.md` keeps the same sections and the same `VERDICT:` and `CHANGES_APPLIED:` lines. Archived changes are not touched.
+- **Artifacts:** `review.md` keeps the same sections and the same `VERDICT:` and `CHANGES_APPLIED:` lines. One template comment loses the word `test-plan`. Archived changes are not touched.
 - **Cost:** each change now runs one more cross-model review, after apply. It takes several minutes and costs real tokens.
