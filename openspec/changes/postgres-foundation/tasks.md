@@ -30,7 +30,7 @@
 - [x] 4.1 Wire core initialization before HTTP binding and close pools during shutdown; verify failed startup leaves HTTP unbound and successful startup preserves configurable `PORT` behavior.
 - [x] 4.2 Preserve `/healthz` and add fixed `/readyz` responses; verify healthy status, compatibility failures, and 405 responses for mutation methods without database changes.
 - [x] 4.3 Add the separate one-connection readiness pool and semaphore; verify excess probes return 503 immediately and checks finish within two seconds without using operational capacity.
-- [ ] 4.4 Run readiness checks in read-only consistent transactions with safe cancellation; verify database outages preserve liveness and readiness recovers within the specified five-second bound.
+- [x] 4.4 Run readiness checks in read-only consistent transactions with safe cancellation; verify database outages preserve liveness and readiness recovers within the specified five-second bound.
 
 ## 5. Retained-state demonstration and guidance
 

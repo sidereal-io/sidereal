@@ -40,52 +40,45 @@ fn injected(sql: &'static str, no_tx: bool, later: bool) -> Migrator {
 }
 
 #[tokio::test]
-async fn verified_tls_rejects_untrusted_and_wrong_host_certificates_without_writes() {
-    use sqlx::postgres::PgSslMode;
+async fn schema_baselines_are_generated_and_stable() {
     let db = TestDatabase::new();
     let mut conn = connection(&db).await;
-    let before = schema(&mut conn).await.unwrap();
-    let fixture = format!("{}/../../tests/fixtures/tls", env!("CARGO_MANIFEST_DIR"));
-    for options in [
-        db.options
-            .clone()
-            .host("localhost")
-            .ssl_mode(PgSslMode::VerifyFull)
-            .ssl_root_cert(format!("{fixture}/wrong-ca.crt")),
-        db.options
-            .clone()
-            .host("127.0.0.1")
-            .ssl_mode(PgSslMode::VerifyFull)
-            .ssl_root_cert(format!("{fixture}/ca.crt")),
-    ] {
-        assert!(initialize_with(
-            &options,
-            Duration::from_secs(2),
-            Duration::from_secs(2),
-            &MIGRATOR,
-            &baselines(),
-            None
-        )
+    conn.execute("SET search_path = public, pg_catalog")
         .await
-        .is_err());
-        assert_eq!(before, schema(&mut conn).await.unwrap());
+        .unwrap();
+    let mut actual = vec![schema(&mut conn).await.unwrap()];
+    bootstrap(&mut conn, &MIGRATOR).await.unwrap();
+    actual.push(schema(&mut conn).await.unwrap());
+    if std::env::var_os("SIDEREAL_GENERATE_SCHEMA").is_some() {
+        for (prefix, value) in actual.iter().enumerate() {
+            std::fs::write(
+                format!("{}/schema/{prefix}.json", env!("CARGO_MANIFEST_DIR")),
+                format!("{}\n", serde_json::to_string_pretty(value).unwrap()),
+            )
+            .unwrap();
+        }
+    } else {
+        assert_eq!(actual, baselines());
     }
-    let valid = db
-        .options
-        .clone()
-        .host("localhost")
-        .ssl_mode(PgSslMode::VerifyFull)
-        .ssl_root_cert(format!("{fixture}/ca.crt"));
-    initialize_with(
-        &valid,
-        Duration::from_secs(2),
-        Duration::from_secs(2),
-        &MIGRATOR,
-        &baselines(),
-        None,
-    )
-    .await
-    .unwrap();
+}
+
+#[tokio::test]
+async fn repeated_and_concurrent_startup_preserve_every_record_field() {
+    let db = TestDatabase::new();
+    let (first, second) = tokio::join!(init(&db), init(&db));
+    first.unwrap();
+    second.unwrap();
+    let mut conn = connection(&db).await;
+    let before = records(&mut conn).await;
+    init(&db).await.unwrap();
+    assert_eq!(before, records(&mut conn).await);
+    // sqlx's timing sentinel is explicitly accepted and never repaired.
+    conn.execute("UPDATE public._sqlx_migrations SET execution_time = -1")
+        .await
+        .unwrap();
+    let sentinel = records(&mut conn).await;
+    init(&db).await.unwrap();
+    assert_eq!(sentinel, records(&mut conn).await);
 }
 
 #[tokio::test]
@@ -140,45 +133,6 @@ async fn damaged_history_identity_and_schema_do_not_change() {
     let before = schema(&mut conn).await.unwrap();
     assert_eq!(init(&db).await, Err(DatabaseError::Ownership));
     assert_eq!(before, schema(&mut conn).await.unwrap());
-}
-
-#[tokio::test]
-async fn repeated_and_concurrent_startup_preserve_every_record_field() {
-    let db = TestDatabase::new();
-    let (first, second) = tokio::join!(init(&db), init(&db));
-    first.unwrap();
-    second.unwrap();
-    let mut conn = connection(&db).await;
-    let before = records(&mut conn).await;
-    init(&db).await.unwrap();
-    assert_eq!(before, records(&mut conn).await);
-    // sqlx's timing sentinel is explicitly accepted and never repaired.
-    conn.execute("UPDATE public._sqlx_migrations SET execution_time = -1")
-        .await
-        .unwrap();
-    let sentinel = records(&mut conn).await;
-    init(&db).await.unwrap();
-    assert_eq!(sentinel, records(&mut conn).await);
-}
-
-#[tokio::test]
-async fn cancelling_startup_releases_session_locks() {
-    let db = TestDatabase::new();
-    let migrator = injected("SELECT pg_sleep(10)", false, false);
-    assert!(tokio::time::timeout(
-        Duration::from_millis(150),
-        initialize_with(
-            &db.options,
-            Duration::from_secs(2),
-            Duration::from_secs(20),
-            &migrator,
-            &baselines(),
-            None
-        )
-    )
-    .await
-    .is_err());
-    init(&db).await.unwrap();
 }
 
 #[tokio::test]
@@ -237,6 +191,103 @@ async fn failed_bootstrap_and_later_migrations_roll_back() {
     );
     let mut conn = connection(&db).await;
     assert_eq!(schema(&mut conn).await.unwrap(), baselines()[0]);
+}
+
+#[tokio::test]
+async fn lock_and_migration_deadlines_release_connections() {
+    let db = TestDatabase::new();
+    let mut blocker = connection(&db).await;
+    blocker.execute(LOCK).await.unwrap();
+    let start = Instant::now();
+    assert!(initialize_with(
+        &db.options,
+        Duration::from_millis(100),
+        Duration::from_secs(1),
+        &MIGRATOR,
+        &baselines(),
+        None
+    )
+    .await
+    .is_err());
+    assert!(start.elapsed() < Duration::from_millis(350));
+    blocker.execute(UNLOCK).await.unwrap();
+    let migrator = injected("SELECT pg_sleep(2)", false, false);
+    let start = Instant::now();
+    assert!(initialize_with(
+        &db.options,
+        Duration::from_secs(1),
+        Duration::from_millis(100),
+        &migrator,
+        &baselines(),
+        None
+    )
+    .await
+    .is_err());
+    assert!(start.elapsed() < Duration::from_millis(350));
+    init(&db).await.unwrap();
+}
+
+#[tokio::test]
+async fn readiness_is_bounded_consistent_and_read_only() {
+    let db = TestDatabase::new();
+    let database = initialize(
+        db.options.clone(),
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+    )
+    .await
+    .unwrap();
+    assert!(database.ready().await);
+    let permit = database.permit.acquire().await.unwrap();
+    let start = Instant::now();
+    assert!(!database.ready().await);
+    assert!(start.elapsed() < Duration::from_millis(100));
+    drop(permit);
+    let mut conn = connection(&db).await;
+    let history = records(&mut conn).await;
+    conn.execute("UPDATE public._sqlx_migrations SET version=99")
+        .await
+        .unwrap();
+    assert!(!database.ready().await);
+    conn.execute("UPDATE public._sqlx_migrations SET version=1")
+        .await
+        .unwrap();
+    assert!(database.ready().await);
+    assert_eq!(history, records(&mut conn).await);
+    let mut tx = conn.begin().await.unwrap();
+    tx.execute("LOCK TABLE public._sqlx_migrations IN ACCESS EXCLUSIVE MODE")
+        .await
+        .unwrap();
+    let start = Instant::now();
+    assert!(!database.ready().await);
+    assert!(start.elapsed() < Duration::from_millis(2250));
+    tx.rollback().await.unwrap();
+    let start = Instant::now();
+    assert!(database.ready().await);
+    assert!(start.elapsed() < Duration::from_secs(5));
+    database.close().await;
+}
+
+#[tokio::test]
+async fn different_owners_and_permissions_are_checked_separately() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    let baseline = schema(&mut conn).await.unwrap();
+    let history = records(&mut conn).await;
+    conn.execute("ALTER TABLE public.sidereal_metadata OWNER TO pg_database_owner; ALTER TABLE public._sqlx_migrations OWNER TO pg_database_owner").await.unwrap();
+    assert_eq!(baseline, schema(&mut conn).await.unwrap());
+    init(&db).await.unwrap();
+    assert_eq!(history, records(&mut conn).await);
+    conn.execute("REVOKE SELECT ON public._sqlx_migrations FROM pg_database_owner")
+        .await
+        .unwrap();
+    assert_eq!(init(&db).await, Err(DatabaseError::Permission));
+    assert_eq!(baseline, schema(&mut conn).await.unwrap());
+    conn.execute("GRANT SELECT ON public._sqlx_migrations TO pg_database_owner")
+        .await
+        .unwrap();
+    assert_eq!(history, records(&mut conn).await);
 }
 
 #[tokio::test]
@@ -299,82 +350,72 @@ async fn later_migrations_and_exact_prefix_validation() {
 }
 
 #[tokio::test]
-async fn schema_baselines_are_generated_and_stable() {
+async fn cancelling_startup_releases_session_locks() {
+    let db = TestDatabase::new();
+    let migrator = injected("SELECT pg_sleep(10)", false, false);
+    assert!(tokio::time::timeout(
+        Duration::from_millis(150),
+        initialize_with(
+            &db.options,
+            Duration::from_secs(2),
+            Duration::from_secs(20),
+            &migrator,
+            &baselines(),
+            None
+        )
+    )
+    .await
+    .is_err());
+    init(&db).await.unwrap();
+}
+
+#[tokio::test]
+async fn verified_tls_rejects_untrusted_and_wrong_host_certificates_without_writes() {
+    use sqlx::postgres::PgSslMode;
     let db = TestDatabase::new();
     let mut conn = connection(&db).await;
-    conn.execute("SET search_path = public, pg_catalog")
+    let before = schema(&mut conn).await.unwrap();
+    let fixture = format!("{}/../../tests/fixtures/tls", env!("CARGO_MANIFEST_DIR"));
+    for options in [
+        db.options
+            .clone()
+            .host("localhost")
+            .ssl_mode(PgSslMode::VerifyFull)
+            .ssl_root_cert(format!("{fixture}/wrong-ca.crt")),
+        db.options
+            .clone()
+            .host("127.0.0.1")
+            .ssl_mode(PgSslMode::VerifyFull)
+            .ssl_root_cert(format!("{fixture}/ca.crt")),
+    ] {
+        assert!(initialize_with(
+            &options,
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+            &MIGRATOR,
+            &baselines(),
+            None
+        )
         .await
-        .unwrap();
-    let mut actual = vec![schema(&mut conn).await.unwrap()];
-    bootstrap(&mut conn, &MIGRATOR).await.unwrap();
-    actual.push(schema(&mut conn).await.unwrap());
-    if std::env::var_os("SIDEREAL_GENERATE_SCHEMA").is_some() {
-        for (prefix, value) in actual.iter().enumerate() {
-            std::fs::write(
-                format!("{}/schema/{prefix}.json", env!("CARGO_MANIFEST_DIR")),
-                format!("{}\n", serde_json::to_string_pretty(value).unwrap()),
-            )
-            .unwrap();
-        }
-    } else {
-        assert_eq!(actual, baselines());
+        .is_err());
+        assert_eq!(before, schema(&mut conn).await.unwrap());
     }
-}
-
-#[tokio::test]
-async fn different_owners_and_permissions_are_checked_separately() {
-    let db = TestDatabase::new();
-    init(&db).await.unwrap();
-    let mut conn = connection(&db).await;
-    let baseline = schema(&mut conn).await.unwrap();
-    let history = records(&mut conn).await;
-    conn.execute("ALTER TABLE public.sidereal_metadata OWNER TO pg_database_owner; ALTER TABLE public._sqlx_migrations OWNER TO pg_database_owner").await.unwrap();
-    assert_eq!(baseline, schema(&mut conn).await.unwrap());
-    init(&db).await.unwrap();
-    assert_eq!(history, records(&mut conn).await);
-    conn.execute("REVOKE SELECT ON public._sqlx_migrations FROM pg_database_owner")
-        .await
-        .unwrap();
-    assert_eq!(init(&db).await, Err(DatabaseError::Permission));
-    assert_eq!(baseline, schema(&mut conn).await.unwrap());
-    conn.execute("GRANT SELECT ON public._sqlx_migrations TO pg_database_owner")
-        .await
-        .unwrap();
-    assert_eq!(history, records(&mut conn).await);
-}
-
-#[tokio::test]
-async fn lock_and_migration_deadlines_release_connections() {
-    let db = TestDatabase::new();
-    let mut blocker = connection(&db).await;
-    blocker.execute(LOCK).await.unwrap();
-    let start = Instant::now();
-    assert!(initialize_with(
-        &db.options,
-        Duration::from_millis(100),
-        Duration::from_secs(1),
+    let valid = db
+        .options
+        .clone()
+        .host("localhost")
+        .ssl_mode(PgSslMode::VerifyFull)
+        .ssl_root_cert(format!("{fixture}/ca.crt"));
+    initialize_with(
+        &valid,
+        Duration::from_secs(2),
+        Duration::from_secs(2),
         &MIGRATOR,
         &baselines(),
-        None
+        None,
     )
     .await
-    .is_err());
-    assert!(start.elapsed() < Duration::from_millis(350));
-    blocker.execute(UNLOCK).await.unwrap();
-    let migrator = injected("SELECT pg_sleep(2)", false, false);
-    let start = Instant::now();
-    assert!(initialize_with(
-        &db.options,
-        Duration::from_secs(1),
-        Duration::from_millis(100),
-        &migrator,
-        &baselines(),
-        None
-    )
-    .await
-    .is_err());
-    assert!(start.elapsed() < Duration::from_millis(350));
-    init(&db).await.unwrap();
+    .unwrap();
 }
 
 #[tokio::test]
@@ -413,45 +454,4 @@ async fn unresponsive_connection_deadline_closes_socket() {
         .await
         .unwrap()
         .unwrap();
-}
-
-#[tokio::test]
-async fn readiness_is_bounded_consistent_and_read_only() {
-    let db = TestDatabase::new();
-    let database = initialize(
-        db.options.clone(),
-        Duration::from_secs(2),
-        Duration::from_secs(2),
-    )
-    .await
-    .unwrap();
-    assert!(database.ready().await);
-    let permit = database.permit.acquire().await.unwrap();
-    let start = Instant::now();
-    assert!(!database.ready().await);
-    assert!(start.elapsed() < Duration::from_millis(100));
-    drop(permit);
-    let mut conn = connection(&db).await;
-    let history = records(&mut conn).await;
-    conn.execute("UPDATE public._sqlx_migrations SET version=99")
-        .await
-        .unwrap();
-    assert!(!database.ready().await);
-    conn.execute("UPDATE public._sqlx_migrations SET version=1")
-        .await
-        .unwrap();
-    assert!(database.ready().await);
-    assert_eq!(history, records(&mut conn).await);
-    let mut tx = conn.begin().await.unwrap();
-    tx.execute("LOCK TABLE public._sqlx_migrations IN ACCESS EXCLUSIVE MODE")
-        .await
-        .unwrap();
-    let start = Instant::now();
-    assert!(!database.ready().await);
-    assert!(start.elapsed() < Duration::from_millis(2250));
-    tx.rollback().await.unwrap();
-    let start = Instant::now();
-    assert!(database.ready().await);
-    assert!(start.elapsed() < Duration::from_secs(5));
-    database.close().await;
 }
