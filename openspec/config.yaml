@@ -43,7 +43,8 @@ operations:
   archive:
     guidance:
       - Before archiving, check the pull request description for a **Code review**
-        section. If it is missing, run the `peer-code-review` skill first.
+        section. Run the `peer-code-review` skill first if the section is missing, or
+        if commits after the reviewed commit change files outside `openspec/changes/`.
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.
