@@ -1,6 +1,6 @@
 ## 1. Main scan configuration — PR #402
 
-- [ ] 1.1 Set main CodeQL categories from the spec table. Verify both matrix languages keep matching PR/push identities, unchanged refs, and no path filters.
+- [x] 1.1 Set main CodeQL categories from the spec table. Verify both matrix languages keep matching PR/push identities, unchanged refs, and no path filters.
 - [ ] 1.2 Set the weekly dependency category and skip repeated Trivy installation. Verify maintenance ref/SHA, caching, schedule, permissions, pins, and upload-before-gate ordering remain intact.
 
 ## 2. Maintenance configuration — PR #403
