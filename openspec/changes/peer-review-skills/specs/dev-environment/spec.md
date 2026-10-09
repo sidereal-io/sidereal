@@ -23,7 +23,7 @@ Git SHALL track the skills people write and the skill settings in `.config/opens
 #### Scenario: Authored skills survive generation
 
 - **WHEN** a contributor runs `just skills`
-- **THEN** every file under `.agents/skills/peer-code-review`, `.agents/skills/grill-me`, `.agents/skills/choose-an-adversary` and `.agents/skills/discovery` is unchanged, byte for byte
+- **THEN** every file under `.agents/skills/peer-code-review`, `.agents/skills/grill-me`, `.agents/skills/peer-plan-review` and `.agents/skills/discovery` is unchanged, byte for byte
 
 #### Scenario: Running the command twice changes nothing
 
