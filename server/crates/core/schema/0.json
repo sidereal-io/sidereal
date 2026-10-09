@@ -1,0 +1,10 @@
+{
+  "extensions": [],
+  "functions": [],
+  "relations": [],
+  "schemas": [
+    "public"
+  ],
+  "triggers": [],
+  "types": []
+}

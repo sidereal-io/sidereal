@@ -1,0 +1,202 @@
+{
+  "extensions": [],
+  "functions": [],
+  "relations": [
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "description",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": "",
+          "identity": "",
+          "name": "installed_on",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "success",
+          "nullable": false,
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "checksum",
+          "nullable": false,
+          "type": "bytea"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "execution_time",
+          "nullable": false,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [
+        "NOT NULL checksum",
+        "NOT NULL description",
+        "NOT NULL execution_time",
+        "NOT NULL installed_on",
+        "NOT NULL success",
+        "NOT NULL version",
+        "PRIMARY KEY (version)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "_sqlx_migrations",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "_sqlx_migrations_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "product",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "format_version",
+          "nullable": false,
+          "type": "integer"
+        }
+      ],
+      "constraints": [
+        "CHECK (format_version = 1)",
+        "CHECK (product = 'sidereal'::text)",
+        "NOT NULL format_version",
+        "NOT NULL product",
+        "PRIMARY KEY (product)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX sidereal_metadata_pkey ON public.sidereal_metadata USING btree (product)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "sidereal_metadata",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "product",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sidereal_metadata_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    }
+  ],
+  "schemas": [
+    "public"
+  ],
+  "triggers": [],
+  "types": [
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "__sqlx_migrations",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_sidereal_metadata",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "_sqlx_migrations",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "sidereal_metadata",
+      "not_null": false,
+      "schema": "public"
+    }
+  ]
+}

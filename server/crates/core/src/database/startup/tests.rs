@@ -297,3 +297,26 @@ async fn later_migrations_and_exact_prefix_validation() {
     assert_eq!(history, records(&mut conn).await);
     assert_eq!(before, schema(&mut conn).await.unwrap());
 }
+
+#[tokio::test]
+async fn schema_baselines_are_generated_and_stable() {
+    let db = TestDatabase::new();
+    let mut conn = connection(&db).await;
+    conn.execute("SET search_path = public, pg_catalog")
+        .await
+        .unwrap();
+    let mut actual = vec![schema(&mut conn).await.unwrap()];
+    bootstrap(&mut conn, &MIGRATOR).await.unwrap();
+    actual.push(schema(&mut conn).await.unwrap());
+    if std::env::var_os("SIDEREAL_GENERATE_SCHEMA").is_some() {
+        for (prefix, value) in actual.iter().enumerate() {
+            std::fs::write(
+                format!("{}/schema/{prefix}.json", env!("CARGO_MANIFEST_DIR")),
+                format!("{}\n", serde_json::to_string_pretty(value).unwrap()),
+            )
+            .unwrap();
+        }
+    } else {
+        assert_eq!(actual, baselines());
+    }
+}
