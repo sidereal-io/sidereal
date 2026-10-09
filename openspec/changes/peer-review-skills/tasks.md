@@ -23,4 +23,4 @@
 
 ## 6. Final checks
 
-- [ ] 6.1 Validate the change. Verify: `openspec validate peer-review-skills --strict` passes.
+- [x] 6.1 Validate the change. Verify: `openspec validate peer-review-skills --strict` passes.
