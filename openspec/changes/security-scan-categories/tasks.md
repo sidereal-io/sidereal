@@ -5,17 +5,17 @@
 
 ## 2. Maintenance configuration — PR #403
 
-- [ ] 2.1 Set maintenance CodeQL category and build mode; remove autobuild. Restrict branch/PR filters to `v0.x`; verify tag triggers remain unchanged.
-- [ ] 2.2 Give PR and branch container uploads `v0.x/trivy/image`. Remove Docker test SARIF scanning; verify one PR upload owner and preserved smoke-test/report steps.
-- [ ] 2.3 Test report outcomes before updating comment logic. Verify successful findings, empty success, failed/missing reports, and failed reports with stale files cannot produce false security success.
-- [ ] 2.4 Scan the same run's AMD64 digest artifact instead of its branch tag. Verify valid selection and rejection of missing, multiple, or malformed digest filenames.
-- [ ] 2.5 Set the release category and pin every maintenance Trivy action. Verify supported inputs, existing severity/ignore policy, failure exit code, and conditional upload after scan failure.
+- [x] 2.1 Set maintenance CodeQL category and build mode; remove autobuild. Restrict branch/PR filters to `v0.x`; verify tag triggers remain unchanged.
+- [x] 2.2 Give PR and branch container uploads `v0.x/trivy/image`. Remove Docker test SARIF scanning; verify one PR upload owner and preserved smoke-test/report steps.
+- [x] 2.3 Test report outcomes before updating comment logic. Verify successful findings, empty success, failed/missing reports, and failed reports with stale files cannot produce false security success.
+- [x] 2.4 Scan the same run's AMD64 digest artifact instead of its branch tag. Verify valid selection and rejection of missing, multiple, or malformed digest filenames.
+- [x] 2.5 Set the release category and pin every maintenance Trivy action. Verify supported inputs, existing severity/ignore policy, failure exit code, and conditional upload after scan failure.
 
 ## 3. Integration verification
 
-- [ ] 3.1 Run workflow validation through `deli -- actionlint` on both branches. Verify categories, upload ownership, event attribution, digest provenance, and absence of dangling removed-step references.
-- [ ] 3.2 Run report/digest regression checks and `deli -- npm run check` on maintenance. Run the main `deli -- just check` gate; record results without claiming live migration success.
-- [ ] 3.3 Update both security runbooks to match implementation. Verify every category and migration step agrees with this delta spec and preserves branch boundaries.
+- [x] 3.1 Run workflow validation through `deli -- actionlint` on both branches. Verify categories, upload ownership, event attribution, digest provenance, and absence of dangling removed-step references.
+- [x] 3.2 Run report/digest regression checks and `deli -- npm run check` on maintenance. Run the main `deli -- just check` gate; record results without claiming live migration success.
+- [x] 3.3 Update both security runbooks to match implementation. Verify every category and migration step agrees with this delta spec and preserves branch boundaries.
 - [ ] 3.4 Deliver the runtime rollout checklist on #321. Verify it requires exact setup inventory, analysis URLs, branch baselines, all PR comparisons, fixture removal, and legitimate release-tag evidence.
 
 ## Completion boundary
