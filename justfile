@@ -6,6 +6,26 @@
 default:
     @just --list
 
+# Start this worktree's loopback PostgreSQL fixture and wait for initialization.
+db-up:
+    @sh server/scripts/db-fixture.sh up
+
+# Stop this worktree's database fixture, retaining its volume.
+db-down:
+    @sh server/scripts/db-fixture.sh down
+
+# Delete only this worktree's fixture containers and database volume.
+db-clean:
+    @sh server/scripts/db-fixture.sh clean
+
+# Print the fixture runtime URL. Override SIDEREAL_DB_PORT if needed.
+db-url:
+    @sh server/scripts/db-fixture.sh url
+
+# Print the separate CREATEDB fixture test URL.
+db-test-url:
+    @sh server/scripts/db-fixture.sh test-url
+
 # Generate the OpenSpec agent skills into .agents/skills (see scripts/skills.sh).
 skills:
     @scripts/skills.sh
