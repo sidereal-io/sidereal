@@ -68,7 +68,9 @@ It creates the sqlx-compatible migration table, executes the initial SQL, and in
 Do not invoke sqlx's default migrator before bootstrap; separate migration-table creation could leave an unowned table after interruption.
 Later startup uses sqlx's migrator on the same dedicated connection after preflight succeeds.
 A crash either commits the complete initialized state or rolls it back.
-The spec requires a transaction per bundled migration. Reject migration sources that disable transactions before executing them.
+The spec requires a transaction per bundled migration and its essential record fields. Reject migration sources that disable transactions before executing them.
+Keep sqlx's standard post-commit `execution_time` update as best-effort metadata. A sentinel after interruption does not invalidate migration history.
+Startup never repairs timing metadata; repeated startup preserves existing records. The [owner decision](https://github.com/sidereal-io/sidereal/issues/394#issuecomment-6073900184) accepts this edge case without an adapter.
 Long-running or nontransactional migrations need a separate design before adding domain tables.
 This foundation does not choose how domain packs contribute migrations; settle that when the first pack table is proposed.
 
