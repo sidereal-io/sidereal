@@ -20,3 +20,7 @@ mod tests {
         assert_eq!(abi_version(), sidereal_plugin_abi::ABI_VERSION);
     }
 }
+
+#[cfg(test)]
+#[path = "database/test_support.rs"]
+mod test_support;

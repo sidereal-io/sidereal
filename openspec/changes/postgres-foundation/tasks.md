@@ -4,7 +4,7 @@
 - [x] 1.2 Create separate runtime, demo, and test roles; verify only the test role has `CREATEDB` and initialization finishes before fixture readiness succeeds.
 - [x] 1.3 Add worktree-isolated `db-up`, `db-down`, and `db-clean` recipes; verify configurable loopback ports, retained volumes, and deletion limited to the selected fixture.
 - [x] 1.4 Add `db-url` and `db-test-url` recipes; verify distinct fixture credentials, the selected port, explicit `sslmode=disable`, and no production URL disclosure.
-- [ ] 1.5 Add temporary test databases and supervisor cleanup; verify unique names, cleanup after failures, and actionable failure when `TEST_DATABASE_URL` is missing or unreachable.
+- [x] 1.5 Add temporary test databases and supervisor cleanup; verify unique names, cleanup after failures, and actionable failure when `TEST_DATABASE_URL` is missing or unreachable.
 
 ## 2. Configuration and transport
 
