@@ -180,3 +180,120 @@ async fn cancelling_startup_releases_session_locks() {
     .is_err());
     init(&db).await.unwrap();
 }
+
+#[tokio::test]
+async fn failed_bootstrap_and_later_migrations_roll_back() {
+    for later in [false, true] {
+        let db = TestDatabase::new();
+        if later {
+            init(&db).await.unwrap();
+        }
+        let mut conn = connection(&db).await;
+        let before = schema(&mut conn).await.unwrap();
+        let history = if later {
+            Some(records(&mut conn).await)
+        } else {
+            None
+        };
+        let migrator = injected(
+            "CREATE TABLE public.rollback_probe(value int); SELECT 1/0",
+            false,
+            later,
+        );
+        assert!(initialize_with(
+            &db.options,
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+            &migrator,
+            &baselines(),
+            None
+        )
+        .await
+        .is_err());
+        assert_eq!(before, schema(&mut conn).await.unwrap());
+        if let Some(history) = history {
+            assert_eq!(history, records(&mut conn).await);
+        }
+        // Failure closed the dedicated connection and released both locks.
+        init(&db).await.unwrap();
+    }
+    let db = TestDatabase::new();
+    let migrator = injected(
+        "CREATE TABLE public.should_not_exist(value int)",
+        true,
+        false,
+    );
+    assert_eq!(
+        initialize_with(
+            &db.options,
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+            &migrator,
+            &baselines(),
+            None
+        )
+        .await,
+        Err(DatabaseError::Migration)
+    );
+    let mut conn = connection(&db).await;
+    assert_eq!(schema(&mut conn).await.unwrap(), baselines()[0]);
+}
+
+#[tokio::test]
+async fn later_migrations_and_exact_prefix_validation() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    let migrator = injected("CREATE TABLE public.later_probe(value int)", false, true);
+    // Generate the injected prefix's expected logical schema using PostgreSQL,
+    // then roll it back so startup must apply the pending migration itself.
+    let mut tx = conn.begin().await.unwrap();
+    tx.execute("CREATE TABLE public.later_probe(value int)")
+        .await
+        .unwrap();
+    let next_schema = schema(&mut tx).await.unwrap();
+    tx.rollback().await.unwrap();
+    let mut expected = baselines();
+    expected.push(next_schema);
+    initialize_with(
+        &db.options,
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+        &migrator,
+        &expected,
+        None,
+    )
+    .await
+    .unwrap();
+    let history = records(&mut conn).await;
+    initialize_with(
+        &db.options,
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+        &migrator,
+        &expected,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(history, records(&mut conn).await);
+    conn.execute("DELETE FROM public._sqlx_migrations WHERE version=1")
+        .await
+        .unwrap();
+    let history = records(&mut conn).await;
+    let before = schema(&mut conn).await.unwrap();
+    assert_eq!(
+        initialize_with(
+            &db.options,
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+            &migrator,
+            &expected,
+            None
+        )
+        .await,
+        Err(DatabaseError::History)
+    );
+    assert_eq!(history, records(&mut conn).await);
+    assert_eq!(before, schema(&mut conn).await.unwrap());
+}
