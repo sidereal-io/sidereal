@@ -342,3 +342,75 @@ async fn different_owners_and_permissions_are_checked_separately() {
         .unwrap();
     assert_eq!(history, records(&mut conn).await);
 }
+
+#[tokio::test]
+async fn lock_and_migration_deadlines_release_connections() {
+    let db = TestDatabase::new();
+    let mut blocker = connection(&db).await;
+    blocker.execute(LOCK).await.unwrap();
+    let start = Instant::now();
+    assert!(initialize_with(
+        &db.options,
+        Duration::from_millis(100),
+        Duration::from_secs(1),
+        &MIGRATOR,
+        &baselines(),
+        None
+    )
+    .await
+    .is_err());
+    assert!(start.elapsed() < Duration::from_millis(350));
+    blocker.execute(UNLOCK).await.unwrap();
+    let migrator = injected("SELECT pg_sleep(2)", false, false);
+    let start = Instant::now();
+    assert!(initialize_with(
+        &db.options,
+        Duration::from_secs(1),
+        Duration::from_millis(100),
+        &migrator,
+        &baselines(),
+        None
+    )
+    .await
+    .is_err());
+    assert!(start.elapsed() < Duration::from_millis(350));
+    init(&db).await.unwrap();
+}
+
+#[tokio::test]
+async fn unresponsive_connection_deadline_closes_socket() {
+    use tokio::io::AsyncReadExt;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let peer = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut bytes = [0; 1024];
+        loop {
+            if socket.read(&mut bytes).await.unwrap() == 0 {
+                break;
+            }
+        }
+    });
+    let options = PgConnectOptions::new()
+        .host("127.0.0.1")
+        .port(port)
+        .ssl_mode(sqlx::postgres::PgSslMode::Disable);
+    let start = Instant::now();
+    assert_eq!(
+        initialize_with(
+            &options,
+            Duration::from_millis(100),
+            Duration::from_secs(1),
+            &MIGRATOR,
+            &baselines(),
+            None
+        )
+        .await,
+        Err(DatabaseError::StartupDeadline)
+    );
+    assert!(start.elapsed() < Duration::from_millis(350));
+    timeout(Duration::from_millis(250), peer)
+        .await
+        .unwrap()
+        .unwrap();
+}
