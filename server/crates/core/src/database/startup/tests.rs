@@ -291,6 +291,76 @@ async fn different_owners_and_permissions_are_checked_separately() {
 }
 
 #[tokio::test]
+async fn pending_migrations_require_write_privileges_before_writes() {
+    for privilege in ["INSERT", "UPDATE"] {
+        let db = TestDatabase::new();
+        init(&db).await.unwrap();
+        let mut conn = connection(&db).await;
+        let migrator = injected(
+            "CREATE TABLE public.permission_probe(value int)",
+            false,
+            true,
+        );
+        let mut tx = conn.begin().await.unwrap();
+        tx.execute("CREATE TABLE public.permission_probe(value int)")
+            .await
+            .unwrap();
+        let next_schema = schema(&mut tx).await.unwrap();
+        tx.rollback().await.unwrap();
+        let mut expected = baselines();
+        expected.push(next_schema);
+
+        // Transfer ownership so the test role's original owner grants can no
+        // longer mask a missing grant on the database-owner role.
+        conn.execute("ALTER TABLE public._sqlx_migrations OWNER TO pg_database_owner")
+            .await
+            .unwrap();
+        conn.execute(AssertSqlSafe(format!(
+            "REVOKE {privilege} ON public._sqlx_migrations FROM pg_database_owner"
+        )))
+        .await
+        .unwrap();
+        let before = schema(&mut conn).await.unwrap();
+        let history = records(&mut conn).await;
+        // The current migration prefix is readable and needs no write grants.
+        init(&db).await.unwrap();
+        assert_eq!(
+            initialize_with(
+                &db.options,
+                Duration::from_secs(2),
+                Duration::from_secs(2),
+                &migrator,
+                &expected,
+                None
+            )
+            .await,
+            Err(DatabaseError::Permission),
+            "pending migration must require {privilege}"
+        );
+        assert_eq!(before, schema(&mut conn).await.unwrap());
+        assert_eq!(history, records(&mut conn).await);
+
+        // The same pending migration succeeds once its required grant returns.
+        conn.execute(AssertSqlSafe(format!(
+            "GRANT {privilege} ON public._sqlx_migrations TO pg_database_owner"
+        )))
+        .await
+        .unwrap();
+        initialize_with(
+            &db.options,
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+            &migrator,
+            &expected,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(schema(&mut conn).await.unwrap(), expected[2]);
+    }
+}
+
+#[tokio::test]
 async fn later_migrations_and_exact_prefix_validation() {
     let db = TestDatabase::new();
     init(&db).await.unwrap();
