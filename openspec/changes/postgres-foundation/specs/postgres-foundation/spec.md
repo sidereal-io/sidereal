@@ -70,7 +70,7 @@ The server SHALL reject unrelated objects, unrelated migration history, and a da
 - **THEN** startup fails and a before-and-after comparison shows identical database objects and rows
 
 #### Scenario: Foreign migration table
-- **WHEN** the database contains the migration table without valid the Sidereal identity row
+- **WHEN** the database contains the migration table without a valid Sidereal identity row
 - **THEN** startup fails without changing the migration table or creating a Sidereal identity row
 
 ### Requirement: Forward-only startup migrations
