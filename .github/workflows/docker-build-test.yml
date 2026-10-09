@@ -105,7 +105,7 @@ jobs:
 
       - name: Generate vulnerability report
         id: security-report
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         if: always()  # Report failures even when an earlier build step failed
         with:
           image-ref: sidereal:test-${{ github.event.pull_request.number }}

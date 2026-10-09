@@ -92,7 +92,7 @@ jobs:
         run: ./docker/smoke-test.sh local-scan:${{ github.ref_name }}
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: local-scan:${{ github.ref_name }}
           format: 'sarif'
@@ -110,7 +110,7 @@ jobs:
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
-          category: 'trivy-release'
+          category: 'v0.x/trivy/release-image'
 
   # Build each platform on a native runner, no QEMU
   build:
