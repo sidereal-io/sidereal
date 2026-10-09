@@ -20,7 +20,7 @@ Each OpenSpec change gets two independent reviews: a plan review before tasks, a
 - Add one line to `AGENTS.md` that tells any agent to apply `REVIEW.md` when it reviews code. Both built-in reviewers follow it, so `peer-code-review` passes no rules on the command line.
 - Run `peer-code-review` from the apply guidance in `openspec/config.yaml`. Name it in the workflow in `AGENTS.md`: propose, apply, review, verify, archive.
 - Have the **Code review** section in the pull request name the commit it reviewed.
-- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section. This check does not start a second review. It runs `peer-code-review` only when the section is missing, or when a later commit changes files outside `openspec/changes/` and is not a listed fix for a finding.
+- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section. This check does not start a second review. It runs `peer-code-review` only when the section is missing, or when a later commit changes files outside `openspec/changes/` and is not a listed fix for a finding. The agent reads each listed fix commit's diff and confirms it changes only what its finding names.
 
 **Both reviews**
 
