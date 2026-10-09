@@ -1,6 +1,6 @@
 # Security scan categories on main
 
-Status: draft category migration for #401. The workflow edits are pending.
+Status: draft category migration for #321. The workflow edits are pending.
 
 The repository has two code lines: the Rust/React rebuild on `main` and the TypeScript maintenance app on `v0.x`. Categories identify the code line and scan target. A pull request uses the same category as its target branch.
 
@@ -37,4 +37,4 @@ Historical `trivy-main` uploads describe the previous TypeScript app. The latest
 
 Retire only obsolete setup identities. Do not delete all CodeQL results by language: current `main` still needs JavaScript/TypeScript coverage. Keep the maintenance dependency setup while replacing its category.
 
-`main` has no container or release workflow. #321 covers the maintenance branch's source, container, and release categories in a separate PR targeting `v0.x`.
+`main` has no container or release workflow. #321 covers the maintenance branch's source, container, and release categories in companion PR #403 targeting `v0.x`. Both PRs track #321; complete both migrations before closing it.
