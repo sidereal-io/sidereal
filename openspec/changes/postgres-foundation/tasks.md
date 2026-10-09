@@ -42,4 +42,4 @@
 
 - [x] 6.1 Start the shared fixture in server CI and export its test URL without logging credentials; verify CI uses the single image pin and runs the existing server gate.
 - [x] 6.2 Run `deli -- just check` with the prepared test database; verify all server and web checks pass and database prerequisites never cause silent skips.
-- [ ] 6.3 Run the retained-state demo and documented development checks through `deli`; verify retained records, fixture stop/start behavior, process cleanup, and all modified development scenarios.
+- [x] 6.3 Run the retained-state demo and documented development checks through `deli`; verify retained records, fixture stop/start behavior, process cleanup, and all modified development scenarios.
