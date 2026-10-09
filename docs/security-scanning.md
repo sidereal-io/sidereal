@@ -1,10 +1,8 @@
 # Security scan categories on v0.x
 
-Status: draft category migration for #321. The workflow edits are pending.
+The maintenance workflows identify `v0.x` and the scan target with fixed categories. PR and branch container results share a category so GitHub can compare new findings with the maintenance baseline.
 
-The maintenance app uses explicit categories that identify `v0.x` and the scan target. A pull request's container scan uses the same category as the maintenance branch, so GitHub can compare new findings with the branch baseline.
-
-## Proposed categories
+## Categories and ownership
 
 | Workflow | Target | Category |
 | --- | --- | --- |
@@ -12,32 +10,29 @@ The maintenance app uses explicit categories that identify `v0.x` and the scan t
 | `docker-build-push.yml` | PR and branch containers | `v0.x/trivy/image` |
 | `release.yml` | Tagged release validation | `v0.x/trivy/release-image` |
 
-The weekly dependency scan lives on `main`. Its proposed category is `v0.x/trivy/dependencies`, and it uploads against the maintenance ref and checked-out SHA. Companion PR #402 covers that workflow. Both PRs track #321.
+The weekly dependency scan lives on `main` and uses `v0.x/trivy/dependencies`. It uploads against the maintenance ref and checked-out SHA. PR #402 carries that workflow and the shared OpenSpec change; PR #403 carries maintenance implementation. Both track #321.
 
-Use fixed categories. PR numbers, feature branch names, and release tag names must not create new category values.
+Categories never include PR numbers, feature branches, or release versions. PR and release uploads keep their event ref and SHA; sharing a category does not redirect PR results to `v0.x`.
 
-## Workflow ownership
+`docker-build-push.yml` owns container SARIF uploads. PRs scan their local AMD64 image. Branch builds download the same run's `digests-linux-amd64` artifact separately, require exactly one regular file named by a 64-character hexadecimal digest, and scan the published image by that immutable digest. Missing, multiple, malformed, or symbolic-link entries fail selection. Both platforms still build and publish.
 
-`docker-build-push.yml` owns container SARIF uploads for both PRs and branch pushes. Both uploads change from their current `trivy-pr` and `trivy-v0.x` categories to `v0.x/trivy/image`.
+`docker-build-test.yml` retains smoke tests and its text vulnerability report, with no SARIF scan or upload. Its PR comment checks the report step outcome before reading the file. Failed or missing reports mean unavailable evidence, including when a stale file exists.
 
-Remove the duplicate SARIF scan and upload from `docker-build-test.yml`. Preserve its container smoke tests and text vulnerability report. Update summaries and step-outcome checks that reference the removed scan. A report failure must not be reported as a successful security check.
+CodeQL uses `build-mode: none` with no autobuild. Branch and PR filters target only `v0.x`. Release tag triggers are unchanged. Release validation preserves its blocking exit code, severity selection, ignore-unfixed setting, `.trivyignore`, and conditional upload after scan failure.
 
-CodeQL uses `build-mode: none` for JavaScript/TypeScript. Remove the unnecessary autobuild step. Restrict the maintenance workflows' branch and PR triggers to `v0.x`.
+Every Trivy invocation is pinned to `ed142fd0673e97e23eac54620cfb913e5ce36c25` (action v0.36.0). Inputs were checked against that commit; default caching remains enabled. Each maintenance job now invokes Trivy once.
 
-Release validation retains its blocking exit code and ignore-unfixed policy. Its category stays separate from ordinary image scans because it uses different filtering and uploads to a tag. Keep its upload-on-failure condition.
+## Verification and rollout
 
-Pin Trivy actions to a reviewed full commit, including the report step's current `master` reference. Check inputs against that commit. Retain caching and reuse the installed binary when a job invokes Trivy again.
+Pre-merge checks are `deli -- actionlint`, `deli -- npm run check`, and `deli -- node --test --test-isolation=none tools/scripts/security-workflows.test.mjs`. CI also runs the report/digest regressions. These checks validate configuration and failure handling; they do not establish live baselines.
 
-## Baseline migration
+After the user merges both PRs, follow the pending runtime checklist on #321:
 
-1. Record existing setup identities, refs, timestamps, and finding counts before making changes.
-2. Check workflow syntax with `deli -- actionlint`. Confirm PR and branch uploads use exactly the same container category and that there is one PR SARIF owner.
-3. Run `deli -- npm run check` before submitting the implementation for final review.
-4. After merge, confirm successful `v0.x` uploads under the new source and container categories.
-5. Re-run a PR scan after the new branch baseline exists. Confirm its Trivy result check compares against the branch instead of skipping for a missing baseline.
-6. Use a controlled PR that introduces a container vulnerability to demonstrate a new finding. Keep this fixture out of the final branch.
-7. Remove retired setups through Security → Code scanning → Tool status only after successful replacement uploads and PR comparison. Identify each setup precisely before deletion.
+1. Inventory each old setup's tool, category, analysis key, ref, timestamp, and finding count.
+2. Record successful maintenance CodeQL and image branch analyses, including analysis URLs, commit SHA, and the immutable image digest. Verify subsequent PR comparisons for both targets after their baselines exist.
+3. Use a controlled PR to introduce a known container vulnerability absent from the baseline. Record its CVE, image identity, repository-mapped SARIF location, and result check. Remove the fixture PR and branch; keep the fixture out of the implementation.
+4. Confirm the weekly dependency upload and both main CodeQL branch baselines and subsequent PR comparisons using the main runbook.
+5. Retain the previous release setup until the next legitimate release tag has a successful `v0.x/trivy/release-image` analysis. Record its analysis URL and tag SHA. Never create a release solely for migration verification.
+6. Retire only inventoried setups whose replacements and applicable PR comparisons passed, using Security → Code scanning → Tool status. Keep #321 open until both migrations and cleanup are verified.
 
-Never upload PR results using the maintenance branch ref. PR results belong to the PR; sharing a category supplies the matching baseline.
-
-The draft PR remains open through implementation and verification. Under the maintenance guide, a human applies `spec/ready` before workflow implementation. No severity policy or scan target changes in this migration.
+The shared OpenSpec workflow is propose → apply → verify → archive. Both PRs remain draft until pre-merge verification and archive; the user owns the merges. Durable specs sync during archive in #402.
