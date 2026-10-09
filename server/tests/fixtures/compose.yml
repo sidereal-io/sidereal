@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Use server/postgres-image.env}
+    environment:
+      POSTGRES_USER: fixture_admin
+      POSTGRES_PASSWORD: fixture_admin
+      POSTGRES_DB: fixture_control
+    ports:
+      - "127.0.0.1:${SIDEREAL_DB_PORT:-55432}:5432"
+    volumes:
+      - database:/var/lib/postgresql
+      - ./init.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "PGPASSWORD=fixture_test psql -h 127.0.0.1 -U fixture_test -d fixture_control -Atqc \"SELECT 1 FROM pg_database WHERE datname = 'fixture_demo'\" | grep -qx 1"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
+volumes:
+  database:
