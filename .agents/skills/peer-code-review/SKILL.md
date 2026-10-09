@@ -9,21 +9,27 @@ Have a different model family review the branch's code. A reviewer from the auth
 
 ## When to apply
 
-- **After apply.** Every task in an OpenSpec change is done. Review before `openspec-verify-change`, so verify checks the fixed code.
-- **Before archive.** The pull request has no **Code review** section, or later commits change files outside `openspec/changes/`.
+- **After apply.** Every task in an OpenSpec change is done. Review before `openspec-verify-change`, so verify checks the fixed code. This is the one review per change.
 - **On request.** Someone asks for a code review of a branch.
+
+Archive only checks that this review happened and still covers the code. It does not start a second review on its own.
 
 ## Find the author
 
 `<base>` is the branch this one merges into: the pull request's base (`gh pr view --json baseRefName`), else the parent branch of a stacked story, else `main`.
 
-Read who wrote the code from its commits:
+Find who wrote the code. First answer wins:
 
-```bash
-git log --format='%(trailers:key=Co-Authored-By,valueonly)' <base>..HEAD | sort -u
-```
+- **The commits.** Every family named in their `Co-Authored-By` lines is an author:
 
-Every family named there is an author. Pick a reviewer from a family that wrote none of the commits. When the commits name no model, the author is this session's family. If you did not write them, ask. Do not guess: a wrong answer turns the review into a rubber stamp.
+  ```bash
+  git log --format='%(trailers:key=Co-Authored-By,valueonly)' <base>..HEAD | sort -u
+  ```
+
+- **This session** — the commits name no model, and you wrote the code here.
+- **Ask the author.** Do not guess. A wrong answer turns the review into a rubber stamp.
+
+Pick the reviewer from a family that wrote none of the commits.
 
 ## Pick the reviewer
 
@@ -35,7 +41,7 @@ Every family named there is an author. Pick a reviewer from a family that wrote 
 
 When the reviewer's tool is missing (`command -v`) or fails, try the next family that wrote none of the commits: `gpt`, then `claude`, then `gemini` through `agy`. Report any substitution.
 
-When no other family is installed, review in the same session against `REVIEW.md`, and say plainly that the review was not independent.
+When no other family is installed, run the author's own family's command below as a new process, so the review starts from a fresh context. Say plainly that the review was not independent. Never review in the author's own session.
 
 ## Run the review
 
@@ -61,7 +67,7 @@ Note the commit you reviewed: `git rev-parse --short HEAD`.
 
 A review can take many minutes, so run it in the background with a long timeout. When `/code-review` finds nothing, its whole output is `(none)`. That is a clean result, not a failure.
 
-This costs real tokens. Run it once per branch. Run it again only when later commits change files outside `openspec/changes/`, never to chase a clean result.
+This costs real tokens. Run it once per change, never to chase a clean result.
 
 ## Act on the findings
 
@@ -71,8 +77,17 @@ The reviewer has no product context, so some findings will miss. Check each one 
 - **REFUTED** — name the evidence that contradicts it.
 - **OUT-OF-SCOPE** — real, but not this change's. Say why, and file an issue if it matters.
 
-Fix each confirmed finding in its own commit with its real type (`fix:`, `refactor:`, `test:`). Then run `just check` if the fixes touched `server/` or `web/`.
+Fix each confirmed finding in its own commit with its real type (`fix:`, `refactor:`, `test:`). A fix commit changes only what its finding names. Put any other change in its own commit: it is rework, and it needs a new review. Then run `just check` if the fixes touched `server/` or `web/`.
 
 ## Report
 
-List every finding with its verdict, most severe first. Name the reviewer, the commit it reviewed, and whether the review was independent. Put the same list in the pull request description under **Code review**, so the person who merges sees what was found and refuted.
+List every finding with its verdict and, when confirmed, its fix commit, most severe first. Name the reviewer, the commit it reviewed, and whether the review was independent. Put the same list in the pull request description under **Code review**, so the person who merges sees what was found and refuted.
+
+## Before archive
+
+Archive guidance checks the **Code review** section. Run this skill again only when:
+
+- the section is missing; or
+- a commit after the reviewed one changes files outside `openspec/changes/` and is not a listed fix.
+
+Before treating a listed fix commit as exempt, read its diff with `git show <sha>`. Confirm it touches only what its finding names. If it touches anything else, run the review again.
