@@ -28,6 +28,8 @@ sidereal-pack-astro = { path = "crates/packs/astro" }
 
 # External crates.
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
+sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "macros"] }
+url = "2"
 serde_json = "1"
 tower = { version = "0.5", features = ["util"] }
