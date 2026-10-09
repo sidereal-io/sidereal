@@ -320,3 +320,25 @@ async fn schema_baselines_are_generated_and_stable() {
         assert_eq!(actual, baselines());
     }
 }
+
+#[tokio::test]
+async fn different_owners_and_permissions_are_checked_separately() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    let baseline = schema(&mut conn).await.unwrap();
+    let history = records(&mut conn).await;
+    conn.execute("ALTER TABLE public.sidereal_metadata OWNER TO pg_database_owner; ALTER TABLE public._sqlx_migrations OWNER TO pg_database_owner").await.unwrap();
+    assert_eq!(baseline, schema(&mut conn).await.unwrap());
+    init(&db).await.unwrap();
+    assert_eq!(history, records(&mut conn).await);
+    conn.execute("REVOKE SELECT ON public._sqlx_migrations FROM pg_database_owner")
+        .await
+        .unwrap();
+    assert_eq!(init(&db).await, Err(DatabaseError::Permission));
+    assert_eq!(baseline, schema(&mut conn).await.unwrap());
+    conn.execute("GRANT SELECT ON public._sqlx_migrations TO pg_database_owner")
+        .await
+        .unwrap();
+    assert_eq!(history, records(&mut conn).await);
+}
