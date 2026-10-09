@@ -1,7 +1,7 @@
 ## 1. Database fixture and test setup
 
 - [x] 1.1 Add the database-only Compose fixture and single PostgreSQL 18 image pin; verify the fixture resolves the exact patch and digest from `server/postgres-image.env`.
-- [ ] 1.2 Create separate runtime, demo, and test roles; verify only the test role has `CREATEDB` and initialization finishes before fixture readiness succeeds.
+- [x] 1.2 Create separate runtime, demo, and test roles; verify only the test role has `CREATEDB` and initialization finishes before fixture readiness succeeds.
 - [ ] 1.3 Add worktree-isolated `db-up`, `db-down`, and `db-clean` recipes; verify configurable loopback ports, retained volumes, and deletion limited to the selected fixture.
 - [ ] 1.4 Add `db-url` and `db-test-url` recipes; verify distinct fixture credentials, the selected port, explicit `sslmode=disable`, and no production URL disclosure.
 - [ ] 1.5 Add temporary test databases and supervisor cleanup; verify unique names, cleanup after failures, and actionable failure when `TEST_DATABASE_URL` is missing or unreachable.
