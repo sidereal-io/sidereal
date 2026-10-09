@@ -138,6 +138,14 @@ between phases" step.
       openBlockers: .issue_dependencies_summary.blocked_by}'
   ```
 
+- **Board Status is derived — never set it by hand.** `just board-sync` sets
+  each issue's Status on the [project board](https://github.com/orgs/sidereal-io/projects/3)
+  from its state, and overwrites a Status set by hand. `scripts/board-status.jq`
+  holds the rules. Run `just board-sync` after discovery files issues, after
+  propose assigns an issue, after a PR is flipped ready, and after merging a PR.
+  `just board-sync --dry-run` prints the changes without writing them. It needs
+  `gh` with the `project` scope (`gh auth refresh -s project`).
+
 ### Epic planning and issue relationships
 
 - **Epics describe outcomes.** Record the people served, scope, constraints, and
