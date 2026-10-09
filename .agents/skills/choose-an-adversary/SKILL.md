@@ -27,11 +27,11 @@ Take the first family that is not the author's and whose executor is installed (
 
 Order: `gpt` → `claude` → `gemini`. If the only installed family is the author's, stop and report "no independent adversary available". The caller then falls back as the next section says.
 
-## Small reviews and fallbacks
+## When no other family is installed
 
-A bounded, single-unit review with no new contracts may run in the same session. Say plainly that it ran in-session and was not independent, so the reader knows it is weaker. The same applies when no other family is installed.
+Review in the same session, and say plainly that the review was not independent, so the reader knows it is weaker. Never review in-session while another family is installed, however small the change.
 
-The OpenSpec `review` artifact is the exception. It must never be written in the context that wrote the plan, however small the change. When no other family is installed, a fresh-context subagent writes it, and its Review Metadata says so.
+The OpenSpec `review` artifact is the exception. It must never be written in the context that wrote the plan. A fresh-context subagent writes it instead, and its Review Metadata says so.
 
 ## Scale the scrutiny
 
