@@ -12,7 +12,7 @@ The maintenance app uses explicit categories that identify `v0.x` and the scan t
 | `docker-build-push.yml` | PR and branch containers | `v0.x/trivy/image` |
 | `release.yml` | Tagged release validation | `v0.x/trivy/release-image` |
 
-The weekly dependency scan lives on `main`. Its proposed category is `v0.x/trivy/dependencies`, and it uploads against the maintenance ref and checked-out SHA. #401 covers that workflow.
+The weekly dependency scan lives on `main`. Its proposed category is `v0.x/trivy/dependencies`, and it uploads against the maintenance ref and checked-out SHA. Companion PR #402 covers that workflow. Both PRs track #321.
 
 Use fixed categories. PR numbers, feature branch names, and release tag names must not create new category values.
 
