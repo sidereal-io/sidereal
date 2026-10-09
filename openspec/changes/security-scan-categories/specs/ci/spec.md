@@ -112,7 +112,7 @@ Maintainers SHALL delete only the recorded retired setups. Current main source c
 
 #### Scenario: Replacement upload has not succeeded
 
-- **WHEN** a replacement setup has no successful target-branch analysis
+- **WHEN** a branch target has no successful replacement analysis on its target branch
 - **THEN** the migration inventory records its predecessor as retained
 
 #### Scenario: Release replacement has no legitimate tag analysis
