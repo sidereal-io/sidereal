@@ -1,81 +1,115 @@
 # Sidereal server
 
-The Rust server for Sidereal, a cargo workspace. See
-[`docs/architecture.md`](../docs/architecture.md) and
-[ADR-002](../docs/decisions/ADR-002-core-domain-pack-split.md) for the design.
+The Rust workspace keeps database policy in `core`, public contracts in `plugin-abi`,
+and astronomy in `packs/astro`. The thin axum server wires these crates and serves
+`GET /healthz` and `GET /readyz`.
+See [architecture](../docs/architecture.md) and [ADR-002](../docs/decisions/ADR-002-core-domain-pack-split.md).
 
-## Crate layout
+## Prepare development and tests
 
-```
-server/
-  Cargo.toml            # workspace manifest (members + shared dep versions)
-  rust-toolchain.toml   # names the stable channel
-  crates/
-    plugin-abi/         # public plugin contracts a third-party pack also codes against
-    core/               # domain-agnostic engine; builds on plugin-abi (no astro)
-    server/             # thin axum binary; serves GET /healthz, wires core + packs
-    packs/
-      astro/            # first-party pack; depends on plugin-abi ONLY, never core
-  scripts/
-    check-arch.sh       # dependency-direction lint: forbids packs/astro -> core
-```
+Install rustup with the stable toolchain, a C linker, `just`, Python 3, and Docker Engine
+or Docker Desktop with Compose v2 or newer. The optional [Nix shell](../CONTRIBUTING.md#development-environment)
+provides the build tools; Docker runs separately.
 
-## Prerequisites
+From the repository root:
 
-- **[rustup](https://rustup.rs/)** — installs cargo and the latest stable Rust, which
-  `rust-toolchain.toml` selects. Run `rustup update` to move to a newer release. A C
-  linker is also required (`build-essential` on Debian/Ubuntu, Xcode CLT on macOS).
-- **[just](https://github.com/casey/just)** — the command runner spanning both stacks:
-  `cargo install just` (or a system package: `apt install just`, `brew install just`,
-  `scoop install just`).
-
-The repo also provides an optional, pinned Nix shell with every prerequisite above.
-See [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
-
-## Zero-to-running
-
-From the **repository root**:
-
-```bash
+```sh
+just db-up
+export DATABASE_URL=$(just db-url)
+export TEST_DATABASE_URL=$(just db-test-url)
 just server
 ```
 
-That builds and starts the Rust backend. It serves its liveness probe once up:
+The fixture binds only to loopback. Its Compose project, named volume, and default
+port derive from the checkout path. Set `SIDEREAL_DB_PORT` before every recipe when
+another process occupies that port. Credentials and the bundled TLS key are public,
+test-only fixtures. Runtime and demo roles cannot create databases; the test role can.
+The image's exact patch and digest live only in `server/postgres-image.env`.
 
-```bash
-curl localhost:5000/healthz     # -> 200 {"status":"ok"}
+Check liveness and database readiness:
+
+```sh
+curl localhost:5000/healthz  # 200 {"status":"ok"}
+curl localhost:5000/readyz   # 200 {"status":"ready"}, or 503 {"status":"not_ready"}
 ```
 
-## Recipes
+`just dev` uses Python 3 to supervise both process groups and uses the same exported `DATABASE_URL` to start the server and web shell.
+One interrupt stops both processes. Prepare the fixture and exports before running it.
 
-`just` recipes live in the root `justfile`. These are the backend's; `just --list`
-shows every recipe in the repo.
+## Verify changes and retained state
 
-| Recipe | What it does |
-|---|---|
-| `just server` | Rust backend only. |
-| `just check` | The gate to pass before every PR. It runs both gates: `just check-server`, then `just check-web`. |
-| `just check-server` | `cargo fmt --check` + `clippy -D warnings` + `cargo test` + arch lint. CI's `server` job runs this recipe. |
-| `just check-web` | The web shell's gate: type check, lint, format check, `DESIGN.md` lint, token drift check, and unit tests. CI's `web` job runs this recipe. See [`web/README.md`](../web/README.md#check-it). |
+```sh
+just check          # Complete server and web gates
+just db-demo        # Restart server and PostgreSQL; compare every migration-record field
+just db-schema      # Regenerate committed normalized schema descriptions
+just db-down        # Stop this fixture while retaining its volume
+just db-test-clean  # Remove this fixture's killed-test leftovers only
+just db-clean       # Explicitly delete this fixture's volume and all its data
+```
 
-A Rust-only contributor can skip `just` and call cargo directly from `server/`
-(the pinned toolchain is auto-selected there):
+The demo uses only the fixture's demo database, regardless of an inherited
+`DATABASE_URL`. It cleans up spawned servers after failure or interruption.
+Scratch files stay under `.workspace/`.
 
-```bash
+Database tests use unique temporary databases with a separate supervisor for cleanup
+on success and assertion failure. Missing or unreachable `TEST_DATABASE_URL` fails
+the gate; tests never fall back to `DATABASE_URL`.
+
+A Rust-only contributor can run cargo directly after preparing the same fixture:
+
+```sh
+export DATABASE_URL=$(just db-url)
+export TEST_DATABASE_URL=$(just db-test-url)
 cd server
-cargo run -p sidereal-server    # boot the server
-cargo test                      # run the workspace tests
+cargo run -p sidereal-server
+cargo test
 ```
 
-## Configuration
+An existing PostgreSQL 18 service can replace Docker for database tests. Its test
+role needs `CREATEDB`, and the default empty template must match PostgreSQL's standard
+template. The TLS tests also expect the service on the URL's port to present the bundled
+`tests/fixtures/tls/server.crt` and key: `localhost` must verify against `ca.crt`, while
+`127.0.0.1` must fail hostname verification. Configure those files with PostgreSQL's
+`ssl`, `ssl_cert_file`, and `ssl_key_file` settings. Container-free setup requires these
+same test capabilities; prerequisites are never silently skipped. The demo and schema
+recipe require the pinned container fixture.
 
-| Variable | Default | Description |
+## Configure an instance
+
+Use a dedicated, empty PostgreSQL 18 database. Sidereal does not adopt unrelated
+objects, import v0 databases, reset state, or downgrade migrations. Keep other
+applications and manual schema additions out of this database.
+
+| Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `5000` | Server listen port. |
+| `DATABASE_URL` | Required | Dedicated PostgreSQL connection URL |
+| `DATABASE_STARTUP_TIMEOUT_SECONDS` | `30` | Positive connection and startup-lock deadlines |
+| `DATABASE_MIGRATION_TIMEOUT_SECONDS` | `30` | Positive migration, statement, and database-lock deadlines |
+| `PORT` | `5000` | HTTP listen port |
+| `TEST_DATABASE_URL` | Required for tests | Separate test role with `CREATEDB`; never a production URL |
+| `SIDEREAL_DB_PORT` | Derived from checkout | Loopback port for fixture recipes |
 
-## Notes
+Without explicit `sslmode`, literal loopback, `localhost`, and Unix sockets use
+unencrypted local transport. Other hosts require `verify-full`. Explicit modes are
+`disable`, `verify-ca`, and `verify-full`. `disable` is an operator's opt-in, including
+for a trusted Compose network. `allow`, `prefer`, and `require` are rejected.
+Provide `sslrootcert` when verified TLS needs a private CA. Certificate failures
+never fall back to plaintext.
 
-- The `justfile` lives at the repo root (not here) because it runs every part of
-  the repo, not only the backend.
-- `plugin-abi` is intentionally minimal in M0 — trait stubs, not a frozen ABI;
-  it is expected to churn until M2.
+Startup validates version, ownership, migration history, logical schema, and privileges
+before writes. It applies forward migrations before binding HTTP. Compatibility
+checks ignore owners and grants when comparing structure; required privileges are
+checked separately. The configured role needs database `CONNECT`, schema `USAGE`,
+read access to both tables, and schema `CREATE` plus migration-table `INSERT` and
+`UPDATE` when a migration is pending. Later DDL may require ownership of objects it alters.
+
+Migration SQL and essential records commit together. sqlx's `execution_time` is best
+effort and can retain its sentinel after interruption; startup accepts and preserves
+it. Failed startup keeps HTTP unbound and reports a safe category and operator action.
+
+Readiness uses separate capacity and a read-only consistent snapshot, with one active
+check and a two-second deadline. Concurrent probes can receive 503 immediately.
+Database outages leave liveness healthy. A compatible service that answers within
+the probe deadline becomes ready within five seconds of accepting connections again.
+Use `/healthz` for process restart decisions; readiness failure alone should not restart
+the server. Both pools close during graceful shutdown.

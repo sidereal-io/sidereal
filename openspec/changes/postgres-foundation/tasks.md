@@ -36,7 +36,7 @@
 
 - [x] 5.1 Add `db-demo` using only the fixture demo database; verify identical migration records after server and PostgreSQL restarts, bounded readiness waits, and nonzero failure results.
 - [x] 5.2 Add demo interruption cleanup and fixture-only orphan-test cleanup; verify spawned servers exit, scratch files stay in `.workspace/`, and cleanup cannot select production databases.
-- [ ] 5.3 Update server guidance, root recipe descriptions, and CONTRIBUTING's version table; verify documented development and direct-cargo setup includes both database URLs and fixture prerequisites.
+- [x] 5.3 Update server guidance, root recipe descriptions, and CONTRIBUTING's version table; verify documented development and direct-cargo setup includes both database URLs and fixture prerequisites.
 
 ## 6. CI and complete verification
 

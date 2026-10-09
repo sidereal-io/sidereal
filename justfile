@@ -34,20 +34,12 @@ skills:
 enter:
     @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
 
-# When either one exits, stop the other. POSIX sh, so macOS's /bin/sh runs it.
+# Stop both process groups on interruption or failure; keep terminal output.
 [doc('Run the server and web shell together.')]
 dev:
-    #!/bin/sh
-    just server & s=$!
-    just web & w=$!
-    trap 'stop=1; kill $s $w 2>/dev/null' INT TERM
-    while kill -0 $s 2>/dev/null && kill -0 $w 2>/dev/null; do sleep 1; done
-    kill $s $w 2>/dev/null
-    wait $s; a=$?; wait $w; b=$?
-    [ -n "$stop" ] && exit 0
-    [ $a -eq 0 ] && [ $b -eq 0 ]
+    @python3 scripts/dev.py
 
-# Run the server only (serves GET /healthz).
+# Run the server against DATABASE_URL (GET /healthz and /readyz).
 server:
     cargo run -p sidereal-server --manifest-path server/Cargo.toml
 
@@ -66,3 +58,19 @@ check-server:
 # Web gate: install from the lockfile, then type check, lint, format, DESIGN.md lint, token drift, tests.
 check-web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test
+
+# Demonstrate retained migration records across server and PostgreSQL restarts.
+db-demo:
+    @python3 server/scripts/db-demo.py
+
+# Remove killed-test leftovers only from this worktree's fixture.
+db-test-clean:
+    @sh server/scripts/db-fixture.sh orphan-clean
+
+# Regenerate normalized schema descriptions using the pinned fixture.
+db-schema:
+    #!/bin/sh
+    set -eu
+    just db-up
+    export TEST_DATABASE_URL=$(just db-test-url)
+    SIDEREAL_GENERATE_SCHEMA=1 cargo test --manifest-path server/Cargo.toml -p sidereal-core schema_baselines_are_generated_and_stable
