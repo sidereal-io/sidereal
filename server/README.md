@@ -7,7 +7,7 @@ See [architecture](../docs/architecture.md) and [ADR-002](../docs/decisions/ADR-
 
 ## Prepare development and tests
 
-Install rustup with the stable toolchain, a C linker, `just`, Python 3, and Docker Engine
+Install rustup with the stable toolchain, a C linker, `just`, Python 3, OpenSSL, and Docker Engine
 or Docker Desktop with Compose v2 or newer. The optional [Nix shell](../CONTRIBUTING.md#development-environment)
 provides the build tools; Docker runs separately.
 
@@ -22,8 +22,8 @@ just server
 
 The fixture binds only to loopback. Its Compose project, named volume, and default
 port derive from the checkout path. Set `SIDEREAL_DB_PORT` before every recipe when
-another process occupies that port. Credentials and the bundled TLS key are public,
-test-only fixtures. Runtime and demo roles cannot create databases; the test role can.
+another process occupies that port. Database credentials are fixed test-only fixtures. TLS credentials are generated
+per checkout under gitignored `.workspace/db-fixture-tls/`; no private key enters Git. Runtime and demo roles cannot create databases; the test role can.
 The image's exact patch and digest live only in `server/postgres-image.env`.
 
 Check liveness and database readiness:
@@ -67,8 +67,8 @@ cargo test
 
 An existing PostgreSQL 18 service can replace Docker for database tests. Its test
 role needs `CREATEDB`, and the default empty template must match PostgreSQL's standard
-template. The TLS tests also expect the service on the URL's port to present the bundled
-`tests/fixtures/tls/server.crt` and key: `localhost` must verify against `ca.crt`, while
+template. The TLS tests also expect the service on the URL's port to present the generated
+`.workspace/db-fixture-tls/server.crt` and key (run `just db-tls` first): `localhost` must verify against the generated `ca.crt`, while
 `127.0.0.1` must fail hostname verification. Configure those files with PostgreSQL's
 `ssl`, `ssl_cert_file`, and `ssl_key_file` settings. Container-free setup requires these
 same test capabilities; prerequisites are never silently skipped. The demo and schema

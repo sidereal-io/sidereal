@@ -154,7 +154,7 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
 Both routes pass the same `just check` gate. Prepare the PostgreSQL fixture and export
 `DATABASE_URL` and `TEST_DATABASE_URL` using the commands above. Docker Engine or
-Docker Desktop with Compose v2 or newer runs the fixture; Python 3 runs `just db-demo`.
+Docker Desktop with Compose v2 or newer runs the fixture; Python 3 runs `just db-demo`; OpenSSL generates local fixture certificates.
 See [server setup](server/README.md) for container-free test prerequisites.
 
 **Run `direnv deny` before you check out a branch you don't trust.** Loading
@@ -171,6 +171,7 @@ Each version lives in one file. Change it there, and nowhere else.
 
 | Tool | Set in | How exact |
 |---|---|---|
+| OpenSSL | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install OpenSSL when using system tools |
 | Python 3 | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install Python 3 when using system tools |
 | PostgreSQL fixture | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI |
 | Rust | `server/rust-toolchain.toml` | Names the `stable` channel. In the Nix shell and CI, `flake.lock` decides the exact release. Without Nix, rustup uses the latest stable release you have installed |

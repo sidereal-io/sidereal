@@ -11,6 +11,7 @@ services:
     volumes:
       - database:/var/lib/postgresql
       - ./:/fixture:ro
+      - ../../../.workspace/db-fixture-tls:/fixture-tls:ro
       - ./init.sql:/docker-entrypoint-initdb.d/10-roles.sql:ro
     healthcheck:
       test: [CMD-SHELL, "PGPASSWORD=fixture_test psql -h 127.0.0.1 -U fixture_test -d fixture_control -Atqc \"SELECT 1 FROM pg_database WHERE datname = 'fixture_demo'\" | grep -qx 1"]

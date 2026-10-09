@@ -13,7 +13,7 @@ compose() {
         -f "$root/server/tests/fixtures/compose.yml" "$@"
 }
 case "${1:-}" in
-    up) compose up -d --wait --wait-timeout 90 ;;
+    up) sh "$root/server/scripts/db-tls.sh"; compose up -d --wait --wait-timeout 90 ;;
     down) compose down ;;
     stop) compose stop postgres ;;
     demo-records) compose exec -T -e PGPASSWORD=fixture_demo postgres psql -h 127.0.0.1 -U fixture_demo -d fixture_demo -Atqc "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m" ;;

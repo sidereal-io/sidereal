@@ -74,3 +74,7 @@ db-schema:
     just db-up
     export TEST_DATABASE_URL=$(just db-test-url)
     SIDEREAL_GENERATE_SCHEMA=1 cargo test --manifest-path server/Cargo.toml -p sidereal-core schema_baselines_are_generated_and_stable
+
+# Generate local fixture certificates without requiring Docker.
+db-tls:
+    @sh server/scripts/db-tls.sh

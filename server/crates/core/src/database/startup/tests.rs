@@ -375,7 +375,10 @@ async fn verified_tls_rejects_untrusted_and_wrong_host_certificates_without_writ
     let db = TestDatabase::new();
     let mut conn = connection(&db).await;
     let before = schema(&mut conn).await.unwrap();
-    let fixture = format!("{}/../../tests/fixtures/tls", env!("CARGO_MANIFEST_DIR"));
+    let fixture = format!(
+        "{}/../../../.workspace/db-fixture-tls",
+        env!("CARGO_MANIFEST_DIR")
+    );
     for options in [
         db.options
             .clone()

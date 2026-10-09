@@ -14,6 +14,7 @@
         rustToolchain
         pkgs.nodejs_26
         pkgs.pnpm_12
+        pkgs.openssl
         pkgs.python3
         pkgs.just
       ];
