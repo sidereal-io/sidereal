@@ -150,7 +150,7 @@ The command prints the issue URL; the number is its last segment. Then set the s
 
 ### Phase 6: Finalize
 
-Remove the status line from the parent issue — only the status line; the `Input:` line stays, so the run always names what it started from. The parent must hold no open questions (resolve each, or move it to the story it blocks). Link the journey stages in `discovery.md` to the stories that close them; `## Backlog` stays a single link to the repository's issues page, never a list of issues. Show the user the stories as a checklist of issue links. If the repository's agent guide (`AGENTS.md` or `CLAUDE.md`) names a command that syncs a project board from issue state, run it now so the new issues land in the right column.
+Remove the status line from the parent issue — only the status line; the `Input:` line stays, so the run always names what it started from. The parent must hold no open questions (resolve each, or move it to the story it blocks). Link the journey stages in `discovery.md` to the stories that close them; `## Backlog` stays a single link to the repository's issues page, never a list of issues. Show the user the stories as a checklist of issue links.
 
 Then offer to make propose issue-aware: with the user's confirmation, append a backlog line to the `context:` block of `<root.path>/openspec/config.yaml` (create the block if absent; preserve everything already there):
 
