@@ -271,8 +271,9 @@ artifacts:
       Run the `peer-plan-review` skill on the change's artifacts
       (proposal.md, design.md, specs/, and adr.md). It picks a different
       model family, runs it read-only with its review method, and returns
-      ranked findings. If no other family is installed, a fresh-context
-      subagent reviews instead, and Review Metadata says so. Record the
+      ranked findings. If no other family is installed, it runs the
+      author's own family as a new process for a fresh context, and Review
+      Metadata says the review was not independent. Record the
       review either way: never skip it, and never fabricate a verdict.
 
       Add these OpenSpec checks to the review, and record each as a finding:

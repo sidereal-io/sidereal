@@ -32,7 +32,7 @@ Find who wrote the plan. First answer wins:
 
 When the reviewer's tool is missing (`command -v`) or fails, try the next family that is not the author's: `gpt`, then `claude`, then `gemini` through `agy --mode plan`. Report any substitution.
 
-When no other family is installed, review in the same session, and say plainly that the review was not independent. The `review` artifact is the exception: it must never be written in the context that wrote the plan. A fresh-context subagent reviews it instead, and its Review Metadata says so.
+When no other family is installed, run the author's own family's command below as a new process, so the review starts from a fresh context. Say plainly that the review was not independent; for the `review` artifact, say so in Review Metadata. Never review in the author's own session.
 
 ## Run it read-only
 
