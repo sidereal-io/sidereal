@@ -34,7 +34,7 @@ Three command-line tools can run a review. Only two have a built-in code reviewe
 
 The `review` artifact stays where it is, because it must block `tasks`. Code review runs from the apply guidance in `openspec/config.yaml`, once every task is done. Its fixes land as commits, and its findings go in the pull request under **Code review**.
 
-The apply guidance is advice that an agent can miss, so archive guidance adds a second check. The **Code review** section names the commit it reviewed. The section also lists the fix commit for each confirmed finding. Before archiving, the agent runs `peer-code-review` only when the section is missing, or when a later commit changes files outside `openspec/changes/` and is not a listed fix. Fixing a finding, or touching only the change's own artifacts, never starts a second review. So code review runs once per change, after apply.
+The apply guidance is advice that an agent can miss, so archive guidance adds a second check. The **Code review** section names the commit it reviewed. The section also lists the fix commit for each confirmed finding. A fix commit changes only what its finding names; any other change goes in its own commit and counts as rework. Before archiving, the agent runs `peer-code-review` only when the section is missing, or when a later commit changes files outside `openspec/changes/` and is not a listed fix. Fixing a finding, or touching only the change's own artifacts, never starts a second review. So code review runs once per change, after apply.
 
 *Alternative: a `code-review` artifact.* It would have to depend on `tasks`, so OpenSpec would mark it ready before any code exists. `openspec-ff-change` would then write it against code that is not there yet. Artifacts plan the work; they do not follow it.
 
@@ -78,7 +78,7 @@ The `review` instruction keeps what only fits an OpenSpec change: scenario testa
 
 ### Fallback when no other family is installed: a new process
 
-When no other family is installed, each skill runs the author's own family's tool as a new process: `codex exec` or `codex review`, `claude -p`, or `agy`. A new process starts from a fresh context, without the author's reasoning, and code review still uses the built-in reviewer. The result says plainly that it was not independent. No review runs in the author's own session.
+When no other family is installed, each skill runs the author's own family's tool as a new process: `codex exec` or `codex review`, `claude -p`, or `agy`. A new process starts from a fresh context, without the author's reasoning. Code review uses the built-in reviewer where the family has one; for `gemini`, it runs `agy` with the review prompt. The result says plainly that it was not independent. No review runs in the author's own session.
 
 This also meets the `review` artifact's rule that the review must not be written in the context that wrote the plan.
 
