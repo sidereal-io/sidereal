@@ -173,4 +173,3 @@ Author revisions, 2026-10-09. These changes await the independent reviewer's re-
 
 The full independent re-review has not run. Automatic approval review rejected transferring the revised artifacts and relevant source files to Claude without explicit payload-and-destination authorization.
 The round-one verdict remains REVISE, and the author has not generated tasks. No second-round verdict is claimed.
-
