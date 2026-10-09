@@ -9,7 +9,7 @@
 
 ## 3. Code review
 
-- [ ] 3.1 Update `.agents/skills/peer-code-review/SKILL.md`. Replace its family table with a step that asks `choose-an-adversary`. Use the three commands in design.md's table, with no rules flags. Make the `agy` prompt name the branch diff and `REVIEW.md`. Verify: the skill contains `codex -s read-only review --base`, and `grep -nE "add-dir|developer_instructions|ADDITIONAL_DIRECTORIES|rules/" .agents/skills/peer-code-review/SKILL.md` finds nothing.
+- [x] 3.1 Update `.agents/skills/peer-code-review/SKILL.md`. Replace its family table with a step that asks `choose-an-adversary`. Use the three commands in design.md's table, with no rules flags. Make the `agy` prompt name the branch diff and `REVIEW.md`. Verify: the skill contains `codex -s read-only review --base`, and `grep -nE "add-dir|developer_instructions|ADDITIONAL_DIRECTORIES|rules/" .agents/skills/peer-code-review/SKILL.md` finds nothing.
 - [ ] 3.2 Add archive guidance to `openspec/config.yaml`: before archiving, check the pull request for a **Code review** section, and run `peer-code-review` first when it is missing. Verify: `openspec instructions archive --change peer-review-skills --json` lists the entry under `operationGuidance`.
 
 ## 4. Plan review in the schema

@@ -5,48 +5,41 @@ description: Use when an implementation branch is finished and needs a code revi
 
 # Peer Code Review
 
-Have a different model family review the branch's code. A reviewer from the author's family shares the author's blind spots. Each family's own built-in reviewer runs the review, so this skill only picks one, runs it read-only, and acts on what it finds.
+Have a different model family review the branch's code. A reviewer from the author's family shares the author's blind spots. Each family's own built-in reviewer runs the review where one exists, so this skill only picks the family, runs it read-only, and acts on what it finds.
 
 ## When to apply
 
 - **After apply.** Every task in an OpenSpec change is done. Review before `openspec-verify-change`, so verify checks the fixed code.
+- **Before archive.** The pull request has no **Code review** section yet.
 - **On request.** Someone asks for a code review of a branch.
 
 ## Pick the reviewer
 
-Establish the author family as `choose-an-adversary` does: a provenance note, then this session, then ask. Never guess.
-
-| Author family | Reviewer |
-|---|---|
-| `claude` | Codex |
-| `gpt` | Claude Code |
-| `gemini` | Codex |
+Use `choose-an-adversary` to establish the author family and pick the reviewing family. It also covers the fallbacks: the next family when an executor is missing or fails, and an in-session review when no other family is installed.
 
 ## Run the review
 
-Commit or stash first. Both commands review commits, not the working tree.
+Commit or stash first. The commands review commits, not the working tree.
 
 `<base>` is the branch this one merges into: the pull request's base (`gh pr view --json baseRefName`), else the parent branch of a stacked story, else `main`.
 
-Run from the repo root. Both commands load the same extra rules from `rules/CLAUDE.md` in this skill's folder: change fit, tests, and simplicity. Both reviewers also read `AGENTS.md` for the repo's invariants.
+Run from the repo root. Every command is read-only, and none takes extra rules. The repo's review rules live in `REVIEW.md`, and `AGENTS.md` tells every reviewer to apply them. Claude reads `AGENTS.md` through the `CLAUDE.md` link.
 
 ```bash
-rules=.agents/skills/peer-code-review/rules
+# gpt: Codex's built-in reviewer, in a read-only sandbox.
+codex -s read-only review --base <base> > .workspace/peer-code-review-raw.md 2>&1
 
-# Codex. The rules arrive as developer instructions.
-codex -c "developer_instructions=$(cat "$rules/CLAUDE.md")" review --base <base> \
-  > .workspace/peer-code-review-raw.md 2>&1
-
-# Claude Code. The rules arrive as a CLAUDE.md from an added folder.
-# Keep the prompt before --add-dir, which would otherwise swallow it.
-CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD=1 \
-  claude -p "/code-review high <base>...HEAD" --permission-mode plan --add-dir "$rules" \
+# claude: Claude Code's built-in reviewer, in plan mode.
+claude -p "/code-review high <base>...HEAD" --permission-mode plan \
   < /dev/null > .workspace/peer-code-review-raw.md 2>&1
+
+# gemini: no built-in reviewer, so run a prompt in plan mode.
+agy --mode plan --model "<a gemini model from agy models>" --print-timeout <timeout> \
+  -p "Review the changes in git diff <base>...HEAD for correctness bugs. Apply the review rules in REVIEW.md. For each finding, give the file, the line, the defect, and the scenario where it bites." \
+  > .workspace/peer-code-review-raw.md 2>&1
 ```
 
 A review can take many minutes, so run it in the background with a long timeout. When `/code-review` finds nothing, its whole output is `(none)`. That is a clean result, not a failure.
-
-**If the reviewer's executor is missing or fails** (`command -v`, an error, or no credit), run the other command only when its family is not the author's. Otherwise review in-session against the rules file, and say plainly that the review was not independent.
 
 This costs real tokens. Run it once per branch. Run it again only after a rework that changes behavior, never to chase a clean result.
 
