@@ -61,7 +61,9 @@ These lines replace the instruction's "run `critique`" and "map `critique`'s out
 - pick the first other family that is installed, in the order `gpt`, `claude`, `gemini`;
 - fall back when no other family is installed.
 
-It also gains `critique`'s rule for small reviews. A bounded, single-unit review with no new contracts may run in the same session, and the result must say it was not independent. The rule never applies to the `review` artifact, which must not be written in the context that wrote the plan. When no other family is installed, a fresh-context subagent writes the artifact, and its metadata says so.
+A review runs in the same session only when no other family is installed, and the result says it was not independent. The `review` artifact is the exception: it must not be written in the context that wrote the plan, so a fresh-context subagent writes it, and its metadata says so.
+
+*Alternative: keep `critique`'s rule for small reviews,* which let a bounded, single-unit review run in the same session. It spared small edits outside OpenSpec from a cross-model run. Those triggers go away, and the rule's only remaining effect would be to let a small change skip its cross-model code review.
 
 `peer-code-review` drops its own family table and asks `choose-an-adversary` instead. It keeps its two built-in review commands, because it is their only user. When the chosen family is `gemini`, which has no built-in reviewer, `peer-code-review` runs `agy` with a prompt. The prompt names the branch diff and tells the reviewer to apply `REVIEW.md`.
 

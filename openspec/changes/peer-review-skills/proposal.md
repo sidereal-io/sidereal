@@ -24,7 +24,7 @@ Each OpenSpec change gets two independent reviews: a plan review before tasks, a
 **Choosing the reviewer**
 
 - Keep `choose-an-adversary` as the one place that picks the reviewing family and runs it read-only.
-- Move `critique`'s rule for small reviews into it: a small, single-unit review may run in the same session, and the result must say it was not independent.
+- Allow an in-session review only when no other family is installed, and have the result say it was not independent. `critique`'s rule for small in-session reviews is dropped: it spared small edits outside OpenSpec, and those triggers go away.
 
 **Not in scope**
 
