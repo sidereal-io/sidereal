@@ -3,11 +3,9 @@ name: Build and Push Docker Image
 on:
   push:
     branches:
-      - main
       - v0.x
   pull_request:
     branches:
-      - main
       - v0.x
   workflow_dispatch:
 
@@ -118,7 +116,7 @@ jobs:
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
-          category: 'trivy-pr'
+          category: 'v0.x/trivy/image'
 
       - name: Export Docker image as artifact
         run: |
@@ -146,7 +144,7 @@ jobs:
           echo "### Security Scan" >> $GITHUB_STEP_SUMMARY
           echo "Trivy results uploaded to GitHub Security tab" >> $GITHUB_STEP_SUMMARY
 
-  # Main branch: build each platform on a native runner, no QEMU
+  # Branch pushes: build each platform on a native runner, no QEMU
   build:
     needs: typecheck
     if: github.event_name != 'pull_request'
@@ -275,7 +273,7 @@ jobs:
         if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
-          category: 'trivy-${{ github.ref_name }}'
+          category: 'v0.x/trivy/image'
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
