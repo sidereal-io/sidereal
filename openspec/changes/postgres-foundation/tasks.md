@@ -18,7 +18,7 @@
 
 - [x] 3.1 Implement PostgreSQL 18 policy and catalog preflight checks; verify unrelated objects and injected unsupported versions leave catalog snapshots and rows unchanged.
 - [x] 3.2 Implement identity, migration-prefix, and checksum validation; verify foreign history, damaged identity, gaps, failed records, and unknown versions fail without writes.
-- [ ] 3.3 Add the initial migration and atomic bootstrap before invoking sqlx; verify identity, migration table, and record commit together, while injected failure rolls everything back.
+- [x] 3.3 Add the initial migration and atomic bootstrap before invoking sqlx; verify identity, migration table, and record commit together, while injected failure rolls everything back.
 - [ ] 3.4 Hold both migration locks on the dedicated startup connection in the approved order; verify concurrent startup applies once and failure or cancellation releases locks.
 - [ ] 3.5 Apply later migrations transactionally and reject nontransactional sources; verify injected failure leaves no committed objects or record and repeated startup preserves every record field.
 - [ ] 3.6 Generate normalized schema descriptions with `db-schema`; verify deterministic regeneration, altered-object rejection, and compatibility with the committed initial migration-table baseline.
