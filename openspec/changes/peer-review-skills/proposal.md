@@ -1,15 +1,18 @@
 ## Why
 
-Each OpenSpec change gets two independent reviews: a plan review before tasks, and a code review after apply. Three skills share that work today, and they overlap. `critique` and `peer-code-review` each decide which model family reviews. Plan review findings pass through two label sets before they become a verdict. `critique` also repeats checks that the `review` instruction in the schema already holds. Removing `critique` gives each review one home and leaves one skill that decides who reviews.
+Each OpenSpec change gets two independent reviews: a plan review before tasks, and a code review after apply. Three skills share that work today, and they overlap. `critique` and `peer-code-review` each decide which model family reviews. Plan review findings pass through two label sets before they become a verdict. `critique` also repeats checks that the `review` instruction in the schema already holds. Removing `critique` gives each review one home and leaves one skill that decides who reviews. Agents run both reviews because their instructions say so; no tool enforces them.
 
 ## What Changes
 
 **Code review after apply**
 
 - Add the `peer-code-review` skill. When every apply task is done, it has another model family's built-in reviewer review the branch, then fixes confirmed findings. Codex runs `codex review`, and Claude Code runs `/code-review`.
-- Give `peer-code-review` a rules file that both reviewers load. It adds checks for change fit, tests, and simplicity.
+- Put the repo's review rules in `REVIEW.md` at the repo root. They add checks for change fit, tests, and simplicity.
+- Add one line to `AGENTS.md` that tells any agent to apply `REVIEW.md` when it reviews code. Both built-in reviewers follow it, so `peer-code-review` passes no rules on the command line.
+- Run every reviewer read-only.
 - Make `peer-code-review` ask `choose-an-adversary` which family reviews, instead of keeping its own table.
 - Run `peer-code-review` from the apply guidance in `openspec/config.yaml`. Name it in the workflow in `AGENTS.md`: propose, apply, review, verify, archive.
+- Add archive guidance in `openspec/config.yaml`. Before archiving, the agent checks the pull request for a **Code review** section, and runs `peer-code-review` first when it is missing.
 
 **Plan review in the schema**
 
@@ -41,7 +44,8 @@ None.
 
 ## Impact
 
-- **Skills:** `.agents/skills/critique/` leaves the repo. `peer-code-review` is new. `choose-an-adversary` changes.
+- **Skills:** `.agents/skills/critique/` leaves the repo. `peer-code-review` is new, without the `rules/` folder it has on this branch today. `choose-an-adversary` changes.
+- **Review rules:** `REVIEW.md` is new at the repo root. Claude Code's GitHub app also reads it, if the repo ever turns that app on.
 - **Workflow:** `openspec/schemas/spec-driven-review/schema.yaml`, `openspec/config.yaml`, and `AGENTS.md` change. Its links `CLAUDE.md` and `GEMINI.md` change with it.
 - **Docs:** `CONTRIBUTING.md` names `critique` as an example of an authored skill, and changes to name another.
 - **Artifacts:** `review.md` keeps the same sections and the same `VERDICT:` and `CHANGES_APPLIED:` lines. Archived changes are not touched.

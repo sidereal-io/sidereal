@@ -45,6 +45,7 @@ VERDICT: APPROVE_WITH_CHANGES
 2. **RC2 (F2):** Add `-s read-only` to the `codex review` command. In the design's table, give the read-only setting for each tool: `codex -s read-only`, `claude --permission-mode plan`, and `agy --mode plan`.
 3. **RC3 (F3):** State in the design that the small-review rule never applies to the `review` artifact. When no other family is installed, the artifact is written by a fresh-context subagent, and its metadata says so.
 4. **RC4 (F4):** State in the design that the reviewer marks every blocking finding Critical, as the template's "Critical (blocking)" heading already says.
+5. **RC5 (maintainer request):** Move the code review rules to `REVIEW.md` at the repo root, and add one line to `AGENTS.md` that tells reviewers to apply it. Drop the `rules/` folder and the rules flags from `peer-code-review`. Record in the design the throwaway-repo test that chose this route. Update the matching line in adr.md.
 
 CHANGES_APPLIED: no
 

@@ -10,7 +10,7 @@ ADR review completed for this change. The design makes four decisions, and none 
 - **Code review runs after apply, not as an artifact.** One line of apply guidance in `openspec/config.yaml` holds it. Moving it costs one edit.
 - **The plan review method moves into the schema.** It is a few lines of instruction text, and `critique` can be restored from git.
 - **`choose-an-adversary` picks the reviewing family.** It is a skill that agents read. Changing the order or the fallback is a text edit.
-- **One rules file, named `CLAUDE.md`, for code review.** Its name follows from how Claude's `/code-review` loads extra rules. The skill explains this next to the commands.
+- **Review rules live in a root `REVIEW.md`, and `AGENTS.md` points to it.** It is one file and one sentence. Moving the rules elsewhere costs two edits.
 
 ## In-Force ADRs Reviewed
 
