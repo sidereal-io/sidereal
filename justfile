@@ -34,10 +34,10 @@ skills:
 enter:
     @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
 
-# Stop both process groups on interruption or failure; keep terminal output.
+# Run both recipes in parallel; press Ctrl+C to stop them.
 [doc('Run the server and web shell together.')]
-dev:
-    @python3 scripts/dev.py
+[parallel]
+dev: server web
 
 # Run the server against DATABASE_URL (GET /healthz and /readyz).
 server:
@@ -61,7 +61,7 @@ check-web:
 
 # Demonstrate retained migration records across server and PostgreSQL restarts.
 db-demo:
-    @python3 server/scripts/db-demo.py
+    @node server/scripts/db-demo.mjs
 
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:

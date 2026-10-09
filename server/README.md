@@ -7,7 +7,7 @@ See [architecture](../docs/architecture.md) and [ADR-002](../docs/decisions/ADR-
 
 ## Prepare development and tests
 
-Install rustup with the stable toolchain, a C linker, `just`, Python 3, OpenSSL, and Docker Engine
+Install rustup with the stable toolchain, a C linker, `just`, Node.js, OpenSSL, and Docker Engine
 or Docker Desktop with Compose v2 or newer. The optional [Nix shell](../CONTRIBUTING.md#development-environment)
 provides the build tools; Docker runs separately.
 
@@ -33,8 +33,9 @@ curl localhost:5000/healthz  # 200 {"status":"ok"}
 curl localhost:5000/readyz   # 200 {"status":"ready"}, or 503 {"status":"not_ready"}
 ```
 
-`just dev` uses Python 3 to supervise both process groups and uses the same exported `DATABASE_URL` to start the server and web shell.
-One interrupt stops both processes. Prepare the fixture and exports before running it.
+`just dev` runs the server and web shell in parallel using native `just` recipes and the same exported `DATABASE_URL`.
+Press Ctrl+C to stop both. If either recipe exits, the other keeps running until you stop it.
+Prepare the fixture and exports before running it.
 
 ## Verify changes and retained state
 
