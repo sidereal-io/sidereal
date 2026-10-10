@@ -194,8 +194,8 @@ Dependabot proposes updates to these pins every week: `flake.lock`, `server/Carg
 AI agents read skills from `.agents/skills`. Claude Code reads the same folder
 through the `.claude/skills` link. The folder holds two kinds of skill:
 
-- **Authored skills**, such as `critique` and `discovery`. People write them, and
-  git tracks them.
+- **Authored skills**, such as `peer-code-review` and `discovery`. People write
+  them, and git tracks them.
 - **Generated skills**, named `openspec-*`. `just skills` creates them, and git
   ignores them.
 
