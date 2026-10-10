@@ -49,7 +49,7 @@ VERDICT: <VALUE>
 <!-- The AUTHOR sets this AFTER applying every required change and the reviewer -->
 <!-- has re-checked them. Values: yes (all applied & re-checked) | no (outstanding) -->
 <!-- | n/a (verdict is APPROVE or REVISE, no required changes). -->
-<!-- Downstream work (test-plan, tasks, apply) MUST NOT proceed on -->
+<!-- Downstream work (tasks, apply) MUST NOT proceed on -->
 <!-- VERDICT: APPROVE_WITH_CHANGES unless CHANGES_APPLIED: yes. -->
 
 CHANGES_APPLIED: <VALUE>

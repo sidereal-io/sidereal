@@ -43,8 +43,19 @@ jobs:
           workspaces: server
           cmd-format: nix develop -c {0}
 
+      - name: Prepare PostgreSQL fixture
+        run: |
+          nix develop --command just db-up
+          test_url=$(nix develop --command just db-test-url)
+          echo "::add-mask::$test_url"
+          printf 'TEST_DATABASE_URL=%s\n' "$test_url" >> "$GITHUB_ENV"
+
       - name: Server gate
         run: nix develop --command just check-server
+
+      - name: Stop PostgreSQL fixture
+        if: always()
+        run: nix develop --command just db-down
 
   web:
     runs-on: ubuntu-latest

@@ -64,9 +64,11 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
 
 - Planning uses **OpenSpec**: in-flight work lives under `openspec/changes/`;
   durable specs under `openspec/specs/`; decision records under `docs/decisions/`. Use
-  the `opsx:*` skills (propose → apply → verify → archive). The product input (a
+  the `opsx:*` skills (propose → apply → verify → archive), with the `peer-code-review`
+  skill between apply and verify. The product input (a
   milestone issue such as #217, or an ADR) holds intent; `openspec/discovery.md`
   holds personas and journeys; the backlog is GitHub issues.
+- When you review code, also apply the review rules in `REVIEW.md`.
 - **Generate OpenSpec skills with `just skills`.** Never run `openspec init` or
   `openspec update` — they read your global config, not the repo's settings. The
   `openspec-` prefix is reserved for generated skills: `just skills` deletes any
@@ -84,7 +86,7 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
 ### OpenSpec git workflow
 
 One branch and one pull request carry a change through its whole lifecycle —
-propose, apply, verify, archive — and merge once. There is no "cross `main`
+propose, apply, review, verify, archive — and merge once. There is no "cross `main`
 between phases" step.
 
 - **Branch per change.** One OpenSpec change (one backlog issue) = one branch =
@@ -95,7 +97,9 @@ between phases" step.
   type (`feat:`/`fix:`/`refactor:`/`test:`); the archive is its own `chore:` commit.
 - **Draft until archived.** Open the PR as a draft at propose, and assign its issue
   (`gh issue edit <n> --add-assignee @me`); an assigned open issue is in progress.
-  Run propose → apply → verify → archive all on the branch; `archive` moves the
+  Run propose → apply → review → verify → archive all on the branch. Review is
+  the `peer-code-review` skill: another model family reviews the code, and confirmed
+  findings get fixed. `archive` moves the
   change to `openspec/changes/archive/` and syncs delta specs into `openspec/specs/`.
   Flip the PR to ready when the archive commit lands.
 - **User owns the merge.** The agent never merges a PR unless explicitly asks and 

@@ -60,6 +60,9 @@ We welcome several types of contributions:
 The root `justfile` runs everything. `just --list` describes every recipe.
 
 ```bash
+just db-up          # Start the isolated PostgreSQL fixture (Docker + Compose required)
+export DATABASE_URL=$(just db-url)
+export TEST_DATABASE_URL=$(just db-test-url)
 just dev            # Run the server and the web interface together
 just server         # Run the server only
 just web            # Run the web interface only
@@ -151,7 +154,10 @@ it, and it loads after the pinned shell, so your settings take precedence.
    The `enter` recipe regenerates the skills only when they are stale. If it
    fails, it prints one warning line, and direnv still loads.
 
-Both routes pass the same `just check` gate.
+Both routes pass the same `just check` gate. Prepare the PostgreSQL fixture and export
+`DATABASE_URL` and `TEST_DATABASE_URL` using the commands above. Docker Engine or
+Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates local fixture certificates.
+See [server setup](server/README.md) for container-free test prerequisites.
 
 **Run `direnv deny` before you check out a branch you don't trust.** Loading
 the shell runs code from the working tree: the flake, the `justfile` and
@@ -167,6 +173,8 @@ Each version lives in one file. Change it there, and nowhere else.
 
 | Tool | Set in | How exact |
 |---|---|---|
+| OpenSSL | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install OpenSSL when using system tools |
+| PostgreSQL fixture | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI |
 | Rust | `server/rust-toolchain.toml` | Names the `stable` channel. In the Nix shell and CI, `flake.lock` decides the exact release. Without Nix, rustup uses the latest stable release you have installed |
 | Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step |
 | pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12 |
@@ -188,8 +196,8 @@ Dependabot proposes updates to these pins every week: `flake.lock`, `server/Carg
 AI agents read skills from `.agents/skills`. Claude Code reads the same folder
 through the `.claude/skills` link. The folder holds two kinds of skill:
 
-- **Authored skills**, such as `critique` and `discovery`. People write them, and
-  git tracks them.
+- **Authored skills**, such as `peer-code-review` and `discovery`. People write
+  them, and git tracks them.
 - **Generated skills**, named `openspec-*`. `just skills` creates them, and git
   ignores them.
 
@@ -333,7 +341,10 @@ test: add unit tests for image processing
 
 ### Running Tests
 ```bash
-# Run every check, including all tests
+# Prepare the database prerequisite, then run every check
+just db-up
+export DATABASE_URL=$(just db-url)
+export TEST_DATABASE_URL=$(just db-test-url)
 just check
 
 # Run the server tests only

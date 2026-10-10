@@ -6,3 +6,6 @@ license.workspace = true
 
 [dependencies]
 sidereal-plugin-abi = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }

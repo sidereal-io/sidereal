@@ -6,6 +6,26 @@
 default:
     @just --list
 
+# Start this worktree's loopback PostgreSQL fixture and wait for initialization.
+db-up:
+    @sh server/scripts/db-fixture.sh up
+
+# Stop this worktree's database fixture, retaining its volume.
+db-down:
+    @sh server/scripts/db-fixture.sh down
+
+# Delete only this worktree's fixture containers and database volume.
+db-clean:
+    @sh server/scripts/db-fixture.sh clean
+
+# Print the fixture runtime URL. Override SIDEREAL_DB_PORT if needed.
+db-url:
+    @sh server/scripts/db-fixture.sh url
+
+# Print the separate CREATEDB fixture test URL.
+db-test-url:
+    @sh server/scripts/db-fixture.sh test-url
+
 # Generate the OpenSpec agent skills into .agents/skills (see scripts/skills.sh).
 skills:
     @scripts/skills.sh
@@ -24,19 +44,12 @@ board-sync-test:
     @scripts/board-status-test.sh
 
 # When either one exits, stop the other. POSIX sh, so macOS's /bin/sh runs it.
+# Run both recipes in parallel; press Ctrl+C to stop them.
 [doc('Run the server and web shell together.')]
-dev:
-    #!/bin/sh
-    just server & s=$!
-    just web & w=$!
-    trap 'stop=1; kill $s $w 2>/dev/null' INT TERM
-    while kill -0 $s 2>/dev/null && kill -0 $w 2>/dev/null; do sleep 1; done
-    kill $s $w 2>/dev/null
-    wait $s; a=$?; wait $w; b=$?
-    [ -n "$stop" ] && exit 0
-    [ $a -eq 0 ] && [ $b -eq 0 ]
+[parallel]
+dev: server web
 
-# Run the server only (serves GET /healthz).
+# Run the server against DATABASE_URL (GET /healthz and /readyz).
 server:
     cargo run -p sidereal-server --manifest-path server/Cargo.toml
 
@@ -55,3 +68,19 @@ check-server:
 # Web gate: install from the lockfile, then type check, lint, format, DESIGN.md lint, token drift, tests.
 check-web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test
+
+# Remove killed-test leftovers only from this worktree's fixture.
+db-test-clean:
+    @sh server/scripts/db-fixture.sh orphan-clean
+
+# Regenerate normalized schema descriptions using the pinned fixture.
+db-schema:
+    #!/bin/sh
+    set -eu
+    just db-up
+    export TEST_DATABASE_URL=$(just db-test-url)
+    SIDEREAL_GENERATE_SCHEMA=1 cargo test --manifest-path server/Cargo.toml -p sidereal-core schema_baselines_are_generated_and_stable
+
+# Generate local fixture certificates without requiring Docker.
+db-tls:
+    @sh server/scripts/db-tls.sh

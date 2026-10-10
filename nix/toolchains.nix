@@ -14,6 +14,7 @@
         rustToolchain
         pkgs.nodejs_26
         pkgs.pnpm_12
+        pkgs.openssl
         pkgs.just
         # scripts/board-sync.sh reads the project board with it.
         pkgs.jq
