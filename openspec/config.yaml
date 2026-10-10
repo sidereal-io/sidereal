@@ -21,10 +21,17 @@ context: |
   and the lowest number within it. Read its story packet with
   `gh issue view <n> --json body`. When proposing,
   assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
-  say `Closes #<n>`. One story per change.
+  say `Closes #<n>`, then run `just board-sync` so the board shows the issue in
+  progress. One story per change.
 
   UI work in `web/` follows DESIGN.md at the repo root (ADR-005): it is the source
   of truth for every token value and usage rule, and code and Penpot follow it.
+
+operations:
+  archive:
+    guidance:
+      - After the archive commit lands and the PR is flipped to ready for review,
+        run `just board-sync` so the board shows the issue in review.
 
 rules:
   design:

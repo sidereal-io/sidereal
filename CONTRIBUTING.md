@@ -69,11 +69,12 @@ just web            # Run the web interface only
 just check          # The gate to pass before every pull request
 just check-server   # Server checks: format, clippy, tests, dependency-direction lint
 just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
+just board-sync     # Set Status on the project board from each issue's state (--dry-run to preview)
 ```
 
 ## 🧰 Development Environment
 
-The repo pins its tools — Rust, Node, pnpm, `just`, and the `openspec` CLI — through a
+The repo pins its tools — Rust, Node, pnpm, `just`, `jq`, and the `openspec` CLI — through a
 Nix flake. Nix is optional. Pick either route.
 
 If you cloned before the Rust workspace moved from `backend/` to `server/`, run
@@ -131,7 +132,8 @@ it, and it loads after the pinned shell, so your settings take precedence.
    In `web/`, pnpm switches itself to the exact release that
    `web/package.json` pins, so any pnpm 12 works. See
    [`web/README.md`](web/README.md).
-4. Install [`just`](https://github.com/casey/just).
+4. Install [`just`](https://github.com/casey/just) and [`jq`](https://jqlang.org/).
+   `just board-sync` also needs the [GitHub CLI](https://cli.github.com/), `gh`.
 5. Install the `openspec` CLI, then run `just skills`:
 
    ```
@@ -176,7 +178,7 @@ Each version lives in one file. Change it there, and nowhere else.
 | Rust | `server/rust-toolchain.toml` | Names the `stable` channel. In the Nix shell and CI, `flake.lock` decides the exact release. Without Nix, rustup uses the latest stable release you have installed |
 | Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step |
 | pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12 |
-| `just` and `openspec` | `flake.lock` | Exact releases, through the Nix shell |
+| `just`, `jq`, and `openspec` | `flake.lock` | Exact releases, through the Nix shell |
 
 Never write a Rust release number in a build file or a document. The channel and `flake.lock` decide it.
 

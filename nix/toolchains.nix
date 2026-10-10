@@ -1,4 +1,4 @@
-# Rust, Node, pnpm and just. Specific to Sidereal (design.md D4).
+# Rust, Node, pnpm, just and jq. Specific to Sidereal (design.md D4).
 { ... }:
 {
   perSystem = { config, pkgs, lib, ... }: {
@@ -16,6 +16,8 @@
         pkgs.pnpm_12
         pkgs.openssl
         pkgs.just
+        # scripts/board-sync.sh reads the project board with it.
+        pkgs.jq
       ];
   };
 }

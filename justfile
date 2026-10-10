@@ -34,6 +34,16 @@ skills:
 enter:
     @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
 
+# Set each issue's Status on the project board from its state (see scripts/board-sync.sh).
+# Pass --dry-run to print the changes without writing them.
+board-sync *args:
+    @scripts/board-sync.sh {{args}}
+
+# Check the board's Status rules against a fixture (see scripts/board-status-test.sh).
+board-sync-test:
+    @scripts/board-status-test.sh
+
+# When either one exits, stop the other. POSIX sh, so macOS's /bin/sh runs it.
 # Run both recipes in parallel; press Ctrl+C to stop them.
 [doc('Run the server and web shell together.')]
 [parallel]
