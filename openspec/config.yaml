@@ -4,10 +4,12 @@ context: |
   The backlog is GitHub issues. Each has an issue type (`Epic`, `Story`, `Bug`, or
   `Chore`), and each story, bug, and chore has its MoSCoW priority in the `Priority`
   issue field;
+  
   openspec/discovery.md holds personas and journeys. An issue marked "Not yet a story"
   must be cut into a story packet before it is proposed. When asked to propose the
   next change without a specific request, list the open backlog with the command in
   AGENTS.md ("Read and set priority through the REST API").
+  
   Skip epic parents (any issue of type `Epic` or with sub-issues), issues with an
   open blocker, assigned issues (they are in progress), issues with priority `Wont`,
   and issues with no priority (they are untriaged). For each candidate,
@@ -16,22 +18,15 @@ context: |
   AGENTS.md's "Epic planning and issue relationships" section defines the shared
   planning rules. Epics omit relevant-code sections and repeated workflow rules;
   identify groundwork and relevant code during exploration and story cutting.
-  Of the eligible stories, take the
-  highest priority — `Must`, then `Should`, then `Could` —
-  and the lowest number within it. Read its story packet with
-  `gh issue view <n> --json body`. When proposing,
-  assign the issue (`gh issue edit <n> --add-assignee @me`) and have the draft PR
+  Of the eligible stories, take the highest priority — `Must`, then `Should`, 
+  then `Could` — and the lowest number within it. Read its story packet with
+  `gh issue view <n> --json body`. When proposing, assign the issue 
+  (`gh issue edit <n> --add-assignee @me`) and have the draft PR
   say `Closes #<n>`, then run `just board-sync` so the board shows the issue in
   progress. One story per change.
 
   UI work in `web/` follows DESIGN.md at the repo root (ADR-005): it is the source
   of truth for every token value and usage rule, and code and Penpot follow it.
-
-operations:
-  archive:
-    guidance:
-      - After the archive commit lands and the PR is flipped to ready for review,
-        run `just board-sync` so the board shows the issue in review.
 
 rules:
   design:
@@ -49,40 +44,11 @@ operations:
         confirmed findings.
   archive:
     guidance:
+      - After the archive commit lands and the PR is flipped to ready for review,
+        run `just board-sync` so the board shows the issue in review.
       - Before archiving, check the pull request description for a **Code review**
         section. This is a check, not a second review. Run the `peer-code-review`
         skill only if the section is missing, or if a commit after the reviewed one
         changes files outside `openspec/changes/` and is not a listed fix. Before
         treating a listed fix commit as exempt, read its diff with `git show <sha>`
         and confirm it touches only what its finding names; if not, run the review.
-
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
-
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
-
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
