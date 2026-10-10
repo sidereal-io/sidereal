@@ -289,7 +289,7 @@ Git SHALL track the skills people write and the skill settings in `.config/opens
 #### Scenario: Authored skills survive generation
 
 - **WHEN** a contributor runs `just skills`
-- **THEN** every file under `.agents/skills/critique`, `.agents/skills/grill-me`, `.agents/skills/choose-an-adversary` and `.agents/skills/discovery` is unchanged, byte for byte
+- **THEN** every file under `.agents/skills/peer-code-review`, `.agents/skills/grill-me`, `.agents/skills/peer-plan-review` and `.agents/skills/discovery` is unchanged, byte for byte
 
 #### Scenario: Running the command twice changes nothing
 
@@ -303,7 +303,7 @@ Claude Code SHALL see the same skill set as agents that read `.agents/skills`. T
 #### Scenario: Claude sees the generated and authored skills
 
 - **WHEN** a contributor runs `just skills`
-- **THEN** `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/critique/SKILL.md` both exist
+- **THEN** `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/peer-code-review/SKILL.md` both exist
 - **AND** `.claude/skills` resolves to the same directory as `.agents/skills`
 
 ### Requirement: Skills work without Nix
