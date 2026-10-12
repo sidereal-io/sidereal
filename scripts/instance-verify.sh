@@ -22,8 +22,10 @@ up=''
 say() { echo "instance-verify: $*"; }
 fail() { echo "instance-verify: FAILED: $*" >&2; exit 1; }
 
+# With run=exec, Compose replaces the calling subshell, so `$!` names Compose
+# itself and a kill reaches it.
 compose() {
-    docker compose --project-name "$project" --project-directory "$root" \
+    ${run:-} docker compose --project-name "$project" --project-directory "$root" \
         --env-file "$work/empty.env" -f "$root/compose.yml" "$@"
 }
 
@@ -36,7 +38,10 @@ owned() {
 cleanup() {
     status=$?
     trap - EXIT HUP INT TERM
-    [ -z "$up" ] || kill "$up" 2>/dev/null || true
+    if [ -n "$up" ]; then
+        kill "$up" 2>/dev/null || true
+        wait "$up" 2>/dev/null || true
+    fi
     if [ "$started" = 1 ]; then
         if compose down --volumes --rmi local --remove-orphans --timeout 10 >"$work/down.log" 2>&1 \
             && [ -z "$(owned)" ]; then
@@ -137,7 +142,7 @@ show_state() {
 # start <label>: `docker compose up --wait`, stopped after $deadline seconds.
 start() {
     say "starting the instance ($1, at most $deadline seconds)"
-    compose up -d --no-build --wait >"$work/up.log" 2>&1 &
+    (run=exec && compose up -d --no-build --wait) >"$work/up.log" 2>&1 &
     up=$!
     waited=0
     while kill -0 "$up" 2>/dev/null; do
