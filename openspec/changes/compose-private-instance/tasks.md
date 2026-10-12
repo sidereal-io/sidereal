@@ -43,11 +43,11 @@
 - [x] 5.2 Link the guide from `README.md`. Verify `grep -n 'docs/install.md' README.md` finds a match.
 - [x] 5.3 Update `server/README.md`: add `WEB_ROOT` to the settings table, and replace any mention of `server/Dockerfile`. Verify the table lists `WEB_ROOT` with its default and purpose.
 - [x] 5.4 Update the version table in `CONTRIBUTING.md`: `compose.yml` copies the PostgreSQL pin, and the root `Dockerfile` names the Node major version. Add `just instance-verify` to the command list. Verify both table rows name the new files.
-- [ ] 5.5 Post the pre-authentication scope note on issue #389, after the owner approves its text. It states that the instance serves only static files and two health probes until authentication lands. Verify the comment appears on the issue.
+- [x] 5.5 Post the pre-authentication scope note on issue #389, after the owner approves its text. It states that the instance serves only static files and two health probes until authentication lands. Verify the comment appears on the issue.
 
 ## 6. Verify the whole change
 
 - [x] 6.1 Run `just check`. Verify it exits with status 0 and `git status --porcelain` prints nothing afterwards.
 - [x] 6.2 Run `just instance-verify` on the finished branch. Verify it exits with status 0 and leaves no container, volume, or image under its project name.
-- [ ] 6.3 Run the browser demonstration from the story: open `http://localhost:5000/`, confirm `healthy`, recreate the containers with `docker compose down` and `docker compose up -d --wait`, and confirm the migration rows are identical. Record the commands and their output in the pull request description.
+- [x] 6.3 Run the browser demonstration from the story: open `http://localhost:5000/`, confirm `healthy`, recreate the containers with `docker compose down` and `docker compose up -d --wait`, and confirm the migration rows are identical. Record the commands and their output in the pull request description.
 - [x] 6.4 Run `openspec validate compose-private-instance --strict`. Verify the change is valid.
