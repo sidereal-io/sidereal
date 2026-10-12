@@ -51,3 +51,62 @@ async fn serves_the_home_page_and_files() {
     assert_eq!(text(response).await, SCRIPT);
 }
 
+#[tokio::test]
+async fn unknown_paths_are_not_found() {
+    let root = WebRoot::new("unknown");
+    let router = with_web_root(app(), Some(&root.path));
+    for uri in ["/no-such-page", "/api/assets"] {
+        let response = send(&router, "GET", uri).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+        assert_ne!(text(response).await, INDEX, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn folders_are_not_found() {
+    let root = WebRoot::new("folders");
+    let router = with_web_root(app(), Some(&root.path));
+    for uri in ["/assets", "/assets/", "/assets?x=1", "//"] {
+        let response = send(&router, "GET", uri).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+        assert!(!response.headers().contains_key(header::LOCATION), "{uri}");
+        let body = text(response).await;
+        assert!(!body.contains(FOLDER_INDEX), "{uri}");
+        assert!(!body.contains("app.js"), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn paths_cannot_leave_the_folder() {
+    let root = WebRoot::new("traversal");
+    let router = with_web_root(app(), Some(&root.path));
+    for uri in [
+        "/../secret.txt",
+        "/%2e%2e/secret.txt",
+        "/%2E%2E%2Fsecret.txt",
+        "/assets/../../secret.txt",
+        "/assets/%2e%2e/%2e%2e/secret.txt",
+        "/..%5Csecret.txt",
+    ] {
+        let response = send(&router, "GET", uri).await;
+        assert_ne!(response.status(), StatusCode::OK, "{uri}");
+        assert!(!text(response).await.contains(SECRET), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn mutating_methods_are_not_allowed() {
+    let root = WebRoot::new("methods");
+    let router = with_web_root(app(), Some(&root.path));
+    for uri in ["/", "/healthz", "/api/assets", "/assets/app.js"] {
+        for method in ["POST", "PUT", "PATCH", "DELETE"] {
+            let response = send(&router, method, uri).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::METHOD_NOT_ALLOWED,
+                "{method} {uri}"
+            );
+        }
+    }
+}
+

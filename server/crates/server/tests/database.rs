@@ -163,6 +163,56 @@ fn authentication_errors_are_safe() {
 }
 
 #[tokio::test]
+async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
+    let db = TestDatabase::new();
+    let database = initialize(
+        db.options.clone(),
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+    )
+    .await
+    .unwrap();
+    // The web root holds files named `healthz` and `readyz`.
+    let root = WebRoot::new("probes");
+    let app = with_web_root(app_with_database(database.clone()), Some(&root.path));
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    let rows = "SELECT (SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m)::text
+        || (SELECT jsonb_agg(to_jsonb(s)) FROM public.sidereal_metadata s)::text";
+    let before: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
+    for (route, body) in [
+        ("/healthz", "{\"status\":\"ok\"}"),
+        ("/readyz", "{\"status\":\"ready\"}"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri(route).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), body);
+    }
+    for route in ["/", "/healthz", "/readyz", "/api/assets"] {
+        for method in ["POST", "PUT", "PATCH", "DELETE"] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(method)
+                        .uri(route)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+        }
+    }
+    let after: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
+    assert_eq!(before, after);
+    database.close().await;
+}
+
+#[tokio::test]
 async fn bad_web_root_fails_before_the_database_changes() {
     use sqlx::ConnectOptions;
     let db = TestDatabase::new();
