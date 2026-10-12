@@ -1,0 +1,8 @@
+# The image builds from server/ and web/ only. Exclude everything else,
+# then leave out what each build makes for itself.
+*
+!server
+!web
+server/target
+web/node_modules
+web/dist

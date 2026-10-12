@@ -11,7 +11,7 @@
 
 ## 2. Build one app image
 
-- [ ] 2.1 Add a root `.dockerignore` that excludes everything, then allows `server/` and `web/` without `server/target`, `web/node_modules`, and `web/dist`. Verify `docker build` sends a context of a few megabytes, not the whole checkout.
+- [x] 2.1 Add a root `.dockerignore` that excludes everything, then allows `server/` and `web/` without `server/target`, `web/node_modules`, and `web/dist`. Verify `docker build` sends a context of a few megabytes, not the whole checkout.
 - [ ] 2.2 Add the root `Dockerfile` with the `web`, `server`, and `runtime` stages from design D1, and remove `server/Dockerfile` and `server/.dockerignore` in the same commit. Verify `docker build .` exits with status 0.
 - [ ] 2.3 In the `web` stage, install pnpm 12 and run `pnpm install --frozen-lockfile` and `pnpm build`. Verify the build log shows the pnpm release that `web/package.json` pins, and the stage holds `web/dist/index.html`.
 - [ ] 2.4 In the `runtime` stage, copy the web shell to `/usr/share/sidereal/web` owned by root, set `WEB_ROOT`, and create `/var/lib/sidereal/storage` owned by user ID 10001. Verify with `docker run` that `id -u` prints `10001`, that `touch "$WEB_ROOT/probe"` fails, and that `touch /var/lib/sidereal/storage/probe` succeeds.
