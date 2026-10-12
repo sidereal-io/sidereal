@@ -9,13 +9,13 @@ The repo SHALL name no Rust release number in its build files or its contributor
 - **WHEN** a reviewer runs `grep -rn 'rust-version' server --include=Cargo.toml`
 - **THEN** the search finds no match
 
-#### Scenario: The app image names only the major version
+#### Scenario: The server image names only the major version
 
 - **WHEN** a reviewer runs `grep -n '^FROM rust:' Dockerfile` at the repo root
 - **THEN** the search finds at least one line
 - **AND** every matching line names an image tag that starts with `rust:1-`
 
-#### Scenario: The app image builds
+#### Scenario: The server image builds
 
 - **WHEN** a reviewer runs `docker build .` at the repo root
 - **THEN** the command exits with status 0
