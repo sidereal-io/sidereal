@@ -10,8 +10,11 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 work="$root/.workspace/instance-verify"
 lock="$work/lock"
 record="$work/created"
+# A SHA-256 prefix names the project, so two checkout paths do not share one
+# in practice. The shorter checksum only picks the default host port.
+sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum; else shasum -a 256; fi; }
+project="sidereal-verify-$(printf '%s' "$root" | sha256 | cut -c1-16)"
 key=$(printf '%s' "$root" | cksum | awk '{print $1}')
-project="sidereal-verify-$key"
 port=${SIDEREAL_VERIFY_PORT:-$(expr 56000 + "$key" % 1000)}
 deadline=180
 
@@ -108,8 +111,8 @@ password=$(new_password)
 : >"$work/empty.env"
 export POSTGRES_PASSWORD="$password" SIDEREAL_PORT="$port"
 
-# --- Ownership. Two checkout paths can share a checksum, so the name alone
-# proves nothing. Leftovers are ours only when this checkout recorded them.
+# --- Ownership. The name alone proves nothing: another checkout could still
+# hold it. Leftovers are ours only when this checkout recorded them.
 if [ -n "$(owned)" ]; then
     if [ "$(cat "$record" 2>/dev/null || true)" != "$project" ]; then
         fail "Compose project $project already owns a container or volume that this checkout did not create. Nothing was removed"
