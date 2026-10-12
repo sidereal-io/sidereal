@@ -110,3 +110,27 @@ async fn mutating_methods_are_not_allowed() {
     }
 }
 
+#[tokio::test]
+async fn a_file_cannot_replace_the_liveness_probe() {
+    let root = WebRoot::new("shadow");
+    let router = with_web_root(app(), Some(&root.path));
+    let response = send(&router, "GET", "/healthz").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(text(response).await, "{\"status\":\"ok\"}");
+}
+
+#[tokio::test]
+async fn no_response_allows_another_origin() {
+    let root = WebRoot::new("origin");
+    let router = with_web_root(app(), Some(&root.path));
+    for uri in ["/", "/healthz", "/assets/app.js", "/no-such-page"] {
+        let response = send(&router, "GET", uri).await;
+        assert!(
+            !response
+                .headers()
+                .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+            "{uri}"
+        );
+    }
+}
+
