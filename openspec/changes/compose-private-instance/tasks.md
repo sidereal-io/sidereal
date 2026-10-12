@@ -39,7 +39,7 @@
 
 ## 5. Document the installation
 
-- [ ] 5.1 Write `docs/install.md` in plain language with every point the `compose-instance` spec lists, including a section whose heading contains `no sign-in`. Verify `grep -n 'openssl rand -hex 32' docs/install.md` and `grep -n 'Compose 2.20' docs/install.md` each find a match.
+- [x] 5.1 Write `docs/install.md` in plain language with every point the `compose-instance` spec lists, including a section whose heading contains `no sign-in`. Verify `grep -n 'openssl rand -hex 32' docs/install.md` and `grep -n 'Compose 2.20' docs/install.md` each find a match.
 - [ ] 5.2 Link the guide from `README.md`. Verify `grep -n 'docs/install.md' README.md` finds a match.
 - [ ] 5.3 Update `server/README.md`: add `WEB_ROOT` to the settings table, and replace any mention of `server/Dockerfile`. Verify the table lists `WEB_ROOT` with its default and purpose.
 - [ ] 5.4 Update the version table in `CONTRIBUTING.md`: `compose.yml` copies the PostgreSQL pin, and the root `Dockerfile` names the Node major version. Add `just instance-verify` to the command list. Verify both table rows name the new files.
