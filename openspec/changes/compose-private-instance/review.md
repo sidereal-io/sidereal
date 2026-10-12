@@ -1,80 +1,71 @@
 ## Review Metadata
 
-- **Review round**: 2
-- **Prior round**: Round 1 returned REVISE with two Critical and seven Moderate findings. Round 2 found eight of the ten fixed and one rebuttal accepted.
+- **Review round**: 3
+- **Prior round**: Round 2 returned REVISE with one Critical and three Moderate findings. Round 1 also returned REVISE. The human owner then decided the Critical finding and approved a third round.
 - **Reviewer context**: cross-model. The author is Claude. The reviewer is GPT, run as a new `codex exec` process with high reasoning effort. The review is independent.
 - **Tool restrictions**: read-only sandbox (`codex exec -s read-only`)
 - **Artifacts reviewed**: proposal.md, design.md, specs/, adr.md, and the relevant source files
 
-This is the second REVISE verdict in a row. The review instruction says to stop and ask a human, so no third round has run and no task list exists.
+## Round 2 findings, re-checked in round 3
 
-## Round 1 findings, re-checked in round 2
-
-| # | Round 1 finding | Round 2 result |
+| # | Round 2 finding | Round 3 result |
 |---|---|---|
-| 1 | Verification rebuilt the image tag that real instances use | Fixed |
-| 2 | The file service follows symbolic links out of `WEB_ROOT` | Not fixed. See C1 |
-| 3 | Shell variables overrode the verification's generated settings | Fixed |
-| 4 | Verification could wait forever | Not fixed. See M1 |
-| 5 | A missing database mount could orphan an unnamed volume | Fixed |
-| 6 | `docker compose ps -a -q` fails when the password is missing | Fixed |
-| 7 | A password with URL delimiters changes the connection target | Rebuttal accepted |
-| 8 | The database health check could pass on the setup-time server | Fixed |
-| 9 | The ADR manifest hid the ADR-007 sequencing exception | Fixed |
-| 10 | Plain-language defects | Fixed |
+| C1 | The startup scan did not enforce the symbolic link rule | Fixed. The owner decided that the server trusts the contents of `WEB_ROOT`, and the spec no longer promises to refuse links |
+| M1 | `--wait-timeout` was not one deadline for the whole start | Fixed. The script measures the time itself |
+| M2 | Two verification runs in one checkout shared one project | Fixed. A lock allows one run per checkout |
+| M3 | "Compose v2 or newer" promised too much | Fixed. The floor is Compose 2.20, stated and not proven |
+| S1 | No scenario covered a request for a folder | Fixed |
 
 ## Findings
 
 ### 🔴 Critical (blocking)
 
-**C1. The startup scan does not enforce the symbolic link rule.** Confirmed.
-
-- **The concern:** The server can follow a link that someone creates after startup.
-- **The scenario:** Sam runs the server outside the image, with a `WEB_ROOT` that another local user can write. After startup, that user replaces a file with a link to a file the server can read. Design D4 scans the tree once. The spec says the server never follows a link under `WEB_ROOT`.
-- **What must be true:** The tree cannot change after the check, or each file open enforces the boundary. The spec needs a scenario for a link added after startup.
-- **Author's check:** The contradiction is real. The image is safe, because the app user cannot write the web folder. The spec's rule covers every `WEB_ROOT`, and the design does not.
+None.
 
 ### 🟡 Moderate
 
-**M1. `--wait-timeout` is not one deadline for the whole start.** Confirmed as a design gap. The author has not tested the Compose releases the reviewer cites.
+**M1. Two checkout paths can share a checksum.** Confirmed. `server/scripts/db-fixture.sh` uses `cksum`, which is a 32-bit value.
 
-- **The scenario:** A `db` container that restarts before it is healthy can hold Compose's dependency wait. Some Compose releases apply the timeout only after services start. Others apply it twice. The 180-second rule in the `dev-commands` delta then fails.
-- **What must be true:** The script enforces one elapsed-time limit around each start, stops an overdue call, and cleans up. A fault scenario must cover a failing dependency.
+- **The scenario:** The reviewer found two checkout paths with the same checksum. Each has its own lock, yet both use one Compose project. One run's cleanup can delete the other's database volume.
+- **What must be true:** The project name is stronger, or a run refuses a project that another checkout owns.
 
-**M2. Two verification runs in one checkout share one project.** Confirmed.
+**M2. The file service's folder handling breaks the stated HTTP surface.** Confirmed against the `tower-http` documentation.
 
-- **The scenario:** Two agents run `just instance-verify` in the same checkout. Both use the same project name, image, volumes, and port. One run's exit trap deletes the other's database volume during its retention check.
-- **What must be true:** A run takes an exclusive lock first, or each run owns its own project name and port.
+- **The scenario:** `GET /assets` redirects to `/assets/` by default. A file `assets/index.html` would make `/assets/` return 200. The spec allows a status below 400 only for files and health probes.
+- **What must be true:** The design turns off folder redirects and folder index files, and serves `/` explicitly.
 
-**M3. "Compose v2 or newer" promises too much.** Confirmed.
+**M3. `pg_isready` does not prove that the application database is usable.** Confirmed against the PostgreSQL documentation.
 
-- **The scenario:** Early Compose v2 releases have `--wait` but no `--wait-timeout`. A contributor who meets the stated prerequisite sees verification fail on an unknown flag.
-- **What must be true:** The plan names a tested minimum Compose release and checks it, or handles the timeout without that flag.
+- **The scenario:** `pg_isready` reports a server as available even when the named database is missing. The spec said the check covers the application database.
+- **What must be true:** The requirement describes server availability only, and leaves the application database to `/readyz`.
 
 ### 📌 Suggestions
 
-**S1. Directory requests.** The reviewer notes that the file service can redirect a folder path or answer it with a folder's `index.html`. No scenario covers a request for a folder such as `/assets`.
+None.
 
 ## Embedded-Instruction / Injection Attempts
 
 **Detected:** none
 
-The reviewer listed `AGENTS.md` lines 65 to 75 because they give agents workflow instructions. Refuted as an injection attempt: that file is the project's own agent guide, and it does not address the reviewer or the verdict.
-
 ## Verdict
 
-VERDICT: REVISE
+VERDICT: APPROVE_WITH_CHANGES
 
-REVISE. One Critical finding is open, and its fix is a design choice that the author should not make alone.
+APPROVE WITH CHANGES.
 
 ## Required Changes (if APPROVE WITH CHANGES)
 
-Not applicable.
+1. Replace or guard the checksum-based verification project name.
+2. Reconcile folder redirects and folder index files with the HTTP requirements, and cover `/assets` without a trailing slash.
+3. Align the database health requirement with what its probe verifies.
 
-CHANGES_APPLIED: n/a
+The author applied all three in commit "docs: apply the round 3 required changes for compose-private-instance". The reviewer re-checked those three items in a new process and reported each as applied (`RECHECK: PASS`).
+
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
-- **Round 1, finding 7 (password alphabet)** — rebutted by the author in design D5. Compose cannot check a value's characters, and the operator who sets the password already controls `compose.yml`. The spec now states the supported alphabet and forbids printing the secret. **Accepted by reviewer**: the password comes from the trusted operator, and a documented alphabet with redaction is reasonable in this scope.
-- **C1, M1, M2, M3** — not rebutted. The author agrees with all four. They wait for the human's decision on C1 before the next revision.
-- **S1** — open. The author will add a folder-request scenario in the next revision.
+- **M1 — fixed.** `design.md` D9 adds an ownership rule. The `dev-commands` delta adds a requirement and the scenario "Another checkout owns the project name".
+- **M2 — fixed.** `design.md` D2 turns off the file service's folder handling and routes `/` explicitly. The `compose-instance` spec requires 404 for folder paths, and its scenario covers `/assets` and `/assets/` with an index file present.
+- **M3 — fixed.** The `compose-instance` spec and `design.md` D6 now say the check covers TCP connections only.
+- **Round 1, finding 7 (password alphabet) — rebutted, accepted by reviewer in round 2.** The password comes from the trusted operator, and a documented alphabet with redaction is reasonable in this scope.
