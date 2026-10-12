@@ -49,6 +49,7 @@ A root `.dockerignore` starts by excluding everything, then allows `server/` and
 The `server` crate reads the optional `WEB_ROOT` setting. When it is set, the router falls back to a static file service for any path that matches no route.
 
 - The crate uses `tower-http`'s file service. It rejects paths that leave the folder, lists no folders, and answers 405 to methods other than `GET` and `HEAD`.
+- The file service follows symbolic links, so the server refuses them itself. See decision D4.
 - Routes win over the fallback, so a file named `healthz` cannot replace the probe.
 - The runtime stage sets `WEB_ROOT=/usr/share/sidereal/web`. The folder is owned by root and the app user cannot write to it.
 - `just dev` leaves `WEB_ROOT` unset. Vite keeps serving the web shell in development.
@@ -67,9 +68,17 @@ An unknown path returns 404. The web shell has one screen and no client-side rou
 
 ### D4. `WEB_ROOT` is checked before the database
 
-The server validates `WEB_ROOT` first: the folder must exist and hold `index.html`. A broken image then fails before it connects or migrates.
+The server validates `WEB_ROOT` first. A broken image then fails before it connects or migrates. The check has three rules:
+
+- the folder exists and is not a symbolic link;
+- it holds a regular file named `index.html`;
+- nothing under it is a symbolic link. The server walks the whole tree once, which is a few dozen files.
+
+The walk covers the moment of startup. The image covers the time after it: root owns the web folder, and the app user cannot write to it.
 
 **Why not check after migrations?** A start that cannot serve its UI should not change the database first.
+
+**Why not resolve every request path and compare it with the folder?** That check runs on each request and still races with a change to the tree. A tree that cannot change needs one check.
 
 ### D5. Compose builds `DATABASE_URL` from one password
 
@@ -84,14 +93,20 @@ The `:?` form makes Compose stop when the value is missing or empty. No default 
 
 The guide tells Sam to generate the password with `openssl rand -hex 32`. Hex needs no escaping inside a URL.
 
+Compose cannot check a value's characters, so the plan does not enforce the alphabet. The guide and `.env.example` state it: letters and digits only.
+A password with URL delimiters, such as `@` or `/`, changes what the URL means. The app then fails to start, and the foundation's redaction keeps the value out of the logs.
+This is not a trust boundary. The person who sets the password already controls `compose.yml` and the host.
+
 **Why not give the server separate host, user, and password settings?** That would be a second connection contract beside the foundation's `DATABASE_URL`. The story forbids it.
 
 **Why not Docker secrets?** The server reads `DATABASE_URL` only. File-based secrets would need new server configuration, for little gain on a single private host.
 
 ### D6. Service wiring
 
-- **`db`** runs the pinned PostgreSQL image. Its health check runs `pg_isready` for the `sidereal` database. Its volume mounts at `/var/lib/postgresql`, as the fixture's does.
-- **`app`** builds from the root `Dockerfile` and is tagged `sidereal:local`. It waits for `db` with `depends_on: condition: service_healthy`.
+- **`db`** runs the pinned PostgreSQL image. Its named volume `database` mounts at `/var/lib/postgresql`, as the fixture's does.
+- **`db`'s health check** runs `pg_isready` against `127.0.0.1`, for the `sidereal` database. During first setup, the image runs a temporary server on a socket only. A TCP check stays unhealthy until the real server listens.
+- **`app`** builds from the root `Dockerfile`. `compose.yml` sets no `image` name, so Compose tags the image `<project>-app`. A second project on the same host then builds its own image.
+- **`app`** waits for `db` with `depends_on: condition: service_healthy`.
 - **`app`'s health check** stays on `/healthz`, as the foundation's guidance says. The server binds HTTP only after migrations, so a healthy app has finished them.
 - **Both services** use `restart: unless-stopped`.
 - **`app`** drops all capabilities and sets `no-new-privileges`. It needs none, because port 5000 is not a privileged port.
@@ -117,11 +132,16 @@ The server sets and reads no storage setting. The storage story adds the setting
 `just instance-verify` runs `scripts/instance-verify.sh`. The script follows the fixture script's pattern for isolation:
 
 - **Project name**: `sidereal-verify-` plus a checksum of the checkout path. Two checkouts never collide, and Sam's default project is untouched.
-- **Settings**: a generated `.env` under `.workspace/instance-verify/`, passed with `--env-file`. The root `.env` is never read.
+- **Image**: Compose tags it after the project, so the script never rebuilds the image that Sam's instance uses.
+- **Settings**: the script exports its own `POSTGRES_PASSWORD` and `SIDEREAL_PORT` for every Compose call. A shell value outranks an env file, so exported values also outrank whatever the caller's shell held. It passes an empty env file with `--env-file`, so Compose never reads the root `.env`.
 - **Host port**: derived from the same checksum, with `SIDEREAL_VERIFY_PORT` as an override.
-- **Cleanup**: an exit trap runs `docker compose down --volumes` for that project only.
+- **Deadlines**: every start uses `--wait --wait-timeout 180`, and every probe loop has a fixed number of tries. A container that restarts forever fails the deadline.
+- **Cleanup**: an exit trap runs `docker compose down --volumes --rmi local` for that project only.
 
-The script runs the cheap checks first: the missing-password refusal and the PostgreSQL pin comparison. It builds the image only after they pass.
+The script runs the cheap checks first: the missing-password refusal and the PostgreSQL pin comparison. It runs the refusal check with `POSTGRES_PASSWORD` unset. It builds the image only after both pass.
+
+**Order of the volume checks.** The script inspects the `db` container's mounts before the first `docker compose down`. The data folder must sit on the project's named `database` volume.
+The PostgreSQL image declares its data folder as a volume. Without a named mount, Docker creates an unnamed volume, and a plain `down` would orphan it. When the mount check fails, the script stops while the container still exists. The trap's `down --volumes` then removes the unnamed volume with it.
 
 **Why not add a CI job?** The `ci` spec says no workflow on `main` builds a container image. A CI job would need that requirement changed first. The user chose a local recipe for this story.
 
@@ -139,7 +159,7 @@ The script runs the cheap checks first: the missing-password refusal and the Pos
 
 ### D11. Design tokens
 
-This change adds no semantic or component token: none.
+None. This change adds no token.
 
 ## Risks / Trade-offs
 
@@ -149,7 +169,8 @@ This change adds no semantic or component token: none.
 - **[A password with URL characters breaks the URL]** → The guide gives a hex command. The foundation then rejects a malformed URL without printing it.
 - **[`docker compose config` prints the password]** → This is how Compose works. The guide says so. The app's own logs never print it.
 - **[The open port exposes an app with no sign-in]** → The surface is static files and two probes, and a requirement pins it. The guide warns Sam not to publish the port to the internet.
-- **[The file service follows symbolic links]** → The image's web folder comes from the build and holds none. The app user cannot write to it.
+- **[The file service follows symbolic links]** → The server refuses to start when the web folder holds one. The app user cannot write to the folder afterwards.
+- **[Two checkouts can share one project name]** → Compose names a project after its folder. Two checkouts in folders with the same name share containers, volumes, and the image. The guide tells Sam to run one instance per host, or to set `COMPOSE_PROJECT_NAME`.
 - **[The first build is slow]** → A release build of the server takes several minutes. Image publishing, which removes this cost for Sam, is out of scope.
 - **[`docker build server/` stops working]** → Nothing in the repo calls it. The `dev-environment` spec changes with the file.
 

@@ -9,6 +9,7 @@ Sam can install a private Sidereal instance with Docker Compose and one `.env` f
 The repo root SHALL hold a `compose.yml` that defines two services: `app` and `db`.
 `docker compose up -d --build --wait` SHALL build the app image, start both services, and exit with status 0 once both are healthy.
 The `app` service SHALL start only after the `db` service is healthy.
+The `db` service SHALL report healthy only when PostgreSQL accepts TCP connections for the application database.
 The `app` service SHALL connect to the `db` service with the foundation's `DATABASE_URL` setting and `sslmode=disable`.
 The app SHALL apply migrations through the foundation's startup path. The Compose file SHALL run no other migration step.
 
@@ -25,33 +26,55 @@ The app SHALL apply migrations through the foundation's startup path. The Compos
 - **AND** a tester counts the rows of `_sqlx_migrations` where `success` is true, through `docker compose exec db psql`
 - **THEN** the count is 1
 
+#### Scenario: The app starts once on new volumes
+
+- **WHEN** a first start on new volumes has reached readiness
+- **AND** a tester reads the `app` container's `RestartCount` with `docker inspect`
+- **THEN** the value is `0`
+
 ### Requirement: The operator supplies the database password
 
 The Compose file SHALL read the database password from `POSTGRES_PASSWORD`. It SHALL hold no default password.
 Compose SHALL refuse to start when `POSTGRES_PASSWORD` is missing or empty.
 The repo SHALL hold `.env.example`, which lists every Compose setting and leaves `POSTGRES_PASSWORD` empty.
 Git SHALL ignore `.env`.
+The supported password alphabet SHALL be ASCII letters and digits. `.env.example` SHALL state that alphabet beside the setting.
+A password outside that alphabet SHALL NOT make the app print the password or the connection URL.
 
 #### Scenario: The password is missing
 
-- **GIVEN** no `.env` file, and no `POSTGRES_PASSWORD` in the environment
-- **WHEN** Sam runs `docker compose up -d`
+- **GIVEN** a Compose project name that owns no container
+- **AND** no `.env` file, and no `POSTGRES_PASSWORD` in the environment
+- **WHEN** Sam runs `docker compose up -d` under that project name
 - **THEN** the command exits with a non-zero status
 - **AND** its output names `POSTGRES_PASSWORD`
-- **AND** `docker compose ps -a -q` prints nothing
+- **AND** `docker ps -a -q --filter label=com.docker.compose.project=<name>` exits with status 0 and prints nothing
 
 #### Scenario: The password is empty
 
-- **GIVEN** a `.env` file that is an unchanged copy of `.env.example`
-- **WHEN** Sam runs `docker compose up -d`
+- **GIVEN** a Compose project name that owns no container
+- **AND** a `.env` file that is an unchanged copy of `.env.example`, and no `POSTGRES_PASSWORD` in the environment
+- **WHEN** Sam runs `docker compose up -d` under that project name
 - **THEN** the command exits with a non-zero status
-- **AND** `docker compose ps -a -q` prints nothing
+- **AND** `docker ps -a -q --filter label=com.docker.compose.project=<name>` exits with status 0 and prints nothing
 
 #### Scenario: The repo holds no password
 
 - **WHEN** a reviewer runs `grep -n '^POSTGRES_PASSWORD=' .env.example`
 - **THEN** the output is exactly one line, and nothing follows its `=`
 - **AND** `grep -c 'POSTGRES_PASSWORD:-' compose.yml` prints `0`
+
+#### Scenario: The password holds URL delimiters
+
+- **GIVEN** new volumes, and `POSTGRES_PASSWORD` set to `Zq7@evil.invalid/x?sslmode=disable#`
+- **WHEN** Sam runs `docker compose up -d --wait --wait-timeout 90`
+- **THEN** the command exits with a non-zero status
+- **AND** the output of `docker compose logs app` contains neither `Zq7@evil` nor `postgres://`
+
+#### Scenario: The example file states the alphabet
+
+- **WHEN** a reviewer reads the comment above `POSTGRES_PASSWORD` in `.env.example`
+- **THEN** it says the password must hold only letters and digits
 
 #### Scenario: Git ignores the settings file
 
@@ -81,8 +104,10 @@ The server SHALL read the optional `WEB_ROOT` setting, which names a folder of b
 With `WEB_ROOT` set, the server SHALL answer `GET` and `HEAD` requests with the matching file under that folder. It SHALL answer `/` with `index.html`.
 The server SHALL answer 404 for a path that matches no file. It SHALL NOT answer an unknown path with `index.html`.
 The server SHALL NOT serve a file outside `WEB_ROOT`, and SHALL NOT list a folder's contents.
+The server SHALL NOT follow a symbolic link under `WEB_ROOT`. It SHALL exit unsuccessfully at startup when `WEB_ROOT`, or anything under it, is a symbolic link.
 `/healthz` and `/readyz` SHALL keep their documented answers, whatever files `WEB_ROOT` holds.
 With `WEB_ROOT` set, the server SHALL check the folder before it connects to the database. It SHALL exit unsuccessfully when the folder is missing or holds no `index.html`.
+The app image SHALL hold the web shell in a folder that the app user cannot write.
 Without `WEB_ROOT`, the server SHALL serve no files and SHALL answer as it did before this change.
 
 #### Scenario: The home page loads
@@ -107,6 +132,20 @@ Without `WEB_ROOT`, the server SHALL serve no files and SHALL answer as it did b
 - **THEN** neither status is 200
 - **AND** neither body contains the contents of `secret.txt`
 
+#### Scenario: A link points outside the folder
+
+- **GIVEN** an empty dedicated database, and a file named `secret.txt` outside `WEB_ROOT`
+- **AND** a symbolic link `WEB_ROOT/leak.txt` that points to `secret.txt`
+- **WHEN** Sam starts the server
+- **THEN** the process exits with a non-zero status, and its output names `WEB_ROOT`
+- **AND** the database still holds no application table
+
+#### Scenario: The app user cannot change the web shell
+
+- **GIVEN** a running instance
+- **WHEN** a tester runs `docker compose exec app sh -c 'touch "$WEB_ROOT/probe"'`
+- **THEN** the command exits with a non-zero status
+
 #### Scenario: A file shadows a health probe
 
 - **GIVEN** `WEB_ROOT` holds files named `healthz` and `readyz`
@@ -129,6 +168,7 @@ Without `WEB_ROOT`, the server SHALL serve no files and SHALL answer as it did b
 ### Requirement: The app image serves the web shell and the health probes on one origin
 
 The app image SHALL hold the server binary and the built web shell. It SHALL set `WEB_ROOT` to the web shell's folder.
+Compose SHALL name the built image after its Compose project, so two projects on one host never share an image tag.
 The browser SHALL reach the home screen and the health probes on the app's own origin. The app SHALL send no `Access-Control-Allow-Origin` header.
 
 #### Scenario: The browser shows the server's health
@@ -138,6 +178,11 @@ The browser SHALL reach the home screen and the health probes on the app's own o
 - **THEN** the page shows the text `healthy` within 5 seconds
 - **AND** the browser's network log shows no request to any origin other than `http://localhost:5000`
 
+#### Scenario: Two projects build separate images
+
+- **WHEN** a tester runs `docker compose -p alpha config --images` and `docker compose -p beta config --images`, each with `POSTGRES_PASSWORD` set
+- **THEN** the two outputs name different images for the `app` service
+
 #### Scenario: Another origin asks for the app's health
 
 - **GIVEN** a ready instance
@@ -146,7 +191,11 @@ The browser SHALL reach the home screen and the health probes on the app's own o
 
 ### Requirement: The app exposes only static files and health probes
 
-Until authentication exists, the app SHALL answer only two kinds of request with a status below 400: a `GET` or `HEAD` for a web shell file, and a `GET` or `HEAD` for `/healthz` or `/readyz`.
+Until authentication exists, the app SHALL answer only two kinds of request with a status below 400:
+
+- a `GET` or `HEAD` for a web shell file;
+- a `GET` or `HEAD` for `/healthz` or `/readyz`.
+
 The app SHALL answer every `POST`, `PUT`, `PATCH`, and `DELETE` request with 405.
 No request SHALL change the database or the storage volume.
 
