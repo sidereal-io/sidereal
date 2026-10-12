@@ -4,7 +4,14 @@ use sqlx::{
     postgres::{PgConnectOptions, PgSslMode},
     ConnectOptions,
 };
-use std::{net::IpAddr, str::FromStr, time::Duration};
+use std::{
+    ffi::OsStr,
+    fmt,
+    net::IpAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Duration,
+};
 
 pub struct DatabaseConfig {
     pub options: PgConnectOptions,
@@ -80,6 +87,44 @@ impl DatabaseConfig {
             migration_timeout,
         })
     }
+}
+
+/// Why the optional `WEB_ROOT` folder cannot be served.
+#[derive(Debug, PartialEq, Eq)]
+pub enum WebRootError {
+    MissingFolder,
+    MissingIndex,
+}
+
+impl fmt::Display for WebRootError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::MissingFolder => "WEB_ROOT must name an existing folder",
+            Self::MissingIndex => "WEB_ROOT must name a folder that holds index.html",
+        })
+    }
+}
+
+impl std::error::Error for WebRootError {}
+
+/// The folder of built web shell files, when the operator sets one.
+pub fn web_root_from_env() -> Result<Option<PathBuf>, WebRootError> {
+    web_root(std::env::var_os("WEB_ROOT").as_deref())
+}
+
+/// An unset or empty value serves no files.
+pub fn web_root(value: Option<&OsStr>) -> Result<Option<PathBuf>, WebRootError> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let root = Path::new(value);
+    if !root.is_dir() {
+        return Err(WebRootError::MissingFolder);
+    }
+    if !root.join("index.html").is_file() {
+        return Err(WebRootError::MissingIndex);
+    }
+    Ok(Some(root.to_owned()))
 }
 
 fn local(host: &str) -> bool {
@@ -181,5 +226,27 @@ mod tests {
         let config = DatabaseConfig::parse(Some("postgres://localhost/db"), None, None).unwrap();
         assert_eq!(config.startup_timeout, Duration::from_secs(30));
         assert_eq!(config.migration_timeout, Duration::from_secs(30));
+    }
+    #[test]
+    fn web_root_is_optional_and_checked() {
+        assert_eq!(web_root(None), Ok(None));
+        assert_eq!(web_root(Some(OsStr::new(""))), Ok(None));
+        let root = std::env::temp_dir().join(format!("sidereal-web-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let missing = web_root(Some(root.as_os_str())).unwrap_err();
+        assert_eq!(missing, WebRootError::MissingFolder);
+        assert!(missing.to_string().contains("WEB_ROOT"));
+        std::fs::create_dir_all(root.join("index.html")).unwrap();
+        let no_index = web_root(Some(root.as_os_str())).unwrap_err();
+        assert_eq!(no_index, WebRootError::MissingIndex);
+        assert!(no_index.to_string().contains("WEB_ROOT"));
+        std::fs::remove_dir(root.join("index.html")).unwrap();
+        assert_eq!(
+            web_root(Some(root.as_os_str())),
+            Err(WebRootError::MissingIndex)
+        );
+        std::fs::write(root.join("index.html"), "<!doctype html>").unwrap();
+        assert_eq!(web_root(Some(root.as_os_str())), Ok(Some(root.clone())));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
