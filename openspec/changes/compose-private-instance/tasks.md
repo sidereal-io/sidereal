@@ -34,8 +34,8 @@
 - [x] 4.5 Add the retention check: save the migration rows, run `docker compose down`, start again, and compare the rows. Verify the script passes on an unchanged checkout.
 - [x] 4.6 Add the secret checks: search the logs for the generated password after the first start, then start the app with a different password and search for both. Verify the script fails when a test line echoes the password into a container's log.
 - [x] 4.7 Add the `instance-verify` recipe to the root `justfile`, outside `check`. Verify `just --show check` still prints `check: check-server check-web`, and `just --list` describes the new recipe.
-- [ ] 4.8 Test the isolation rules. Verify a second run in the same checkout exits non-zero within 10 seconds while the first run passes; a run with `POSTGRES_PASSWORD=shellsecret` and `SIDEREAL_PORT=5000` exported keeps both out of the disposable instance; and a container with the project label made outside the checkout stops the script without being removed.
-- [ ] 4.9 Run `just instance-verify` beside an instance started from the repo root. Verify the instance keeps its container IDs, volumes, and app image ID, and `.env` and `git status --porcelain` are unchanged.
+- [x] 4.8 Test the isolation rules. Verify a second run in the same checkout exits non-zero within 10 seconds while the first run passes; a run with `POSTGRES_PASSWORD=shellsecret` and `SIDEREAL_PORT=5000` exported keeps both out of the disposable instance; and a container with the project label made outside the checkout stops the script without being removed.
+- [x] 4.9 Run `just instance-verify` beside an instance started from the repo root. Verify the instance keeps its container IDs, volumes, and app image ID, and `.env` and `git status --porcelain` are unchanged.
 
 ## 5. Document the installation
 
