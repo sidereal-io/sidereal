@@ -1,5 +1,9 @@
-//! Configure and initialize PostgreSQL before binding any HTTP listener.
-use sidereal_server::{app_with_database, config::DatabaseConfig};
+//! Check the web root, then initialize PostgreSQL, before binding any HTTP listener.
+use sidereal_server::{
+    app_with_database,
+    config::{web_root_from_env, DatabaseConfig},
+    with_web_root,
+};
 use std::net::SocketAddr;
 
 #[tokio::main]
@@ -11,6 +15,8 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // A start that cannot serve its web shell must not change the database first.
+    let web_root = web_root_from_env()?;
     let config = DatabaseConfig::from_env()?;
     let database = sidereal_core::database::initialize(
         config.options,
@@ -35,7 +41,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         sidereal_core::abi_version(),
         sidereal_pack_astro::abi_version()
     );
-    let result = axum::serve(listener, app_with_database(database.clone()))
+    let app = with_web_root(app_with_database(database.clone()), web_root.as_deref());
+    let result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
         .await;
     database.close().await;

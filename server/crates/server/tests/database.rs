@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use sidereal_core::database::initialize;
-use sidereal_server::app_with_database;
+use sidereal_server::{app_with_database, with_web_root};
 use sqlx::{Connection, Executor, PgConnection};
 use std::{process::Command, time::Duration};
 use tower::ServiceExt;
@@ -11,6 +11,9 @@ use tower::ServiceExt;
 #[path = "../../core/src/database/test_support.rs"]
 mod test_support;
 use test_support::TestDatabase;
+
+mod common;
+use common::WebRoot;
 
 #[tokio::test]
 async fn health_routes_are_fixed_and_methods_do_not_mutate() {
@@ -157,4 +160,31 @@ fn authentication_errors_are_safe() {
     assert!(!captured.contains("distinctive-authentication-secret"));
     assert!(!captured.contains(&url));
     assert!(!captured.contains("password authentication failed"));
+}
+
+#[tokio::test]
+async fn bad_web_root_fails_before_the_database_changes() {
+    use sqlx::ConnectOptions;
+    let db = TestDatabase::new();
+    let url = db.options.to_url_lossy().to_string();
+    let root = WebRoot::new("startup");
+    std::fs::remove_file(root.path.join("index.html")).unwrap();
+    for web_root in [root.path.join("no-such-folder"), root.path.clone()] {
+        let output = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
+            .env("DATABASE_URL", &url)
+            .env("WEB_ROOT", &web_root)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("WEB_ROOT"));
+    }
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    let tables: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')",
+    )
+    .fetch_one(&mut conn)
+    .await
+    .unwrap();
+    assert_eq!(tables, 0);
+    conn.close().await.unwrap();
 }
