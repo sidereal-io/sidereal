@@ -69,6 +69,7 @@ just web            # Run the web interface only
 just check          # The gate to pass before every pull request
 just check-server   # Server checks: format, clippy, tests, dependency-direction lint
 just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
+just instance-verify  # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
 just board-sync     # Set Status on the project board from each issue's state (--dry-run to preview)
 ```
 
@@ -174,9 +175,9 @@ Each version lives in one file. Change it there, and nowhere else.
 | Tool | Set in | How exact |
 |---|---|---|
 | OpenSSL | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install OpenSSL when using system tools |
-| PostgreSQL fixture | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI |
+| PostgreSQL | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI. `compose.yml` holds a copy for the Compose instance. Change both together; `just instance-verify` fails when they differ |
 | Rust | `server/rust-toolchain.toml` | Names the `stable` channel. In the Nix shell and CI, `flake.lock` decides the exact release. Without Nix, rustup uses the latest stable release you have installed |
-| Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step |
+| Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step. The root `Dockerfile` names the same major version for the image's web build |
 | pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12 |
 | `just`, `jq`, and `openspec` | `flake.lock` | Exact releases, through the Nix shell |
 
