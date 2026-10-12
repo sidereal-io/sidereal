@@ -126,15 +126,15 @@ The server sets and reads no storage setting. The storage story adds the setting
 
 `just instance-verify` runs `scripts/instance-verify.sh`. The script follows the fixture script's pattern for isolation:
 
-- **Project name**: `sidereal-verify-` plus a checksum of the checkout path. Sam's default project is untouched.
-- **Ownership**: two checkout paths can share a checksum, so the name alone proves nothing. The script records the project name in its lock folder when it starts an instance. It then stops, and removes nothing, when Docker lists a container or volume under that name and its own lock folder holds no record of creating it.
+- **Project name**: `sidereal-verify-` plus a 16-character SHA-256 prefix of the checkout path. A SHA-256 prefix makes a shared name impractical. Sam's default project is untouched.
+- **Ownership**: the name alone proves nothing: another checkout could still hold it. The script records the project name in its lock folder when it starts an instance. It then stops, and removes nothing, when Docker lists a container or volume under that name and its own lock folder holds no record of creating it.
 - **Image**: Compose tags it after the project, so the script never rebuilds the image that Sam's instance uses.
 - **Settings**: the script exports its own `POSTGRES_PASSWORD` and `SIDEREAL_PORT` for every Compose call. A shell value outranks an env file, so exported values also outrank whatever the caller's shell held. It passes an empty env file with `--env-file`, so Compose never reads the root `.env`.
-- **Host port**: derived from the same checksum, with `SIDEREAL_VERIFY_PORT` as an override.
-- **Deadlines**: the script runs each `docker compose up --wait` in the background and measures 180 seconds itself. It stops an overdue call, then fails. Compose's own `--wait-timeout` does not cover the wait for a dependency on every release, so the script does not rely on it. Every probe loop has a fixed number of tries.
-- **One run per checkout**: the script creates a lock folder under `.workspace/instance-verify/` before it touches Docker. Creating a folder is atomic. The lock holds the run's process ID, so a later run can replace the lock of a run that died.
+- **Host port**: derived from a 32-bit checksum of the checkout path, with `SIDEREAL_VERIFY_PORT` as an override.
+- **Deadlines**: the script runs each `docker compose up --wait` in the background and measures 180 seconds itself. Compose replaces the background subshell (`run=exec`), so a kill reaches Compose directly. It stops an overdue call, then fails. Compose's own `--wait-timeout` does not cover the wait for a dependency on every release, so the script does not rely on it. Every probe loop has a fixed number of tries.
+- **One run per checkout**: the script creates a lock folder under `.workspace/instance-verify/` before it touches Docker. Creating a folder is atomic. The lock holds the run's process ID. A second folder guards replacement so only one run at a time can replace the lock of a run that died, and the winner verifies the process ID again before replacing the lock.
 - **Compose release**: the script reads `docker compose version --short` and stops when the release is older than 2.20. That release is the stated floor. The plan tests only the release the contributor has installed.
-- **Cleanup**: an exit trap runs `docker compose down --volumes --rmi local` for that project only.
+- **Cleanup**: an exit trap kills and waits for any running Compose command, and runs `docker compose down --volumes --rmi local` for that project only.
 
 The script runs the cheap checks first: the missing-password refusal and the PostgreSQL pin comparison. It runs the refusal check with `POSTGRES_PASSWORD` unset. It builds the image only after both pass.
 
