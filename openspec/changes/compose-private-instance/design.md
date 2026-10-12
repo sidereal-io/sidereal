@@ -49,6 +49,7 @@ A root `.dockerignore` starts by excluding everything, then allows `server/` and
 The `server` crate reads the optional `WEB_ROOT` setting. When it is set, the router falls back to a static file service for any path that matches no route.
 
 - The crate uses `tower-http`'s file service. It rejects paths that leave the folder, lists no folders, and answers 405 to methods other than `GET` and `HEAD`.
+- The crate turns off the file service's folder handling, which would redirect `/assets` and serve a folder's `index.html`. An explicit route serves `/` from `index.html`. Every other folder path returns 404.
 - The file service follows symbolic links, as most web servers do. The server trusts what the folder holds. Whoever can write to it already controls the page the browser loads.
 - Routes win over the fallback, so a file named `healthz` cannot replace the probe.
 - The runtime stage sets `WEB_ROOT=/usr/share/sidereal/web`. The folder is owned by root and the app user cannot write to it.
@@ -98,7 +99,7 @@ This is not a trust boundary. The person who sets the password already controls 
 ### D6. Service wiring
 
 - **`db`** runs the pinned PostgreSQL image. Its named volume `database` mounts at `/var/lib/postgresql`, as the fixture's does.
-- **`db`'s health check** runs `pg_isready` against `127.0.0.1`, for the `sidereal` database. During first setup, the image runs a temporary server on a socket only. A TCP check stays unhealthy until the real server listens.
+- **`db`'s health check** runs `pg_isready` against `127.0.0.1`. It reports that the server accepts TCP connections, and nothing about the `sidereal` database. The app's `/readyz` covers that. During first setup, the image runs a temporary server on a socket only. A TCP check stays unhealthy until the real server listens.
 - **`app`** builds from the root `Dockerfile`. `compose.yml` sets no `image` name, so Compose tags the image `<project>-app`. A second project on the same host then builds its own image.
 - **`app`** waits for `db` with `depends_on: condition: service_healthy`.
 - **`app`'s health check** stays on `/healthz`, as the foundation's guidance says. The server binds HTTP only after migrations, so a healthy app has finished them.
@@ -125,7 +126,8 @@ The server sets and reads no storage setting. The storage story adds the setting
 
 `just instance-verify` runs `scripts/instance-verify.sh`. The script follows the fixture script's pattern for isolation:
 
-- **Project name**: `sidereal-verify-` plus a checksum of the checkout path. Two checkouts never collide, and Sam's default project is untouched.
+- **Project name**: `sidereal-verify-` plus a checksum of the checkout path. Sam's default project is untouched.
+- **Ownership**: two checkout paths can share a checksum, so the name alone proves nothing. The script records the project name in its lock folder when it starts an instance. It then stops, and removes nothing, when Docker lists a container or volume under that name and its own lock folder holds no record of creating it.
 - **Image**: Compose tags it after the project, so the script never rebuilds the image that Sam's instance uses.
 - **Settings**: the script exports its own `POSTGRES_PASSWORD` and `SIDEREAL_PORT` for every Compose call. A shell value outranks an env file, so exported values also outrank whatever the caller's shell held. It passes an empty env file with `--env-file`, so Compose never reads the root `.env`.
 - **Host port**: derived from the same checksum, with `SIDEREAL_VERIFY_PORT` as an override.

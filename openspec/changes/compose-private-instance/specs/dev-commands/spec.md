@@ -19,6 +19,7 @@ The recipe SHALL use its own Compose project name, its own image tag, its own ge
 It SHALL NOT read or change the `.env` file at the repo root. `POSTGRES_PASSWORD` and `SIDEREAL_PORT` values in the caller's shell SHALL NOT reach the disposable instance.
 The recipe SHALL give each start at most 180 seconds to become healthy, after the image is built. It SHALL measure that time itself, stop a start that takes longer, and fail.
 The recipe SHALL stop before it builds anything when Compose is older than release 2.20. Its output SHALL name the release it needs.
+The recipe SHALL stop before it starts anything when its Compose project name already owns a container or a volume that this checkout did not create. It SHALL remove nothing in that case.
 Only one run SHALL work on a checkout at a time. A second run in the same checkout SHALL exit with a non-zero status and change nothing.
 The recipe SHALL remove its containers, network, volumes, and image when it ends, whether it passes or fails. It SHALL remove nothing that belongs to another Compose project.
 `just check` SHALL NOT run `just instance-verify`.
@@ -56,6 +57,13 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 - **WHEN** a contributor starts a second `just instance-verify` in the same checkout
 - **THEN** the second command exits with a non-zero status within 10 seconds, and its output says a run is in progress
 - **AND** the first run exits with status 0
+
+#### Scenario: Another checkout owns the project name
+
+- **GIVEN** a container that carries the recipe's Compose project label, created outside this checkout
+- **WHEN** a contributor runs `just instance-verify`
+- **THEN** the command exits with a non-zero status, and its output names the project
+- **AND** that container still exists
 
 #### Scenario: Compose is too old
 

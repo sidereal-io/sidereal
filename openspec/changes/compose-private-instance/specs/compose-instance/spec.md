@@ -9,7 +9,7 @@ Sam can install a private Sidereal instance with Docker Compose and one `.env` f
 The repo root SHALL hold a `compose.yml` that defines two services: `app` and `db`.
 `docker compose up -d --build --wait` SHALL build the app image, start both services, and exit with status 0 once both are healthy.
 The `app` service SHALL start only after the `db` service is healthy.
-The `db` service SHALL report healthy only when PostgreSQL accepts TCP connections for the application database.
+The `db` service SHALL report healthy only when PostgreSQL accepts TCP connections. The app's `/readyz` probe, not this check, reports whether the application database is usable.
 The `app` service SHALL connect to the `db` service with the foundation's `DATABASE_URL` setting and `sslmode=disable`.
 The app SHALL apply migrations through the foundation's startup path. The Compose file SHALL run no other migration step.
 
@@ -102,6 +102,7 @@ The logs of both services SHALL NOT contain the database password or the connect
 
 The server SHALL read the optional `WEB_ROOT` setting, which names a folder of built web shell files.
 With `WEB_ROOT` set, the server SHALL answer `GET` and `HEAD` requests with the matching file under that folder. It SHALL answer `/` with `index.html`.
+The server SHALL answer 404 for any other path that names a folder, with or without a trailing slash. It SHALL NOT redirect such a path, and SHALL NOT answer it with that folder's `index.html`.
 The server SHALL answer 404 for a path that matches no file. It SHALL NOT answer an unknown path with `index.html`.
 The server SHALL NOT let a request path leave `WEB_ROOT`, for example with `..` segments. It SHALL NOT list a folder's contents.
 The server SHALL treat the contents of `WEB_ROOT` as trusted. Whoever can write to that folder decides what the server serves.
@@ -135,9 +136,11 @@ Without `WEB_ROOT`, the server SHALL serve no files and SHALL answer as it did b
 #### Scenario: A request names a folder
 
 - **GIVEN** a server running with `WEB_ROOT` set to a built web shell that holds an `assets` folder
-- **WHEN** a tester runs `curl -si http://localhost:5000/assets/`
-- **THEN** the status is 404
-- **AND** the body names no file in that folder
+- **AND** a tester has added the file `assets/index.html` to it
+- **WHEN** a tester runs `curl -si http://localhost:5000/assets` and `curl -si http://localhost:5000/assets/`
+- **THEN** both statuses are 404
+- **AND** neither response has a `Location` header
+- **AND** neither body names a file in that folder
 
 #### Scenario: The app user cannot change the web shell
 
