@@ -17,7 +17,9 @@ It SHALL then run these checks, and SHALL exit with a non-zero status when any o
 The recipe SHALL run the volume check before it removes any container. A failed volume check then leaves no unnamed volume behind.
 The recipe SHALL use its own Compose project name, its own image tag, its own generated password, and its own host port.
 It SHALL NOT read or change the `.env` file at the repo root. `POSTGRES_PASSWORD` and `SIDEREAL_PORT` values in the caller's shell SHALL NOT reach the disposable instance.
-The recipe SHALL give each start at most 180 seconds to become healthy, after the image is built. It SHALL fail when a start takes longer.
+The recipe SHALL give each start at most 180 seconds to become healthy, after the image is built. It SHALL measure that time itself, stop a start that takes longer, and fail.
+The recipe SHALL stop before it builds anything when Compose is older than release 2.20. Its output SHALL name the release it needs.
+Only one run SHALL work on a checkout at a time. A second run in the same checkout SHALL exit with a non-zero status and change nothing.
 The recipe SHALL remove its containers, network, volumes, and image when it ends, whether it passes or fails. It SHALL remove nothing that belongs to another Compose project.
 `just check` SHALL NOT run `just instance-verify`.
 
@@ -39,8 +41,27 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 #### Scenario: The web shell is missing from the image
 
 - **WHEN** a tester removes the step that copies the built web shell into the image, then runs `just instance-verify`
-- **THEN** the command exits with a non-zero status within 180 seconds of the image build ending
+- **THEN** the command exits with a non-zero status within 240 seconds of the image build ending
 - **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
+
+#### Scenario: The database never becomes healthy
+
+- **WHEN** a tester changes the `db` service's health check command in `compose.yml` to `false`, then runs `just instance-verify`
+- **THEN** the command exits with a non-zero status within 240 seconds of the image build ending
+- **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
+
+#### Scenario: A second run starts in the same checkout
+
+- **GIVEN** a run of `just instance-verify` that has started its disposable instance
+- **WHEN** a contributor starts a second `just instance-verify` in the same checkout
+- **THEN** the second command exits with a non-zero status within 10 seconds, and its output says a run is in progress
+- **AND** the first run exits with status 0
+
+#### Scenario: Compose is too old
+
+- **WHEN** a contributor runs `just instance-verify` with a Compose release older than 2.20
+- **THEN** the command exits with a non-zero status, and its output names release 2.20
+- **AND** `docker images` lists no image that belongs to the recipe's Compose project
 
 #### Scenario: The caller's shell holds conflicting settings
 

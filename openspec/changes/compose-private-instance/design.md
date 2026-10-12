@@ -49,7 +49,7 @@ A root `.dockerignore` starts by excluding everything, then allows `server/` and
 The `server` crate reads the optional `WEB_ROOT` setting. When it is set, the router falls back to a static file service for any path that matches no route.
 
 - The crate uses `tower-http`'s file service. It rejects paths that leave the folder, lists no folders, and answers 405 to methods other than `GET` and `HEAD`.
-- The file service follows symbolic links, so the server refuses them itself. See decision D4.
+- The file service follows symbolic links, as most web servers do. The server trusts what the folder holds. Whoever can write to it already controls the page the browser loads.
 - Routes win over the fallback, so a file named `healthz` cannot replace the probe.
 - The runtime stage sets `WEB_ROOT=/usr/share/sidereal/web`. The folder is owned by root and the app user cannot write to it.
 - `just dev` leaves `WEB_ROOT` unset. Vite keeps serving the web shell in development.
@@ -68,17 +68,11 @@ An unknown path returns 404. The web shell has one screen and no client-side rou
 
 ### D4. `WEB_ROOT` is checked before the database
 
-The server validates `WEB_ROOT` first. A broken image then fails before it connects or migrates. The check has three rules:
-
-- the folder exists and is not a symbolic link;
-- it holds a regular file named `index.html`;
-- nothing under it is a symbolic link. The server walks the whole tree once, which is a few dozen files.
-
-The walk covers the moment of startup. The image covers the time after it: root owns the web folder, and the app user cannot write to it.
+The server validates `WEB_ROOT` first. A broken image then fails before it connects or migrates. The check has two rules: the folder exists, and it holds a file named `index.html`.
 
 **Why not check after migrations?** A start that cannot serve its UI should not change the database first.
 
-**Why not resolve every request path and compare it with the folder?** That check runs on each request and still races with a change to the tree. A tree that cannot change needs one check.
+**Why not refuse symbolic links?** A check at startup cannot cover a link that someone adds later. Guarding every file open adds code for a case the operator already controls. In the image, root owns the web folder and the app user cannot write to it. For a server run by hand, the guide says who may write to the folder.
 
 ### D5. Compose builds `DATABASE_URL` from one password
 
@@ -135,7 +129,9 @@ The server sets and reads no storage setting. The storage story adds the setting
 - **Image**: Compose tags it after the project, so the script never rebuilds the image that Sam's instance uses.
 - **Settings**: the script exports its own `POSTGRES_PASSWORD` and `SIDEREAL_PORT` for every Compose call. A shell value outranks an env file, so exported values also outrank whatever the caller's shell held. It passes an empty env file with `--env-file`, so Compose never reads the root `.env`.
 - **Host port**: derived from the same checksum, with `SIDEREAL_VERIFY_PORT` as an override.
-- **Deadlines**: every start uses `--wait --wait-timeout 180`, and every probe loop has a fixed number of tries. A container that restarts forever fails the deadline.
+- **Deadlines**: the script runs each `docker compose up --wait` in the background and measures 180 seconds itself. It stops an overdue call, then fails. Compose's own `--wait-timeout` does not cover the wait for a dependency on every release, so the script does not rely on it. Every probe loop has a fixed number of tries.
+- **One run per checkout**: the script creates a lock folder under `.workspace/instance-verify/` before it touches Docker. Creating a folder is atomic. The lock holds the run's process ID, so a later run can replace the lock of a run that died.
+- **Compose release**: the script reads `docker compose version --short` and stops when the release is older than 2.20. That release is the stated floor. The plan tests only the release the contributor has installed.
 - **Cleanup**: an exit trap runs `docker compose down --volumes --rmi local` for that project only.
 
 The script runs the cheap checks first: the missing-password refusal and the PostgreSQL pin comparison. It runs the refusal check with `POSTGRES_PASSWORD` unset. It builds the image only after both pass.
@@ -169,7 +165,8 @@ None. This change adds no token.
 - **[A password with URL characters breaks the URL]** → The guide gives a hex command. The foundation then rejects a malformed URL without printing it.
 - **[`docker compose config` prints the password]** → This is how Compose works. The guide says so. The app's own logs never print it.
 - **[The open port exposes an app with no sign-in]** → The surface is static files and two probes, and a requirement pins it. The guide warns Sam not to publish the port to the internet.
-- **[The file service follows symbolic links]** → The server refuses to start when the web folder holds one. The app user cannot write to the folder afterwards.
+- **[The file service follows symbolic links]** → A link in the web folder can expose a file outside it. The app user cannot write to the image's web folder. The guide tells an operator who runs the server by hand to keep the folder writable by trusted users only.
+- **[The Compose floor is stated, not proven]** → Nobody has run the plan on Compose 2.20. If an older or newer release breaks a command, the fix is to raise the floor or change that command.
 - **[Two checkouts can share one project name]** → Compose names a project after its folder. Two checkouts in folders with the same name share containers, volumes, and the image. The guide tells Sam to run one instance per host, or to set `COMPOSE_PROJECT_NAME`.
 - **[The first build is slow]** → A release build of the server takes several minutes. Image publishing, which removes this cost for Sam, is out of scope.
 - **[`docker build server/` stops working]** → Nothing in the repo calls it. The `dev-environment` spec changes with the file.

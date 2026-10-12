@@ -67,8 +67,8 @@ A password outside that alphabet SHALL NOT make the app print the password or th
 #### Scenario: The password holds URL delimiters
 
 - **GIVEN** new volumes, and `POSTGRES_PASSWORD` set to `Zq7@evil.invalid/x?sslmode=disable#`
-- **WHEN** Sam runs `docker compose up -d --wait --wait-timeout 90`
-- **THEN** the command exits with a non-zero status
+- **WHEN** Sam runs `docker compose up -d`, and a tester waits 60 seconds
+- **THEN** `docker inspect` reports a health status other than `healthy` for the `app` container
 - **AND** the output of `docker compose logs app` contains neither `Zq7@evil` nor `postgres://`
 
 #### Scenario: The example file states the alphabet
@@ -103,8 +103,8 @@ The logs of both services SHALL NOT contain the database password or the connect
 The server SHALL read the optional `WEB_ROOT` setting, which names a folder of built web shell files.
 With `WEB_ROOT` set, the server SHALL answer `GET` and `HEAD` requests with the matching file under that folder. It SHALL answer `/` with `index.html`.
 The server SHALL answer 404 for a path that matches no file. It SHALL NOT answer an unknown path with `index.html`.
-The server SHALL NOT serve a file outside `WEB_ROOT`, and SHALL NOT list a folder's contents.
-The server SHALL NOT follow a symbolic link under `WEB_ROOT`. It SHALL exit unsuccessfully at startup when `WEB_ROOT`, or anything under it, is a symbolic link.
+The server SHALL NOT let a request path leave `WEB_ROOT`, for example with `..` segments. It SHALL NOT list a folder's contents.
+The server SHALL treat the contents of `WEB_ROOT` as trusted. Whoever can write to that folder decides what the server serves.
 `/healthz` and `/readyz` SHALL keep their documented answers, whatever files `WEB_ROOT` holds.
 With `WEB_ROOT` set, the server SHALL check the folder before it connects to the database. It SHALL exit unsuccessfully when the folder is missing or holds no `index.html`.
 The app image SHALL hold the web shell in a folder that the app user cannot write.
@@ -132,13 +132,12 @@ Without `WEB_ROOT`, the server SHALL serve no files and SHALL answer as it did b
 - **THEN** neither status is 200
 - **AND** neither body contains the contents of `secret.txt`
 
-#### Scenario: A link points outside the folder
+#### Scenario: A request names a folder
 
-- **GIVEN** an empty dedicated database, and a file named `secret.txt` outside `WEB_ROOT`
-- **AND** a symbolic link `WEB_ROOT/leak.txt` that points to `secret.txt`
-- **WHEN** Sam starts the server
-- **THEN** the process exits with a non-zero status, and its output names `WEB_ROOT`
-- **AND** the database still holds no application table
+- **GIVEN** a server running with `WEB_ROOT` set to a built web shell that holds an `assets` folder
+- **WHEN** a tester runs `curl -si http://localhost:5000/assets/`
+- **THEN** the status is 404
+- **AND** the body names no file in that folder
 
 #### Scenario: The app user cannot change the web shell
 
@@ -303,11 +302,12 @@ The `db` service's image in `compose.yml` SHALL equal the `POSTGRES_IMAGE` value
 The repo SHALL hold the installation guide `docs/install.md`. `README.md` SHALL link to it.
 The guide SHALL cover these points:
 
-- the prerequisites: Docker Engine or Docker Desktop, with Compose v2 or newer;
+- the prerequisites: Docker Engine or Docker Desktop, with Compose 2.20 or newer;
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
 - the commands that start, stop, and recreate the instance;
 - which command deletes the data, and that no other command does;
 - that the app has no sign-in yet, so anyone who can reach its port can open it;
+- that a server run outside the image needs a `WEB_ROOT` folder that only trusted users can write;
 - that changing `POSTGRES_PASSWORD` after the first start does not change the database's password.
 
 #### Scenario: The guide gives a password command
@@ -319,6 +319,11 @@ The guide SHALL cover these points:
 
 - **WHEN** a reviewer reads `docs/install.md`
 - **THEN** it has a section whose heading contains `no sign-in`
+
+#### Scenario: The guide names the Compose release
+
+- **WHEN** a reviewer runs `grep -n 'Compose 2.20' docs/install.md`
+- **THEN** the search finds at least one match
 
 #### Scenario: The readme links to the guide
 
