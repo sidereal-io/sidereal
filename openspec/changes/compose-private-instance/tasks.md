@@ -6,7 +6,7 @@
 - [x] 1.4 Build the router with an optional web root in `lib.rs`: an explicit route for `/`, and a file-service fallback with folder redirects and folder index files turned off. Verify with tests that `GET /` returns `index.html` as `text/html`, and that a file under `assets/` returns its bytes.
 - [x] 1.5 Add router tests for the limits of the surface. Verify these cases pass: an unknown path and `/api/assets` return 404; `/assets` and `/assets/` return 404 with no `Location` header when `assets/index.html` exists; `..` and `%2e%2e` paths never return a file outside the folder; `POST`, `PUT`, `PATCH`, and `DELETE` return 405 on `/`, `/healthz`, `/readyz`, and `/api/assets`.
 - [x] 1.6 Add router tests that files named `healthz` and `readyz` in the web root do not replace the probes, and that no response carries `Access-Control-Allow-Origin`. Verify the tests pass.
-- [ ] 1.7 Confirm the server is unchanged without `WEB_ROOT`. Verify the existing `healthz.rs` and `database.rs` tests pass, and a new test shows `GET /` returns 404.
+- [x] 1.7 Confirm the server is unchanged without `WEB_ROOT`. Verify the existing `healthz.rs` and `database.rs` tests pass, and a new test shows `GET /` returns 404.
 - [ ] 1.8 Run `just check-server`. Verify it exits with status 0.
 
 ## 2. Build one app image

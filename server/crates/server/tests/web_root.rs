@@ -134,3 +134,14 @@ async fn no_response_allows_another_origin() {
     }
 }
 
+#[tokio::test]
+async fn without_a_web_root_no_file_is_served() {
+    let router = with_web_root(app(), None);
+    assert_eq!(
+        send(&router, "GET", "/").await.status(),
+        StatusCode::NOT_FOUND
+    );
+    let response = send(&router, "GET", "/healthz").await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(text(response).await, "{\"status\":\"ok\"}");
+}
