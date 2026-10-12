@@ -64,12 +64,26 @@ if ! mkdir "$lock" 2>/dev/null; then
     if [ -z "$pid" ] || kill -0 "$pid" 2>/dev/null; then
         fail "a run is in progress in this checkout (process ${pid:-unknown}). If none is, remove $lock"
     fi
-    # The run that held the lock died. Only one later run wins the rename.
-    mv "$lock" "$work/stale.$$" 2>/dev/null && rm -rf "$work/stale.$$"
-    mkdir "$lock" 2>/dev/null || fail 'a run is in progress in this checkout'
+    # The run that held the lock died. One run at a time may replace the lock,
+    # and it checks the process ID again once it is alone.
+    mkdir "$work/reclaim" 2>/dev/null \
+        || fail "a run is in progress in this checkout. If none is, remove $work/reclaim"
+    pid=$(cat "$lock/pid" 2>/dev/null || true)
+    if [ -z "$pid" ] || kill -0 "$pid" 2>/dev/null; then
+        rmdir "$work/reclaim"
+        fail "a run is in progress in this checkout (process ${pid:-unknown})"
+    fi
+    rm -rf "$lock"
+    if ! mkdir "$lock" 2>/dev/null; then
+        rmdir "$work/reclaim"
+        fail 'a run is in progress in this checkout'
+    fi
+    echo $$ >"$lock/pid"
+    rmdir "$work/reclaim"
+else
+    echo $$ >"$lock/pid"
 fi
 held=1
-echo $$ >"$lock/pid"
 
 # --- Docker and Compose.
 command -v docker >/dev/null 2>&1 || fail 'Docker is not installed. Install Docker Engine or Docker Desktop'
