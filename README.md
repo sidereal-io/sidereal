@@ -38,6 +38,7 @@ Sidereal is being built to provide:
 | You want to | Go to |
 |---|---|
 | Install and run Sidereal | The [`v0.x` branch](https://github.com/sidereal-io/sidereal/tree/v0.x) and its README |
+| Preview the rebuild with Docker Compose | [`docs/install.md`](docs/install.md). It shows only the server's health today |
 | Report a bug in the running app | [Issues](https://github.com/sidereal-io/sidereal/issues). Say which version you run |
 | Understand the new design | [`docs/architecture.md`](docs/architecture.md) and [`docs/decisions/`](docs/decisions/) |
 | See the build plan | [`openspec/migration.md`](openspec/migration.md) |
