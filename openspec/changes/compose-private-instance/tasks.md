@@ -19,9 +19,9 @@
 
 ## 3. Add the Compose installation
 
-- [ ] 3.1 Add the root `compose.yml` with the `db` service: the pinned image copied from `server/postgres-image.env`, the named volume `database` at `/var/lib/postgresql`, a `pg_isready` health check against `127.0.0.1`, `restart: unless-stopped`, and no published port. Verify `docker compose config` succeeds with `POSTGRES_PASSWORD` set.
-- [ ] 3.2 Add the `app` service: `build: .` with no `image` name, `depends_on` with `service_healthy`, the composed `DATABASE_URL`, the port `${SIDEREAL_PORT:-5000}:5000`, the named volume `storage`, dropped capabilities, `no-new-privileges`, and `restart: unless-stopped`. Verify `docker compose -p alpha config --images` and `-p beta config --images` name different app images.
-- [ ] 3.3 Require the password with the `:?` form in both services. Verify `docker compose up -d` exits non-zero and names `POSTGRES_PASSWORD` when it is unset and when it is empty, and that `docker ps -a -q --filter label=com.docker.compose.project=<name>` prints nothing.
+- [x] 3.1 Add the root `compose.yml` with the `db` service: the pinned image copied from `server/postgres-image.env`, the named volume `database` at `/var/lib/postgresql`, a `pg_isready` health check against `127.0.0.1`, `restart: unless-stopped`, and no published port. Verify `docker compose config` succeeds with `POSTGRES_PASSWORD` set.
+- [x] 3.2 Add the `app` service: `build: .` with no `image` name, `depends_on` with `service_healthy`, the composed `DATABASE_URL`, the port `${SIDEREAL_PORT:-5000}:5000`, the named volume `storage`, dropped capabilities, `no-new-privileges`, and `restart: unless-stopped`. Verify `docker compose -p alpha config --images` and `-p beta config --images` name different app images.
+- [x] 3.3 Require the password with the `:?` form in both services. Verify `docker compose up -d` exits non-zero and names `POSTGRES_PASSWORD` when it is unset and when it is empty, and that `docker ps -a -q --filter label=com.docker.compose.project=<name>` prints nothing.
 - [ ] 3.4 Add `.env.example` with every Compose setting, an empty `POSTGRES_PASSWORD`, and a comment that states the letters-and-digits alphabet. Verify `grep -n '^POSTGRES_PASSWORD=' .env.example` prints one line with nothing after `=`, and `git check-ignore .env` exits with status 0.
 - [ ] 3.5 Start the instance by hand with a generated password and `docker compose up -d --build --wait`. Verify `/readyz` prints `{"status":"ready"}`, the home page shows `healthy` in a browser, and the `app` container's `RestartCount` is `0`.
 

@@ -1,0 +1,45 @@
+# A private Sidereal instance: the app and its PostgreSQL database.
+# Settings come from .env. See .env.example and docs/install.md.
+services:
+  app:
+    # No image name: Compose tags the build after its project, so two
+    # projects on one host never share an image.
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://sidereal:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/sidereal?sslmode=disable
+    ports:
+      - "${SIDEREAL_PORT:-5000}:5000"
+    volumes:
+      - storage:/var/lib/sidereal/storage
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  db:
+    # A copy of POSTGRES_IMAGE in server/postgres-image.env. Change both
+    # together; `just instance-verify` fails when they differ.
+    image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+    environment:
+      POSTGRES_USER: sidereal
+      POSTGRES_DB: sidereal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # No published port: only the app reaches the database.
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      # Healthy once PostgreSQL accepts TCP connections. First setup runs a
+      # temporary server on a socket only, so this waits for the real one.
+      test: [CMD, pg_isready, --quiet, --host, 127.0.0.1, --port, "5432"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  database:
+  storage:
