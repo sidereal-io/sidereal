@@ -1,6 +1,6 @@
 ## 1. Serve the web shell from the server
 
-- [ ] 1.1 Add `tower-http` with its file-serving feature to `server/Cargo.toml` and the `server` crate. Verify `cargo build -p sidereal-server` succeeds and `server/scripts/check-arch.sh` passes.
+- [x] 1.1 Add `tower-http` with its file-serving feature to `server/Cargo.toml` and the `server` crate. Verify `cargo build -p sidereal-server` succeeds and `server/scripts/check-arch.sh` passes.
 - [ ] 1.2 Read the optional `WEB_ROOT` setting in `server/crates/server/src/config.rs`. Reject a missing folder and a folder with no `index.html`, with an error that names `WEB_ROOT`. Verify with unit tests for the unset, valid, missing-folder, and missing-index cases.
 - [ ] 1.3 Check `WEB_ROOT` in `main.rs` before the database initializes. Verify with a test in `server/crates/server/tests/` that a bad `WEB_ROOT` exits non-zero and leaves an empty database with no application table.
 - [ ] 1.4 Build the router with an optional web root in `lib.rs`: an explicit route for `/`, and a file-service fallback with folder redirects and folder index files turned off. Verify with tests that `GET /` returns `index.html` as `text/html`, and that a file under `assets/` returns its bytes.
