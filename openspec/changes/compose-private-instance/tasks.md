@@ -47,7 +47,7 @@
 
 ## 6. Verify the whole change
 
-- [ ] 6.1 Run `just check`. Verify it exits with status 0 and `git status --porcelain` prints nothing afterwards.
-- [ ] 6.2 Run `just instance-verify` on the finished branch. Verify it exits with status 0 and leaves no container, volume, or image under its project name.
+- [x] 6.1 Run `just check`. Verify it exits with status 0 and `git status --porcelain` prints nothing afterwards.
+- [x] 6.2 Run `just instance-verify` on the finished branch. Verify it exits with status 0 and leaves no container, volume, or image under its project name.
 - [ ] 6.3 Run the browser demonstration from the story: open `http://localhost:5000/`, confirm `healthy`, recreate the containers with `docker compose down` and `docker compose up -d --wait`, and confirm the migration rows are identical. Record the commands and their output in the pull request description.
-- [ ] 6.4 Run `openspec validate compose-private-instance --strict`. Verify the change is valid.
+- [x] 6.4 Run `openspec validate compose-private-instance --strict`. Verify the change is valid.
