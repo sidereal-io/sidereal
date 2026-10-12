@@ -1,7 +1,10 @@
-//! The HTTP shell exposes fixed liveness and readiness responses.
+//! The HTTP shell exposes fixed liveness and readiness responses, and the
+//! built web shell when the operator names its folder.
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use serde_json::{json, Value};
 use sidereal_core::database::Database;
+use std::path::Path;
+use tower_http::services::{ServeDir, ServeFile};
 
 pub mod config;
 
@@ -17,6 +20,23 @@ pub fn app_with_database(database: Database) -> Router {
             .route("/readyz", get(readyz))
             .with_state(database),
     )
+}
+
+/// Serve the files under `web_root`, when there is one. Routes win over files.
+///
+/// `/` answers with `index.html`. Every other folder path is not found: no
+/// redirect, no folder index, and no fallback to `index.html`. The file
+/// services answer 405 to methods other than `GET` and `HEAD`.
+pub fn with_web_root(router: Router, web_root: Option<&Path>) -> Router {
+    let Some(web_root) = web_root else {
+        return router;
+    };
+    let files = ServeDir::new(web_root)
+        .append_index_html_on_directories(false)
+        .redirect_to_trailing_slash(false);
+    router
+        .route_service("/", ServeFile::new(web_root.join("index.html")))
+        .fallback_service(files)
 }
 
 async fn healthz() -> Json<Value> {
