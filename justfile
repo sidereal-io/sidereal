@@ -69,6 +69,11 @@ check-server:
 check-web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test
 
+# Needs Docker, and takes minutes, so `check` does not run it.
+# Build the app image, start a disposable Compose instance, check it, and remove it.
+instance-verify:
+    @sh scripts/instance-verify.sh
+
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:
     @sh server/scripts/db-fixture.sh orphan-clean
