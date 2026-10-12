@@ -2,7 +2,7 @@
 
 The Rust workspace keeps database policy in `core`, public contracts in `plugin-abi`,
 and astronomy in `packs/astro`. The thin axum server wires these crates and serves
-`GET /healthz` and `GET /readyz`.
+`GET /healthz` and `GET /readyz`. It also serves the built web shell when `WEB_ROOT` names its folder.
 See [architecture](../docs/architecture.md) and [ADR-002](../docs/decisions/ADR-002-core-domain-pack-split.md).
 
 ## Prepare development and tests
@@ -82,6 +82,7 @@ applications and manual schema additions out of this database.
 | `DATABASE_STARTUP_TIMEOUT_SECONDS` | `30` | Positive connection and startup-lock deadlines |
 | `DATABASE_MIGRATION_TIMEOUT_SECONDS` | `30` | Positive migration, statement, and database-lock deadlines |
 | `PORT` | `5000` | HTTP listen port |
+| `WEB_ROOT` | Unset: the server serves no files | Folder of built web shell files to serve. It must hold `index.html` |
 | `TEST_DATABASE_URL` | Required for tests | Separate test role with `CREATEDB`; never a production URL |
 | `SIDEREAL_DB_PORT` | Derived from checkout | Loopback port for fixture recipes |
 
@@ -91,6 +92,17 @@ unencrypted local transport. Other hosts require `verify-full`. Explicit modes a
 for a trusted Compose network. `allow`, `prefer`, and `require` are rejected.
 Provide `sslrootcert` when verified TLS needs a private CA. Certificate failures
 never fall back to plaintext.
+
+With `WEB_ROOT` set, the server answers `GET` and `HEAD` requests with the matching
+file, and `/` with `index.html`. An unknown path or a folder path returns 404. Startup
+checks the folder before it connects to the database, and fails when the folder is
+missing or holds no `index.html`. The server trusts the folder's contents and follows
+symbolic links, so only trusted users should be able to write to it. `just dev` leaves
+`WEB_ROOT` unset, because Vite serves the web shell in development.
+
+The app image is built from the root `Dockerfile` with `docker build .` at the repository
+root. It holds the server and the built web shell, and sets `WEB_ROOT` itself. The
+[installation guide](../docs/install.md) runs it with Docker Compose.
 
 Startup validates version, ownership, migration history, logical schema, and privileges
 before writes. It applies forward migrations before binding HTTP. Compatibility
