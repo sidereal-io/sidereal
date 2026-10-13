@@ -103,7 +103,7 @@
     "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.3.3",
@@ -116,17 +116,17 @@
     "@types/react-dom": "^19.3.0",
     "@types/tmp": "^0.2.6",
     "@types/ws": "^8.18.2",
-    "@vitejs/plugin-react": "^6.1.1",
+    "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.6.1",
-    "concurrently": "^10.0.5",
+    "concurrently": "^10.0.6",
     "drizzle-kit": "^0.31.11",
     "esbuild": "^0.28.2",
     "nodemon": "^3.1.14",
-    "postcss": "^8.5.16",
+    "postcss": "^8.5.29",
     "tailwindcss": "^4.1.11",
     "tsx": "^4.23.13",
     "typescript": "7.0.2",
-    "vite": "^8.3.2"
+    "vite": "^8.3.4"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
