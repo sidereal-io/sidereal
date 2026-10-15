@@ -9,6 +9,11 @@ on:
       - 'server/rust-toolchain.toml'
       - '.github/workflows/nix.yml'
 
+# A newer commit supersedes checks for the same pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

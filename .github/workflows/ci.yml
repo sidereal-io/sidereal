@@ -24,6 +24,11 @@ on:
       - 'nix/**'
       - '.github/workflows/ci.yml'
 
+# A newer commit supersedes checks for the same branch or pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

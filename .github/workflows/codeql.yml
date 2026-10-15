@@ -9,6 +9,11 @@ on:
     branches:
       - main
 
+# A newer commit supersedes scans for the same branch or pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write
