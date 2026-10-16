@@ -31,6 +31,8 @@ Operators select files through `COMPOSE_FILE` in `.env`, so every later Compose 
 The guide explains the platform-specific file separator and gives the equivalent explicit `-f` commands.
 An unselected override ignores its path setting; selecting an override without its required setting fails.
 Both bind options compose independently and together.
+Each selected override also passes its host path to the app for absolute-path syntax validation.
+The app rejects relative paths during command configuration; PostgreSQL can already be running at that point.
 
 This avoids ambiguous strings that might select a named volume when the operator intended a directory.
 Do not add an installer or generate Compose files.

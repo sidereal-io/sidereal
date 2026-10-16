@@ -24,7 +24,7 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: Concurrent startup
 - **WHEN** two servers start against the same empty database
-- **THEN** both complete startup and exactly two successful migration records exists
+- **THEN** both complete startup and exactly two successful migration records exist
 
 #### Scenario: Incompatible history or schema
 - **WHEN** a fixture contains a newer version, changed checksum, missing history entry, failed record, or altered expected table
