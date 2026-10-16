@@ -68,13 +68,13 @@ Normal startup SHALL NOT create a marker, adopt storage, or initialize an empty 
 - **WHEN** a tester creates and deletes a probe through `docker compose exec app`
 - **THEN** the command exits with status 0
 
-#### Scenario: Storage defaults to a named volume
+#### Scenario: Storage is a named volume
 
 - **GIVEN** a running initialized instance without a storage bind override
 - **WHEN** a tester inspects the app container's mounts
 - **THEN** the mount at `/var/lib/sidereal/storage` has type `volume`
 
-#### Scenario: Startup preserves storage contents
+#### Scenario: A start leaves storage empty
 
 - **GIVEN** an initialized store containing its marker and a disposable sentinel
 - **WHEN** Sam recreates the containers and waits for readiness
