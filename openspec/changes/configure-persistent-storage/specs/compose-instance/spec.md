@@ -3,17 +3,17 @@
 ### Requirement: One command starts the app and PostgreSQL
 
 The repo root SHALL hold a `compose.yml` that defines two services: `app` and `db`.
-After explicit storage initialization, `docker compose up -d --build --wait` SHALL build the app image, start both services, and exit with status 0 once both are healthy.
+`docker compose up -d --build --wait` SHALL build the app image and start both services.
+It SHALL exit with status 0 once both are healthy.
 The `app` service SHALL start only after the `db` service is healthy.
 The `db` service SHALL report healthy only when PostgreSQL accepts TCP connections. The app's `/readyz` probe, not this check, reports whether the application database is usable.
 The `app` service SHALL connect to the `db` service with the foundation's `DATABASE_URL` setting and `sslmode=disable`.
 The app SHALL apply migrations through the foundation's startup path. The Compose file SHALL run no other migration step.
-The explicit storage initialization command SHALL reuse that same migration path.
+Storage initialization SHALL run during app startup without a separate command.
 
 #### Scenario: A first start reaches readiness
 
 - **GIVEN** a `.env` file that sets `POSTGRES_PASSWORD` to a hex string
-- **AND** Sam has completed explicit storage initialization
 - **WHEN** Sam runs `docker compose up -d --build --wait` at the repo root
 - **THEN** the command exits with status 0
 - **AND** `curl -s http://localhost:5000/readyz` prints `{"status":"ready"}`
@@ -26,8 +26,7 @@ The explicit storage initialization command SHALL reuse that same migration path
 
 #### Scenario: The app starts once on new volumes
 
-- **GIVEN** explicit initialization completed on new volumes
-- **WHEN** the app service first reaches readiness
+- **WHEN** a first start on new volumes has reached readiness
 - **AND** a tester reads the `app` container's `RestartCount` with `docker inspect`
 - **THEN** the value is `0`
 
@@ -49,7 +48,7 @@ This retention contract SHALL hold for named volumes and supported bind mounts.
 
 #### Scenario: Removing the containers keeps the volume
 
-- **GIVEN** a ready instance
+- **GIVEN** a ready instance using the default database named volume
 - **WHEN** Sam runs `docker compose down`
 - **THEN** `docker volume ls` still lists the instance's database volume
 
@@ -57,10 +56,11 @@ This retention contract SHALL hold for named volumes and supported bind mounts.
 
 The `app` service SHALL mount a named volume at `/var/lib/sidereal/storage` by default.
 The storage bind override SHALL mount the selected host directory at that same target.
-Compose SHALL set `STORAGE_ROOT` to that target for serving and explicit initialization.
+Compose SHALL set `STORAGE_ROOT` to that target.
 The app user SHALL be able to create, sync, and delete files there.
 The server SHALL validate the marker and database pairing before serving HTTP.
-Normal startup SHALL NOT create a marker, adopt storage, or initialize an empty substitute store.
+Startup SHALL initialize unpaired storage only under the `managed-storage` rules.
+A paired database SHALL NOT initialize an empty substitute store.
 
 #### Scenario: The app user can write to storage
 
@@ -76,19 +76,17 @@ Normal startup SHALL NOT create a marker, adopt storage, or initialize an empty 
 
 #### Scenario: A start leaves storage empty
 
-- **GIVEN** an initialized store containing its marker and a disposable sentinel
-- **WHEN** Sam recreates the containers and waits for readiness
-- **THEN** marker and sentinel bytes are unchanged
-- **AND** the directory contains no additional file
+- **WHEN** a first start on new volumes reaches readiness
+- **THEN** storage contains only its identity marker and no image or probe file
 
 ### Requirement: An installation guide tells the operator how to run the instance
 
 The repo SHALL hold the installation guide `docs/install.md`. `README.md` SHALL link to it.
-The guide SHALL cover these points:\
+The guide SHALL cover these points:
 
 - the prerequisites: Docker Engine or Docker Desktop, with Compose 2.20 or newer;
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
-- the commands that build the image, start PostgreSQL, explicitly initialize storage, and then start the app;
+- the one command that builds and starts the instance, including first-start storage initialization;
 - the commands that stop and recreate the instance;
 - that `down --volumes` deletes Docker-managed volumes but never deletes bind-mounted host data;
 - that the app has no sign-in yet, so anyone who can reach its port can open it;
@@ -98,8 +96,10 @@ The guide SHALL cover these points:\
 - how to prepare dedicated host directories and grant the app UID/GID `10001:10001` access;
 - Desktop file sharing, rootless UID mapping, and host ACL or SELinux requirements;
 - that PostgreSQL host data needs suitable local database storage;
-- that operators must stop containers before remounting and verify the intended mount before initialization;
+- that operators must stop containers before remounting;
 - that missing markers on paired stores require mount recovery, not reinitialization;
+- that startup cannot distinguish simultaneous database and storage loss from first installation;
+- that an unpaired database adopts a valid marker-only directory;
 - that markers identify stores but do not prove image integrity or detect every live mount change.
 
 #### Scenario: The guide gives a password command
@@ -133,13 +133,15 @@ The guide SHALL cover these points:\
 ### Requirement: Operators can select persistent host directories independently
 
 The repo SHALL provide `compose.storage-bind.yml` and `compose.database-bind.yml` beside `compose.yml`.
-The storage override SHALL require an absolute `SIDEREAL_STORAGE_PATH`.
-The database override SHALL require an absolute `SIDEREAL_DATABASE_PATH`.
+The storage override SHALL require a nonempty `SIDEREAL_STORAGE_PATH`.
+The database override SHALL require a nonempty `SIDEREAL_DATABASE_PATH`.
+Compose SHALL resolve relative host paths against its project directory.
+The app SHALL receive only its container-visible storage path, without host-path forwarding.
 The selected bind mounts SHALL use long syntax with `create_host_path: false`.
 The operator SHALL select overrides through retained `COMPOSE_FILE` configuration or equivalent explicit `-f` arguments.
 An invalid selected path SHALL fail rather than select a named volume or create a source directory.
 Both overrides SHALL work independently and together without changing the other service's selected mount.
-The app and initialization command SHALL retain UID/GID `10001:10001` and existing capability restrictions.
+The app SHALL retain UID/GID `10001:10001` and existing capability restrictions.
 
 #### Scenario: Either directory can be chosen independently
 
@@ -154,9 +156,9 @@ The app and initialization command SHALL retain UID/GID `10001:10001` and existi
 - **THEN** Compose exits unsuccessfully and the source path still does not exist
 - **AND** no fallback volume mounts at that service's selected target
 
-#### Scenario: A selected bind path is empty or relative
+#### Scenario: A selected bind path is empty
 
-- **WHEN** Sam selects a bind override with its path unset, empty, or relative
+- **WHEN** Sam selects a bind override with its path unset or empty
 - **THEN** configuration validation or service startup exits unsuccessfully
 - **AND** no app HTTP listener starts
 
@@ -164,7 +166,7 @@ The app and initialization command SHALL retain UID/GID `10001:10001` and existi
 
 `just instance-verify` SHALL demonstrate retention for default volumes and the combined bind-mount installation.
 It SHALL compare database migration records, pairing identity, marker bytes, sentinel bytes, and retained settings across container recreation.
-It SHALL demonstrate a changed storage host path without changing store identity.
+It SHALL demonstrate refusal when a paired database finds an empty directory at its selected storage target.
 The recipe SHALL use only its own disposable directories, Compose projects, and credentials.
 It SHALL NOT initialize, modify, or delete operator-supplied data paths.
 
@@ -172,7 +174,7 @@ It SHALL NOT initialize, modify, or delete operator-supplied data paths.
 
 - **WHEN** the verification recipe runs against default volumes and both bind overrides
 - **THEN** it exits successfully only when all saved records and bytes remain identical after recreation
-- **AND** the app reaches readiness without repeating initialization
+- **AND** the app reaches readiness with the same storage pairing
 
 #### Scenario: The shell holds operator mount settings
 

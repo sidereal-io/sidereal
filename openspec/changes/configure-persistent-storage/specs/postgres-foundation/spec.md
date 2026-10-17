@@ -16,7 +16,7 @@ Concurrent server startups SHALL apply each migration exactly once.
 #### Scenario: First startup
 - **WHEN** Sam starts the server against an empty dedicated database
 - **THEN** the database contains the Sidereal identity row and two successful migration records
-- **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, and `storage_pairing`
+- **AND** its only application tables are `sidereal_metadata` and `_sqlx_migrations`
 
 #### Scenario: Repeated startup
 - **WHEN** Sam restarts against an initialized database
@@ -39,4 +39,4 @@ Concurrent server startups SHALL apply each migration exactly once.
 - **GIVEN** a database with the original foundation migration and saved metadata
 - **WHEN** the new binary applies the storage pairing migration
 - **THEN** the original migration record and metadata remain identical
-- **AND** the new pairing table contains no row until explicit storage initialization
+- **AND** the existing metadata row gains a null storage UUID before storage initialization
