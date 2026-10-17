@@ -1,174 +1,154 @@
 ## Context
 
 See `proposal.md` for motivation and scope.
-`compose.yml` currently mounts two named volumes and starts the server after PostgreSQL becomes healthy.
+`compose.yml` mounts two named volumes and starts the server after PostgreSQL becomes healthy.
 The root `Dockerfile` creates writable storage for UID/GID `10001:10001`.
-The server validates `WEB_ROOT`, initializes PostgreSQL through `core`, then binds HTTP.
-The database foundation compares migration history and generated schema baselines during startup and readiness.
+The database foundation serializes migrations and validates generated schema baselines before the server binds HTTP.
 
-The accepted identity decision lives in `docs/decisions/ADR-014-managed-storage-identity.md`.
-The user approved its architecture during exploration before this design was written.
+ADR-014 now proposes startup initialization instead of an explicit initialization command.
+This revised design awaits ADR acceptance before peer review or implementation.
 
 ## Goals / Non-Goals
 
-**Goals:** Separate deliberate initialization from startup and preserve identity through container replacement and path changes.
-Keep filesystem policy and database pairing generic within `core`.
+**Goals:** Preserve the one-command installation and detect missing storage using the retained database pairing.
+Keep generic storage policy within `core` and deployment configuration within Compose.
 
-**Non-Goals:** Detect live mount changes, prove image integrity, support multiple stores per database, or migrate an existing library.
-Implement no HTTP setup endpoint, asset schema, object writes, or plugin behavior.
+**Non-Goals:** Implement ingestion, object writes, relocation tooling, runtime mount monitoring, or multi-instance store ownership.
+Add no HTTP mutation endpoint or separate initialization command.
 
 ## Decisions
 
-### D1. Use optional Compose override files for bind mounts
+### D1. Keep independent bind overrides
 
-Keep `compose.yml` as the default named-volume installation.
-Add `compose.storage-bind.yml` and `compose.database-bind.yml`, each replacing one service mount by its container target.
-Use long bind syntax with `bind.create_host_path: false`.
-Require absolute `SIDEREAL_STORAGE_PATH` and `SIDEREAL_DATABASE_PATH` values when their respective files are selected.
-Retain the container targets `/var/lib/sidereal/storage` and `/var/lib/postgresql`.
+Keep named volumes in `compose.yml` as the default.
+Add `compose.storage-bind.yml` and `compose.database-bind.yml` for independent host-directory selection.
+Use long bind syntax with `bind.create_host_path: false` and required source variables.
+The variables are `SIDEREAL_STORAGE_PATH` and `SIDEREAL_DATABASE_PATH`.
+Keep container targets `/var/lib/sidereal/storage` and `/var/lib/postgresql`.
 
-Operators select files through `COMPOSE_FILE` in `.env`, so every later Compose command uses the same mounts.
-The guide explains the platform-specific file separator and gives the equivalent explicit `-f` commands.
-An unselected override ignores its path setting; selecting an override without its required setting fails.
-Both bind options compose independently and together.
-Each selected override also passes its host path to the app for absolute-path syntax validation.
-The app rejects relative paths during command configuration; PostgreSQL can already be running at that point.
+Retain selected files through `COMPOSE_FILE` in `.env`.
+Document platform-specific separators and equivalent explicit `-f` arguments.
+Recommend absolute host paths; Compose resolves relative paths against its project directory.
+Do not pass host paths into the app or add application checks for their spelling.
+Compose rejects missing bind sources instead of creating directories.
+The marker check handles an existing empty directory beneath a missing managed-storage mount.
 
-This avoids ambiguous strings that might select a named volume when the operator intended a directory.
-Do not add an installer or generate Compose files.
-Docker resolves paths on its daemon host; Desktop additionally requires host file sharing.
-Operators mount network storage on that host before starting Compose.
-Only managed image storage can use such a mount; PostgreSQL guidance requires suitable local database storage.
-Managed storage must support exclusive file creation, file sync, directory sync, and reliable permissions.
-Initialization reports unsupported operations instead of weakening durability checks.
+Host paths belong to the Docker daemon's machine; Desktop also requires file sharing.
+Operators prepare mounts and access permissions before startup.
+Managed storage requires reliable exclusive creation and file and directory sync.
+Keep PostgreSQL on suitable local database storage.
 
-### D2. Initialize through a local server command
+### D2. Initialize as part of existing startup
 
-Add `sidereal-server storage init`; the default command remains the HTTP server.
-The documented first-install sequence builds the app, starts `db`, and runs:
+Retain `docker compose up -d --build --wait` as the installation command.
+Set `STORAGE_ROOT=/var/lib/sidereal/storage` in Compose.
+Unset `STORAGE_ROOT` preserves direct database-only health serving.
+An explicitly empty or relative container path remains invalid.
+The server never creates the storage root directory.
 
-```sh
-docker compose run --rm --no-deps app sidereal-server storage init
-docker compose up -d --wait
-```
+Validate `WEB_ROOT` and the local storage root before connecting to PostgreSQL.
+Use the foundation's existing migration path, then evaluate these rules before binding HTTP:
 
-The command uses the app image, user, environment, and selected storage mount.
-It opens no HTTP listener and needs no web root.
-Only the explicit command can create pairing metadata or a marker.
-It never runs automatically through `depends_on` or an entrypoint.
-An unchanged rerun against a completed pair succeeds without changing either identity.
+1. Database paired and marker matches: continue, regardless of other storage contents.
+2. Database paired and marker absent, malformed, or different: refuse without replacing either identity.
+3. Database unpaired and root empty: create and sync a marker, then persist its UUID in the database.
+4. Database unpaired and root contains only a valid marker: sync it and persist that same UUID.
+5. Any other unpaired state: refuse without adopting files or changing the UUID.
 
-This is a host-authorized maintenance operation, not an unauthenticated network mutation mode.
-Keep all current HTTP method restrictions and health response bodies.
+Ordinary restart preserves both identities.
+An interruption before marker creation leaves first-install conditions unchanged.
+An interruption after a complete marker but before the database commit recovers through the marker-only rule.
+Malformed partial markers fail closed; startup never overwrites them or deletes unknown files.
+No setup command, force-rebind option, or pending/ready state is needed.
 
-### D3. Version the marker and reserve identity before writing it
+### D3. Extend existing metadata and startup serialization
 
-Use a small UTF-8 JSON marker named `.sidereal-storage.json` at the storage root.
-It holds exactly `format_version: 1` and a randomly generated UUID `storage_id`.
-Accept only a regular file, reject symbolic links, and limit reads to 4096 bytes.
-Reject malformed, unsupported, or extra fields rather than interpreting marker contents as paths.
-The marker is metadata, not a secret or an integrity checksum.
+Add nullable `storage_id UUID` to `sidereal_metadata` through `2_storage_identity.sql`.
+A null UUID means unpaired; a non-null UUID means paired.
+Do not create a separate pairing table or change the existing product identity and format version.
+The migration leaves existing metadata unpaired until storage-enabled startup evaluates D2.
 
-Add migration `2_storage_pairing.sql` with a singleton pairing record containing a UUID and `pending` or `ready` state.
-Leave the original migration and its generated schema baseline unchanged.
-Add the second schema baseline and teach compatibility checks about the new prefix.
-The migration creates an empty pairing table; it does not initialize storage.
+Keep migration 1 and its baseline unchanged.
+Generate schema baseline 2 and update compatibility checks and migration-count assertions.
+A column still changes the schema, so it requires a forward migration and new baseline.
+Read-only database readiness validates the new schema without initializing storage.
 
-Serialize initialization for one database with a dedicated PostgreSQL advisory lock and bounded acquisition.
-The command validates the root and permissions before using the existing migration path.
-It then follows these states while holding the pairing lock:
+Reuse the foundation's existing startup advisory lock through storage pairing, then release it.
+Do not add another advisory lock or persisted initialization state.
+The current code releases this lock immediately after migrations; storage setup must run before that release.
+Keep database-only initialization available without storage setup.
+Use the existing connection deadline for lock acquisition and parameterized pairing queries.
+Preserve unrelated-database rejection before migrations.
 
-1. No pairing and no marker: require an otherwise empty root, then commit a new UUID in `pending` state.
-2. Pending pairing and absent marker: require an otherwise empty root, then create the marker exclusively with that UUID.
-3. Pending pairing and matching marker: sync the marker and root directory, then commit `ready`.
-4. Ready pairing and matching marker: succeed without changing pairing or marker contents.
-5. Any mismatch, malformed marker, unrelated contents during creation, or ready pairing without a marker: refuse without adoption or replacement.
+This serializes simultaneous starts against the same database, including starts with different storage directories.
+Publish markers with exclusive creation; never overwrite another marker.
+If exclusive creation loses a race, re-read the root and apply D2 instead of adopting the losing UUID.
+A partial write or failed sync leaves startup unsuccessful and the database unpaired.
+Do not claim recovery from every possible interrupted file write.
 
-The command syncs a newly written marker before committing `ready`.
-An interruption before marker creation leaves a pending UUID that the explicit command can reuse.
-An interruption after a complete marker leaves the same safe retry path.
-A partial marker fails closed and requires diagnosis; no command overwrites it automatically.
-If no pairing exists but a marker does, refuse adoption even when its format is valid.
-Two databases racing for one empty root cannot overwrite each other's marker because creation is exclusive.
-The losing database can remain pending and never serves HTTP.
+The app role needs read access to the UUID and update access for first pairing.
+A denied update leaves a marker-only state that can recover after the operator corrects permissions.
 
-This ordering avoids a ready database record referring to a marker that was never durably written.
-Do not attempt a distributed transaction or invent a reset command.
-The operator must verify the intended host mount before any explicit initialization or retry.
+### D4. Keep the marker small and forward compatible
 
-### D4. Validate storage before serving HTTP
+Use `.sidereal-storage.json` with required fields `format_version: 1` and UUID `storage_id`.
+Ignore unknown fields; reject malformed JSON, invalid required fields, and unsupported versions.
+Accept only a regular non-symlink marker and bound reads to 4096 bytes.
+Marker data never becomes a filesystem path, command, or SQL fragment.
+The marker is an identity check, not an integrity checksum or exclusive ownership claim.
 
-Set `STORAGE_ROOT=/var/lib/sidereal/storage` in Compose; do not bake a host path into the server.
-For direct server use, unset `STORAGE_ROOT` preserves the database-only health mode.
-An explicitly empty or relative value fails configuration validation.
+### D5. Report useful paths without exposing database credentials
 
-Normal packaged startup validates `WEB_ROOT`, then validates the storage root and marker, before database initialization.
-The root must already exist as a directory; startup never creates it.
-The final marker component cannot be a symlink; the operator controls root paths and ancestor symlinks.
-Use exclusive, randomly named probe files to test create, write, sync, and delete access as the actual app user.
-The probe never overwrites an existing file and normally leaves no file behind.
-After database migrations, require a matching `ready` pairing before binding HTTP.
-Startup never inserts or repairs pairing metadata.
-A database newly created by PostgreSQL therefore cannot silently adopt an existing marked store.
+Storage errors name the container-visible `STORAGE_ROOT` path, failing operation, and a safe recovery action.
+Render paths as escaped data so control characters cannot forge log lines.
+Do not pass the daemon's host path into the app solely for diagnostics.
+Explain the host-to-container mapping in the guide.
+Continue redacting database credentials, connection URLs, marker bodies, and raw nested database errors.
 
-An invalid local marker fails before application migrations.
-A valid marker with a wrong or unpaired database can fail after structural migrations.
-Do not promise that rejected pairing leaves an empty database structurally untouched.
-Existing unrelated-database checks still run before migrations.
+Keep the app as UID/GID `10001:10001`, with dropped capabilities and `no-new-privileges`.
+Validate create, write, sync, and delete access using an exclusively created disposable probe.
+Remove successful probes and preserve pre-existing files.
+Grant access through targeted host ownership or ACLs; add no recursive repair or elevated app privileges.
+PostgreSQL retains its image's own user and initialization behavior.
 
-Keep filesystem parsing and validation in `core::storage` and pairing queries behind `core`'s database interface.
-The `server` crate owns environment parsing and command dispatch.
-The astro pack and public plugin ABI gain no dependency or contract.
-Storage-enabled serving requires a pairing; direct database-only foundation tests remain possible.
+Filesystem logic belongs in `core::storage`; `server` owns environment parsing and startup wiring.
+The astro pack and plugin ABI remain unchanged.
+Network callers retain only static files and health probes, with no storage or pairing mutations through HTTP.
 
-### D5. Keep diagnostics actionable and bounded in disclosure
+### D6. Keep deployment verification focused
 
-Define stable error categories for missing root, missing marker, invalid marker, mismatched pairing, incomplete initialization, and permission or sync failures.
-Errors name `STORAGE_ROOT`, the failing operation, and the next safe action.
-They advise checking the mount or app-user access before retrying.
-Do not print configured path values, marker contents, credentials, database URLs, or raw nested errors.
-Never recommend reinitialization for a ready store whose marker disappeared.
+Extend the existing disposable `scripts/instance-verify.sh` recipe.
+Verify container recreation with default volumes and with both bind overrides together.
+Compare retained `.env` bytes, migration records, database UUID, marker bytes, and a disposable storage sentinel.
+Add one refusal case: a paired database with an empty directory at the managed-storage target.
+The refusal must leave the pairing unchanged and create no marker.
 
-Keep UID/GID `10001:10001`, dropped capabilities, and `no-new-privileges` for the app and initialization command.
-Operators prepare a dedicated host directory using targeted ownership or ACL grants.
-Do not add root helpers, recursive ownership repairs, or broad permission grants.
-PostgreSQL retains the pinned image's own user and initialization behavior; app UID rules do not apply to it.
+Keep the existing password, image-pin, app-user, and capability checks.
+Isolate `COMPOSE_FILE`, path settings, and `STORAGE_ROOT` from the caller's environment.
+Use only test-owned directories under `.workspace/` and preserve existing cleanup ownership checks.
+Do not delete operator-provided paths or recursively follow symlinks.
 
-### D6. Verify through the existing disposable deployment recipe
-
-Extend `scripts/instance-verify.sh` using its existing project ownership checks and cleanup records.
-Explicitly isolate `COMPOSE_FILE`, path settings, and `STORAGE_ROOT` from the caller's environment.
-Use disposable bind directories under `.workspace/` and track them separately from Docker volumes.
-Never delete an operator-supplied directory or recursively follow symlinks during cleanup.
-
-Exercise default volumes and both bind overrides together; inspect the merged configuration for each independent override.
-Initialize, save migration records and pairing identity, and create a disposable storage sentinel.
-Recreate containers without initialization and compare every saved value, sentinel byte, and retained `.env` byte.
-Stop containers and change the host path while retaining the marker to demonstrate path-independent identity.
-Switch the same bind source to an empty directory or unrelated marked store and assert startup refusal.
-Cover missing paths, app-user permission denial, and secret-bearing errors.
-Retain the existing password, static serving, capability, and PostgreSQL image-pin checks.
-
-Rust tests cover marker parsing, exclusive creation, interruption states, pairing races, permissions, and preservation of existing migration history.
+Defer deployment tests for path moves, store swaps, and permission failures to ingestion work.
+Keep focused Rust checks for startup rules, marker parsing, interrupted marker-only recovery, and concurrent pairing.
 Run `deli -- just check` and `deli -- just instance-verify` during implementation.
-No token changes: none.
+Design tokens: none.
 
 ## Risks / Trade-offs
 
-- **Copied markers pass identity checks.** Treat identity as configuration safety; future integrity verification checks image contents.
-- **Mounts can change after startup.** Require the operator to stop the instance before remounting; runtime storage monitoring is deferred.
-- **Initialization can leave a pending pair or partial marker.** Keep normal startup closed and document explicit retry versus diagnosis.
-- **A selected database directory can be empty after a mount loss.** PostgreSQL may initialize it, but the app refuses the missing pairing.
-- **Bind mounts vary across hosts.** Document daemon paths, Desktop sharing, rootless mappings, ACLs, and SELinux policy without disabling host protection.
-- **Filesystem sync can block.** Support filesystems with working sync semantics; do not promise a bounded recovery time for a hung network filesystem.
+- **Both persistence locations disappear:** empty replacements look like first installation; document this limit and retain both locations together.
+- **Unpaired database finds marker-only storage:** startup adopts it without proving its history; this is the deliberate recovery rule.
+- **Partial marker write:** refuse and require diagnosis; do not silently delete or replace a malformed marker.
+- **Another database uses the same marker:** the marker provides no ownership lease; support one instance per store.
+- **Mount changes after startup:** operators stop containers before remounting; live monitoring is deferred.
+- **Filesystem sync blocks:** require suitable storage and avoid promising a deadline for a hung network filesystem.
+- **Host permission differences:** document Desktop sharing, rootless mappings, ACLs, and SELinux requirements without disabling host protections.
 
 ## Migration Plan
 
-Existing default volumes contain no managed images from this implementation line.
-Stop the app, retain `.env` and both volumes, build the new image, then run explicit initialization against the existing empty storage volume.
-The new migration preserves the first migration's record and all existing metadata.
-Unexpected files require diagnosis; initialization never adopts or removes them.
-Changing a populated library's location remains outside this installation procedure.
+Existing instances keep `.env` and their volumes and use the same update command.
+The forward migration adds a null storage UUID without changing existing metadata values or migration records.
+Storage-enabled startup then initializes the existing empty volume under D2.
+Unexpected files cause refusal rather than adoption or deletion.
 
-Rollback uses the previous binary only with its compatible pre-upgrade database state.
-An older binary must reject the new migration history; do not edit history or delete volumes to force a downgrade.
+Older binaries reject the new migration history.
+Rollback requires compatible pre-upgrade database state; never rewrite history or delete retained volumes to force a downgrade.
