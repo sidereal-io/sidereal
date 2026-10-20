@@ -5,8 +5,8 @@ See `proposal.md` for motivation and scope.
 The root `Dockerfile` creates writable storage for UID/GID `10001:10001`.
 The database foundation serializes migrations and validates generated schema baselines before the server binds HTTP.
 
-ADR-014 now proposes startup initialization instead of an explicit initialization command.
-This revised design awaits ADR acceptance before peer review or implementation.
+ADR-014 establishes startup initialization instead of an explicit initialization command.
+The operator accepted the revised decision on 2026-10-19; independent plan review remains required.
 
 ## Goals / Non-Goals
 
