@@ -37,6 +37,9 @@ Host paths belong to the Docker daemon's machine; Desktop also requires file sha
 Operators prepare mounts and access permissions before startup.
 Managed storage requires reliable exclusive creation and file and directory sync.
 Keep PostgreSQL on suitable local database storage.
+Point each host path at a dedicated subdirectory below the disk's mount point.
+Create that subdirectory only while the intended disk is mounted; never recreate it beneath an unmounted disk.
+When that disk is unmounted, the source disappears and Compose refuses the affected service.
 
 ### D2. Initialize as part of existing startup
 
@@ -94,6 +97,7 @@ A denied update leaves a marker-only state that can recover after the operator c
 Use `.sidereal-storage.json` with required fields `format_version: 1` and UUID `storage_id`.
 Ignore unknown fields; reject malformed JSON, invalid required fields, and unsupported versions.
 Accept only a regular non-symlink marker and bound reads to 4096 bytes.
+Open the marker without following symlinks and without blocking, then confirm the opened file is regular.
 Marker data never becomes a filesystem path, command, or SQL fragment.
 The marker is an identity check, not an integrity checksum or exclusive ownership claim.
 
@@ -107,7 +111,11 @@ Continue redacting database credentials, connection URLs, marker bodies, and raw
 
 Keep the app as UID/GID `10001:10001`, with dropped capabilities and `no-new-privileges`.
 Validate create, write, sync, and delete access using an exclusively created disposable probe.
-Remove successful probes and preserve pre-existing files.
+Run the probe only after pairing succeeds and the database UUID is committed or confirmed, while holding the startup lock.
+Give each probe a unique name.
+A pairing refusal creates no file.
+Remove successful probes and preserve pre-existing files, including leftover probes in an already paired store.
+A probe failure after successful pairing does not clear the committed UUID.
 Grant access through targeted host ownership or ACLs; add no recursive repair or elevated app privileges.
 PostgreSQL retains its image's own user and initialization behavior.
 
@@ -121,12 +129,17 @@ Extend the existing disposable `scripts/instance-verify.sh` recipe.
 Verify container recreation with default volumes and with both bind overrides together.
 Compare retained `.env` bytes, migration records, database UUID, marker bytes, and a disposable storage sentinel.
 Add one refusal case: a paired database with an empty directory at the managed-storage target.
-The refusal must leave the pairing unchanged and create no marker.
+The refusal must leave the pairing unchanged and create no file.
+Check that its diagnostic names the missing marker, rather than an unrelated permission or database failure.
 
 Keep the existing password, image-pin, app-user, and capability checks.
 Isolate `COMPOSE_FILE`, path settings, and `STORAGE_ROOT` from the caller's environment.
 Use only test-owned directories under `.workspace/` and preserve existing cleanup ownership checks.
 Do not delete operator-provided paths or recursively follow symlinks.
+Prepare storage bind directories for UID 10001 without requiring host root.
+Use a disposable container for targeted test-directory ownership setup and removal of container-owned bind data.
+Mount only this run's recorded, dedicated `.workspace` directories into that helper; never mount operator paths or the workspace root.
+This helper belongs only to disposable verification, not the installation path or app startup.
 
 Defer deployment tests for path moves, store swaps, and permission failures to ingestion work.
 Keep focused Rust checks for startup rules, marker parsing, interrupted marker-only recovery, and concurrent pairing.
@@ -141,6 +154,10 @@ Design tokens: none.
 - **Another database uses the same marker:** the marker provides no ownership lease; support one instance per store.
 - **Mount changes after startup:** operators stop containers before remounting; live monitoring is deferred.
 - **Filesystem sync blocks:** require suitable storage and avoid promising a deadline for a hung network filesystem.
+- **Mixed-mode deletion:** `down --volumes` removes named volumes but retains bind data, so it can delete only one side of a pairing.
+  A retained database with lost storage refuses startup; a retained marker-only store can pair with a new database under D2.
+  With additional storage files, a new unpaired database refuses adoption.
+  Document restoring both locations from copies taken together, or deliberately deleting both locations to start fresh after permanent loss.
 - **Host permission differences:** document Desktop sharing, rootless mappings, ACLs, and SELinux requirements without disabling host protections.
 
 ## Migration Plan
