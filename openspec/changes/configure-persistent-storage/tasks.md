@@ -30,7 +30,7 @@
 
 ## 6. Document and check the installation
 
-- [ ] 6.1 Update `.env.example` and `docs/install.md` for independent mount selection, retained `COMPOSE_FILE`, platform separators, and explicit `-f` equivalents; verify the documented default command and mount combinations match resolved Compose configuration.
-- [ ] 6.2 Document dedicated subdirectories created only on mounted disks, UID/GID access, Desktop sharing, rootless mapping, ACL/SELinux needs, reliable sync, local PostgreSQL storage, and stopping before remounting; verify the guide explains host-to-container paths without recommending elevated app privileges or recursive permission repair.
-- [ ] 6.3 Document startup pairing, marker-only recovery, missing-marker refusal, mixed-mode `down --volumes`, permanent-loss recovery, simultaneous-loss limits, and rollback requirements; verify guidance preserves the one-command installation and distinguishes both retained data locations and `.env`.
+- [x] 6.1 Update `.env.example` and `docs/install.md` for independent mount selection, retained `COMPOSE_FILE`, platform separators, and explicit `-f` equivalents; verify the documented default command and mount combinations match resolved Compose configuration.
+- [x] 6.2 Document dedicated subdirectories created only on mounted disks, UID/GID access, Desktop sharing, rootless mapping, ACL/SELinux needs, reliable sync, local PostgreSQL storage, and stopping before remounting; verify the guide explains host-to-container paths without recommending elevated app privileges or recursive permission repair.
+- [x] 6.3 Document startup pairing, marker-only recovery, missing-marker refusal, mixed-mode `down --volumes`, permanent-loss recovery, simultaneous-loss limits, and rollback requirements; verify guidance preserves the one-command installation and distinguishes both retained data locations and `.env`.
 - [ ] 6.4 Run `deli -- just check` and `deli -- just instance-verify` with the required disposable fixtures; verify both pass and the resulting diff preserves plugin boundaries, existing migration files, and the agreed storage scope.
