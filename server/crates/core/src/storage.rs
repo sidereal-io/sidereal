@@ -6,7 +6,7 @@ use serde_json::Value;
 use std::{
     fmt,
     fs::{File, OpenOptions},
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
@@ -129,6 +129,53 @@ impl StorageRoot {
     }
 }
 
+/// The result of exclusive marker creation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Created {
+    /// This call wrote and synced the marker and its directory entry.
+    Published,
+    /// A marker already existed; its bytes were not touched.
+    Exists,
+}
+
+impl StorageRoot {
+    /// Create, write, and sync a new marker without ever replacing one.
+    /// Any error leaves the database unpaired; a partial marker fails closed.
+    pub(crate) fn create_marker(&self, id: Uuid) -> Result<Created, StorageError> {
+        self.publish_marker(id, File::sync_all)
+    }
+
+    fn publish_marker(
+        &self,
+        id: Uuid,
+        sync: fn(&File) -> io::Result<()>,
+    ) -> Result<Created, StorageError> {
+        let mut file = match create_exclusive(&self.path.join(MARKER)) {
+            Ok(file) => file,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => return Ok(Created::Exists),
+            Err(e) => return Err(self.io(Operation::CreateMarker)(e)),
+        };
+        file.write_all(&marker_bytes(id))
+            .map_err(self.io(Operation::WriteMarker))?;
+        sync(&file).map_err(self.io(Operation::SyncMarker))?;
+        self.sync_directory(sync)?;
+        Ok(Created::Published)
+    }
+
+    /// Make an existing marker and its directory entry durable before the
+    /// database records its identity.
+    pub(crate) fn sync_marker(&self) -> Result<(), StorageError> {
+        let file = open_marker(&self.path.join(MARKER)).map_err(self.io(Operation::SyncMarker))?;
+        file.sync_all().map_err(self.io(Operation::SyncMarker))?;
+        self.sync_directory(File::sync_all)
+    }
+
+    fn sync_directory(&self, sync: fn(&File) -> io::Result<()>) -> Result<(), StorageError> {
+        let directory = File::open(&self.path).map_err(self.io(Operation::SyncDirectory))?;
+        sync(&directory).map_err(self.io(Operation::SyncDirectory))
+    }
+}
+
 /// Unknown fields are ignored so later formats can add them compatibly.
 fn parse_marker(bytes: &[u8]) -> Result<Uuid, MarkerProblem> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| MarkerProblem::Malformed)?;
@@ -143,6 +190,26 @@ fn parse_marker(bytes: &[u8]) -> Result<Uuid, MarkerProblem> {
         .and_then(Value::as_str)
         .and_then(|id| Uuid::try_parse(id).ok())
         .ok_or(MarkerProblem::InvalidField)
+}
+
+fn marker_bytes(id: Uuid) -> Vec<u8> {
+    let mut bytes = serde_json::json!({ "format_version": 1, "storage_id": id.to_string() })
+        .to_string()
+        .into_bytes();
+    bytes.push(b'\n');
+    bytes
+}
+
+/// `create_new` fails on any existing entry, including a dangling symlink.
+fn create_exclusive(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o644).custom_flags(libc::O_NOFOLLOW);
+    }
+    options.open(path)
 }
 
 #[cfg(unix)]
@@ -217,6 +284,10 @@ pub enum Operation {
     InspectRoot,
     ListRoot,
     ReadMarker,
+    CreateMarker,
+    WriteMarker,
+    SyncMarker,
+    SyncDirectory,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,6 +306,10 @@ impl fmt::Display for Operation {
             Self::InspectRoot => "inspect the storage directory",
             Self::ListRoot => "list the storage directory",
             Self::ReadMarker => "read the storage marker",
+            Self::CreateMarker => "create the storage marker",
+            Self::WriteMarker => "write the storage marker",
+            Self::SyncMarker => "sync the storage marker",
+            Self::SyncDirectory => "sync the storage directory",
         })
     }
 }
@@ -267,10 +342,13 @@ impl fmt::Display for StorageError {
             Problem::NotDirectory => f.write_str(
                 "storage path is not a directory; mount a storage directory at this path",
             ),
-            Problem::Io(operation, kind) => write!(
-                f,
-                "cannot {operation} ({kind}); grant the server's user access to this directory, then restart; ownership and permissions were not changed",
-            ),
+            Problem::Io(operation, kind) => {
+                write!(f, "cannot {operation} ({kind}); ")?;
+                f.write_str(match operation {
+                    Operation::SyncMarker | Operation::SyncDirectory => "use storage that supports reliable file and directory sync, then restart",
+                    _ => "grant the server's user access to this directory, then restart; ownership and permissions were not changed",
+                })
+            }
             Problem::MissingMarker => f.write_str(
                 "storage marker is missing, but the database is paired with managed storage; mount the storage directory that belongs to this database at this path, then restart; do not create a new marker or reinitialize storage",
             ),

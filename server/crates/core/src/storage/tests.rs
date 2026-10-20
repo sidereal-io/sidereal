@@ -226,3 +226,56 @@ fn unreadable_markers_report_the_read_operation() {
         &Problem::Io(Operation::ReadMarker, io::ErrorKind::PermissionDenied)
     );
 }
+
+#[test]
+fn marker_creation_is_exclusive_and_synced() {
+    let temp = TempRoot::new();
+    let root = temp.root();
+    let id = Uuid::new_v4();
+    assert_eq!(root.create_marker(id).unwrap(), Created::Published);
+    assert_eq!(root.marker().unwrap(), Marker::Valid(id));
+    assert_eq!(root.contents().unwrap(), Contents::MarkerOnly);
+    let before = temp.snapshot();
+    // A second creation, as a losing racer would attempt, changes nothing.
+    assert_eq!(root.create_marker(Uuid::new_v4()).unwrap(), Created::Exists);
+    assert_eq!(before, temp.snapshot());
+    root.sync_marker().unwrap();
+    assert_eq!(before, temp.snapshot());
+
+    // Invalid or dangling entries are never overwritten either.
+    let temp = TempRoot::new();
+    marker_json("{", &temp);
+    assert_eq!(temp.root().create_marker(id).unwrap(), Created::Exists);
+    assert_eq!(std::fs::read_to_string(temp.marker_path()).unwrap(), "{");
+    let temp = TempRoot::new();
+    symlink(temp.path.join("absent"), temp.marker_path()).unwrap();
+    assert_eq!(temp.root().create_marker(id).unwrap(), Created::Exists);
+    assert!(!temp.path.join("absent").exists());
+}
+
+#[test]
+fn write_and_sync_failures_never_report_publication() {
+    fn failing(_: &File) -> io::Result<()> {
+        Err(io::Error::other("injected sync failure"))
+    }
+    let temp = TempRoot::new();
+    assert_eq!(
+        temp.root()
+            .publish_marker(Uuid::new_v4(), failing)
+            .unwrap_err()
+            .problem(),
+        &Problem::Io(Operation::SyncMarker, io::ErrorKind::Other)
+    );
+    if running_as_root() {
+        return;
+    }
+    let temp = TempRoot::new();
+    temp.set_mode(0o555);
+    let error = temp.root().create_marker(Uuid::new_v4()).unwrap_err();
+    assert_eq!(
+        error.problem(),
+        &Problem::Io(Operation::CreateMarker, io::ErrorKind::PermissionDenied)
+    );
+    assert!(temp.snapshot().is_empty());
+    assert_eq!(temp.mode() & 0o777, 0o555);
+}
