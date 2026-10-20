@@ -46,12 +46,13 @@ compose() {
 }
 
 # settings <mode> [storage path] [database path]: write this run's .env.
-# Modes: volumes, binds, no-password, empty-password.
+# Modes: volumes, binds, no-password, empty-password. Every mode names its
+# Compose files, so a compose.override.yml in the checkout is never loaded.
 settings() {
     case "$1" in
-        no-password) : >"$envfile" ;;
-        empty-password) printf 'POSTGRES_PASSWORD=\n' >"$envfile" ;;
-        volumes) printf 'POSTGRES_PASSWORD=%s\nSIDEREAL_PORT=%s\n' "$password" "$port" >"$envfile" ;;
+        no-password) printf 'COMPOSE_FILE=compose.yml\n' >"$envfile" ;;
+        empty-password) printf 'COMPOSE_FILE=compose.yml\nPOSTGRES_PASSWORD=\n' >"$envfile" ;;
+        volumes) printf 'COMPOSE_FILE=compose.yml\nPOSTGRES_PASSWORD=%s\nSIDEREAL_PORT=%s\n' "$password" "$port" >"$envfile" ;;
         binds)
             printf '%s\n' "POSTGRES_PASSWORD=$password" "SIDEREAL_PORT=$port" \
                 'COMPOSE_FILE=compose.yml:compose.storage-bind.yml:compose.database-bind.yml' \
