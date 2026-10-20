@@ -1,5 +1,8 @@
 //! Parse configuration before connecting. Never retain URLs in error values.
-use sidereal_core::database::DatabaseError;
+use sidereal_core::{
+    database::DatabaseError,
+    storage::{StorageError, StorageRoot},
+};
 use sqlx::{
     postgres::{PgConnectOptions, PgSslMode},
     ConnectOptions,
@@ -127,6 +130,19 @@ pub fn web_root(value: Option<&OsStr>) -> Result<Option<PathBuf>, WebRootError> 
     Ok(Some(root.to_owned()))
 }
 
+/// The managed storage root, when `STORAGE_ROOT` is set.
+pub fn storage_root_from_env() -> Result<Option<StorageRoot>, StorageError> {
+    storage_root(std::env::var_os("STORAGE_ROOT").as_deref())
+}
+
+/// Unset runs database-only. Set but empty or relative is an error, unlike
+/// `WEB_ROOT`, so a blank setting never silently disables storage checks.
+pub fn storage_root(value: Option<&OsStr>) -> Result<Option<StorageRoot>, StorageError> {
+    value
+        .map(|value| StorageRoot::new(Path::new(value)))
+        .transpose()
+}
+
 fn local(host: &str) -> bool {
     host == "localhost"
         || host.starts_with('/')
@@ -248,5 +264,30 @@ mod tests {
         std::fs::write(root.join("index.html"), "<!doctype html>").unwrap();
         assert_eq!(web_root(Some(root.as_os_str())), Ok(Some(root.clone())));
         std::fs::remove_dir_all(&root).unwrap();
+    }
+    #[test]
+    fn storage_root_is_optional_but_never_blank() {
+        use sidereal_core::storage::Problem;
+        assert!(storage_root(None).unwrap().is_none());
+        let root =
+            std::env::temp_dir().join(format!("sidereal-storage-root-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for (value, problem) in [
+            (OsStr::new(""), Problem::NotAbsolute),
+            (OsStr::new("relative/storage"), Problem::NotAbsolute),
+            (root.as_os_str(), Problem::Missing),
+        ] {
+            assert_eq!(storage_root(Some(value)).unwrap_err().problem(), &problem);
+        }
+        assert!(!root.exists());
+        std::fs::create_dir(&root).unwrap();
+        assert_eq!(
+            storage_root(Some(root.as_os_str()))
+                .unwrap()
+                .unwrap()
+                .path(),
+            root
+        );
+        std::fs::remove_dir(&root).unwrap();
     }
 }

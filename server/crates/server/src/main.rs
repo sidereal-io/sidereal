@@ -1,7 +1,9 @@
-//! Check the web root, then initialize PostgreSQL, before binding any HTTP listener.
+//! Check the web and storage roots, then initialize PostgreSQL and pair
+//! storage, before binding any HTTP listener.
+use sidereal_core::database::{initialize, initialize_with_storage};
 use sidereal_server::{
     app_with_database,
-    config::{web_root_from_env, DatabaseConfig},
+    config::{storage_root_from_env, web_root_from_env, DatabaseConfig},
     with_web_root,
 };
 use std::net::SocketAddr;
@@ -15,15 +17,20 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // A start that cannot serve its web shell must not change the database first.
+    // A start that cannot serve its web shell or reach its storage directory
+    // must not change the database first.
     let web_root = web_root_from_env()?;
+    let storage = storage_root_from_env()?;
     let config = DatabaseConfig::from_env()?;
-    let database = sidereal_core::database::initialize(
+    let (options, startup, migration) = (
         config.options,
         config.startup_timeout,
         config.migration_timeout,
-    )
-    .await?;
+    );
+    let database = match &storage {
+        Some(storage) => initialize_with_storage(options, startup, migration, storage).await?,
+        None => initialize(options, startup, migration).await?,
+    };
     let port = std::env::var("PORT")
         .ok()
         .and_then(|port| port.parse().ok())
