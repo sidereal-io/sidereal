@@ -204,6 +204,34 @@ async fn unpaired_refusals_adopt_nothing() {
 }
 
 #[tokio::test]
+async fn interrupted_marker_writes_recover_or_fail_closed() {
+    // Complete marker, null UUID: the next start recovers it.
+    let db = TestDatabase::new();
+    database_only(&db).await;
+    let root = TempRoot::new();
+    let id = Uuid::new_v4();
+    let text = valid_marker(&root, id);
+    start(&db, &root).await.unwrap();
+    assert_eq!(stored_id(&db).await, Some(id));
+    assert_eq!(
+        std::fs::read_to_string(root.path.join(MARKER)).unwrap(),
+        text
+    );
+
+    // Truncated marker, null UUID: refuse and change nothing.
+    let db = TestDatabase::new();
+    let root = TempRoot::new();
+    std::fs::write(root.path.join(MARKER), &text[..text.len() / 2]).unwrap();
+    let before = root.snapshot();
+    assert_eq!(
+        refused(start(&db, &root).await),
+        Problem::InvalidMarker(MarkerProblem::Malformed)
+    );
+    assert_eq!(before, root.snapshot());
+    assert_eq!(stored_id(&db).await, None);
+}
+
+#[tokio::test]
 async fn losing_the_create_race_rereads_instead_of_using_its_own_id() {
     let db = TestDatabase::new();
     database_only(&db).await;
@@ -221,6 +249,82 @@ async fn losing_the_create_race_rereads_instead_of_using_its_own_id() {
     conn.close().await.unwrap();
     assert_eq!(stored_id(&db).await, Some(winner));
     assert_eq!(marker_id(&root), winner);
+}
+
+#[tokio::test]
+async fn concurrent_starts_with_one_root_converge() {
+    let db = TestDatabase::new();
+    let root = TempRoot::new();
+    let (first, second) = tokio::join!(start(&db, &root), start(&db, &root));
+    first.unwrap();
+    second.unwrap();
+    assert_eq!(stored_id(&db).await, Some(marker_id(&root)));
+    assert_eq!(root.snapshot().len(), 1);
+}
+
+#[tokio::test]
+async fn concurrent_starts_with_different_roots_cannot_replace_a_pairing() {
+    let db = TestDatabase::new();
+    let (a, b) = (TempRoot::new(), TempRoot::new());
+    let (first, second) = tokio::join!(start(&db, &a), start(&db, &b));
+    let (winner, loser, failure) = match (first, second) {
+        (Ok(()), failure) => (&a, &b, failure),
+        (failure, Ok(())) => (&b, &a, failure),
+        other => panic!("one start must pair: {other:?}"),
+    };
+    assert_eq!(refused(failure), Problem::MissingMarker);
+    assert!(loser.snapshot().is_empty());
+    assert_eq!(stored_id(&db).await, Some(marker_id(winner)));
+}
+
+#[tokio::test]
+async fn denied_updates_recover_from_the_marker_only_state() {
+    let db = TestDatabase::new();
+    database_only(&db).await;
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    // Move ownership so the test role's owner rights cannot mask the revoke.
+    conn.execute("ALTER TABLE public.sidereal_metadata OWNER TO pg_database_owner; REVOKE UPDATE ON public.sidereal_metadata FROM pg_database_owner")
+        .await
+        .unwrap();
+    let root = TempRoot::new();
+    assert_eq!(
+        start(&db, &root).await,
+        Err(StartupError::Database(DatabaseError::Permission))
+    );
+    assert_eq!(stored_id(&db).await, None);
+    let id = marker_id(&root);
+    assert_eq!(root.snapshot().len(), 1);
+    conn.execute("GRANT UPDATE ON public.sidereal_metadata TO pg_database_owner")
+        .await
+        .unwrap();
+    start(&db, &root).await.unwrap();
+    assert_eq!(stored_id(&db).await, Some(id));
+    assert_eq!(marker_id(&root), id);
+    conn.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn probe_failures_keep_the_committed_pairing() {
+    if running_as_root() {
+        return;
+    }
+    let db = TestDatabase::new();
+    let root = TempRoot::new();
+    start(&db, &root).await.unwrap();
+    let id = stored_id(&db).await;
+    // A leftover probe in a matching store neither blocks startup nor is removed.
+    std::fs::write(root.path.join(".sidereal-probe-leftover"), "keep").unwrap();
+    start(&db, &root).await.unwrap();
+    let before = root.snapshot();
+    assert_eq!(before.len(), 2);
+    root.set_mode(0o555);
+    assert_eq!(
+        refused(start(&db, &root).await),
+        Problem::Io(Operation::CreateProbe, io::ErrorKind::PermissionDenied)
+    );
+    assert_eq!(stored_id(&db).await, id);
+    assert_eq!(before, root.snapshot());
+    assert_eq!(root.mode() & 0o777, 0o555);
 }
 
 #[tokio::test]
