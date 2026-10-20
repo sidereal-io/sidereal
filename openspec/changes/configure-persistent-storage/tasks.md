@@ -12,8 +12,8 @@
 
 ## 3. Pair storage during serialized startup
 
-- [ ] 3.1 Extend database initialization to pair storage after migrations and before releasing the existing startup lock, then run the access probe after committed or confirmed pairing; verify database-only initialization still works and read-only readiness never initializes storage.
-- [ ] 3.2 Implement parameterized pairing queries and all five design D2 rules; verify first installation, marker-only recovery, unchanged identities on restart, and refusal without file creation for missing, malformed, mismatched, or populated unpaired storage.
+- [x] 3.1 Extend database initialization to pair storage after migrations and before releasing the existing startup lock, then run the access probe after committed or confirmed pairing; verify database-only initialization still works and read-only readiness never initializes storage.
+- [x] 3.2 Implement parameterized pairing queries and all five design D2 rules; verify first installation, marker-only recovery, unchanged identities on restart, and refusal without file creation for missing, malformed, mismatched, or populated unpaired storage.
 - [ ] 3.3 Test interruption and concurrent pairing against PostgreSQL; verify same-root starts converge, different-root starts cannot replace a committed pairing, denied updates recover from marker-only state, and later probe failure preserves the committed UUID.
 - [ ] 3.4 Parse optional `STORAGE_ROOT` in the server and validate it with `WEB_ROOT` before connecting to PostgreSQL; verify unset storage preserves database-only health serving and invalid roots fail before database writes or HTTP binding.
 

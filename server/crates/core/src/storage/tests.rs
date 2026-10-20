@@ -138,7 +138,10 @@ fn invalid_markers_are_rejected_and_preserved() {
         ("{".to_owned(), MarkerProblem::Malformed),
         (String::new(), MarkerProblem::Malformed),
         ("[]".to_owned(), MarkerProblem::InvalidField),
-        (format!(r#"{{"storage_id":"{id}"}}"#), MarkerProblem::InvalidField),
+        (
+            format!(r#"{{"storage_id":"{id}"}}"#),
+            MarkerProblem::InvalidField,
+        ),
         (
             format!(r#"{{"format_version":"1","storage_id":"{id}"}}"#),
             MarkerProblem::InvalidField,
@@ -151,9 +154,15 @@ fn invalid_markers_are_rejected_and_preserved() {
             r#"{"format_version":1,"storage_id":"not-a-uuid"}"#.to_owned(),
             MarkerProblem::InvalidField,
         ),
-        (r#"{"format_version":1}"#.to_owned(), MarkerProblem::InvalidField),
         (
-            format!(r#"{{"format_version":1,"storage_id":"{id}"}}{}"#, " ".repeat(4096)),
+            r#"{"format_version":1}"#.to_owned(),
+            MarkerProblem::InvalidField,
+        ),
+        (
+            format!(
+                r#"{{"format_version":1,"storage_id":"{id}"}}{}"#,
+                " ".repeat(4096)
+            ),
             MarkerProblem::TooLarge,
         ),
     ] {
@@ -194,8 +203,8 @@ fn symlinks_and_special_files_are_rejected_without_blocking() {
 
     // A FIFO with no writer would block a plain open forever.
     let fifo = TempRoot::new();
-    let name = std::ffi::CString::new(fifo.marker_path().into_os_string().into_encoded_bytes())
-        .unwrap();
+    let name =
+        std::ffi::CString::new(fifo.marker_path().into_os_string().into_encoded_bytes()).unwrap();
     // SAFETY: `name` is a valid NUL-terminated path for the call's duration.
     assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
     let socket = TempRoot::new();
@@ -342,7 +351,10 @@ fn diagnostics_escape_paths_and_omit_marker_bodies() {
         let Marker::Invalid(problem) = temp.root().marker().unwrap() else {
             panic!("marker should be invalid");
         };
-        let rendered = temp.root().error(Problem::InvalidMarker(problem)).to_string();
+        let rendered = temp
+            .root()
+            .error(Problem::InvalidMarker(problem))
+            .to_string();
         assert!(rendered.contains(&format!("{:?}", temp.path)));
         assert!(!rendered.contains(secret));
     }

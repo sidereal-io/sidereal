@@ -43,7 +43,7 @@ impl StorageRoot {
         &self.path
     }
 
-    fn error(&self, problem: Problem) -> StorageError {
+    pub(crate) fn error(&self, problem: Problem) -> StorageError {
         StorageError::new(&self.path, problem)
     }
 
@@ -402,4 +402,4 @@ impl fmt::Display for StorageError {
 impl std::error::Error for StorageError {}
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

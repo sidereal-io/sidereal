@@ -1,4 +1,5 @@
 //! PostgreSQL startup and compatibility policy owned by the domain-agnostic core.
+use crate::storage::StorageError;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,5 +46,32 @@ impl From<sqlx::Error> for DatabaseError {
     }
 }
 
+/// A startup failure from either the database or managed storage.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StartupError {
+    Database(DatabaseError),
+    Storage(StorageError),
+}
+impl fmt::Display for StartupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Database(error) => error.fmt(f),
+            Self::Storage(error) => error.fmt(f),
+        }
+    }
+}
+impl std::error::Error for StartupError {}
+impl From<DatabaseError> for StartupError {
+    fn from(error: DatabaseError) -> Self {
+        Self::Database(error)
+    }
+}
+impl From<StorageError> for StartupError {
+    fn from(error: StorageError) -> Self {
+        Self::Storage(error)
+    }
+}
+
+mod pairing;
 mod startup;
-pub use startup::{initialize, Database};
+pub use startup::{initialize, initialize_with_storage, Database};
