@@ -11,8 +11,15 @@ When startup fails, one connection message covers an outage, a wrong password, a
 - The server writes one log line when readiness becomes unusable, naming a safe failure category. It writes one more line when readiness recovers. Repeated failures write nothing new.
 - The installation guide gains a troubleshooting section. It maps each startup message to its fix, explains the automatic restart, and warns that deleting volumes is never a recovery step.
 - `just instance-verify` checks that the app reports unhealthy while PostgreSQL is stopped and healthy again after it restarts, with no data lost.
+- A readiness probe that arrives while another check runs gets the last finished answer, not a fixed 503. The home screen and Docker then stop seeing false outages when their probes overlap.
 
-These features already exist, and this change keeps them: liveness separate from readiness, outage recovery, concurrent and repeated migrations, refusal of incompatible schemas without reset, transactional migrations, and redacted storage messages.
+The story's other needs already exist, and this change keeps them:
+
+- liveness separate from readiness, and recovery after an outage;
+- safe repeated and concurrent migrations, each in one transaction;
+- refusal of incompatible schemas, with no reset or downgrade;
+- redacted storage messages.
+
 This change adds no health dashboard, admin screen, PostgreSQL upgrade path, backup tooling, second migration runner, or product schema.
 
 ## Capabilities
@@ -23,7 +30,7 @@ None.
 
 ### Modified Capabilities
 
-- `postgres-foundation`: Separate connection failure categories, and log lines for readiness changes.
+- `postgres-foundation`: Separate connection failure categories, log lines for readiness changes, and the answer to an overlapping readiness probe.
 - `compose-instance`: The container health check follows readiness, the guide gains a troubleshooting section, and verification covers an outage and its recovery.
 - `web-shell`: The home screen checks readiness and shows `not ready` for an unusable database.
 

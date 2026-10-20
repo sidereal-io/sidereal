@@ -2,8 +2,10 @@
 
 ### Requirement: The app's container health follows readiness
 
-The app image's health check SHALL probe `/readyz`, not `/healthz`.
-Docker SHALL therefore report the `app` container `healthy` only while its database is reachable and compatible.
+The app image's health check SHALL probe `/readyz`, not `/healthz`, every 10 seconds.
+Docker SHALL report the `app` container `healthy` after a readiness check passes.
+Docker SHALL report it `unhealthy` after three readiness checks in a row fail.
+The health status is therefore a sample: Docker can take up to 40 seconds to report a new outage.
 An unhealthy app SHALL keep running and keep answering `/healthz`. Docker SHALL NOT restart it because of its health.
 The app SHALL report `healthy` again, without a restart, once its database is usable again.
 The `db` service's health check SHALL stay unchanged.
@@ -28,13 +30,15 @@ The `db` service's health check SHALL stay unchanged.
 
 `docs/install.md` SHALL have a troubleshooting section.
 The section SHALL tell the operator to read `docker compose ps` for health and `docker compose logs app` for the cause.
-It SHALL explain that `healthy` means the app can use its database, and that `unhealthy` with a running app means it cannot.
+It SHALL explain that `unhealthy` with a running app means its recent readiness checks failed, and that Docker can take up to 40 seconds to notice an outage.
 It SHALL list each startup and readiness message category with its likely cause and one recovery step.
 The list SHALL cover missing or invalid configuration, each connection cause, permission, PostgreSQL version, ownership, migration history, schema, deadlines, migration failure, and storage.
 It SHALL explain that the app retries startup when Docker restarts it, so a database that starts late needs no action.
 It SHALL tell the operator to restart with `docker compose up -d --wait` after fixing `.env`.
 It SHALL state that deleting volumes or data directories is never a recovery step, and that it destroys the library.
-It SHALL state that an incompatible migration history needs the newer release, not an older one.
+It SHALL state that migration history from a newer release needs that release or a later one, never an older one.
+It SHALL state that damaged or unexplained migration history needs investigation with the data kept as it is.
+It SHALL state that editing migration records or the schema by hand to force a start is never a recovery step.
 
 #### Scenario: The guide has a troubleshooting section
 
@@ -51,6 +55,7 @@ It SHALL state that an incompatible migration history needs the newer release, n
 
 - **WHEN** a reviewer reads the troubleshooting section
 - **THEN** it states that `docker compose down --volumes` is not a recovery step
+- **AND** it states that editing migration records by hand is not a recovery step
 
 ### Requirement: Deployment verification demonstrates outage recovery
 

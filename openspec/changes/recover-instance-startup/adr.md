@@ -9,10 +9,10 @@ ADR review completed for this change.
 The existing ADRs contain no `Supersedes` edges. The highest existing sequence is 014.
 ADR-012 remains proposed. It concerns scripting, which this change does not use.
 
-The design makes six decisions. None is a costly fork:
+The design makes six decisions, including how timeouts and TLS errors are classified. None is a costly fork:
 
 - Classifying connection errors is one mapping function. Code review can change it at little cost.
-- Readiness change tracking and its two log lines can be read from the code. Adding a logging library later would replace them without touching any data.
+- Readiness change tracking, its two log lines, and the cached answer for an overlapping probe can be read from the code. Adding a logging library later would replace them without touching any data.
 - Pointing the image health check at `/readyz` is a one-line change, and rolling it back is the same size.
 - The home screen state, the test relay, and the verification step are implementation details.
 
