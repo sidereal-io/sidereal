@@ -10,7 +10,7 @@ The existing ADRs contain no `Supersedes` edges; the highest existing sequence w
 ADR-012 remains proposed and concerns scripting, which this change does not use.
 The storage identity contract is the durable architectural fork.
 Compose overrides and probe mechanics remain implementation choices in the design.
-The revised startup initialization proposal awaits ADR acceptance before peer review.
+The operator accepted the revised startup initialization decision on 2026-10-19.
 
 ## In-Force ADRs Reviewed
 
@@ -30,5 +30,5 @@ The revised startup initialization proposal awaits ADR acceptance before peer re
 ## New Durable ADRs Created
 
 - [ADR-014: Managed Storage Identity](../../../docs/decisions/ADR-014-managed-storage-identity.md).
-  Status: proposed. The operator withdrew the earlier explicit-initialization approval and requested startup initialization.
+  Status: accepted. The operator approved the revised startup initialization decision on 2026-10-19.
   This ADR supersedes no existing decision.
