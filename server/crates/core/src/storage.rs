@@ -165,9 +165,13 @@ impl StorageRoot {
     /// Make an existing marker and its directory entry durable before the
     /// database records its identity.
     pub(crate) fn sync_marker(&self) -> Result<(), StorageError> {
+        self.sync_existing_marker(File::sync_all)
+    }
+
+    fn sync_existing_marker(&self, sync: fn(&File) -> io::Result<()>) -> Result<(), StorageError> {
         let file = open_marker(&self.path.join(MARKER)).map_err(self.io(Operation::SyncMarker))?;
-        file.sync_all().map_err(self.io(Operation::SyncMarker))?;
-        self.sync_directory(File::sync_all)
+        sync(&file).map_err(self.io(Operation::SyncMarker))?;
+        self.sync_directory(sync)
     }
 
     fn sync_directory(&self, sync: fn(&File) -> io::Result<()>) -> Result<(), StorageError> {

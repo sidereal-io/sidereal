@@ -275,6 +275,31 @@ fn write_and_sync_failures_never_report_publication() {
             .problem(),
         &Problem::Io(Operation::SyncMarker, io::ErrorKind::Other)
     );
+    // File sync succeeds but directory sync fails: publication and marker-only
+    // recovery must both fail, so the database is never paired.
+    fn directory_fails(file: &File) -> io::Result<()> {
+        if file.metadata()?.is_dir() {
+            Err(io::Error::other("injected directory sync failure"))
+        } else {
+            file.sync_all()
+        }
+    }
+    let temp = TempRoot::new();
+    let directory_failure = Problem::Io(Operation::SyncDirectory, io::ErrorKind::Other);
+    assert_eq!(
+        temp.root()
+            .publish_marker(Uuid::new_v4(), directory_fails)
+            .unwrap_err()
+            .problem(),
+        &directory_failure
+    );
+    assert_eq!(
+        temp.root()
+            .sync_existing_marker(directory_fails)
+            .unwrap_err()
+            .problem(),
+        &directory_failure
+    );
     if running_as_root() {
         return;
     }
