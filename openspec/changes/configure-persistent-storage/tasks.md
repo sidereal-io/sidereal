@@ -19,7 +19,7 @@
 
 ## 4. Configure independent persistent mounts
 
-- [ ] 4.1 Set Compose `STORAGE_ROOT` and add independent storage/database bind overrides with required path variables and `create_host_path: false`; verify resolved mounts for defaults, each override, and both together, including relative-source resolution.
+- [x] 4.1 Set Compose `STORAGE_ROOT` and add independent storage/database bind overrides with required path variables and `create_host_path: false`; verify resolved mounts for defaults, each override, and both together, including relative-source resolution.
 - [ ] 4.2 Check invalid bind selections using disposable paths; verify empty settings and absent sources refuse without creating directories or using fallback volumes, while container targets, UID/GID, and capability restrictions remain correct.
 
 ## 5. Verify disposable deployments

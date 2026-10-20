@@ -10,6 +10,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://sidereal:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/sidereal?sslmode=disable
+      # The container path of managed storage. compose.storage-bind.yml
+      # mounts a host directory here instead of the named volume.
+      STORAGE_ROOT: /var/lib/sidereal/storage
     ports:
       - "${SIDEREAL_PORT:-5000}:5000"
     volumes:
@@ -29,6 +32,7 @@ services:
       POSTGRES_DB: sidereal
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     # No published port: only the app reaches the database.
+    # compose.database-bind.yml mounts a host directory instead of the volume.
     volumes:
       - database:/var/lib/postgresql
     healthcheck:
