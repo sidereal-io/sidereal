@@ -184,6 +184,11 @@ if [ -n "$(owned)" ]; then
     compose down --volumes --rmi local --remove-orphans --timeout 10 >"$work/down.log" 2>&1 \
         || fail "could not remove the earlier run; see $work/down.log"
 fi
+# Bind directories hold container-owned data. Remove them only when this
+# checkout's record names this project, before the record is replaced.
+if [ -e "$binds" ] && [ "$(cat "$record" 2>/dev/null || true)" != "$project" ]; then
+    fail "$binds exists, but this checkout did not record creating it for project $project. Nothing was removed"
+fi
 printf '%s\n' "$project" >"$record"
 started=1
 if [ -e "$binds" ]; then
