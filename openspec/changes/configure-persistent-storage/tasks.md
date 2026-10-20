@@ -1,7 +1,7 @@
 ## 1. Extend database metadata
 
 - [x] 1.1 Add `2_storage_identity.sql` with nullable `sidereal_metadata.storage_id UUID`; verify an upgrade preserves existing metadata values and migration 1's checksum and timestamp.
-- [ ] 1.2 Register schema baseline 2 and update migration-count and compatibility checks; run `deli -- just db-schema` and verify migration 1 and baselines 0 and 1 remain unchanged.
+- [x] 1.2 Register schema baseline 2 and update migration-count and compatibility checks; run `deli -- just db-schema` and verify migration 1 and baselines 0 and 1 remain unchanged.
 
 ## 2. Implement managed-storage filesystem rules
 
