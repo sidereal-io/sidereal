@@ -47,6 +47,11 @@ Git ignores `.env`. Keep it private: it holds your password.
 |---|---|---|
 | `POSTGRES_PASSWORD` | None. You must set it | The database password |
 | `SIDEREAL_PORT` | `5000` | The port on your machine that the app listens on |
+| `COMPOSE_FILE` | Not set | The Compose files to use. Set it only to keep data in host directories |
+| `SIDEREAL_STORAGE_PATH` | Not set | The host directory for managed storage, with `compose.storage-bind.yml` |
+| `SIDEREAL_DATABASE_PATH` | Not set | The host directory for PostgreSQL data, with `compose.database-bind.yml` |
+
+To keep data in Docker volumes, leave the last three settings unset. To choose host directories, see [Choose where your data lives](#choose-where-your-data-lives).
 
 ## Start the instance
 
@@ -60,6 +65,139 @@ Open `http://localhost:5000/`. The page shows `healthy`.
 
 Compose stops with an error that names `POSTGRES_PASSWORD` when `.env` is missing or the password is empty.
 
+The first start also prepares storage. The app writes one small file, `.sidereal-storage.json`, into the empty storage location. It records the same identity in the database. This pairing lets later starts tell the right storage from an empty substitute. See [Startup checks your storage](#startup-checks-your-storage).
+
+## Choose where your data lives
+
+Sidereal keeps data in two locations:
+
+- **Storage** holds managed files. Today it holds only the storage marker, `.sidereal-storage.json`.
+- **The database** holds PostgreSQL data, including the storage pairing.
+
+By default, both live in Docker volumes named `storage` and `database`. You need no settings for this.
+
+You can keep either location, or both, in a directory on your machine instead. Choose each one independently.
+
+### Prepare a host directory
+
+Do this before the first start that uses the directory.
+
+1. Mount the disk you want to use.
+2. Create a new, empty, dedicated subdirectory on that disk, below its mount point. For example, create `/mnt/photos/sidereal-storage`, not `/mnt/photos`.
+3. Create the subdirectory only while the disk is mounted. Never create it again while the disk is unmounted.
+4. Give the app access, as the next section describes.
+
+The dedicated subdirectory protects you when the disk fails to mount. The subdirectory then does not exist, so Compose refuses to start the service. Compose never creates a missing directory, and it never falls back to a Docker volume.
+
+A disk's mount point itself is a poor choice. It still exists while the disk is unmounted. A newly formatted disk can also hold `lost+found`, and startup refuses storage that holds other files.
+
+### Give the app access
+
+The app runs as user and group `10001:10001`. It needs to create, write, sync, and delete files in the storage directory. Grant that access to the directory itself, for example:
+
+```sh
+sudo chown 10001:10001 /mnt/photos/sidereal-storage
+```
+
+Or keep your own ownership and add an access control entry:
+
+```sh
+setfacl -m u:10001:rwx /mnt/photos/sidereal-storage
+```
+
+Change only the new directory. Never change ownership or permissions of a whole disk or tree, and never run the app with more privileges. The app never changes ownership or permissions itself.
+
+The database directory needs no preparation beyond being new and empty. The PostgreSQL image sets up its own files and user.
+
+Some hosts need more:
+
+- **Docker Desktop** (macOS and Windows): share the directory's drive or folder with Docker in Docker Desktop's file sharing settings.
+- **Rootless Docker or Podman**: user IDs in the container map to a range of IDs on your machine. Grant access to the host ID that container user `10001` maps to. Usually that is the first ID of your range in `/etc/subuid`, plus 10000.
+- **SELinux**: label the new directory so containers may use it, for example `chcon -t container_file_t /mnt/photos/sidereal-storage`. Do not turn SELinux off.
+- **Access control lists**: an entry that denies `10001` overrides the owner bits. Check with `getfacl`.
+
+Storage must support creating files exclusively and syncing files and folders to disk. Some network shares do not. On such storage, the first start fails with an error that names a sync step.
+
+Keep PostgreSQL data on a local disk that suits a database. Do not put it on a network share.
+
+### Select the directories in `.env`
+
+Add the settings to `.env`, so every later command uses them. This example keeps both locations in host directories:
+
+```sh
+COMPOSE_FILE=compose.yml:compose.storage-bind.yml:compose.database-bind.yml
+SIDEREAL_STORAGE_PATH=/mnt/photos/sidereal-storage
+SIDEREAL_DATABASE_PATH=/srv/sidereal-database
+```
+
+To move only one location, list only its file after `compose.yml`:
+
+| Keep in a host directory | `COMPOSE_FILE` | Path setting |
+|---|---|---|
+| Storage only | `compose.yml:compose.storage-bind.yml` | `SIDEREAL_STORAGE_PATH` |
+| Database only | `compose.yml:compose.database-bind.yml` | `SIDEREAL_DATABASE_PATH` |
+| Both | `compose.yml:compose.storage-bind.yml:compose.database-bind.yml` | Both |
+
+On Windows, separate the files with `;` instead of `:`, for example `compose.yml;compose.storage-bind.yml`.
+
+Use absolute paths. Compose reads a relative path from the repository root.
+
+Then start the instance with the same command as before:
+
+```sh
+docker compose up -d --build --wait
+```
+
+You can name the files on the command line instead of setting `COMPOSE_FILE`. Then name them in every command, in the same order:
+
+```sh
+docker compose -f compose.yml -f compose.storage-bind.yml -f compose.database-bind.yml up -d --build --wait
+```
+
+To check your selection, run `docker compose config` and read the `volumes` entries of `app` and `db`. That command also prints your password, so do not share its output.
+
+Compose stops with an error that names the setting when a selected path is empty or unset. It stops with `bind source path does not exist` when the directory is missing.
+
+### Host paths and container paths
+
+The app sees storage at `/var/lib/sidereal/storage`, whichever location you chose. Its error messages name that container path. It maps to `SIDEREAL_STORAGE_PATH` when you use the storage override, and to the `storage` volume otherwise.
+
+### Stop before you change a mount
+
+Stop the instance with `docker compose stop` before you unmount, remount, or move a disk. Start it again once the disk is back. The app checks storage only when it starts.
+
+## Startup checks your storage
+
+Each start compares the storage marker with the pairing in the database before it serves any page:
+
+| Database | Storage | What startup does |
+|---|---|---|
+| Not paired yet | Empty | Writes a new marker and records its identity. This is a first start |
+| Not paired yet | Only a valid marker | Records that marker's identity. This finishes an interrupted first start |
+| Not paired yet | Other files | Refuses. It does not adopt or change the files |
+| Paired | The matching marker | Starts normally |
+| Paired | No marker | Refuses with `storage marker is missing` |
+| Paired | Another or a damaged marker | Refuses and changes neither identity |
+
+Startup never replaces a marker or a pairing. It never deletes files it did not create.
+
+### When startup reports a missing marker
+
+The database remembers storage that is not there. Usually a disk is not mounted, or a path setting names the wrong directory.
+
+1. Stop the instance: `docker compose stop`.
+2. Mount the disk, or correct the path setting in `.env`.
+3. Start the instance again.
+
+Do not create a new marker, and do not empty the storage location to make startup pass. Either would pair the database with storage that does not hold its files.
+
+### What the marker does not do
+
+- It identifies storage. It does not prove that files are intact.
+- A database that is not paired yet accepts any directory that holds only a valid marker.
+- It does not stop two instances from using the same storage. Give each instance its own storage and database.
+- It does not detect a mount that changes while the app runs.
+
 ## Stop, restart, and update
 
 | You want to | Run | What happens to your data |
@@ -70,17 +208,44 @@ Compose stops with an error that names `POSTGRES_PASSWORD` when `.env` is missin
 | Create the containers again | `docker compose down`, then `docker compose up -d --wait` | Kept |
 | Update to newer code | `git pull`, then `docker compose up -d --build --wait` | Kept |
 
-The database and the storage folder live in two named Docker volumes, `database` and `storage`. Removing the containers does not remove the volumes.
+Removing the containers keeps both data locations, whether they are Docker volumes or host directories.
+
+## What Sidereal keeps
+
+| Item | Where it lives | After `docker compose down --volumes` |
+|---|---|---|
+| `.env`, with your password and mount settings | The repository root | Kept |
+| Storage, with the storage marker | The `storage` volume, or `SIDEREAL_STORAGE_PATH` | Deleted from the volume. Kept in a host directory |
+| The database, with the storage pairing | The `database` volume, or `SIDEREAL_DATABASE_PATH` | Deleted from the volume. Kept in a host directory |
+
+Back up `.env` and both data locations together. The marker and the pairing must match when you restore them.
 
 ## Delete the data
 
-Only this command deletes your data:
+Only this command deletes data:
 
 ```sh
 docker compose down --volumes
 ```
 
-It removes the containers and both volumes. No other command in this guide deletes data.
+It removes the containers and the Docker volumes. It never deletes a host directory. No other command in this guide deletes data.
+
+When you use only one host directory, this command deletes one location and keeps the other:
+
+- **Database kept, storage deleted**: every later start refuses with `storage marker is missing`.
+- **Database deleted, storage kept with only its marker**: the new database adopts that marker on the next start.
+- **Database deleted, storage kept with other files**: every later start refuses.
+
+To delete everything, run `docker compose down --volumes`, then delete the contents of each host directory you use.
+
+### When storage is lost for good
+
+If paired storage cannot come back, choose one:
+
+- Restore both locations from copies taken at the same time.
+- Start fresh: run `docker compose down --volumes`, then empty or replace both data locations.
+
+Startup cannot tell a first start from losing both locations at once. When the database and storage are both empty, it starts fresh. Keep both locations safe together.
 
 ## Things to know
 
@@ -91,6 +256,10 @@ PostgreSQL reads `POSTGRES_PASSWORD` only on the first start, when it creates th
 ### Compose can print your password
 
 `docker compose config` prints the settings it resolved, including the password. The app's own logs never print it.
+
+### Going back to an older release
+
+After an update, the database holds a newer migration history. An older app refuses to start against it. To go back, restore copies of both data locations taken before the update. Do not edit the migration history, and do not delete data to force an older release to start.
 
 ### Run one instance per machine
 

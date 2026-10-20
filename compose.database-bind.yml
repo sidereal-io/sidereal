@@ -1,0 +1,11 @@
+# Keep PostgreSQL data in a host directory instead of the named volume.
+# Select this file with COMPOSE_FILE in .env, beside compose.yml; see
+# docs/install.md. The directory must already exist: Compose never creates it.
+services:
+  db:
+    volumes:
+      - type: bind
+        source: ${SIDEREAL_DATABASE_PATH:?set SIDEREAL_DATABASE_PATH in .env to an existing host directory}
+        target: /var/lib/postgresql
+        bind:
+          create_host_path: false

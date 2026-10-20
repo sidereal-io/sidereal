@@ -26,3 +26,4 @@ mod tests {
 mod test_support;
 
 pub mod database;
+pub mod storage;

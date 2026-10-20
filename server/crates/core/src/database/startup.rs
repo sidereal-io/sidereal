@@ -1,4 +1,5 @@
-use super::DatabaseError;
+use super::{pairing, DatabaseError, StartupError};
+use crate::storage::StorageRoot;
 use serde_json::Value;
 use sqlx::{
     migrate::{Migrate, Migrator},
@@ -75,23 +76,51 @@ pub async fn initialize(
     migration: Duration,
 ) -> Result<Database, DatabaseError> {
     initialize_with(&options, startup, migration, &MIGRATOR, &baselines(), None).await?;
-    Ok(Database {
-        operational: PgPoolOptions::new()
-            .max_connections(5)
-            .acquire_timeout(startup)
-            .connect_lazy_with(options.clone()),
-        readiness: PgPoolOptions::new()
-            .max_connections(1)
-            .acquire_timeout(READY_TIMEOUT)
-            .connect_lazy_with(options),
-        permit: Arc::new(Semaphore::new(1)),
-    })
+    Ok(Database::new(options, startup))
+}
+
+/// Initialize the database, then pair `storage` with it and check storage
+/// access before the startup lock is released.
+pub async fn initialize_with_storage(
+    options: PgConnectOptions,
+    startup: Duration,
+    migration: Duration,
+    storage: &StorageRoot,
+) -> Result<Database, StartupError> {
+    locked(
+        &options,
+        startup,
+        migration,
+        &MIGRATOR,
+        &baselines(),
+        None,
+        async |conn: &mut PgConnection| pairing::pair(conn, storage).await,
+    )
+    .await?;
+    Ok(Database::new(options, startup))
+}
+
+impl Database {
+    fn new(options: PgConnectOptions, startup: Duration) -> Self {
+        Self {
+            operational: PgPoolOptions::new()
+                .max_connections(5)
+                .acquire_timeout(startup)
+                .connect_lazy_with(options.clone()),
+            readiness: PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(READY_TIMEOUT)
+                .connect_lazy_with(options),
+            permit: Arc::new(Semaphore::new(1)),
+        }
+    }
 }
 
 fn baselines() -> Vec<Value> {
     [
         include_str!("../../schema/0.json"),
         include_str!("../../schema/1.json"),
+        include_str!("../../schema/2.json"),
     ]
     .into_iter()
     .map(|value| serde_json::from_str(value).expect("generated schema JSON must be valid"))
@@ -114,53 +143,59 @@ async fn initialize_with(
     expected: &[Value],
     version_override: Option<i32>,
 ) -> Result<(), DatabaseError> {
+    locked(
+        options,
+        startup,
+        migration,
+        migrator,
+        expected,
+        version_override,
+        async |_: &mut PgConnection| Ok(()),
+    )
+    .await
+}
+
+/// Migrate under the startup lock, then run `after` while still holding it.
+async fn locked<E: From<DatabaseError>>(
+    options: &PgConnectOptions,
+    startup: Duration,
+    migration: Duration,
+    migrator: &Migrator,
+    expected: &[Value],
+    version_override: Option<i32>,
+    after: impl AsyncFnOnce(&mut PgConnection) -> Result<(), E>,
+) -> Result<(), E> {
     if migrator.no_tx
         || migrator
             .iter()
             .any(|m| m.no_tx || m.migration_type.is_down_migration())
     {
-        return Err(DatabaseError::Migration);
+        return Err(DatabaseError::Migration.into());
     }
     let mut conn = timeout(startup, PgConnection::connect_with(options))
         .await
-        .map_err(|_| DatabaseError::StartupDeadline)??;
+        .map_err(|_| DatabaseError::StartupDeadline)?
+        .map_err(DatabaseError::from)?;
     let mut cancellation = timeout(startup, Cancellation::new(&mut conn, options.clone()))
         .await
         .map_err(|_| DatabaseError::StartupDeadline)??;
     let result = async {
-        conn.execute("SET search_path = public, pg_catalog").await?;
-        set_deadline(&mut conn, startup).await?;
-        timeout(startup, async {
-            conn.execute(LOCK).await?;
-            conn.lock()
-                .await
-                .map_err(|_| DatabaseError::StartupDeadline)?;
-            Ok::<_, DatabaseError>(())
-        })
-        .await
-        .map_err(|_| DatabaseError::StartupDeadline)??;
-        set_deadline(&mut conn, migration).await?;
-        let prefix = preflight(&mut conn, migrator, expected, version_override).await?;
-        let pending = prefix.unwrap_or(0) < migrator.iter().count();
-        privileges(&mut conn, prefix.is_some(), pending).await?;
-        if prefix.is_none() {
-            timeout(migration, bootstrap(&mut conn, migrator))
-                .await
-                .map_err(|_| DatabaseError::Migration)??;
-        }
-        timeout(migration, migrator.run_direct(None, &mut conn, false))
-            .await
-            .map_err(|_| DatabaseError::Migration)?
-            .map_err(migration_error)?;
-        if preflight(&mut conn, migrator, expected, version_override).await?
-            != Some(migrator.iter().count())
-        {
-            return Err(DatabaseError::History);
-        }
+        migrate(
+            &mut conn,
+            startup,
+            migration,
+            migrator,
+            expected,
+            version_override,
+        )
+        .await?;
+        after(&mut conn).await?;
         // run_direct released its own reentrant acquisition; release ours too.
-        conn.unlock().await.map_err(migration_error)?;
-        conn.execute(UNLOCK).await?;
-        Ok::<_, DatabaseError>(())
+        conn.unlock()
+            .await
+            .map_err(|error| E::from(migration_error(error)))?;
+        conn.execute(UNLOCK).await.map_err(DatabaseError::from)?;
+        Ok::<_, E>(())
     }
     .await;
     // Dropping an unpooled connection closes its socket on every failure,
@@ -169,9 +204,49 @@ async fn initialize_with(
         cancellation.armed = false;
         timeout(startup, conn.close())
             .await
-            .map_err(|_| DatabaseError::StartupDeadline)??;
+            .map_err(|_| DatabaseError::StartupDeadline)?
+            .map_err(DatabaseError::from)?;
     }
     result
+}
+
+async fn migrate(
+    conn: &mut PgConnection,
+    startup: Duration,
+    migration: Duration,
+    migrator: &Migrator,
+    expected: &[Value],
+    version_override: Option<i32>,
+) -> Result<(), DatabaseError> {
+    conn.execute("SET search_path = public, pg_catalog").await?;
+    set_deadline(conn, startup).await?;
+    timeout(startup, async {
+        conn.execute(LOCK).await?;
+        conn.lock()
+            .await
+            .map_err(|_| DatabaseError::StartupDeadline)?;
+        Ok::<_, DatabaseError>(())
+    })
+    .await
+    .map_err(|_| DatabaseError::StartupDeadline)??;
+    set_deadline(conn, migration).await?;
+    let prefix = preflight(conn, migrator, expected, version_override).await?;
+    let pending = prefix.unwrap_or(0) < migrator.iter().count();
+    privileges(conn, prefix.is_some(), pending).await?;
+    if prefix.is_none() {
+        timeout(migration, bootstrap(conn, migrator))
+            .await
+            .map_err(|_| DatabaseError::Migration)??;
+    }
+    timeout(migration, migrator.run_direct(None, conn, false))
+        .await
+        .map_err(|_| DatabaseError::Migration)?
+        .map_err(migration_error)?;
+    if preflight(conn, migrator, expected, version_override).await? != Some(migrator.iter().count())
+    {
+        return Err(DatabaseError::History);
+    }
+    Ok(())
 }
 
 async fn set_deadline(conn: &mut PgConnection, duration: Duration) -> Result<(), DatabaseError> {

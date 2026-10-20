@@ -1,0 +1,11 @@
+# Keep managed storage in a host directory instead of the named volume.
+# Select this file with COMPOSE_FILE in .env, beside compose.yml; see
+# docs/install.md. The directory must already exist: Compose never creates it.
+services:
+  app:
+    volumes:
+      - type: bind
+        source: ${SIDEREAL_STORAGE_PATH:?set SIDEREAL_STORAGE_PATH in .env to an existing host directory}
+        target: /var/lib/sidereal/storage
+        bind:
+          create_host_path: false
