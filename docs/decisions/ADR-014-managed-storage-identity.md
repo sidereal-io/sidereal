@@ -1,7 +1,7 @@
 ---
 id: adrs-adr014
 date: 2026-10-16
-status: proposed
+status: accepted
 title: 'ADR014: Managed Storage Identity'
 description: Identify managed storage through a versioned marker paired with PostgreSQL during startup.
 ---
@@ -25,8 +25,7 @@ The marker identifies the store's contents independently of its path or physical
 Its format contains a version and UUID; readers ignore unknown fields but reject unsupported versions and invalid required fields.
 The marker carries no commands, paths, or secrets.
 
-This revised decision is Proposed and awaits acceptance.
-The operator withdrew approval of the earlier explicit initialization command.
+The operator accepted this revised startup initialization decision on 2026-10-19.
 Startup adds no HTTP mutation endpoint and retains the network restrictions described in [ADR-007](ADR-007-security-and-plugin-trust.md).
 This decision does not waive authentication prerequisites for library operations or plugins.
 
