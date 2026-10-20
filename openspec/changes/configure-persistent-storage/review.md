@@ -129,11 +129,11 @@ APPROVE WITH CHANGES. The plan is sound and the user's decisions are applied con
 <!-- Downstream work (tasks, apply) MUST NOT proceed on -->
 <!-- VERDICT: APPROVE_WITH_CHANGES unless CHANGES_APPLIED: yes. -->
 
-CHANGES_APPLIED: no
+CHANGES_APPLIED: yes
 
 ## Rebuttals
 
-### Author responses pending reviewer re-check
+### Author responses accepted by reviewer
 
 - **M1 — CONFIRMED, fixed.** D5 and the access-check requirement place unique probes after committed or confirmed pairing, under startup serialization.
   Pairing refusals create no file; a leftover probe cannot block a matching paired store.
@@ -165,3 +165,26 @@ CHANGES_APPLIED: no
 7. D6's multi-instance ownership exclusion and the risk section already require one instance per store.
    A broader second-instance guide revision remains deferred.
 
+
+## Reviewer Re-check
+
+- Date: 2026-10-19.
+- Reviewer: Claude Opus 5.5, independent cross-model and read-only.
+- Scope: Round 1 Required Changes M1-M5 and author responses.
+- Reviewed fix commits: `5dae389` and `b5823d5`.
+- Result: All five Required Changes are applied and re-checked.
+- The reviewer confirmed that the edits stay within Required Changes and do not trigger the staleness rule.
+
+### Accepted by reviewer
+
+- **M1:** Unique probes run after committed or confirmed pairing, while holding the startup lock.
+  The reviewer accepted limiting the no-file promise to pairing refusals.
+- **M2:** Mixed-mode deletion and permanent-loss guidance cover both directions.
+  The reviewer accepted the correction that a retained marker-only store can pair with a new database.
+- **M3:** Dedicated subdirectories created only on the mounted disk let Compose reject missing sources.
+- **M4:** Verification uses narrowly mounted test-only helpers and identifies the missing-marker diagnostic.
+- **M5:** Nonblocking, no-follow opening rejects special-file markers before reading.
+
+The reviewer accepted all five fixes and found no required defect hidden by the declined suggestions.
+The verdict remains APPROVE_WITH_CHANGES, with every required change complete.
+Implementation tasks are now unblocked.
