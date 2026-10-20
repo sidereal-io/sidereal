@@ -20,13 +20,13 @@
 ## 4. Configure independent persistent mounts
 
 - [x] 4.1 Set Compose `STORAGE_ROOT` and add independent storage/database bind overrides with required path variables and `create_host_path: false`; verify resolved mounts for defaults, each override, and both together, including relative-source resolution.
-- [ ] 4.2 Check invalid bind selections using disposable paths; verify empty settings and absent sources refuse without creating directories or using fallback volumes, while container targets, UID/GID, and capability restrictions remain correct.
+- [x] 4.2 Check invalid bind selections using disposable paths; verify empty settings and absent sources refuse without creating directories or using fallback volumes, while container targets, UID/GID, and capability restrictions remain correct.
 
 ## 5. Verify disposable deployments
 
-- [ ] 5.1 Isolate caller mount settings in `scripts/instance-verify.sh` and prepare narrowly mounted helper containers for test-directory ownership and cleanup; verify all bind paths belong to the recorded run under `.workspace/` and operator paths remain untouched.
-- [ ] 5.2 Extend recreation checks for default volumes and combined binds; verify identical `.env` bytes, migration records, database UUID, marker bytes, and sentinel bytes before and after recreation, retaining existing image, password, user, and capability checks.
-- [ ] 5.3 Add the paired-database/empty-storage refusal case; verify the diagnostic identifies the missing marker, no HTTP listener starts, no file is created, and the database pairing stays unchanged.
+- [x] 5.1 Isolate caller mount settings in `scripts/instance-verify.sh` and prepare narrowly mounted helper containers for test-directory ownership and cleanup; verify all bind paths belong to the recorded run under `.workspace/` and operator paths remain untouched.
+- [x] 5.2 Extend recreation checks for default volumes and combined binds; verify identical `.env` bytes, migration records, database UUID, marker bytes, and sentinel bytes before and after recreation, retaining existing image, password, user, and capability checks.
+- [x] 5.3 Add the paired-database/empty-storage refusal case; verify the diagnostic identifies the missing marker, no HTTP listener starts, no file is created, and the database pairing stays unchanged.
 
 ## 6. Document and check the installation
 
