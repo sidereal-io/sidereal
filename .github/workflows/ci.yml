@@ -4,9 +4,17 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'DESIGN.md'
+      - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - '.github/workflows/ci.yml'
+      - '.github/ci-paths.yml'
   pull_request:
-  merge_group:
-    types: [checks_requested]
 
 # A newer commit supersedes checks for the same branch or pull request.
 concurrency:
@@ -15,9 +23,26 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  paths:
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.paths.outputs.server }}
+      web: ${{ steps.paths.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: paths
+        with:
+          filters: .github/ci-paths.yml
+
   server:
+    needs: paths
+    if: needs.paths.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -47,6 +72,8 @@ jobs:
         run: nix develop --command just db-down
 
   web:
+    needs: paths
+    if: needs.paths.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -57,3 +84,18 @@ jobs:
 
       - name: Web gate
         run: nix develop --command just check-web
+
+  result:
+    name: CI
+    needs: [paths, server, web]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required job outcomes
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")
+            and .paths.result == "success"
+            and (.paths.outputs.server != "true" or .server.result == "success")
+            and (.paths.outputs.web != "true" or .web.result == "success")' <<< "$RESULTS"

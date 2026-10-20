@@ -1,26 +1,30 @@
 name: Dependabot auto-merge
 
 on:
+  push:
+    branches: [main]
   pull_request_target:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
 
-# Read metadata with the default token. Only the final job uses App credentials.
+# Read metadata with the default token. Merge and refresh jobs use App credentials.
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  group: dependabot-automerge-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   metadata:
     if: >-
+      github.event_name == 'pull_request_target' &&
       github.repository == 'sidereal-io/sidereal' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      !github.event.pull_request.draft
+      !github.event.pull_request.draft &&
+      (github.actor == 'dependabot[bot]' || github.event.pull_request.auto_merge == null)
     runs-on: ubuntu-latest
     outputs:
       eligible: ${{ steps.policy.outputs.eligible }}
@@ -42,11 +46,20 @@ jobs:
             .updateType == "version-update:semver-minor")' <<< "$DEPENDENCIES")
           echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
 
-  enqueue:
+  automerge:
     needs: metadata
-    if: needs.metadata.outputs.eligible == 'true'
+    if: >-
+      needs.metadata.outputs.eligible == 'true' ||
+      github.event.pull_request.auto_merge != null
     runs-on: ubuntu-latest
     steps:
+      - name: Check out trusted automation from main
+        if: needs.metadata.outputs.eligible == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
       - name: Create repository-scoped App token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
@@ -57,14 +70,53 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write
 
-      - name: Request merge through the queue
+      - name: Revoke auto-merge for an ineligible update
+        if: needs.metadata.outputs.eligible != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr merge "$PR_NUMBER" --disable-auto
+
+      - name: Enable auto-merge with up-to-date checks
+        if: needs.metadata.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Refuse to merge if the queue has not been activated yet.
-          gh api "repos/$GH_REPO/rules/branches/main" \
-            --jq 'any(.[]; .type == "merge_queue")' | grep -qx true
-          gh pr merge "$PR_NUMBER" --auto --match-head-commit "$PR_HEAD_SHA"
+          # Fail closed until strict required checks replace the queue.
+          gh api "repos/$GH_REPO/rules/branches/main" | jq -e '
+            any(.[]; .type == "required_status_checks"
+              and .parameters.strict_required_status_checks_policy
+              and (.parameters.required_status_checks | length > 0))
+            and all(.[]; .type != "merge_queue")'
+          gh pr merge "$PR_NUMBER" --auto --squash --match-head-commit "$PR_HEAD_SHA"
+          bash scripts/update-dependabot-branches.sh "$PR_NUMBER"
+
+  refresh:
+    if: github.event_name == 'push' && github.repository == 'sidereal-io/sidereal'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out trusted automation from main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.DEPENDABOT_MERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_MERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Update stale Dependabot PRs with auto-merge enabled
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash scripts/update-dependabot-branches.sh

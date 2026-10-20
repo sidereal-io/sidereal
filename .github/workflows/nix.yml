@@ -2,8 +2,6 @@ name: nix
 
 on:
   pull_request:
-  merge_group:
-    types: [checks_requested]
 
 # A newer commit supersedes checks for the same pull request.
 concurrency:
@@ -12,10 +10,26 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
-  flake-check:
-    name: flake check
+  paths:
+    runs-on: ubuntu-latest
+    outputs:
+      nix: ${{ steps.paths.outputs.nix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3
+        id: paths
+        with:
+          filters: .github/ci-paths.yml
+
+  validate:
+    name: Validate Nix
+    needs: paths
+    if: needs.paths.outputs.nix == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,3 +43,17 @@ jobs:
 
       - name: Tool versions
         run: nix develop --command sh -c 'rustc --version && openspec --version && node --version && pnpm --version && just --version'
+
+  result:
+    name: flake check
+    needs: [paths, validate]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required job outcomes
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e '.paths.result == "success"
+            and (.validate.result == "success" or .validate.result == "skipped")
+            and (.paths.outputs.nix != "true" or .validate.result == "success")' <<< "$RESULTS"
