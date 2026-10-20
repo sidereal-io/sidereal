@@ -321,3 +321,66 @@ fn probe_failures_change_no_ownership_permissions_or_files() {
         std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(&temp.path).unwrap())
     );
 }
+
+#[test]
+fn diagnostics_escape_paths_and_omit_marker_bodies() {
+    let path = Path::new("/var/lib/sidereal/storage\nforged: log line\u{1b}[31m");
+    let rendered = StorageError::new(path, Problem::MissingMarker).to_string();
+    assert!(!rendered.contains('\n') && !rendered.contains('\u{1b}'));
+    assert!(rendered.contains(r#""/var/lib/sidereal/storage\nforged: log line\u{1b}[31m""#));
+    // Missing markers on paired stores direct mount recovery, not reinitialization.
+    assert!(rendered.contains("storage marker is missing"));
+    assert!(rendered.contains("mount the storage directory that belongs to this database"));
+
+    let secret = "distinctive-marker-body-secret";
+    for body in [
+        format!(r#"{{"format_version":9,"storage_id":"{secret}"}}"#),
+        format!("{{{secret}"),
+    ] {
+        let temp = TempRoot::new();
+        marker_json(&body, &temp);
+        let Marker::Invalid(problem) = temp.root().marker().unwrap() else {
+            panic!("marker should be invalid");
+        };
+        let rendered = temp.root().error(Problem::InvalidMarker(problem)).to_string();
+        assert!(rendered.contains(&format!("{:?}", temp.path)));
+        assert!(!rendered.contains(secret));
+    }
+
+    let operations = [
+        Operation::InspectRoot,
+        Operation::ListRoot,
+        Operation::ReadMarker,
+        Operation::CreateMarker,
+        Operation::WriteMarker,
+        Operation::SyncMarker,
+        Operation::SyncDirectory,
+        Operation::CreateProbe,
+        Operation::WriteProbe,
+        Operation::SyncProbe,
+        Operation::DeleteProbe,
+    ];
+    for operation in operations {
+        let rendered = StorageError::new(
+            Path::new("/storage"),
+            Problem::Io(operation, io::ErrorKind::PermissionDenied),
+        )
+        .to_string();
+        assert!(rendered.starts_with(r#"storage "/storage": cannot "#));
+        assert!(rendered.contains(&operation.to_string()));
+        assert!(rendered.contains("restart"));
+    }
+    for problem in [
+        Problem::NotAbsolute,
+        Problem::Missing,
+        Problem::NotDirectory,
+        Problem::MismatchedMarker,
+        Problem::Occupied,
+        Problem::Contended,
+    ] {
+        let rendered = StorageError::new(Path::new("/storage"), problem).to_string();
+        assert!(rendered.starts_with(r#"storage "/storage": "#));
+        // Every diagnostic carries a recovery action after the problem.
+        assert!(rendered.contains("; "));
+    }
+}

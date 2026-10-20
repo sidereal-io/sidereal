@@ -8,7 +8,7 @@
 - [x] 2.1 Add `core::storage` root validation and safe marker reading; verify existing-directory checks, the 4096-byte limit, unknown-field acceptance, and rejection of invalid fields, versions, JSON, symlinks, and special files without blocking.
 - [x] 2.2 Add exclusive marker creation and file/directory sync; verify existing bytes are never overwritten, exclusive-create races re-read the root, and write or sync failures cannot authorize database pairing.
 - [x] 2.3 Add uniquely named exclusive access probes that write, sync, and delete only their own files; verify successful cleanup, preserved existing files, and failure without ownership or permission changes.
-- [ ] 2.4 Add storage diagnostics with escaped container paths, failed operations, and safe recovery actions; verify missing-marker guidance directs mount recovery and output excludes marker bodies, database credentials, URLs, and raw database errors.
+- [x] 2.4 Add storage diagnostics with escaped container paths, failed operations, and safe recovery actions; verify missing-marker guidance directs mount recovery and output excludes marker bodies, database credentials, URLs, and raw database errors.
 
 ## 3. Pair storage during serialized startup
 
