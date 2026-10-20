@@ -88,12 +88,17 @@ The guide SHALL cover these points:
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
 - the one command that builds and starts the instance, including first-start storage initialization;
 - the commands that stop and recreate the instance;
-- that `down --volumes` deletes Docker-managed volumes but never deletes bind-mounted host data;
+- that `down --volumes` with one bind override deletes only the named-volume data location;
+- that retained database pairing with deleted storage refuses startup;
+- that an unpaired database adopts retained marker-only storage, but refuses storage containing other files;
+- that permanent paired-store loss requires restoring both locations together, or deliberately removing both locations to start fresh;
 - that the app has no sign-in yet, so anyone who can reach its port can open it;
 - that a server run outside the image needs a `WEB_ROOT` folder that only trusted users can write;
 - that changing `POSTGRES_PASSWORD` after the first start does not change the database's password;
 - how to retain mount selection and host paths in `.env`;
 - how to prepare dedicated host directories and grant the app UID/GID `10001:10001` access;
+- to select subdirectories below disk mount points and create them only while the intended disk is mounted;
+- that an absent subdirectory makes Compose refuse when the disk is unmounted;
 - Desktop file sharing, rootless UID mapping, and host ACL or SELinux requirements;
 - that PostgreSQL host data needs suitable local database storage;
 - that operators must stop containers before remounting;
@@ -167,6 +172,7 @@ The app SHALL retain UID/GID `10001:10001` and existing capability restrictions.
 `just instance-verify` SHALL demonstrate retention for default volumes and the combined bind-mount installation.
 It SHALL compare database migration records, pairing identity, marker bytes, sentinel bytes, and retained settings across container recreation.
 It SHALL demonstrate refusal when a paired database finds an empty directory at its selected storage target.
+The refusal case SHALL confirm that startup failed because the marker is missing.
 The recipe SHALL use only its own disposable directories, Compose projects, and credentials.
 It SHALL NOT initialize, modify, or delete operator-supplied data paths.
 

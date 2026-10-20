@@ -57,7 +57,7 @@ The server SHALL expose no separate storage initialization command or HTTP initi
 
 - **GIVEN** a paired database and an empty directory at the selected storage target
 - **WHEN** Sam starts the instance
-- **THEN** startup refuses HTTP and creates no marker
+- **THEN** startup refuses HTTP and creates no file
 - **AND** the database UUID remains unchanged
 
 #### Scenario: Paired storage has another marker
@@ -114,13 +114,17 @@ Marker contents SHALL NOT select paths, commands, or database statements.
 
 #### Scenario: Invalid marker
 
-- **WHEN** the marker is a symlink, directory, oversized file, malformed JSON, unsupported version, or has invalid required fields
+- **WHEN** the marker is a symlink, directory, FIFO, socket, device file, oversized file, malformed JSON, or has unsupported or invalid required fields
 - **THEN** startup refuses HTTP and leaves marker bytes and any symlink target unchanged
 
 ### Requirement: Storage access checks preserve operator data
 
 The server SHALL validate create, write, sync, and delete access as the app user.
-It SHALL use an exclusively created disposable probe and remove that probe after successful validation.
+The server SHALL run the access probe only after pairing succeeds, while holding startup serialization.
+Each probe SHALL use a unique name.
+It SHALL use exclusive creation and remove its probe after successful validation.
+A pairing refusal SHALL create no file.
+A later probe failure SHALL NOT clear the committed pairing UUID.
 Access failure SHALL prevent HTTP serving and leave existing storage files unchanged.
 The server SHALL NOT change ownership, broaden permissions, or elevate privileges.
 
@@ -130,6 +134,12 @@ The server SHALL NOT change ownership, broaden permissions, or elevate privilege
 - **WHEN** startup checks storage access
 - **THEN** startup refuses HTTP and reports the failed operation
 - **AND** storage ownership, permissions, and existing files remain unchanged
+
+#### Scenario: Leftover probe
+
+- **GIVEN** a paired store with a matching marker and a leftover probe file
+- **WHEN** Sam starts the instance
+- **THEN** the app reaches readiness and the leftover file remains unchanged
 
 ### Requirement: Storage diagnostics identify the failed path
 
