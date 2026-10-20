@@ -22,13 +22,19 @@ async fn init(db: &TestDatabase) -> Result<(), DatabaseError> {
 async fn records(conn: &mut PgConnection) -> String {
     sqlx::query_scalar("SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY version),'[]')::text FROM public._sqlx_migrations m").fetch_one(conn).await.unwrap()
 }
+/// A migrator holding only the first `count` bundled migrations.
+fn prefix(count: usize) -> Migrator {
+    let mut migrator = Migrator::with_migrations(MIGRATOR.iter().take(count).cloned().collect());
+    migrator.dangerous_set_table_name("public._sqlx_migrations");
+    migrator
+}
 fn injected(sql: &'static str, no_tx: bool, later: bool) -> Migrator {
     let mut migrations = Vec::new();
     if later {
-        migrations.push(MIGRATOR.iter().next().unwrap().clone());
+        migrations.extend(MIGRATOR.iter().cloned());
     }
     migrations.push(Migration::new(
-        if later { 2 } else { 1 },
+        migrations.len() as i64 + 1,
         "injected".into(),
         MigrationType::Simple,
         AssertSqlSafe(sql).into_sql_str(),
@@ -49,6 +55,13 @@ async fn schema_baselines_are_generated_and_stable() {
     let mut actual = vec![schema(&mut conn).await.unwrap()];
     bootstrap(&mut conn, &MIGRATOR).await.unwrap();
     actual.push(schema(&mut conn).await.unwrap());
+    for migration in MIGRATOR.iter().skip(1) {
+        MIGRATOR
+            .run_direct(Some(migration.version), &mut conn, false)
+            .await
+            .unwrap();
+        actual.push(schema(&mut conn).await.unwrap());
+    }
     if std::env::var_os("SIDEREAL_GENERATE_SCHEMA").is_some() {
         for (prefix, value) in actual.iter().enumerate() {
             std::fs::write(
@@ -60,6 +73,51 @@ async fn schema_baselines_are_generated_and_stable() {
     } else {
         assert_eq!(actual, baselines());
     }
+}
+
+#[tokio::test]
+async fn upgrade_preserves_the_original_migration_and_metadata() {
+    let db = TestDatabase::new();
+    initialize_with(
+        &db.options,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+        &prefix(1),
+        &baselines(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut conn = connection(&db).await;
+    let metadata = "SELECT product || ':' || format_version FROM public.sidereal_metadata";
+    let before: String = sqlx::query_scalar(metadata)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    let original = records(&mut conn).await;
+    init(&db).await.unwrap();
+    assert_eq!(
+        before,
+        sqlx::query_scalar::<_, String>(metadata)
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    );
+    let first: String = sqlx::query_scalar("SELECT (jsonb_agg(to_jsonb(m) ORDER BY version) -> 0)::text FROM public._sqlx_migrations m").fetch_one(&mut conn).await.unwrap();
+    let original: Value = serde_json::from_str(&original).unwrap();
+    assert_eq!(original.as_array().unwrap().len(), 1);
+    assert_eq!(serde_json::from_str::<Value>(&first).unwrap(), original[0]);
+    let unpaired: bool =
+        sqlx::query_scalar("SELECT storage_id IS NULL FROM public.sidereal_metadata")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
+    assert!(unpaired);
+    let migrations: i64 = sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(migrations, 2);
 }
 
 #[tokio::test]
@@ -117,7 +175,7 @@ async fn unrelated_objects_and_versions_are_rejected_without_writes() {
 
 #[tokio::test]
 async fn damaged_history_identity_and_schema_do_not_change() {
-    for damage in ["UPDATE public._sqlx_migrations SET version=99", "UPDATE public._sqlx_migrations SET checksum='bad'::bytea", "DELETE FROM public._sqlx_migrations", "UPDATE public._sqlx_migrations SET success=false", "DELETE FROM public.sidereal_metadata", "ALTER TABLE public.sidereal_metadata ADD COLUMN unexpected text", "ALTER TABLE public.sidereal_metadata DROP CONSTRAINT sidereal_metadata_format_version_check; UPDATE public.sidereal_metadata SET format_version=2"] {
+    for damage in ["UPDATE public._sqlx_migrations SET version=99 WHERE version=2", "UPDATE public._sqlx_migrations SET checksum='bad'::bytea", "DELETE FROM public._sqlx_migrations", "UPDATE public._sqlx_migrations SET success=false", "DELETE FROM public.sidereal_metadata", "ALTER TABLE public.sidereal_metadata ADD COLUMN unexpected text", "ALTER TABLE public.sidereal_metadata DROP CONSTRAINT sidereal_metadata_format_version_check; UPDATE public.sidereal_metadata SET format_version=2"] {
         let db=TestDatabase::new(); init(&db).await.unwrap(); let mut conn=connection(&db).await;
         conn.execute(AssertSqlSafe(damage)).await.unwrap();
         let before=schema(&mut conn).await.unwrap(); let history=records(&mut conn).await;
@@ -245,11 +303,11 @@ async fn readiness_is_bounded_consistent_and_read_only() {
     drop(permit);
     let mut conn = connection(&db).await;
     let history = records(&mut conn).await;
-    conn.execute("UPDATE public._sqlx_migrations SET version=99")
+    conn.execute("UPDATE public._sqlx_migrations SET version=99 WHERE version=2")
         .await
         .unwrap();
     assert!(!database.ready().await);
-    conn.execute("UPDATE public._sqlx_migrations SET version=1")
+    conn.execute("UPDATE public._sqlx_migrations SET version=2 WHERE version=99")
         .await
         .unwrap();
     assert!(database.ready().await);
@@ -356,7 +414,7 @@ async fn pending_migrations_require_write_privileges_before_writes() {
         )
         .await
         .unwrap();
-        assert_eq!(schema(&mut conn).await.unwrap(), expected[2]);
+        assert_eq!(&schema(&mut conn).await.unwrap(), expected.last().unwrap());
     }
 }
 

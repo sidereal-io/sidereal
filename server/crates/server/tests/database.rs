@@ -66,7 +66,7 @@ async fn health_routes_are_fixed_and_methods_do_not_mutate() {
     .await
     .unwrap();
     assert_eq!(before, after);
-    conn.execute("UPDATE public._sqlx_migrations SET version=99")
+    conn.execute("UPDATE public._sqlx_migrations SET version=99 WHERE version=2")
         .await
         .unwrap();
     for (route, status, body) in [
