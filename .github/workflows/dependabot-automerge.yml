@@ -1,17 +1,19 @@
 name: Dependabot auto-merge
 
 on:
+  push:
+    branches: [main]
   pull_request_target:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
 
-# Read metadata with the default token. Only the final job uses App credentials.
+# Read metadata with the default token; merge and refresh use App credentials.
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  group: dependabot-automerge-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -65,3 +67,43 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           gh pr merge "$PR_NUMBER" --auto --squash --match-head-commit "$PR_HEAD_SHA"
+          behind=$(gh api "repos/$GH_REPO/compare/main...$PR_HEAD_SHA" --jq '.behind_by')
+          if [[ "$behind" -gt 0 ]]; then
+            gh api --method PUT "repos/$GH_REPO/pulls/$PR_NUMBER/update-branch" \
+              -f "expected_head_sha=$PR_HEAD_SHA" ||
+              echo "::warning::PR #$PR_NUMBER could not be updated; check for conflicts."
+          fi
+
+  refresh:
+    if: github.event_name == 'push' && github.repository == 'sidereal-io/sidereal'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ vars.DEPENDABOT_MERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_MERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Update approved Dependabot branches after a merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          prs=$(gh api "repos/$GH_REPO/pulls?state=open&base=$TARGET_BRANCH&per_page=100" \
+            --paginate --jq '.[] | select(.user.login == "dependabot[bot]"
+              and .auto_merge != null and .draft == false)
+              | [.number, .head.sha, .head.repo.full_name] | @tsv')
+          while IFS=$'\t' read -r number head_sha head_repo; do
+            [[ -n "$number" && "$head_repo" == "$GH_REPO" ]] || continue
+            behind=$(gh api "repos/$GH_REPO/compare/$TARGET_BRANCH...$head_sha" --jq '.behind_by')
+            if [[ "$behind" -gt 0 ]]; then
+              gh api --method PUT "repos/$GH_REPO/pulls/$number/update-branch" \
+                -f "expected_head_sha=$head_sha" ||
+                echo "::warning::PR #$number could not be updated; check for conflicts."
+            fi
+          done <<< "$prs"

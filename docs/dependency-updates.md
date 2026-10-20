@@ -5,11 +5,13 @@ and minor updates targeting `main`. Every dependency in a group must qualify.
 Major updates and updates without recognized semver metadata stay manual.
 
 The CI, Nix, and CodeQL workflows retain their configuration from before the
-merge-queue setup. There is no merge queue, extra path-selection job, or custom
-branch-update script. GitHub requires configured checks and an up-to-date branch.
+merge-queue setup. There is no merge queue or extra path-selection job. GitHub requires configured checks and an up-to-date branch.
 Existing passing checks remain usable while the PR and its base stay unchanged.
 When `main` advances, update the PR branch and wait for its checks again.
-Dependabot may rebase its own PRs; a maintainer can request a rebase if needed.
+The auto-merge workflow updates approved Dependabot branches when they are behind,
+both when enabling auto-merge and after pushes to `main`. These App-authenticated
+updates trigger CI. PRs without auto-merge enabled and human-authored PRs are left
+alone. Conflicts require manual attention.
 Human-authored PRs keep their normal manual merge process.
 
 This setup covers `main`. The `v0.x` branch keeps its own CI and merge process.
