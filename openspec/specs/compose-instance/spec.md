@@ -9,11 +9,13 @@ Sam can install a private Sidereal instance with Docker Compose and one `.env` f
 ### Requirement: One command starts the app and PostgreSQL
 
 The repo root SHALL hold a `compose.yml` that defines two services: `app` and `db`.
-`docker compose up -d --build --wait` SHALL build the app image, start both services, and exit with status 0 once both are healthy.
+`docker compose up -d --build --wait` SHALL build the app image and start both services.
+It SHALL exit with status 0 once both are healthy.
 The `app` service SHALL start only after the `db` service is healthy.
 The `db` service SHALL report healthy only when PostgreSQL accepts TCP connections. The app's `/readyz` probe, not this check, reports whether the application database is usable.
 The `app` service SHALL connect to the `db` service with the foundation's `DATABASE_URL` setting and `sslmode=disable`.
 The app SHALL apply migrations through the foundation's startup path. The Compose file SHALL run no other migration step.
+Storage initialization SHALL run during app startup without a separate command.
 
 #### Scenario: A first start reaches readiness
 
@@ -26,7 +28,7 @@ The app SHALL apply migrations through the foundation's startup path. The Compos
 
 - **WHEN** a first start has reached readiness
 - **AND** a tester counts the rows of `_sqlx_migrations` where `success` is true, through `docker compose exec db psql`
-- **THEN** the count is 1
+- **THEN** the count is 2
 
 #### Scenario: The app starts once on new volumes
 
@@ -254,44 +256,52 @@ The `app` container's process SHALL run as user ID 10001. The container SHALL ho
 
 ### Requirement: The database keeps its state when containers are recreated
 
-The `db` service SHALL keep its data in a named volume.
+The `db` service SHALL keep its data in a named volume by default.
+The database bind override SHALL keep that data at the chosen host directory instead.
 `docker compose down` SHALL remove the containers and keep the volume.
-After the next start, the migration records SHALL equal the records before the removal.
+After the next start, migration records and the storage pairing SHALL equal their values before removal.
+This retention contract SHALL hold for named volumes and supported bind mounts.
 
 #### Scenario: Sam recreates the containers
 
 - **GIVEN** a ready instance, and a saved copy of every `_sqlx_migrations` row's `version`, `checksum`, and `installed_on`
 - **WHEN** Sam runs `docker compose down`, then `docker compose up -d --wait`
 - **THEN** the same query returns identical rows
+- **AND** the storage pairing equals its saved value
 - **AND** `curl -s http://localhost:5000/readyz` prints `{"status":"ready"}`
 
 #### Scenario: Removing the containers keeps the volume
 
-- **GIVEN** a ready instance
+- **GIVEN** a ready instance using the default database named volume
 - **WHEN** Sam runs `docker compose down`
 - **THEN** `docker volume ls` still lists the instance's database volume
 
 ### Requirement: The app has a writable storage volume
 
-The `app` service SHALL mount a named volume at `/var/lib/sidereal/storage`. The app user SHALL be able to create and delete files in it.
-The server SHALL NOT read or write that folder in this change.
+The `app` service SHALL mount a named volume at `/var/lib/sidereal/storage` by default.
+The storage bind override SHALL mount the selected host directory at that same target.
+Compose SHALL set `STORAGE_ROOT` to that target.
+The app user SHALL be able to create, sync, and delete files there.
+The server SHALL validate the marker and database pairing before serving HTTP.
+Startup SHALL initialize unpaired storage only under the `managed-storage` rules.
+A paired database SHALL NOT initialize an empty substitute store.
 
 #### Scenario: The app user can write to storage
 
-- **GIVEN** a running instance on new volumes
-- **WHEN** a tester runs `docker compose exec app sh -c 'touch /var/lib/sidereal/storage/probe && rm /var/lib/sidereal/storage/probe'`
+- **GIVEN** a running initialized instance in either supported mount mode
+- **WHEN** a tester creates and deletes a probe through `docker compose exec app`
 - **THEN** the command exits with status 0
 
 #### Scenario: Storage is a named volume
 
-- **GIVEN** a running instance
-- **WHEN** a tester reads the `app` container's mounts with `docker inspect`
-- **THEN** the mount at `/var/lib/sidereal/storage` has the type `volume`
+- **GIVEN** a running initialized instance without a storage bind override
+- **WHEN** a tester inspects the app container's mounts
+- **THEN** the mount at `/var/lib/sidereal/storage` has type `volume`
 
 #### Scenario: A start leaves storage empty
 
-- **WHEN** a first start has reached readiness on new volumes
-- **THEN** `docker compose exec app ls -A /var/lib/sidereal/storage` prints nothing
+- **WHEN** a first start on new volumes reaches readiness
+- **THEN** storage contains only its identity marker and no image or probe file
 
 ### Requirement: The instance uses the pinned PostgreSQL image
 
@@ -305,15 +315,30 @@ The `db` service's image in `compose.yml` SHALL equal the `POSTGRES_IMAGE` value
 ### Requirement: An installation guide tells the operator how to run the instance
 
 The repo SHALL hold the installation guide `docs/install.md`. `README.md` SHALL link to it.
-The guide SHALL cover these points:\
+The guide SHALL cover these points:
 
 - the prerequisites: Docker Engine or Docker Desktop, with Compose 2.20 or newer;
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
-- the commands that start, stop, and recreate the instance;
-- which command deletes the data, and that no other command does;\
+- the one command that builds and starts the instance, including first-start storage initialization;
+- the commands that stop and recreate the instance;
+- that `down --volumes` with one bind override deletes only the named-volume data location;
+- that retained database pairing with deleted storage refuses startup;
+- that an unpaired database adopts retained marker-only storage, but refuses storage containing other files;
+- that permanent paired-store loss requires restoring both locations together, or deliberately removing both locations to start fresh;
 - that the app has no sign-in yet, so anyone who can reach its port can open it;
 - that a server run outside the image needs a `WEB_ROOT` folder that only trusted users can write;
-- that changing `POSTGRES_PASSWORD` after the first start does not change the database's password.
+- that changing `POSTGRES_PASSWORD` after the first start does not change the database's password;
+- how to retain mount selection and host paths in `.env`;
+- how to prepare dedicated host directories and grant the app UID/GID `10001:10001` access;
+- to select subdirectories below disk mount points and create them only while the intended disk is mounted;
+- that an absent subdirectory makes Compose refuse when the disk is unmounted;
+- Desktop file sharing, rootless UID mapping, and host ACL or SELinux requirements;
+- that PostgreSQL host data needs suitable local database storage;
+- that operators must stop containers before remounting;
+- that missing markers on paired stores require mount recovery, not reinitialization;
+- that startup cannot distinguish simultaneous database and storage loss from first installation;
+- that an unpaired database adopts a valid marker-only directory;
+- that markers identify stores but do not prove image integrity or detect every live mount change.
 
 #### Scenario: The guide gives a password command
 
@@ -334,3 +359,62 @@ The guide SHALL cover these points:\
 
 - **WHEN** a reviewer runs `grep -n 'docs/install.md' README.md`
 - **THEN** the search finds at least one match
+
+#### Scenario: The guide distinguishes retained data
+
+- **WHEN** a reviewer reads the installation guide
+- **THEN** it names `.env`, the storage marker, the PostgreSQL pairing, and both persistent data locations
+- **AND** it states which remain after `docker compose down --volumes`
+
+### Requirement: Operators can select persistent host directories independently
+
+The repo SHALL provide `compose.storage-bind.yml` and `compose.database-bind.yml` beside `compose.yml`.
+The storage override SHALL require a nonempty `SIDEREAL_STORAGE_PATH`.
+The database override SHALL require a nonempty `SIDEREAL_DATABASE_PATH`.
+Compose SHALL resolve relative host paths against its project directory.
+The app SHALL receive only its container-visible storage path, without host-path forwarding.
+The selected bind mounts SHALL use long syntax with `create_host_path: false`.
+The operator SHALL select overrides through retained `COMPOSE_FILE` configuration or equivalent explicit `-f` arguments.
+An invalid selected path SHALL fail rather than select a named volume or create a source directory.
+Both overrides SHALL work independently and together without changing the other service's selected mount.
+The app SHALL retain UID/GID `10001:10001` and existing capability restrictions.
+
+#### Scenario: Either directory can be chosen independently
+
+- **WHEN** a tester resolves Compose with each override separately and then both together
+- **THEN** each selected target has type `bind` and the configured source
+- **AND** every unselected target remains a named volume
+
+#### Scenario: A selected bind source is absent
+
+- **GIVEN** a selected absolute path that does not exist
+- **WHEN** Sam starts the affected service
+- **THEN** Compose exits unsuccessfully and the source path still does not exist
+- **AND** no fallback volume mounts at that service's selected target
+
+#### Scenario: A selected bind path is empty
+
+- **WHEN** Sam selects a bind override with its path unset or empty
+- **THEN** configuration validation or service startup exits unsuccessfully
+- **AND** no app HTTP listener starts
+
+### Requirement: Deployment verification demonstrates configuration and storage retention
+
+`just instance-verify` SHALL demonstrate retention for default volumes and the combined bind-mount installation.
+It SHALL compare database migration records, pairing identity, marker bytes, sentinel bytes, and retained settings across container recreation.
+It SHALL demonstrate refusal when a paired database finds an empty directory at its selected storage target.
+The refusal case SHALL confirm that startup failed because the marker is missing.
+The recipe SHALL use only its own disposable directories, Compose projects, and credentials.
+It SHALL NOT initialize, modify, or delete operator-supplied data paths.
+
+#### Scenario: Recreate both installations
+
+- **WHEN** the verification recipe runs against default volumes and both bind overrides
+- **THEN** it exits successfully only when all saved records and bytes remain identical after recreation
+- **AND** the app reaches readiness with the same storage pairing
+
+#### Scenario: The shell holds operator mount settings
+
+- **GIVEN** distinctive operator paths and `COMPOSE_FILE` in the caller's environment
+- **WHEN** the verification recipe runs
+- **THEN** those paths remain unchanged and no test container mounts them
