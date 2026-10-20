@@ -176,6 +176,28 @@ impl StorageRoot {
     }
 }
 
+const PROBE_PREFIX: &str = ".sidereal-probe-";
+
+impl StorageRoot {
+    /// Check create, write, sync, and delete access with a uniquely named,
+    /// exclusively created probe. Only the probe this call created is removed.
+    pub(crate) fn probe(&self) -> Result<(), StorageError> {
+        let path = self.path.join(format!("{PROBE_PREFIX}{}", Uuid::new_v4()));
+        let mut file = create_exclusive(&path).map_err(self.io(Operation::CreateProbe))?;
+        let written = file
+            .write_all(b"sidereal storage access probe\n")
+            .map_err(self.io(Operation::WriteProbe))
+            .and_then(|()| file.sync_all().map_err(self.io(Operation::SyncProbe)));
+        drop(file);
+        if let Err(error) = written {
+            let _ = std::fs::remove_file(&path);
+            return Err(error);
+        }
+        std::fs::remove_file(&path).map_err(self.io(Operation::DeleteProbe))?;
+        self.sync_directory(File::sync_all)
+    }
+}
+
 /// Unknown fields are ignored so later formats can add them compatibly.
 fn parse_marker(bytes: &[u8]) -> Result<Uuid, MarkerProblem> {
     let value: Value = serde_json::from_slice(bytes).map_err(|_| MarkerProblem::Malformed)?;
@@ -288,6 +310,10 @@ pub enum Operation {
     WriteMarker,
     SyncMarker,
     SyncDirectory,
+    CreateProbe,
+    WriteProbe,
+    SyncProbe,
+    DeleteProbe,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -310,6 +336,10 @@ impl fmt::Display for Operation {
             Self::WriteMarker => "write the storage marker",
             Self::SyncMarker => "sync the storage marker",
             Self::SyncDirectory => "sync the storage directory",
+            Self::CreateProbe => "create an access probe file",
+            Self::WriteProbe => "write an access probe file",
+            Self::SyncProbe => "sync an access probe file",
+            Self::DeleteProbe => "delete an access probe file",
         })
     }
 }
@@ -345,7 +375,7 @@ impl fmt::Display for StorageError {
             Problem::Io(operation, kind) => {
                 write!(f, "cannot {operation} ({kind}); ")?;
                 f.write_str(match operation {
-                    Operation::SyncMarker | Operation::SyncDirectory => "use storage that supports reliable file and directory sync, then restart",
+                    Operation::SyncMarker | Operation::SyncDirectory | Operation::SyncProbe => "use storage that supports reliable file and directory sync, then restart",
                     _ => "grant the server's user access to this directory, then restart; ownership and permissions were not changed",
                 })
             }

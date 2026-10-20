@@ -279,3 +279,45 @@ fn write_and_sync_failures_never_report_publication() {
     assert!(temp.snapshot().is_empty());
     assert_eq!(temp.mode() & 0o777, 0o555);
 }
+
+#[test]
+fn probes_remove_only_their_own_files() {
+    let temp = TempRoot::new();
+    let root = temp.root();
+    root.probe().unwrap();
+    assert!(temp.snapshot().is_empty());
+    // Existing files, including a leftover probe, stay exactly as they were.
+    let id = Uuid::new_v4();
+    root.create_marker(id).unwrap();
+    std::fs::write(temp.path.join(".sidereal-probe-leftover"), "keep").unwrap();
+    std::fs::write(temp.path.join("image.fits"), "keep").unwrap();
+    let before = temp.snapshot();
+    root.probe().unwrap();
+    root.probe().unwrap();
+    assert_eq!(before, temp.snapshot());
+}
+
+#[test]
+fn probe_failures_change_no_ownership_permissions_or_files() {
+    if running_as_root() {
+        return;
+    }
+    let temp = TempRoot::new();
+    let root = temp.root();
+    root.create_marker(Uuid::new_v4()).unwrap();
+    temp.set_mode(0o555);
+    let before = temp.snapshot();
+    let owner = std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(&temp.path).unwrap());
+    let error = root.probe().unwrap_err();
+    assert_eq!(
+        error.problem(),
+        &Problem::Io(Operation::CreateProbe, io::ErrorKind::PermissionDenied)
+    );
+    assert!(error.to_string().contains("create an access probe file"));
+    assert_eq!(before, temp.snapshot());
+    assert_eq!(temp.mode() & 0o777, 0o555);
+    assert_eq!(
+        owner,
+        std::os::unix::fs::MetadataExt::uid(&std::fs::metadata(&temp.path).unwrap())
+    );
+}
