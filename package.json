@@ -103,7 +103,7 @@
     "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.64.0",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "^4.3.3",
@@ -122,7 +122,7 @@
     "drizzle-kit": "^0.31.11",
     "esbuild": "^0.28.2",
     "nodemon": "^3.1.14",
-    "postcss": "^8.5.29",
+    "postcss": "^8.5.30",
     "tailwindcss": "^4.1.11",
     "tsx": "^4.23.13",
     "typescript": "7.0.2",
