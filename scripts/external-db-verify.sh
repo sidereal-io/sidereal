@@ -336,3 +336,54 @@ if [ "${1:-}" = --retention-only ]; then
     say 'named-volume and bind-storage retention passed'
     exit 0
 fi
+
+expect_failure() {
+    diagnostic=$1
+    compose up -d --no-build --force-recreate >"$work/refusal-up.log" 2>&1 || fail 'could not create refusal-case app'
+    waited=0
+    until app_logs 2>/dev/null | grep -Fq "$diagnostic"; do
+        [ "$waited" -lt 180 ] || fail "missing expected diagnostic: $diagnostic"
+        sleep 1
+        waited=$((waited + 1))
+    done
+    [ "$(code /healthz)" = 000 ] || fail 'refused startup bound HTTP'
+    app_logs | grep -Fq 'sidereal-server listening' && fail 'refused startup briefly bound HTTP'
+    no_secret
+    compose stop --timeout 10 >"$work/refusal-stop.log" 2>&1
+}
+bundled_retained() {
+    bundled_compose exec -T db psql -X -U sidereal -d sidereal -Atc 'SELECT row_to_json(m) FROM sidereal_metadata m'
+    bundled_compose exec -T app cat "$storage/$marker"
+}
+
+say 'checking fresh external storage against an existing bundled installation'
+# Finish the earlier disposable named-volume case before the fresh-install case.
+app_settings isolated
+compose down --volumes --timeout 10 >"$work/named-finished.log" 2>&1
+bundled_compose up -d --no-build --wait --wait-timeout 180 >"$work/bundled-up.log" 2>&1 || fail 'bundled baseline failed to start'
+bundled_retained >"$work/bundled-before"
+bundled_pairing=$(bundled_compose exec -T db psql -X -U sidereal -d sidereal -Atc 'SELECT storage_id FROM sidereal_metadata')
+start_app
+external_pairing=$(sql 'SELECT storage_id FROM sidereal_metadata')
+[ "$external_pairing" != "$bundled_pairing" ] || fail 'fresh external database adopted bundled storage'
+external_volume=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/sidereal/storage"}}{{.Name}}{{end}}{{end}}' "$(compose ps -q app)")
+bundled_volume=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/sidereal/storage"}}{{.Name}}{{end}}{{end}}' "$(bundled_compose ps -q app)")
+[ -n "$external_volume" ] && [ "$external_volume" != "$bundled_volume" ] || fail 'installations share a storage volume'
+bundled_retained >"$work/bundled-after"
+cmp "$work/bundled-before" "$work/bundled-after" || fail 'fresh external installation changed bundled storage or pairing'
+compose down --timeout 10 >"$work/isolated-down.log" 2>&1
+bundled_compose stop >"$work/bundled-stop.log" 2>&1
+
+say 'checking refusal of empty substitute storage for a paired database'
+app_settings binds "$binds/empty"
+records >"$work/missing-marker-before"
+expect_failure 'storage marker is missing'
+records >"$work/missing-marker-after"
+cmp "$work/missing-marker-before" "$work/missing-marker-after" || fail 'missing marker changed paired database'
+helper "$binds/empty" sh -c 'test -z "$(ls -A /target)"' || fail 'missing-marker refusal wrote to empty substitute'
+app_settings binds "$binds/storage"
+start_app
+if [ "${1:-}" = --storage-only ]; then
+    say 'fresh storage isolation and missing-marker refusal passed'
+    exit 0
+fi

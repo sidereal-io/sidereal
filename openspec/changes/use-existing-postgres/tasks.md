@@ -17,7 +17,7 @@
 - [x] 3.1 Add `scripts/external-db-verify.sh` and its root recipe with separate fixture/app projects, generated credentials, and cleanup ownership checks; verify caller settings cannot reach test resources.
 - [x] 3.2 Add disposable fixture TLS and network setup using the existing image pin; verify app-only cleanup leaves the external service and fixture network running.
 - [x] 3.3 Demonstrate named-volume and bind-storage initialization and app recreation; compare migration records, pairing, marker bytes, sentinel bytes, and external container identity before and after.
-- [ ] 3.4 Demonstrate fresh-install storage isolation and missing paired-marker refusal; verify distinct installation UUIDs, preserved existing storage, and unchanged pairing after refusal.
+- [x] 3.4 Demonstrate fresh-install storage isolation and missing paired-marker refusal; verify distinct installation UUIDs, preserved existing storage, and unchanged pairing after refusal.
 - [ ] 3.5 Prove default remote TLS using plaintext rejection and a failing plaintext control; verify trusted `sslrootcert` configuration reaches readiness without explicit `sslmode`.
 - [ ] 3.6 Exercise untrusted CA and wrong-host cases while the fixture permits plaintext; verify startup refusal, exact diagnostics, unchanged database contents, and redacted app logs.
 - [ ] 3.7 Exercise unreadable certificate files, unrelated data, and incompatible history; verify the specified diagnostics, preserved state, and no authenticated connection for certificate-file failures.
