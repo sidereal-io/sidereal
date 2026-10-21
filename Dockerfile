@@ -39,5 +39,5 @@ ENV PORT=5000 \
     WEB_ROOT=/usr/share/sidereal/web
 EXPOSE 5000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -fsS "http://localhost:${PORT}/healthz" || exit 1
+    CMD curl -fsS "http://localhost:${PORT}/readyz" || exit 1
 CMD ["sidereal-server"]

@@ -28,7 +28,7 @@
 
 ## 6. Container health
 
-- [ ] 6.1 Change the `Dockerfile` health check to probe `/readyz`, keeping its interval, timeout, start period, and retries. Verify with `deli -- docker build .` and `docker inspect` that the image's health check names `/readyz`.
+- [x] 6.1 Change the `Dockerfile` health check to probe `/readyz`, keeping its interval, timeout, start period, and retries. Verify with `deli -- docker build .` and `docker inspect` that the image's health check names `/readyz`.
 
 ## 7. Operator guide
 
