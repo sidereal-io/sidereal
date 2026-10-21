@@ -303,11 +303,11 @@ async fn preflight(
         sqlx::query_as("SELECT product, format_version FROM public.sidereal_metadata")
             .fetch_all(&mut *conn)
             .await
-            .map_err(|_| DatabaseError::Ownership)?;
+            .map_err(|error| preflight_error(error, DatabaseError::Ownership))?;
     if identity != [("sidereal".to_owned(), 1)] {
         return Err(DatabaseError::Ownership);
     }
-    let records = sqlx::query("SELECT version, description, success, checksum FROM public._sqlx_migrations ORDER BY version").fetch_all(&mut *conn).await.map_err(|_| DatabaseError::History)?;
+    let records = sqlx::query("SELECT version, description, success, checksum FROM public._sqlx_migrations ORDER BY version").fetch_all(&mut *conn).await.map_err(|error| preflight_error(error, DatabaseError::History))?;
     if records.is_empty() || records.len() > migrator.iter().count() {
         return Err(DatabaseError::History);
     }
@@ -324,6 +324,15 @@ async fn preflight(
         return Err(DatabaseError::Schema);
     }
     Ok(Some(records.len()))
+}
+
+fn preflight_error(error: sqlx::Error, fallback: DatabaseError) -> DatabaseError {
+    match DatabaseError::from(error) {
+        error @ (DatabaseError::Unreachable | DatabaseError::Tls | DatabaseError::Permission) => {
+            error
+        }
+        _ => fallback,
+    }
 }
 
 async fn privileges(

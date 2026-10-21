@@ -3,7 +3,7 @@
 - [x] 1.1 Add `rustls` to `core` with `default-features = false` and no features. Verify that `cargo tree -i rustls -e features` lists no `aws-lc-rs` and that `Cargo.lock` gains no new crate.
 - [x] 1.2 Add the `Unreachable`, `LoginRejected`, `Tls`, `DatabaseMissing`, and `CertificateFile` variants to `DatabaseError`, each with its fixed phrase and one recovery step. Verify with a unit test that each message starts with its phrase from the spec.
 - [x] 1.3 Classify `sqlx::Error` in `From<sqlx::Error>` in the order of design decision 1, including SQLSTATE class `08` and `57P01`, `57P02`, and `57P03`. Verify with unit tests for an `Io` error that wraps a `rustls::Error`, a plain `Io` error, and `PoolTimedOut`.
-- [ ] 1.4 Change the ownership and migration-history queries in preflight to convert with `From` first. Pass `Unreachable`, `Tls`, and `Permission` through, and keep `Ownership` or `History` for any other error. Verify that the existing ownership and history tests still pass.
+- [x] 1.4 Change the ownership and migration-history queries in preflight to convert with `From` first. Pass `Unreachable`, `Tls`, and `Permission` through, and keep `Ownership` or `History` for any other error. Verify that the existing ownership and history tests still pass.
 
 ## 2. Certificate file check
 
