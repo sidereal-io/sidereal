@@ -242,18 +242,41 @@ async fn bad_web_root_fails_before_the_database_changes() {
 fn assert_startup_cause(options: sqlx::postgres::PgConnectOptions, phrase: &str) {
     use sqlx::ConnectOptions;
     let mut url = options.to_url_lossy();
-    let pairs: Vec<_> = url.query_pairs().map(|(key, value)| (key.into_owned(), value.strip_prefix("file: ").unwrap_or(&value).to_owned())).collect();
+    let pairs: Vec<_> = url
+        .query_pairs()
+        .map(|(key, value)| {
+            (
+                key.into_owned(),
+                value.strip_prefix("file: ").unwrap_or(&value).to_owned(),
+            )
+        })
+        .collect();
     url.query_pairs_mut().clear().extend_pairs(pairs);
     let url = url.to_string();
     let output = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
         .env("DATABASE_URL", &url)
         .env("DATABASE_STARTUP_TIMEOUT_SECONDS", "1")
-        .env_remove("WEB_ROOT").env_remove("STORAGE_ROOT")
-        .output().unwrap();
+        .env_remove("WEB_ROOT")
+        .env_remove("STORAGE_ROOT")
+        .output()
+        .unwrap();
     assert!(!output.status.success());
-    let captured = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
-    assert!(captured.starts_with(phrase), "unexpected startup category: {captured}");
-    for secret in ["distinctive-authentication-secret", options.get_username(), &url, "postgres://", "postgresql://"] {
+    let captured = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        captured.starts_with(phrase),
+        "unexpected startup category: {captured}"
+    );
+    for secret in [
+        "distinctive-authentication-secret",
+        options.get_username(),
+        &url,
+        "postgres://",
+        "postgresql://",
+    ] {
         assert!(!captured.contains(secret), "credential disclosure");
     }
 }
@@ -264,19 +287,62 @@ async fn startup_connection_causes_are_actionable_and_redacted() {
     let db = TestDatabase::new();
     let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
     let tables = "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')";
-    let before: i64 = sqlx::query_scalar(tables).fetch_one(&mut conn).await.unwrap();
-    let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let fixture = format!("{}/../../../.workspace/db-fixture-tls", env!("CARGO_MANIFEST_DIR"));
+    let before: i64 = sqlx::query_scalar(tables)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let fixture = format!(
+        "{}/../../../.workspace/db-fixture-tls",
+        env!("CARGO_MANIFEST_DIR")
+    );
     for (options, phrase) in [
-        (db.options.clone().host("127.0.0.1").port(port), "database unreachable"),
-        (db.options.clone().host("sidereal.invalid"), "database unreachable"),
-        (db.options.clone().password("distinctive-authentication-secret"), "database login rejected"),
-        (db.options.clone().host("localhost").ssl_mode(PgSslMode::VerifyFull).ssl_root_cert(format!("{fixture}/wrong-ca.crt")), "database TLS verification failed"),
-        (db.options.clone().host("127.0.0.1").ssl_mode(PgSslMode::VerifyFull).ssl_root_cert(format!("{fixture}/ca.crt")), "database TLS verification failed"),
-        (db.options.clone().database("sidereal_distinctive_missing_database"), "database does not exist"),
+        (
+            db.options.clone().host("127.0.0.1").port(port),
+            "database unreachable",
+        ),
+        (
+            db.options.clone().host("sidereal.invalid"),
+            "database unreachable",
+        ),
+        (
+            db.options
+                .clone()
+                .password("distinctive-authentication-secret"),
+            "database login rejected",
+        ),
+        (
+            db.options
+                .clone()
+                .host("localhost")
+                .ssl_mode(PgSslMode::VerifyFull)
+                .ssl_root_cert(format!("{fixture}/wrong-ca.crt")),
+            "database TLS verification failed",
+        ),
+        (
+            db.options
+                .clone()
+                .host("127.0.0.1")
+                .ssl_mode(PgSslMode::VerifyFull)
+                .ssl_root_cert(format!("{fixture}/ca.crt")),
+            "database TLS verification failed",
+        ),
+        (
+            db.options
+                .clone()
+                .database("sidereal_distinctive_missing_database"),
+            "database does not exist",
+        ),
     ] {
         assert_startup_cause(options, phrase);
-        let after: i64 = sqlx::query_scalar(tables).fetch_one(&mut conn).await.unwrap();
+        let after: i64 = sqlx::query_scalar(tables)
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
         assert_eq!(before, after);
     }
 }
@@ -285,11 +351,34 @@ async fn startup_connection_causes_are_actionable_and_redacted() {
 async fn verify_ca_with_trusted_certificate_starts_ready() {
     use sqlx::postgres::PgSslMode;
     let db = TestDatabase::new();
-    let options = db.options.clone().host("localhost").ssl_mode(PgSslMode::VerifyCa)
-        .ssl_root_cert(format!("{}/../../../.workspace/db-fixture-tls/ca.crt", env!("CARGO_MANIFEST_DIR")));
-    let database = initialize(options, Duration::from_secs(2), Duration::from_secs(2)).await.unwrap();
-    let response = app_with_database(database.clone()).oneshot(Request::builder().uri("/readyz").body(Body::empty()).unwrap()).await.unwrap();
+    let options = db
+        .options
+        .clone()
+        .host("localhost")
+        .ssl_mode(PgSslMode::VerifyCa)
+        .ssl_root_cert(format!(
+            "{}/../../../.workspace/db-fixture-tls/ca.crt",
+            env!("CARGO_MANIFEST_DIR")
+        ));
+    let database = initialize(options, Duration::from_secs(2), Duration::from_secs(2))
+        .await
+        .unwrap();
+    let response = app_with_database(database.clone())
+        .oneshot(
+            Request::builder()
+                .uri("/readyz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), "{\"status\":\"ready\"}");
+    assert_eq!(
+        to_bytes(response.into_body(), 1024).await.unwrap(),
+        "{\"status\":\"ready\"}"
+    );
     database.close().await;
 }
+
+#[path = "readiness/mod.rs"]
+mod readiness;
