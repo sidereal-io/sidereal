@@ -46,7 +46,7 @@ Git ignores `.env`. Keep it private: it holds your password.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `POSTGRES_PASSWORD` | None. You must set it | The database password |
+| `POSTGRES_PASSWORD` | None | Required only by bundled mode; the database password |
 | `SIDEREAL_PORT` | `5000` | The port on your machine that the app listens on |
 | `COMPOSE_FILE` | `compose.yml` | Installation entry and optional overrides |
 | `COMPOSE_PROJECT_NAME` | The folder name | Instance name; also separates named volumes |
