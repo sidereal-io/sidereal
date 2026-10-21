@@ -1,6 +1,7 @@
 # Install Sidereal with Docker Compose
 
-This guide starts a private Sidereal instance on one machine. Docker Compose runs two containers: the Sidereal app and its PostgreSQL database.
+This guide starts a private Sidereal instance. By default, Docker Compose runs the app and its PostgreSQL database.
+To use a database you manage separately, follow [Use an existing PostgreSQL service](#use-an-existing-postgresql-service).
 
 > [!WARNING]
 > This installs the rebuild of Sidereal from the `main` branch. Today it shows only the server's health. To manage your images now, use the [`v0.x` branch](https://github.com/sidereal-io/sidereal/tree/v0.x).
@@ -47,11 +48,19 @@ Git ignores `.env`. Keep it private: it holds your password.
 |---|---|---|
 | `POSTGRES_PASSWORD` | None. You must set it | The database password |
 | `SIDEREAL_PORT` | `5000` | The port on your machine that the app listens on |
-| `COMPOSE_FILE` | Not set | The Compose files to use. Set it only to keep data in host directories |
+| `COMPOSE_FILE` | `compose.yml` | Installation entry and optional overrides |
+| `COMPOSE_PROJECT_NAME` | The folder name | Instance name; also separates named volumes |
+| `DATABASE_URL` | None | Required only by the external entry file |
 | `SIDEREAL_STORAGE_PATH` | Not set | The host directory for managed storage, with `compose.storage-bind.yml` |
 | `SIDEREAL_DATABASE_PATH` | Not set | The host directory for PostgreSQL data, with `compose.database-bind.yml` |
+| `SIDEREAL_DATABASE_TLS_PATH` | Not set | Dedicated certificate directory, with `compose.database-tls.yml` |
 
-To keep data in Docker volumes, leave the last three settings unset. To choose host directories, see [Choose where your data lives](#choose-where-your-data-lives).
+For the default bundled installation, leave optional settings unset to use Docker volumes.
+To choose host directories, see [Choose where your data lives](#choose-where-your-data-lives).
+
+Exported shell variables override `.env`, including `DATABASE_URL` and `COMPOSE_FILE`.
+Unset any development settings that should no longer apply before running Compose.
+See Docker's [variable precedence guidance](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
 
 ## Start the instance
 
@@ -66,6 +75,87 @@ Open `http://localhost:5000/`. The page shows `healthy`.
 Compose stops with an error that names `POSTGRES_PASSWORD` when `.env` is missing or the password is empty.
 
 The first start also prepares storage. The app writes one small file, `.sidereal-storage.json`, into the empty storage location. It records the same identity in the database. This pairing lets later starts tell the right storage from an empty substitute. See [Startup checks your storage](#startup-checks-your-storage).
+
+## Use an existing PostgreSQL service
+
+This entry starts only the app. You prepare and operate PostgreSQL separately.
+Copy `.env.example` to `.env` if you have not already done so, then set:
+
+```dotenv
+COMPOSE_FILE=compose.external-db.yml
+COMPOSE_PROJECT_NAME=sidereal-external
+DATABASE_URL='postgres://sidereal:encoded-password@postgres.example.net:5432/sidereal?sslmode=verify-full'
+```
+
+Replace the example address and credentials. External mode does not need `POSTGRES_PASSWORD`.
+It refuses a missing or empty `DATABASE_URL` before creating containers.
+Start with the usual command:
+
+```sh
+docker compose up -d --build --wait
+```
+
+The address must be reachable from the app container and match the database certificate.
+Inside that container, `localhost` and loopback addresses refer to the app itself.
+Use your service's reachable DNS name; your database administrator must permit the connection.
+
+Percent-encode reserved characters in URL usernames and passwords, such as `@` as `%40`, `/` as `%2F`, and `#` as `%23`.
+Single-quote the `.env` value so dollar signs stay literal.
+Keep the file private and out of Git. `docker compose config` can print the whole URL, including credentials; keep its output private too.
+
+### Select overrides
+
+Append overrides to the selected entry in `.env`, for example:
+
+```dotenv
+COMPOSE_FILE=compose.external-db.yml:compose.storage-bind.yml:compose.database-tls.yml
+SIDEREAL_STORAGE_PATH=/mnt/photos/sidereal-external-storage
+SIDEREAL_DATABASE_TLS_PATH=/srv/sidereal-database-tls
+```
+
+Prepare each directory before starting. Storage preparation follows [Give the app access](#give-the-app-access).
+On Windows, separate file names with `;` instead of `:`.
+Alternatively, name the same files in every command:
+
+```sh
+docker compose -f compose.external-db.yml -f compose.storage-bind.yml -f compose.database-tls.yml up -d --build --wait
+```
+
+Do not combine external mode with `compose.database-bind.yml`.
+That override configures the bundled database and fails configuration validation with the external entry.
+
+### Verify database transport
+
+Named remote hosts default to `verify-full` when `sslmode` is absent.
+The example makes that protection explicit. The accepted modes are:
+
+| `sslmode` | Protection |
+|---|---|
+| `verify-full` | Verifies certificate trust and the hostname |
+| `verify-ca` | Verifies certificate trust, without checking the hostname |
+| `disable` | Plaintext; use only as an explicit choice on a trusted network |
+
+The app rejects `allow`, `prefer`, and `require`. Certificate failure never triggers a plaintext retry.
+Literal loopback, `localhost`, and Unix sockets keep their local plaintext default.
+
+The app's database TLS library trusts public roots compiled into the binary.
+They update only when the image is rebuilt with updated dependencies.
+The host trust store and additions to the image's `/etc/ssl/certs` do not change database trust.
+For another CA, select `compose.database-tls.yml` and name its file explicitly:
+
+```dotenv
+COMPOSE_FILE=compose.external-db.yml:compose.database-tls.yml
+SIDEREAL_DATABASE_TLS_PATH=/srv/sidereal-database-tls
+DATABASE_URL='postgres://sidereal:encoded-password@postgres.example.net:5432/sidereal?sslmode=verify-full&sslrootcert=/etc/sidereal/postgres/ca.crt'
+```
+
+The override mounts the existing dedicated directory read-only at `/etc/sidereal/postgres`.
+It refuses a missing directory and never creates it. Keep only the needed database certificates and keys there.
+For client certificate authentication, add `sslcert=/etc/sidereal/postgres/client.crt` and `sslkey=/etc/sidereal/postgres/client.key` to the URL.
+
+Grant UID/GID `10001:10001` directory traversal and file-read access, including mapped IDs on rootless hosts.
+Restrict private-key access to the app's mapped identity; do not make keys world-readable.
+The app and override never change file permissions. Named certificate files must be regular, readable files no larger than 1 MiB.
 
 ## Choose where your data lives
 
