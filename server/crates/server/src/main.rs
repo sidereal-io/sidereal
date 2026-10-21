@@ -43,6 +43,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             return Err(error.into());
         }
     };
+    let addr = listener.local_addr()?;
     println!(
         "sidereal-server listening on {addr} (core abi {}, astro pack abi {})",
         sidereal_core::abi_version(),

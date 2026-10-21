@@ -18,18 +18,28 @@ struct Server {
 
 impl Server {
     async fn start(options: sqlx::postgres::PgConnectOptions) -> Self {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
         let mut child = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
             .env("DATABASE_URL", options.to_url_lossy().as_str())
-            .env("PORT", port.to_string())
+            .env("PORT", "0")
             .env_remove("WEB_ROOT")
             .env_remove("STORAGE_ROOT")
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (address_tx, address_rx) = std::sync::mpsc::channel();
+        let address_reader = std::thread::spawn(move || {
+            let mut line = String::new();
+            let port = BufReader::new(stdout)
+                .read_line(&mut line)
+                .ok()
+                .and_then(|_| line.split_once("listening on "))
+                .and_then(|(_, value)| value.split_whitespace().next())
+                .and_then(|value| value.parse::<std::net::SocketAddr>().ok())
+                .map(|addr| addr.port());
+            let _ = address_tx.send(port);
+        });
         let stderr = child.stderr.take().unwrap();
         let lines = Arc::new(Mutex::new(Vec::new()));
         let captured = lines.clone();
@@ -40,16 +50,15 @@ impl Server {
         });
         let mut server = Self {
             child,
-            port,
+            port: 0,
             lines,
             reader: Some(reader),
         };
         let start = Instant::now();
         loop {
-            if tokio::net::TcpStream::connect(("127.0.0.1", port))
-                .await
-                .is_ok()
-            {
+            if let Ok(port) = address_rx.try_recv() {
+                server.port = port.expect("server must report its bound address");
+                assert_ne!(server.port, 0);
                 break;
             }
             assert!(
@@ -63,6 +72,7 @@ impl Server {
             );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
+        address_reader.join().unwrap();
         server
     }
 
