@@ -37,6 +37,9 @@ cd "$root"
 case "$root" in *:* | *,* | *"'"*) fail "checkout path must not contain ':', ',' or a single quote" ;; esac
 
 compose() {
+    if [ "${selected_storage:-volume}" != volume ]; then
+        set -- -f "$root/compose.storage-bind.yml" "$@"
+    fi
     docker compose --project-name "$project" --project-directory "$root" --env-file "$envfile" \
         -f "$root/compose.external-db.yml" -f "$root/compose.database-tls.yml" -f "$work/app.yml" "$@"
 }
@@ -76,6 +79,8 @@ remove_dirs() {
 }
 remove_resources() {
     recorded || { echo 'external-db-verify: cleanup ownership record does not match' >&2; return 1; }
+    # Include the named volume even when the last case selected a bind mount.
+    selected_storage=volume
     # Remove network users before its fixture owner.
     compose down --volumes --remove-orphans --timeout 10 >"$work/down-app.log" 2>&1 || return 1
     bundled_compose down --volumes --remove-orphans --timeout 10 >"$work/down-bundled.log" 2>&1 || return 1
@@ -231,5 +236,103 @@ compose down --volumes --timeout 10 >"$work/app-only-down.log" 2>&1
 docker network inspect "$network" >"$work/network.log" 2>&1 || fail 'app cleanup removed fixture network'
 if [ "${1:-}" = --fixture-only ]; then
     say 'fixture TLS setup and app-only cleanup passed'
+    exit 0
+fi
+
+# Select only generated fixture URLs and this run's managed-storage directories.
+app_settings() {
+    database=$1
+    selected_storage=${2:-volume}
+    query=${3:-sslrootcert=/etc/sidereal/postgres/ca.crt}
+    host=${4:-external-db}
+    printf 'DATABASE_URL=postgres://sidereal:%s@%s:5432/%s?%s\nSIDEREAL_PORT=%s\nSIDEREAL_DATABASE_TLS_PATH=%s\n' \
+        "$password" "$host" "$database" "$query" "$port" "$tls" >"$envfile"
+    cat >"$work/app.yml" <<EOF
+services:
+  app:
+    networks: [fixture]
+networks:
+  fixture:
+    external: true
+    name: $network
+EOF
+    case "$selected_storage" in
+        volume) ;;
+        "$binds/storage" | "$binds/empty")
+            # Include the product storage override, not a duplicate test mount.
+            printf 'SIDEREAL_STORAGE_PATH=%s\n' "$selected_storage" >>"$envfile"
+            ;;
+        *) fail 'unowned app storage selection' ;;
+    esac
+}
+
+code() { curl -s --max-time 3 -o "$work/http-body" -w '%{http_code}' "http://127.0.0.1:$port$1" || true; }
+wait_ready() {
+    waited=0
+    until [ "$(code /readyz)" = 200 ]; do
+        [ "$waited" -lt 180 ] || fail "app did not reach readiness; private diagnostics: $work"
+        sleep 1
+        waited=$((waited + 1))
+    done
+    [ "$(cat "$work/http-body")" = '{"status":"ready"}' ] || fail 'unexpected readiness body'
+}
+start_app() {
+    compose up -d --no-build >"$work/app-up.log" 2>&1 || fail "app creation failed; see $work/app-up.log"
+    wait_ready
+}
+app_logs() { compose logs --no-color --no-log-prefix app; }
+no_secret() {
+    app_logs >"$work/app.log" 2>&1
+    for secret in "$password" "$admin_password" 'postgres://' 'postgresql://'; do
+        if grep -Fq "$secret" "$work/app.log"; then fail 'app log exposed credentials or a connection URL'; fi
+    done
+}
+records() {
+    sql "SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY version), '[]') FROM _sqlx_migrations m"
+    sql 'SELECT row_to_json(m) FROM sidereal_metadata m'
+}
+retained() {
+    records
+    compose exec -T app cat "$storage/$marker"
+    compose exec -T app cat "$storage/sentinel"
+}
+certificate_mount() {
+    [ "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/sidereal/postgres"}}{{.Source}} {{.RW}}{{end}}{{end}}' "$(compose ps -q app)")" = "$tls false" ] \
+        || fail 'certificate mount is not the generated read-only directory'
+}
+recreate() {
+    retained >"$work/retained-before"
+    fixture_before=$(fixture_identity)
+    compose down --timeout 10 >"$work/recreate.log" 2>&1
+    [ "$(fixture_identity)" = "$fixture_before" ] || fail 'app removal changed external container identity'
+    docker network inspect "$network" >/dev/null || fail 'app removal deleted fixture network'
+    start_app
+    retained >"$work/retained-after"
+    cmp "$work/retained-before" "$work/retained-after" || fail 'app recreation changed retained state'
+    [ "$(fixture_identity)" = "$fixture_before" ] || fail 'app recreation restarted external database'
+    no_secret
+}
+
+say 'building the packaged app image'
+compose build >"$work/build.log" 2>&1 || fail "app build failed; see $work/build.log"
+for mode in named binds; do
+    say "checking initialization and recreation ($mode storage)"
+    if [ "$mode" = binds ]; then app_settings binds "$binds/storage"; else app_settings named; fi
+    start_app
+    certificate_mount
+    [ "$(compose exec -T app id -u):$(compose exec -T app id -g)" = 10001:10001 ] || fail 'app identity changed'
+    [ "$(sql 'SELECT count(*) FROM _sqlx_migrations WHERE success')" = 2 ] || fail 'expected two successful migrations'
+    [ "$(compose exec -T app ls -A "$storage")" = "$marker" ] || fail 'first start left unexpected storage files'
+    pairing=$(sql 'SELECT storage_id FROM sidereal_metadata')
+    compose exec -T app cat "$storage/$marker" | grep -Fq "\"storage_id\":\"$pairing\"" || fail 'marker does not match pairing'
+    mounted=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/sidereal/storage"}}{{.Type}} {{if eq .Type "volume"}}{{.Name}}{{else}}{{.Source}}{{end}}{{end}}{{end}}' "$(compose ps -q app)")
+    if [ "$mode" = binds ]; then expected="bind $binds/storage"; else expected="volume ${project}_storage"; fi
+    [ "$mounted" = "$expected" ] || fail 'unexpected managed-storage mount'
+    compose exec -T app sh -c 'printf "retained external sentinel\n" > "$STORAGE_ROOT/sentinel"'
+    recreate
+    compose down --timeout 10 >"$work/app-between.log" 2>&1
+done
+if [ "${1:-}" = --retention-only ]; then
+    say 'named-volume and bind-storage retention passed'
     exit 0
 fi
