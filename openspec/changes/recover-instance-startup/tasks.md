@@ -12,7 +12,7 @@
 
 ## 3. Test relay
 
-- [ ] 3.1 Add a TCP relay to `test_support` that can refuse connections, accept them without replying, forward them, and close the connections it holds open. Verify with a test that a connection through the relay works while forwarding and fails in each other mode.
+- [x] 3.1 Add a TCP relay to `test_support` that can refuse connections, accept them without replying, forward them, and close the connections it holds open. Verify with a test that a connection through the relay works while forwarding and fails in each other mode.
 
 ## 4. Startup diagnostics
 
