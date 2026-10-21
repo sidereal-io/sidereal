@@ -134,9 +134,7 @@ done
 if [ -e "$binds" ] || [ -e "$tls" ]; then
     recorded || fail 'scratch data has no matching ownership record; nothing removed'
 fi
-if recorded; then remove_resources || fail 'could not clean the previous recorded run'; fi
-printf '%s\n' "$fixture $project $bundled" >"$record"
-
+write_settings() {
 password=$(openssl rand -hex 32)
 admin_password=$(openssl rand -hex 32)
 printf 'DATABASE_URL=postgres://sidereal:%s@external-db:5432/named?sslrootcert=/etc/sidereal/postgres/ca.crt\nSIDEREAL_PORT=%s\nSIDEREAL_DATABASE_TLS_PATH=%s\n' "$password" "$port" "$tls" >"$envfile"
@@ -174,17 +172,29 @@ services:
 volumes:
   database:
 EOF
+}
+
+# A killed run may have left incomplete settings. Reconstruct every file that
+# Compose needs before removing recorded resources; down needs no old password.
+write_settings
+if recorded; then
+    remove_resources || fail 'could not clean the previous recorded run'
+    write_settings
+fi
+printf '%s\n' "$fixture $project $bundled" >"$record"
 
 # Required-variable refusals must happen before any app container exists.
-cp "$envfile" "$work/generated.env"
+main_envfile=$envfile
+envfile="$work/refusal.env"
 for value in missing empty; do
-    sed '/^DATABASE_URL=/d' "$work/generated.env" >"$envfile"
+    sed '/^DATABASE_URL=/d' "$main_envfile" >"$envfile"
     [ "$value" != empty ] || printf 'DATABASE_URL=\n' >>"$envfile"
     if compose config >"$work/refusal-config.log" 2>&1; then fail 'external mode accepted a missing or empty URL'; fi
     grep -Fq DATABASE_URL "$work/refusal-config.log" || fail 'missing URL refusal did not name DATABASE_URL'
     [ -z "$(docker ps -a -q --filter "label=com.docker.compose.project=$project")" ] || fail 'required-variable check created a container'
 done
-mv "$work/generated.env" "$envfile"
+rm -f "$envfile"
+envfile=$main_envfile
 
 if [ "${1:-}" = --config-only ]; then
     [ "$(compose config --services)" = app ] || fail 'external configuration includes another service'
