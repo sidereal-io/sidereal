@@ -205,7 +205,7 @@ app_contract() {
     awk '
         /^[^ ]/ { services = ($0 == "services:") }
         services && /^  [^ ]/ { app = ($0 == "  app:") }
-        app && /^    [^ ]/ { keep = ($1 ~ /^(build|ports|volumes|cap_drop|security_opt|restart):$/) }
+        app && /^    [A-Za-z_][A-Za-z0-9_-]*:/ { keep = ($1 ~ /^(build|ports|volumes|cap_drop|security_opt|restart):$/) }
         services && app && keep { print }' "$1"
 }
 entry_config -f "$root/compose.yml" >"$work/bundled-config.log" 2>&1
@@ -213,10 +213,11 @@ entry_config -f "$root/compose.external-db.yml" >"$work/external-config.log" 2>&
 app_contract "$work/bundled-config.log" >"$work/bundled-contract.yml"
 app_contract "$work/external-config.log" >"$work/external-contract.yml"
 cmp "$work/bundled-contract.yml" "$work/external-contract.yml" || fail 'bundled and external app settings differ'
-for setting in '    build:' '    ports:' '    volumes:' '    cap_drop:' '      - ALL' \
-    '    security_opt:' '      - no-new-privileges:true' '    restart: unless-stopped' \
-    '        target: /var/lib/sidereal/storage'; do
-    grep -Fxq "$setting" "$work/external-contract.yml" || fail "app configuration lost $setting"
+sed 's/^ *//' "$work/external-contract.yml" >"$work/contract-values.yml"
+for setting in 'build:' 'ports:' 'volumes:' 'cap_drop:' '- ALL' \
+    'security_opt:' '- no-new-privileges:true' 'restart: unless-stopped' \
+    'target: /var/lib/sidereal/storage'; do
+    grep -Fxq -- "$setting" "$work/contract-values.yml" || fail "app configuration lost $setting"
 done
 if SIDEREAL_DATABASE_PATH="$binds/database" entry_config -f "$root/compose.external-db.yml" \
     -f "$root/compose.database-bind.yml" >"$work/database-bind-refusal.log" 2>&1; then
