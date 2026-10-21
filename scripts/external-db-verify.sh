@@ -387,3 +387,17 @@ if [ "${1:-}" = --storage-only ]; then
     say 'fresh storage isolation and missing-marker refusal passed'
     exit 0
 fi
+
+say 'proving default remote TLS against a plaintext-rejecting fixture'
+retained >"$work/tls-before"
+app_settings binds "$binds/storage" sslmode=disable
+expect_failure 'database login rejected'
+app_settings binds "$binds/storage"
+if grep -q sslmode "$envfile"; then fail 'default TLS proof supplied an explicit sslmode'; fi
+start_app
+retained >"$work/tls-after"
+cmp "$work/tls-before" "$work/tls-after" || fail 'TLS control changed retained state'
+if [ "${1:-}" = --tls-only ]; then
+    say 'default remote TLS and failing plaintext control passed'
+    exit 0
+fi
