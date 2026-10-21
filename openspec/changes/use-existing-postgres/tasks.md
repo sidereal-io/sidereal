@@ -25,6 +25,12 @@
 
 ## 4. Integrated validation
 
-- [ ] 4.1 Resolve the configuration matrix with official Compose 2.20 and the installed version; record versions and report unavailable minimum-version prerequisites as blocked.
+- [x] 4.1 Resolve the configuration matrix with official Compose 2.20 and the installed version; record versions and report unavailable minimum-version prerequisites as blocked.
 - [ ] 4.2 Run `deli -- just instance-verify` and `deli -- just external-db-verify`; verify both demonstrations pass and leave only their intended diagnostic output.
 - [ ] 4.3 Run `deli -- just check` with its database fixture prepared; verify the server and web gates pass before the implementation PR proceeds.
+
+## Validation evidence
+
+- Configuration matrix passed on installed Docker Compose 5.6.0 and official Docker Compose 2.20.0 (release binary checked against its published SHA-256).
+- Docker Engine for deployment verification: 29.9.2.
+- Both versions preserve the original bundled configuration and resolve supported storage and TLS combinations. Missing credentials and unsupported external database-bind combinations are rejected.
