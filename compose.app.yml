@@ -1,0 +1,16 @@
+# Shared app settings. Select compose.yml or compose.external-db.yml to run it.
+services:
+  app:
+    # Compose tags the build after its project, keeping instance images separate.
+    build: .
+    environment:
+      STORAGE_ROOT: /var/lib/sidereal/storage
+    ports:
+      - "${SIDEREAL_PORT:-5000}:5000"
+    volumes:
+      - storage:/var/lib/sidereal/storage
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
