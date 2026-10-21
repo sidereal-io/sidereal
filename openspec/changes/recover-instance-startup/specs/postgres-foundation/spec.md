@@ -4,7 +4,7 @@
 
 When startup cannot open its database connection, the server SHALL report which of these causes applies:
 
-- **unreachable**: the host name does not resolve, the connection is refused or reset, or the host does not answer before the connection deadline;
+- **unreachable**: the host name does not resolve, the connection is refused or reset, the host does not answer before the connection deadline, or PostgreSQL reports that it is starting up or shutting down;
 - **login rejected**: PostgreSQL rejects the user, the password, or the client's address;
 - **TLS failed**: certificate or hostname verification fails in a verified `sslmode`, including a failure reported during the TLS handshake;
 - **database missing**: the server accepts the login but the configured database does not exist.
@@ -13,7 +13,7 @@ Each message SHALL start with a fixed phrase for its cause and SHALL name one re
 The fixed phrases SHALL be `database unreachable`, `database login rejected`, `database TLS verification failed`, and `database does not exist`.
 A connection failure that matches none of these causes SHALL keep the existing `database connection failed` message.
 A deadline that expires after the connection opens SHALL keep the existing `database startup deadline exceeded` message.
-A connection lost while startup checks ownership or migration history SHALL be reported as unreachable, not as an ownership or history fault.
+A connection lost while startup checks ownership or migration history SHALL be reported as unreachable, not as an ownership or history fault. That includes a session that PostgreSQL ends because it is shutting down.
 A verified TLS mode with a trusted certificate SHALL still start.
 Every message SHALL keep the existing redaction: no password, user name, connection string, certificate detail, or raw database error.
 A failed connection SHALL leave database objects and rows unchanged.
@@ -61,7 +61,8 @@ A failed connection SHALL leave database objects and rows unchanged.
 Before it connects, startup SHALL read every certificate or key file that the configuration names.
 That includes `sslrootcert`, `sslcert`, and `sslkey` in `DATABASE_URL`, and the `PGSSLROOTCERT`, `PGSSLCERT`, and `PGSSLKEY` environment variables.
 A certificate given inline as PEM text needs no file.
-When a named file is missing or cannot be read, startup SHALL fail without opening a database connection.
+The check SHALL accept only regular files of at most 1 MiB, and it SHALL NOT wait on a file that never finishes reading.
+When a named file is missing, cannot be read, is not a regular file, or is too large, startup SHALL fail without opening a database connection.
 Its message SHALL start with `database TLS certificate file unreadable` and SHALL tell Sam to check the certificate paths in the configuration.
 The message SHALL NOT contain the path or any file content.
 
@@ -75,6 +76,11 @@ The message SHALL NOT contain the path or any file content.
 
 - **WHEN** Sam starts the server with `sslrootcert` naming a directory
 - **THEN** the process exits unsuccessfully and its output starts with `database TLS certificate file unreadable`
+
+#### Scenario: The CA path is a named pipe
+
+- **WHEN** Sam starts the server with `sslrootcert` naming a named pipe that nothing writes to
+- **THEN** the process exits unsuccessfully within 1 second and its output starts with `database TLS certificate file unreadable`
 
 ### Requirement: Readiness changes are logged
 
@@ -117,6 +123,13 @@ The server SHALL observe changes only when a caller probes `/readyz`.
 - **THEN** `/readyz` returns its documented 503 response
 - **AND** standard error gains exactly one line that reports the database not ready and names it unreachable
 
+#### Scenario: PostgreSQL ends the session during a check
+
+- **GIVEN** a ready server
+- **WHEN** a readiness check is reading migration history and PostgreSQL ends its session with SQLSTATE `57P01`
+- **THEN** `/readyz` returns its documented 503 response
+- **AND** standard error gains exactly one line that names the cause unreachable
+
 #### Scenario: Readiness lines stay redacted
 
 - **GIVEN** a server started with a distinctive password
@@ -128,12 +141,13 @@ The server SHALL observe changes only when a caller probes `/readyz`.
 ### Requirement: Separate liveness and readiness
 
 `GET /healthz` SHALL return `200 {"status":"ok"}` while HTTP is running, independent of database availability.
-`GET /readyz` SHALL return `200 {"status":"ready"}` only when the database is reachable and compatible.
-Otherwise it SHALL return `503 {"status":"not_ready"}`.
+A `/readyz` probe that runs its own check SHALL return `200 {"status":"ready"}` only when the database is reachable and compatible.
+Otherwise that probe SHALL return `503 {"status":"not_ready"}`.
 Readiness SHALL finish within two seconds and expose no database details.
 Both endpoints SHALL permit unauthenticated health probes without enabling operational mutations.
 Readiness SHALL allow at most one active database check.
 A probe that arrives while a check is active SHALL immediately return the response of the most recent finished check, without a database check of its own.
+That response can therefore be 200 for a short time after the database becomes unusable, until the active check finishes.
 Before the first check finishes, that response SHALL be the ready response, because startup has just proved the database usable.
 Readiness SHALL use database capacity separate from operational requests.
 
@@ -143,8 +157,8 @@ Readiness SHALL use database capacity separate from operational requests.
 - **AND** `/readyz` returns its documented 200 response
 
 #### Scenario: Database outage and recovery
-- **WHEN** PostgreSQL stops after startup
-- **THEN** `/healthz` still returns 200 and `/readyz` returns its documented 503 response within two seconds
+- **WHEN** PostgreSQL stops after startup and a caller probes `/readyz` while no other check is active
+- **THEN** `/healthz` still returns 200 and that probe returns its documented 503 response within two seconds
 - **AND** probes attempted once per second return ready within five seconds after PostgreSQL accepts connections again
 - **AND** this bound applies when the compatible database can answer within the two-second probe deadline
 
@@ -160,6 +174,13 @@ Readiness SHALL use database capacity separate from operational requests.
 - **GIVEN** a ready server whose database stays usable
 - **WHEN** one readiness check is active and another caller probes `/readyz`
 - **THEN** the other caller receives `200 {"status":"ready"}` immediately
+
+#### Scenario: Overlapping probes during an outage
+- **GIVEN** a ready server whose last finished check found the database usable
+- **WHEN** PostgreSQL stops, caller A probes `/readyz`, and caller B probes while A's check is active
+- **THEN** caller B receives `200 {"status":"ready"}` immediately
+- **AND** caller A receives `503 {"status":"not_ready"}`
+- **AND** a probe that arrives after A's check finishes, while another check is active, receives `503 {"status":"not_ready"}`
 
 ### Requirement: Database checks survive equivalent restores and dependency updates
 

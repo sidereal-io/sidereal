@@ -8,6 +8,7 @@ See proposal.md for the motivation. These facts about the current code shape the
 - The readiness pool's acquire timeout and the outer readiness deadline are both 2 seconds. In sqlx 0.9 (`pool/inner.rs`), the pool retries `ConnectionRefused` with backoff until its deadline, then returns `PoolTimedOut`. Other connect errors return at once.
 - sqlx 0.9 with `tls-rustls` reports certificate rejection as `Error::Io`, not `Error::Tls`. The handshake's `complete_io().await?` converts the rustls error into an `io::Error` whose inner error is a `rustls::Error`.
 - sqlx reads certificate files during the handshake. `CertificateInput::data()` returns a plain `io::Error`, so a missing CA file also arrives as `Error::Io`. It would look like an outage.
+- sqlx turns every error message the server sends into `Error::Database` (`connection/stream.rs`). PostgreSQL ends a session at shutdown with SQLSTATE `57P01` or `57P02`. While it starts up, it refuses logins with `57P03`.
 - Preflight wraps two queries in `map_err(|_| Ownership)` and `map_err(|_| History)` (`startup.rs`, near line 306). A connection lost during either query is reported as damaged data.
 - In sqlx 0.9, `verify-ca` builds its verifier with `WebPkiServerVerifier::builder`, which picks the process's crypto provider. If two providers are compiled in and none is installed, rustls panics.
 - The database configuration is parsed in `server/src/config.rs`.
@@ -40,6 +41,7 @@ See proposal.md for the motivation. These facts about the current code shape the
 | `Io(e)` whose inner error is a `rustls::Error` | `Tls` |
 | `Tls(_)` | `Tls` |
 | `Io(_)`, `PoolTimedOut` | `Unreachable` |
+| SQLSTATE class `08`, or `57P01`, `57P02`, `57P03` | `Unreachable` |
 | SQLSTATE `28P01` or `28000` | `LoginRejected` |
 | SQLSTATE `3D000` | `DatabaseMissing` |
 | SQLSTATE `42501` | `Permission` (unchanged) |
@@ -52,7 +54,10 @@ The check reads only the error's type. No error text reaches a message.
 
 Two preflight call sites need changes: the ownership query and the migration-history query.
 Each now converts the `sqlx::Error` with `From` first. A connection fault (`Unreachable`, `Tls`) or `Permission` passes through. Any other error keeps its `Ownership` or `History` category.
-A test closes the relay's connection while readiness reads migration history and expects `Unreachable`.
+One test closes the relay's connection while readiness reads migration history and expects `Unreachable`.
+Another test ends the readiness session with `pg_terminate_backend` during the same query. PostgreSQL then sends `57P01`, and the test expects `Unreachable`.
+
+Class `08` covers connection exceptions. `57P01` and `57P02` mean the server ended the session because it is shutting down or crashed. `57P03` means it is still starting up. Sam's fix for each is the same as for an outage: wait for the database or start it.
 
 *Alternative considered:* treat `io::ErrorKind::InvalidData` as TLS. We rejected it because other protocol faults use that kind too, and a wrong TLS diagnosis would send Sam to the wrong fix.
 
@@ -61,7 +66,9 @@ A test closes the relay's connection while readiness reads migration history and
 `DatabaseConfig` reads every certificate and key file before the first connection. It finds them by serializing the parsed options with `to_url_lossy()` and reading `sslrootcert`, `sslcert`, and `sslkey`. That covers both the URL and the `PGSSL*` environment variables, which sqlx folds into the options.
 sqlx writes a file input as `file: <path>` and an inline PEM input as its text. Only values with the `file: ` prefix are read.
 The serialized URL contains the password, so the check reads only those three values and never prints or keeps it.
-The check calls `std::fs::read`. Any failure, including a missing file, a denied file, or a directory, returns `DatabaseError::CertificateFile`.
+The check first reads the path's metadata, which never blocks. A path that is not a regular file is rejected, so a named pipe or a device cannot stall startup.
+The check then opens the file and reads at most 1 MiB. A larger file is rejected. Real certificate bundles are far smaller.
+Any failure returns `DatabaseError::CertificateFile`. That includes a missing file, a denied file, a directory, a named pipe, and a file over the limit.
 Its message is `database TLS certificate file unreadable: check sslrootcert, sslcert, and sslkey paths`. It names no path.
 A file that disappears between this check and the handshake still reaches the `Io` mapping. That window is too small to matter.
 
