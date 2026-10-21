@@ -26,7 +26,7 @@
 ## 4. Integrated validation
 
 - [x] 4.1 Resolve the configuration matrix with official Compose 2.20 and the installed version; record versions and report unavailable minimum-version prerequisites as blocked.
-- [ ] 4.2 Run `deli -- just instance-verify` and `deli -- just external-db-verify`; verify both demonstrations pass and leave only their intended diagnostic output.
+- [x] 4.2 Run `deli -- just instance-verify` and `deli -- just external-db-verify`; verify both demonstrations pass and leave only their intended diagnostic output.
 - [x] 4.3 Run `deli -- just check` with its database fixture prepared; verify the server and web gates pass before the implementation PR proceeds.
 
 ## Validation evidence
@@ -35,3 +35,5 @@
 - Docker Engine for deployment verification: 29.9.2.
 - Both versions preserve the original bundled configuration and resolve supported storage and TLS combinations. Missing credentials and unsupported external database-bind combinations are rejected.
 - `deli -- just check` passed with this worktree’s database fixture prepared: server format, Clippy, tests and architecture lint; web type, lint, format, design, tokens and 84 tests.
+- `deli -- just instance-verify` and `deli -- just external-db-verify` passed, including owned-resource cleanup. External verification passed with injected operator environment settings; a separate check confirmed root `.env` settings are ignored and preserved byte for byte.
+- The external demonstration retained migration records, metadata, marker and sentinel bytes through recreation and outages; readiness recovered within five seconds after the 60-second outage without an app restart.
