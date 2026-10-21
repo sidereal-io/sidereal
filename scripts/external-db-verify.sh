@@ -148,7 +148,27 @@ networks:
     name: $network
 EOF
 printf 'services:\n  app:\n    image: %s-app\n' "$project" >"$work/bundled.yml"
-# Fixture configuration is added before any resources are created.
+cat >"$work/fixture.yml" <<EOF
+services:
+  db:
+    image: $pin
+    environment:
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?fixture password required}
+    command: [postgres, -c, ssl=on, -c, ssl_cert_file=/fixture/server.crt, -c, ssl_key_file=/fixture/server.key, -c, hba_file=/fixture/pg_hba.conf, -c, log_connections=on]
+    volumes:
+      - database:/var/lib/postgresql
+      - type: bind
+        source: $tls
+        target: /fixture
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      default:
+        aliases: [external-db, wrong-host]
+volumes:
+  database:
+EOF
 
 if [ "${1:-}" = --config-only ]; then
     [ "$(compose config --services)" = app ] || fail 'external configuration includes another service'
@@ -162,4 +182,54 @@ if [ "${1:-}" = --config-only ]; then
     exit 0
 fi
 
-say 'project ownership and isolated settings prepared'
+started=1
+mkdir -p "$tls" "$binds/storage" "$binds/empty"
+chmod 755 "$tls" "$binds" "$binds/storage" "$binds/empty"
+say 'generating disposable fixture certificates'
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tls/ca.key" -out "$tls/ca.crt" -days 2 -subj '/CN=Sidereal external fixture CA' >"$work/certificates.log" 2>&1
+openssl req -newkey rsa:2048 -nodes -keyout "$tls/server.key" -out "$tls/server.csr" -subj '/CN=external-db' >>"$work/certificates.log" 2>&1
+printf 'subjectAltName=DNS:external-db\nextendedKeyUsage=serverAuth\n' >"$tls/server.ext"
+openssl x509 -req -in "$tls/server.csr" -CA "$tls/ca.crt" -CAkey "$tls/ca.key" -set_serial 1 -out "$tls/server.crt" -days 2 -extfile "$tls/server.ext" >>"$work/certificates.log" 2>&1
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$tls/wrong-ca.key" -out "$tls/wrong-ca.crt" -days 2 -subj '/CN=Wrong external fixture CA' >>"$work/certificates.log" 2>&1
+rm -f "$tls/ca.key" "$tls/wrong-ca.key" "$tls/server.csr" "$tls/server.ext"
+chmod 644 "$tls"/*.crt
+chmod 600 "$tls/server.key"
+helper "$tls" chown postgres:postgres /target/server.key >"$work/permissions.log" 2>&1
+helper "$binds/storage" chown 10001:10001 /target >>"$work/permissions.log" 2>&1
+helper "$binds/empty" chown 10001:10001 /target >>"$work/permissions.log" 2>&1
+
+hba() {
+    printf 'local all all trust\n' >"$tls/pg_hba.conf"
+    if [ "$1" = tls-only ]; then printf 'hostnossl all sidereal all reject\n' >>"$tls/pg_hba.conf"; fi
+    printf 'host all all all scram-sha-256\n' >>"$tls/pg_hba.conf"
+    chmod 644 "$tls/pg_hba.conf"
+}
+hba tls-only
+sql() { fixture_compose exec -T db psql -X -U postgres -d "${database:-postgres}" -v ON_ERROR_STOP=1 -Atc "$1"; }
+fixture_identity() {
+    docker inspect --format '{{.Id}} {{.State.StartedAt}}' "$(fixture_compose ps -q db)"
+}
+wait_database() {
+    waited=0
+    until fixture_compose exec -T db pg_isready -q -h 127.0.0.1; do
+        [ "$waited" -lt 180 ] || fail 'fixture did not accept connections within 180 seconds'
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+say 'starting the separate PostgreSQL fixture'
+fixture_compose up -d >"$work/fixture-up.log" 2>&1 || fail "fixture startup failed; see $work/fixture-up.log"
+wait_database >"$work/fixture-ready.log" 2>&1
+sql "CREATE ROLE sidereal LOGIN NOSUPERUSER NOCREATEDB PASSWORD '$password'" >"$work/provision.log" 2>&1
+for database_name in named binds isolated unrelated newer; do
+    sql "CREATE DATABASE $database_name OWNER sidereal" >>"$work/provision.log" 2>&1
+done
+[ "$(sql "SELECT rolsuper OR rolcreatedb FROM pg_roles WHERE rolname='sidereal'")" = f ] || fail 'app login has administrator privileges'
+fixture_before=$(fixture_identity)
+compose down --volumes --timeout 10 >"$work/app-only-down.log" 2>&1
+[ "$(fixture_identity)" = "$fixture_before" ] || fail 'app cleanup changed the external service'
+docker network inspect "$network" >"$work/network.log" 2>&1 || fail 'app cleanup removed fixture network'
+if [ "${1:-}" = --fixture-only ]; then
+    say 'fixture TLS setup and app-only cleanup passed'
+    exit 0
+fi
