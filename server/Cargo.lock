@@ -1125,6 +1125,7 @@ name = "sidereal-core"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "rustls",
  "serde_json",
  "sidereal-plugin-abi",
  "sqlx",
