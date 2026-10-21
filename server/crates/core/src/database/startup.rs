@@ -174,7 +174,7 @@ async fn locked<E: From<DatabaseError>>(
     }
     let mut conn = timeout(startup, PgConnection::connect_with(options))
         .await
-        .map_err(|_| DatabaseError::StartupDeadline)?
+        .map_err(|_| DatabaseError::Unreachable)?
         .map_err(DatabaseError::from)?;
     let mut cancellation = timeout(startup, Cancellation::new(&mut conn, options.clone()))
         .await
