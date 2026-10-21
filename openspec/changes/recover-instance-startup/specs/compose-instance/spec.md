@@ -32,7 +32,7 @@ The `db` service's health check SHALL stay unchanged.
 The section SHALL tell the operator to read `docker compose ps` for health and `docker compose logs app` for the cause.
 It SHALL explain that `unhealthy` with a running app means its recent readiness checks failed, and that Docker can take up to 40 seconds to notice an outage.
 It SHALL list each startup and readiness message category with its likely cause and one recovery step.
-The list SHALL cover missing or invalid configuration, each connection cause, permission, PostgreSQL version, ownership, migration history, schema, deadlines, migration failure, and storage.
+The list SHALL cover missing or invalid configuration, unreadable certificate files, each connection cause, permission, PostgreSQL version, ownership, migration history, schema, deadlines, migration failure, and storage.
 It SHALL explain that the app retries startup when Docker restarts it, so a database that starts late needs no action.
 It SHALL tell the operator to restart with `docker compose up -d --wait` after fixing `.env`.
 It SHALL state that deleting volumes or data directories is never a recovery step, and that it destroys the library.

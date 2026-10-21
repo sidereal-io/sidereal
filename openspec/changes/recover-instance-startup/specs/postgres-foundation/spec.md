@@ -13,6 +13,8 @@ Each message SHALL start with a fixed phrase for its cause and SHALL name one re
 The fixed phrases SHALL be `database unreachable`, `database login rejected`, `database TLS verification failed`, and `database does not exist`.
 A connection failure that matches none of these causes SHALL keep the existing `database connection failed` message.
 A deadline that expires after the connection opens SHALL keep the existing `database startup deadline exceeded` message.
+A connection lost while startup checks ownership or migration history SHALL be reported as unreachable, not as an ownership or history fault.
+A verified TLS mode with a trusted certificate SHALL still start.
 Every message SHALL keep the existing redaction: no password, user name, connection string, certificate detail, or raw database error.
 A failed connection SHALL leave database objects and rows unchanged.
 
@@ -49,12 +51,38 @@ A failed connection SHALL leave database objects and rows unchanged.
 - **WHEN** Sam starts the server with valid credentials and a database name that does not exist
 - **THEN** the process exits unsuccessfully and its output starts with `database does not exist`
 
+#### Scenario: A trusted CA certificate verifies
+
+- **WHEN** Sam starts the server with `sslmode=verify-ca` and `sslrootcert` naming the CA that signed the database's certificate
+- **THEN** startup succeeds and `/readyz` returns `200 {"status":"ready"}`
+
+### Requirement: Certificate files are checked before connecting
+
+Before it connects, startup SHALL read every certificate or key file that the configuration names.
+That includes `sslrootcert`, `sslcert`, and `sslkey` in `DATABASE_URL`, and the `PGSSLROOTCERT`, `PGSSLCERT`, and `PGSSLKEY` environment variables.
+A certificate given inline as PEM text needs no file.
+When a named file is missing or cannot be read, startup SHALL fail without opening a database connection.
+Its message SHALL start with `database TLS certificate file unreadable` and SHALL tell Sam to check the certificate paths in the configuration.
+The message SHALL NOT contain the path or any file content.
+
+#### Scenario: The CA file is missing
+
+- **WHEN** Sam starts the server with `sslmode=verify-full` and `sslrootcert` naming a file that does not exist
+- **THEN** the process exits unsuccessfully and its output starts with `database TLS certificate file unreadable`
+- **AND** the output does not contain the configured path
+
+#### Scenario: The CA path cannot be read
+
+- **WHEN** Sam starts the server with `sslrootcert` naming a directory
+- **THEN** the process exits unsuccessfully and its output starts with `database TLS certificate file unreadable`
+
 ### Requirement: Readiness changes are logged
 
 The server SHALL write one line to standard error when a readiness check finds the database unusable after the previous check found it usable.
 The line SHALL name a safe cause, using the connection causes above or another startup category such as permission or incompatible schema.
 A check that cannot open a connection within its deadline SHALL name the cause unreachable.
 A check that opens a connection but does not finish its queries within its deadline SHALL name the cause timed out.
+A check whose connection is lost during its queries SHALL name the cause unreachable.
 The server SHALL write one more line when a later check finds the database unusable for a different cause.
 The server SHALL write one line when a check finds the database usable again.
 Further checks with the same result SHALL write nothing.
@@ -81,6 +109,13 @@ The server SHALL observe changes only when a caller probes `/readyz`.
 - **GIVEN** a ready server whose database stays usable
 - **WHEN** a caller probes `/readyz` 20 times
 - **THEN** standard error gains no line
+
+#### Scenario: The connection drops during a check
+
+- **GIVEN** a ready server
+- **WHEN** a readiness check has opened its connection and the connection closes while the check reads migration history
+- **THEN** `/readyz` returns its documented 503 response
+- **AND** standard error gains exactly one line that reports the database not ready and names it unreachable
 
 #### Scenario: Readiness lines stay redacted
 
