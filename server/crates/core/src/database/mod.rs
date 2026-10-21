@@ -22,23 +22,24 @@ pub enum DatabaseError {
 }
 impl fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::MissingConfiguration => "missing database configuration: set DATABASE_URL to a dedicated PostgreSQL 18 database",
-            Self::Configuration => "invalid database configuration: check PostgreSQL URL, verified TLS mode, and positive timeout seconds",
-            Self::Connection => "database connection failed: check service availability, credentials, and TLS certificate settings",
-            Self::Unreachable => "database unreachable: start the PostgreSQL service or wait for it to become available",
-            Self::LoginRejected => "database login rejected: correct the configured PostgreSQL credentials and client access rule",
-            Self::Tls => "database TLS verification failed: configure a trusted certificate for the database host",
-            Self::DatabaseMissing => "database does not exist: create the configured dedicated PostgreSQL database",
-            Self::CertificateFile => "database TLS certificate file unreadable: check sslrootcert, sslcert, and sslkey paths",
-            Self::Permission => "database permission denied: grant the configured role the required database, schema, and table privileges",
-            Self::Version => "unsupported database version: select PostgreSQL 18; do not downgrade existing data",
-            Self::Ownership => "database is not an empty or owned Sidereal database: use a dedicated database; existing data was not adopted",
-            Self::History => "incompatible migration history: use a compatible Sidereal binary; do not reset existing data",
-            Self::Schema => "incompatible database schema: restore the expected dedicated Sidereal schema",
-            Self::StartupDeadline => "database startup deadline exceeded: check connectivity and competing startup locks or increase DATABASE_STARTUP_TIMEOUT_SECONDS",
-            Self::Migration => "database migration failed: check permissions and database locks or increase DATABASE_MIGRATION_TIMEOUT_SECONDS; restart after correcting the cause",
-        })
+        let action = match self {
+            Self::MissingConfiguration => "set DATABASE_URL to a dedicated PostgreSQL 18 database",
+            Self::Configuration => "check PostgreSQL URL, verified TLS mode, and positive timeout seconds",
+            Self::Connection => "check service availability, credentials, and TLS certificate settings",
+            Self::Unreachable => "start the PostgreSQL service or wait for it to become available",
+            Self::LoginRejected => "correct the configured PostgreSQL credentials and client access rule",
+            Self::Tls => "configure a trusted certificate for the database host",
+            Self::DatabaseMissing => "create the configured dedicated PostgreSQL database",
+            Self::CertificateFile => "check sslrootcert, sslcert, and sslkey paths",
+            Self::Permission => "grant the configured role the required database, schema, and table privileges",
+            Self::Version => "select PostgreSQL 18; do not downgrade existing data",
+            Self::Ownership => "use a dedicated database; existing data was not adopted",
+            Self::History => "use a compatible Sidereal binary; do not reset existing data",
+            Self::Schema => "restore the expected dedicated Sidereal schema",
+            Self::StartupDeadline => "check connectivity and competing startup locks or increase DATABASE_STARTUP_TIMEOUT_SECONDS",
+            Self::Migration => "check permissions and database locks or increase DATABASE_MIGRATION_TIMEOUT_SECONDS; restart after correcting the cause",
+        };
+        write!(f, "{}: {action}", self.label())
     }
 }
 impl std::error::Error for DatabaseError {}
