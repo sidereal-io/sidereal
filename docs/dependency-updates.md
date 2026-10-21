@@ -1,21 +1,18 @@
-# Dependency updates and the merge queue
+# Dependabot auto-merge
 
-Dependabot proposes dependency updates using `.github/dependabot.yml`.
-The `Dependabot auto-merge` workflow requests automatic merging for verified
-patch and minor updates targeting `main`. A grouped update qualifies only when
-every dependency has a patch or minor update type. Major updates and updates without
-recognized semver metadata need a maintainer to review and enqueue them.
-Nix input revisions may fall into this manual category.
+The `Dependabot auto-merge` workflow enables GitHub auto-merge for verified patch
+and minor updates targeting `main`. Every dependency in a group must qualify.
+Major updates and updates without recognized semver metadata stay manual.
 
-The queue tests each PR with the latest `main` and earlier queued changes.
-It builds and merges one entry at a time, using squash merges. Required checks
-are `server`, `web`, `flake check`, and both CodeQL language checks. These
-workflows run on every PR to `main` and on `merge_group` events, so path filters
-cannot leave a required check pending. Failed entries leave the queue and need
-attention before they can be queued again.
+The CI, Nix, and CodeQL workflows retain their configuration from before the
+merge-queue setup. There is no merge queue, extra path-selection job, or custom
+branch-update script. GitHub requires configured checks and an up-to-date branch.
+Existing passing checks remain usable while the PR and its base stay unchanged.
+When `main` advances, update the PR branch and wait for its checks again.
+Dependabot may rebase its own PRs; a maintainer can request a rebase if needed.
+Human-authored PRs keep their normal manual merge process.
 
-This setup covers `main`. Updates targeting `v0.x` retain that branch's checks
-and manual merge process.
+This setup covers `main`. The `v0.x` branch keeps its own CI and merge process.
 
 ## Set up the GitHub App
 
@@ -42,38 +39,15 @@ verifies Dependabot metadata, and never checks out or executes PR code. It
 creates an installation token scoped to this repository only for eligible
 updates. The token is revoked when the job finishes.
 
-## Activate after the workflow changes reach main
+## Repository settings
 
-The ruleset payload in `.github/main-merge-queue.json` starts disabled so it can
-be imported before the new CI triggers reach `main`. Enabling it too early
-would leave queued PRs waiting for checks that cannot run.
+Enable **Allow auto-merge** in the repository settings. In the ruleset for
+`main`, enable required checks and **Require branches to be up to date before
+merging**. Leave **Require merge queue** disabled.
 
-1. Merge the setup PR and configure the App credentials above.
-2. In **Settings → Rules → Rulesets**, open **main merge queue** and set
-   enforcement to **Active**. If it has not been imported, create it with:
+Workflow-level path filters mean some PRs will not report server, web, or Nix
+checks. Requiring those checks globally can leave such PRs blocked. Maintainers
+must handle that case explicitly; the auto-merge workflow never bypasses rules.
 
-   ```bash
-   gh api --method POST repos/sidereal-io/sidereal/rulesets \
-     --input .github/main-merge-queue.json
-   ```
-
-3. Confirm repository **Settings → General → Pull Requests → Allow auto-merge**
-   is enabled.
-4. On an eligible Dependabot PR, reopen it or let Dependabot push an update to
-   trigger the workflow. Existing PRs are not enrolled just by merging this setup.
-5. Confirm the workflow requests auto-merge, the queue starts the required
-   checks, and the PR merges after they pass. A second queued PR should be
-   checked with the first change included.
-
-The workflow refuses to request a merge while the queue rule is inactive.
-There are no bypass actors or mandatory review approvals in this ruleset;
-reviews remain available, and unresolved review threads block merging.
-Maintainers enqueue reviewed major updates using **Merge when ready**.
-The queue applies to all PRs targeting `main`, including human-authored PRs.
-
-To pause automatic enrollment, disable the **Dependabot auto-merge** workflow
-in the Actions UI. Also cancel auto-merge or remove queue entries already
-requested if they should stop. Keep the branch's required checks active.
-
-See GitHub's [merge queue documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
-and [Dependabot automation guide](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions).
+To pause automatic merging, disable **Dependabot auto-merge** in the Actions UI
+and cancel any existing auto-merge requests that should stop.

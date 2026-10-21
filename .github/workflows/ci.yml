@@ -4,9 +4,25 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'DESIGN.md'
+      - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - '.github/workflows/ci.yml'
   pull_request:
-  merge_group:
-    types: [checks_requested]
+    paths:
+      - 'server/**'
+      - 'web/**'
+      - 'DESIGN.md'
+      - 'justfile'
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - '.github/workflows/ci.yml'
 
 # A newer commit supersedes checks for the same branch or pull request.
 concurrency:

@@ -2,8 +2,12 @@ name: nix
 
 on:
   pull_request:
-  merge_group:
-    types: [checks_requested]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'server/rust-toolchain.toml'
+      - '.github/workflows/nix.yml'
 
 # A newer commit supersedes checks for the same pull request.
 concurrency:

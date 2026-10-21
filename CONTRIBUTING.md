@@ -282,9 +282,9 @@ claude mcp remove penpot -s local
 
 ### Reviewing a pin update
 
-Patch and minor Dependabot updates to `main` can merge automatically through
-the merge queue once it is activated. Major updates need manual review and
-enrollment. See [dependency updates and queue setup](docs/dependency-updates.md).
+Patch and minor Dependabot updates to `main` can merge automatically after
+required checks pass on an up-to-date branch. Major updates need manual review.
+See [dependency updates and setup](docs/dependency-updates.md).
 
 Every Monday, Dependabot may open pull requests that update the pinned tools.
 Check these points before you merge one:

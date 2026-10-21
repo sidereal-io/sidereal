@@ -42,7 +42,7 @@ jobs:
             .updateType == "version-update:semver-minor")' <<< "$DEPENDENCIES")
           echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
 
-  enqueue:
+  automerge:
     needs: metadata
     if: needs.metadata.outputs.eligible == 'true'
     runs-on: ubuntu-latest
@@ -57,14 +57,11 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write
 
-      - name: Request merge through the queue
+      - name: Enable auto-merge
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Refuse to merge if the queue has not been activated yet.
-          gh api "repos/$GH_REPO/rules/branches/main" \
-            --jq 'any(.[]; .type == "merge_queue")' | grep -qx true
-          gh pr merge "$PR_NUMBER" --auto --match-head-commit "$PR_HEAD_SHA"
+          gh pr merge "$PR_NUMBER" --auto --squash --match-head-commit "$PR_HEAD_SHA"

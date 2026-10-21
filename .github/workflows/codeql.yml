@@ -8,8 +8,6 @@ on:
   pull_request:
     branches:
       - main
-  merge_group:
-    types: [checks_requested]
 
 # A newer commit supersedes scans for the same branch or pull request.
 concurrency:
