@@ -38,9 +38,10 @@ Storage initialization SHALL run during app startup without a separate command.
 
 ### Requirement: The operator supplies the database password
 
-The Compose file SHALL read the database password from `POSTGRES_PASSWORD`. It SHALL hold no default password.
-Compose SHALL refuse to start when `POSTGRES_PASSWORD` is missing or empty.
-The repo SHALL hold `.env.example`, which lists every Compose setting and leaves `POSTGRES_PASSWORD` empty.
+The bundled entry file `compose.yml` SHALL read the database password from `POSTGRES_PASSWORD`. It SHALL hold no default password.
+Bundled mode SHALL refuse to start when `POSTGRES_PASSWORD` is missing or empty.
+External mode SHALL NOT require `POSTGRES_PASSWORD`.
+The repo SHALL hold `.env.example`, which lists every supported Compose setting, identifies which mode needs each setting, and leaves `POSTGRES_PASSWORD` empty.
 Git SHALL ignore `.env`.
 The supported password alphabet SHALL be ASCII letters and digits. `.env.example` SHALL state that alphabet beside the setting.
 A password outside that alphabet SHALL NOT make the app print the password or the connection URL.
@@ -49,7 +50,7 @@ A password outside that alphabet SHALL NOT make the app print the password or th
 
 - **GIVEN** a Compose project name that owns no container
 - **AND** no `.env` file, and no `POSTGRES_PASSWORD` in the environment
-- **WHEN** Sam runs `docker compose up -d` under that project name
+- **WHEN** Sam runs bundled mode with `docker compose up -d` under that project name
 - **THEN** the command exits with a non-zero status
 - **AND** its output names `POSTGRES_PASSWORD`
 - **AND** `docker ps -a -q --filter label=com.docker.compose.project=<name>` exits with status 0 and prints nothing
@@ -58,7 +59,7 @@ A password outside that alphabet SHALL NOT make the app print the password or th
 
 - **GIVEN** a Compose project name that owns no container
 - **AND** a `.env` file that is an unchanged copy of `.env.example`, and no `POSTGRES_PASSWORD` in the environment
-- **WHEN** Sam runs `docker compose up -d` under that project name
+- **WHEN** Sam runs bundled mode with `docker compose up -d` under that project name
 - **THEN** the command exits with a non-zero status
 - **AND** `docker ps -a -q --filter label=com.docker.compose.project=<name>` exits with status 0 and prints nothing
 
@@ -71,7 +72,7 @@ A password outside that alphabet SHALL NOT make the app print the password or th
 #### Scenario: The password holds URL delimiters
 
 - **GIVEN** new volumes, and `POSTGRES_PASSWORD` set to `Zq7@evil.invalid/x?sslmode=disable#`
-- **WHEN** Sam runs `docker compose up -d`, and a tester waits 60 seconds
+- **WHEN** Sam runs bundled mode with `docker compose up -d`, and a tester waits 60 seconds
 - **THEN** `docker inspect` reports a health status other than `healthy` for the `app` container
 - **AND** the output of `docker compose logs app` contains neither `Zq7@evil` nor `postgres://`
 
