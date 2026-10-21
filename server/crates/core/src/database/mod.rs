@@ -7,6 +7,11 @@ pub enum DatabaseError {
     MissingConfiguration,
     Configuration,
     Connection,
+    Unreachable,
+    LoginRejected,
+    Tls,
+    DatabaseMissing,
+    CertificateFile,
     Permission,
     Version,
     Ownership,
@@ -21,6 +26,11 @@ impl fmt::Display for DatabaseError {
             Self::MissingConfiguration => "missing database configuration: set DATABASE_URL to a dedicated PostgreSQL 18 database",
             Self::Configuration => "invalid database configuration: check PostgreSQL URL, verified TLS mode, and positive timeout seconds",
             Self::Connection => "database connection failed: check service availability, credentials, and TLS certificate settings",
+            Self::Unreachable => "database unreachable: start the PostgreSQL service or wait for it to become available",
+            Self::LoginRejected => "database login rejected: correct the configured PostgreSQL credentials and client access rule",
+            Self::Tls => "database TLS verification failed: configure a trusted certificate for the database host",
+            Self::DatabaseMissing => "database does not exist: create the configured dedicated PostgreSQL database",
+            Self::CertificateFile => "database TLS certificate file unreadable: check sslrootcert, sslcert, and sslkey paths",
             Self::Permission => "database permission denied: grant the configured role the required database, schema, and table privileges",
             Self::Version => "unsupported database version: select PostgreSQL 18; do not downgrade existing data",
             Self::Ownership => "database is not an empty or owned Sidereal database: use a dedicated database; existing data was not adopted",
@@ -75,3 +85,27 @@ impl From<StorageError> for StartupError {
 mod pairing;
 mod startup;
 pub use startup::{initialize, initialize_with_storage, Database};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn connection_messages_name_safe_recovery_actions() {
+        for (error, phrase) in [
+            (DatabaseError::Unreachable, "database unreachable"),
+            (DatabaseError::LoginRejected, "database login rejected"),
+            (DatabaseError::Tls, "database TLS verification failed"),
+            (DatabaseError::DatabaseMissing, "database does not exist"),
+            (
+                DatabaseError::CertificateFile,
+                "database TLS certificate file unreadable",
+            ),
+        ] {
+            let message = error.to_string();
+            assert!(message.starts_with(&format!("{phrase}: ")));
+            assert!(!message.split_once(": ").unwrap().1.is_empty());
+        }
+    }
+
+}
