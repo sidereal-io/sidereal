@@ -270,3 +270,41 @@ Compose names an instance after the folder that holds `compose.yml`. Two clones 
 The image sets `WEB_ROOT` to the folder that holds the built web pages. The app user cannot write to that folder.
 
 If you run the server without the image and set `WEB_ROOT` yourself, make sure only people you trust can write to that folder. The server serves whatever the folder holds, and it follows symbolic links.
+
+## Troubleshoot a failed start or an unhealthy app
+
+Run `docker compose ps` to see the containers' health. Read `docker compose logs app` for the cause.
+Add `-t` to the logs command when you need timestamps.
+
+A running but `unhealthy` app has failed its recent readiness checks. `/healthz` still answers while HTTP runs; `/readyz` checks the database and schema.
+Docker checks readiness every 10 seconds and marks the app unhealthy after three failed checks. It can take up to 40 seconds to notice an outage.
+Docker does not restart a container just because it is unhealthy. The app recovers on its own after the database becomes usable.
+The logs report each change once, for example `readiness: not ready (database unreachable)`, then `readiness: ready`.
+Repeated checks with the same result add no line. A stalled schema check reports `readiness: not ready (timed out)`.
+
+A failed startup exits. Docker's restart policy starts the app again, so a database that starts late needs no action.
+After correcting `.env`, run `docker compose up -d --wait` to apply the settings and retry.
+
+| Message starts with | Likely cause | Recovery step |
+|---|---|---|
+| `missing database configuration` | `DATABASE_URL` is absent | Set the dedicated PostgreSQL database URL |
+| `invalid database configuration` | Invalid URL, TLS mode, or timeout | Correct the named setting; timeout seconds must be positive |
+| `database TLS certificate file unreadable` | A certificate path is missing, unreadable, not a regular file, or larger than 1 MiB | Check `sslrootcert`, `sslcert`, and `sslkey` paths and read access inside the container |
+| `database unreachable` | DNS, a refused connection, a silent host, or PostgreSQL starting or shutting down | Start PostgreSQL or wait for it to become available |
+| `database login rejected` | Wrong credentials or a PostgreSQL client access rule | Correct the configured credentials or access rule; changing `.env` does not change an existing database's password |
+| `database TLS verification failed` | An untrusted certificate or the wrong hostname | Configure a trusted CA and the hostname on the database certificate |
+| `database does not exist` | The configured database name is absent | Create the dedicated database named in the configuration |
+| `database connection failed` | Another connection fault | Check the PostgreSQL service's logs |
+| `database permission denied` | The configured role lacks required privileges | Grant that role the required database, schema, and table privileges |
+| `unsupported database version` | PostgreSQL is outside the supported major version | Use PostgreSQL 18; never downgrade existing data |
+| `database is not an empty or owned Sidereal database` | The URL names unrelated data or an unrecognized identity | Correct the URL to use this instance's dedicated database |
+| `incompatible migration history` | A newer release or damaged migration records | Use that newer release or a later one; investigate damaged or unexplained records while keeping all data as it is |
+| `incompatible database schema` | The schema differs from the expected Sidereal schema | Investigate the difference before restoring a known compatible copy of both data locations |
+| `database startup deadline exceeded` | A startup lock or later startup query stalled | Check competing starts and database locks before increasing `DATABASE_STARTUP_TIMEOUT_SECONDS` |
+| `database migration failed` | Migration permissions, a lock, or the migration deadline | Correct the reported cause in PostgreSQL's logs and restart; adjust `DATABASE_MIGRATION_TIMEOUT_SECONDS` if needed |
+| `storage` or `invalid storage configuration` | A missing mount, damaged or mismatched marker, or denied storage operation | Stop the instance and restore the matching mount and app-user access; follow [Startup checks your storage](#startup-checks-your-storage) |
+
+Deleting volumes or data directories is never a recovery step: it destroys the library.
+Do not run `docker compose down --volumes` to fix a failed start.
+Editing migration records or the schema by hand to force a start is never a recovery step.
+A migration history from a newer release needs that release or a later one, never an older binary.

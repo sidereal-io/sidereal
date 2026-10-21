@@ -32,7 +32,7 @@
 
 ## 7. Operator guide
 
-- [ ] 7.1 Add a `Troubleshoot` section to `docs/install.md` that covers every point in the guide requirement, including each message phrase, `docker compose ps`, `docker compose logs app`, the up-to-40-second lag, and the warnings against deleting volumes and editing migration records. Verify that the section contains each phrase from the spec scenarios.
+- [x] 7.1 Add a `Troubleshoot` section to `docs/install.md` that covers every point in the guide requirement, including each message phrase, `docker compose ps`, `docker compose logs app`, the up-to-40-second lag, and the warnings against deleting volumes and editing migration records. Verify that the section contains each phrase from the spec scenarios.
 
 ## 8. Deployment verification
 
