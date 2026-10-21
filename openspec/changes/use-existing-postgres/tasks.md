@@ -2,7 +2,7 @@
 
 - [x] 1.1 Extract common app settings into `compose.app.yml`; verify bundled configuration preserves service names, resource names, build context, ports, security restrictions, and storage mounts.
 - [x] 1.2 Add `compose.external-db.yml`; verify configuration lists only `app` and `storage`, requires `DATABASE_URL`, and succeeds without `POSTGRES_PASSWORD`.
-- [ ] 1.3 Add `compose.database-tls.yml`; verify its certificate mount is read-only, uses the documented container target, and refuses missing source paths without creating them.
+- [x] 1.3 Add `compose.database-tls.yml`; verify its certificate mount is read-only, uses the documented container target, and refuses missing source paths without creating them.
 - [ ] 1.4 Verify both entry files with storage overrides; confirm external mode rejects `compose.database-bind.yml` and bundled mode still rejects missing or empty passwords.
 
 ## 2. Operator guidance

@@ -1,0 +1,11 @@
+# Read-only database certificates. Select beside either installation entry.
+# Name files by their container paths in DATABASE_URL; see docs/install.md.
+services:
+  app:
+    volumes:
+      - type: bind
+        source: ${SIDEREAL_DATABASE_TLS_PATH:?set SIDEREAL_DATABASE_TLS_PATH in .env to an existing certificate directory}
+        target: /etc/sidereal/postgres
+        read_only: true
+        bind:
+          create_host_path: false
