@@ -281,3 +281,15 @@ async fn startup_connection_causes_are_actionable_and_redacted() {
     }
 }
 
+#[tokio::test]
+async fn verify_ca_with_trusted_certificate_starts_ready() {
+    use sqlx::postgres::PgSslMode;
+    let db = TestDatabase::new();
+    let options = db.options.clone().host("localhost").ssl_mode(PgSslMode::VerifyCa)
+        .ssl_root_cert(format!("{}/../../../.workspace/db-fixture-tls/ca.crt", env!("CARGO_MANIFEST_DIR")));
+    let database = initialize(options, Duration::from_secs(2), Duration::from_secs(2)).await.unwrap();
+    let response = app_with_database(database.clone()).oneshot(Request::builder().uri("/readyz").body(Body::empty()).unwrap()).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), "{\"status\":\"ready\"}");
+    database.close().await;
+}
