@@ -36,7 +36,7 @@
 
 ## 8. Deployment verification
 
-- [ ] 8.1 Add the outage pass to `scripts/instance-verify.sh`: save migration records and pairing, stop `db`, wait for `unhealthy`, check `/healthz` and the outage line, start `db`, wait for `healthy`, and compare `RestartCount`, records, and pairing. Verify that `deli -- just instance-verify` exits 0.
+- [x] 8.1 Add the outage pass to `scripts/instance-verify.sh`: save migration records and pairing, stop `db`, wait for `unhealthy`, check `/healthz` and the outage line, start `db`, wait for `healthy`, and compare `RestartCount`, records, and pairing. Verify that `deli -- just instance-verify` exits 0.
 
 ## 9. Gate
 

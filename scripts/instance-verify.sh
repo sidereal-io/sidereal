@@ -418,6 +418,43 @@ compose down --volumes --timeout 10 >"$work/down.log" 2>&1 || fail "docker compo
 settings volumes
 instance 'named volumes' "volume ${project}_storage $storage" "volume ${project}_database /var/lib/postgresql"
 
+# --- The app stays alive through a real database outage and recovers in place.
+say 'checking database outage and recovery'
+app=$(compose ps -q app)
+restarts=$(docker inspect --format '{{.RestartCount}}' "$app")
+outage_before=$(retained)
+records_before=$(sql "SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY version), '[]')::text FROM _sqlx_migrations m WHERE success")
+wait_health() {
+    expected=$1
+    waited=0
+    until [ "$(docker inspect --format '{{.State.Health.Status}}' "$app")" = "$expected" ]; do
+        if [ "$waited" -ge "$deadline" ]; then
+            show_state
+            fail "the app did not become $expected within $deadline seconds"
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+compose stop db >"$work/outage.log" 2>&1 || fail 'could not stop the database'
+wait_health unhealthy
+[ "$(fetch /healthz)" = '{"status":"ok"}' ] || fail 'liveness failed during the database outage'
+[ "$(curl -sS --max-time 3 "http://127.0.0.1:$port/readyz")" = '{"status":"not_ready"}' ] \
+    || fail 'readiness did not report the database outage'
+compose logs --no-color --no-log-prefix app | grep -Fxq 'readiness: not ready (database unreachable)' \
+    || fail 'the app did not log the database outage'
+compose start db >>"$work/outage.log" 2>&1 || fail 'could not start the database'
+wait_health healthy
+[ "$(fetch /readyz)" = '{"status":"ready"}' ] || fail 'readiness did not recover'
+compose logs --no-color --no-log-prefix app | grep -Fxq 'readiness: ready' \
+    || fail 'the app did not log recovery'
+[ "$(docker inspect --format '{{.RestartCount}}' "$app")" = "$restarts" ] \
+    || fail 'the app restarted during the database outage'
+[ "$(retained)" = "$outage_before" ] || fail 'the outage changed settings, migration records, pairing, marker, or sentinel'
+[ "$(sql "SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY version), '[]')::text FROM _sqlx_migrations m WHERE success")" = "$records_before" ] \
+    || fail 'the outage changed successful migration records'
+no_secret "$password" 'postgres://' 'postgresql://'
+
 # --- A failed database login must not print either password.
 say 'checking the logs after a failed database login'
 other=$(new_password)
