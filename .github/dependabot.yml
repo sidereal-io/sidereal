@@ -107,6 +107,11 @@ updates:
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # The Playwright version has to match the driver and the bundled
+      # Chromium pinned in nix/toolchains.nix. `just e2e` fails loudly on a
+      # mismatch, and an automated bump cannot update the flake in step, so
+      # these are bumped by hand.
+      - dependency-name: "@playwright/test"
     groups:
       production-dependencies:
         dependency-type: "production"

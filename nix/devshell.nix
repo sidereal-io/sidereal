@@ -18,12 +18,21 @@
           starts. This module adds the `just enter` hook last.
         '';
       };
+
+      env = lib.mkOption {
+        # mkShell accepts any attr-set of strings; that is the form the
+        # callers (e.g. Playwright paths) need.
+        type = lib.types.attrs;
+        default = { };
+        description = "Environment variables exported when the shell starts.";
+      };
     };
 
     config = {
       devShells.default = pkgs.mkShell {
         packages = config.sidereal.shell.packages;
         shellHook = lib.concatStringsSep "\n" config.sidereal.shell.hooks;
+        inherit (config.sidereal.shell) env;
       };
 
       # Run the repo's `enter` recipe, if its justfile defines one, after every

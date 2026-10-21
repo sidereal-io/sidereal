@@ -22,5 +22,14 @@ export default defineConfig({
   // Unit tests run once in a simulated browser DOM, with no server.
   test: {
     environment: "jsdom",
+    // End-to-end tests live in web/e2e and run via `pnpm e2e`. Excluding
+    // them here keeps Vitest focused on component / unit tests and stops
+    // jest-dom matchers from fighting Playwright's own.
+    exclude: [
+      "e2e/**",
+      "test-results/**",
+      "playwright-report/**",
+      "node_modules/**",
+    ],
   },
 });

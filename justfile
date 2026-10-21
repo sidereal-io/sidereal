@@ -74,6 +74,27 @@ check-web:
 instance-verify:
     @sh scripts/instance-verify.sh
 
+# End-to-end tests: boot the server and Vite, then drive Chromium against them.
+# The database fixture must already be up (`just db-up`); the webServer blocks
+# in web/playwright.config.ts start everything else. Reuses an already-running
+# `just dev`, so in a normal dev shell this only pays for the browser launch.
+[doc('Run the Playwright end-to-end suite.')]
+e2e:
+    #!/bin/sh
+    set -eu
+    if [ -n "${SIDEREAL_PLAYWRIGHT_VERSION:-}" ]; then
+      # Inside `nix develop` the driver is pinned by the flake. The npm package
+      # speaks to whichever Chromium that driver ships, so a mismatch here is a
+      # real failure and not worth debugging at test time.
+      pinned=$(node -p "require('./web/node_modules/@playwright/test/package.json').version" 2>/dev/null || echo unknown)
+      if [ "$pinned" != "$SIDEREAL_PLAYWRIGHT_VERSION" ]; then
+        echo "error: @playwright/test is $pinned but the Nix shell pins $SIDEREAL_PLAYWRIGHT_VERSION" >&2
+        echo "hint: update web/package.json and nix/toolchains.nix together" >&2
+        exit 1
+      fi
+    fi
+    cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm e2e
+
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:
     @sh server/scripts/db-fixture.sh orphan-clean

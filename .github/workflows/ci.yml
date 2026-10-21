@@ -55,3 +55,45 @@ jobs:
 
       - name: Web gate
         run: nix develop --command just check-web
+
+  # End-to-end gate. Kept out of `check` because it boots the server and a
+  # browser, so it runs on its own runner instead of competing with the
+  # unit jobs for CPU.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+          cmd-format: nix develop -c {0}
+
+      - name: Prepare PostgreSQL fixture
+        run: |
+          nix develop --command just db-up
+          test_url=$(nix develop --command just db-test-url)
+          echo "::add-mask::$test_url"
+          printf 'TEST_DATABASE_URL=%s\n' "$test_url" >> "$GITHUB_ENV"
+
+      - name: End-to-end gate
+        run: nix develop --command just e2e
+
+      - name: Stop PostgreSQL fixture
+        if: always()
+        run: nix develop --command just db-down
+
+      # The HTML report carries the failure screenshot, diff and console log,
+      # which is the whole reason to bother uploading it.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
