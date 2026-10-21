@@ -175,6 +175,17 @@ volumes:
   database:
 EOF
 
+# Required-variable refusals must happen before any app container exists.
+cp "$envfile" "$work/generated.env"
+for value in missing empty; do
+    sed '/^DATABASE_URL=/d' "$work/generated.env" >"$envfile"
+    [ "$value" != empty ] || printf 'DATABASE_URL=\n' >>"$envfile"
+    if compose config >"$work/refusal-config.log" 2>&1; then fail 'external mode accepted a missing or empty URL'; fi
+    grep -Fq DATABASE_URL "$work/refusal-config.log" || fail 'missing URL refusal did not name DATABASE_URL'
+    [ -z "$(docker ps -a -q --filter "label=com.docker.compose.project=$project")" ] || fail 'required-variable check created a container'
+done
+mv "$work/generated.env" "$envfile"
+
 if [ "${1:-}" = --config-only ]; then
     [ "$(compose config --services)" = app ] || fail 'external configuration includes another service'
     [ "$(compose config --volumes)" = storage ] || fail 'external configuration includes database storage'
@@ -405,7 +416,8 @@ fi
 dump_database() {
     # PostgreSQL randomizes the psql restriction token on each dump.
     fixture_compose exec -T db pg_dump -U postgres -d "$database" --no-owner --no-privileges \
-        | sed '/^\\restrict /d; /^\\unrestrict /d'
+        >"$work/dump-raw.sql" || fail 'could not snapshot database contents'
+    sed '/^\\restrict /d; /^\\unrestrict /d' "$work/dump-raw.sql"
 }
 say 'checking CA and hostname rejection with plaintext available'
 hba allow-plaintext
@@ -428,5 +440,63 @@ app_settings binds "$binds/storage"
 start_app
 if [ "${1:-}" = --rejection-only ]; then
     say 'untrusted CA and wrong hostname refused without plaintext fallback'
+    exit 0
+fi
+
+authorization_count() {
+    fixture_compose logs --no-color db >"$work/authorizations.log" 2>&1
+    grep -c 'connection authorized: user=sidereal ' "$work/authorizations.log" || true
+}
+say 'checking certificate-file refusal before authenticated connections'
+dump_database >"$work/cert-file-before.sql"
+compose down --timeout 10 >"$work/cert-file-down.log" 2>&1
+say 'checking a missing certificate source directory'
+sed "s|^SIDEREAL_DATABASE_TLS_PATH=.*|SIDEREAL_DATABASE_TLS_PATH=$work/absent-certificates|" "$envfile" >"$work/absent.env"
+mv "$work/absent.env" "$envfile"
+if compose up -d --no-build >"$work/absent-certificates.log" 2>&1; then fail 'Compose accepted a missing certificate directory'; fi
+grep -Fq 'bind source path does not exist' "$work/absent-certificates.log" || fail 'certificate source refusal has an unexpected diagnostic'
+[ ! -e "$work/absent-certificates" ] || fail 'Compose created the missing certificate directory'
+[ -z "$(compose ps -a -q app)" ] || fail 'Compose created an app container with a missing certificate directory'
+app_settings binds "$binds/storage"
+printf 'distinctive unreadable certificate contents\n' >"$tls/unreadable.crt"
+chmod 000 "$tls/unreadable.crt"
+authorized=$(authorization_count)
+[ "$authorized" -gt 0 ] || fail 'fixture authorization logging did not observe earlier app connections'
+for certificate in distinctive-missing.crt unreadable.crt; do
+    app_settings binds "$binds/storage" "sslrootcert=/etc/sidereal/postgres/$certificate"
+    expect_failure 'database TLS certificate file unreadable'
+    [ "$(authorization_count)" = "$authorized" ] || fail 'certificate-file refusal authenticated to PostgreSQL'
+    for private in "$certificate" /etc/sidereal/postgres 'distinctive unreadable certificate contents'; do
+        if grep -Fq "$private" "$work/app.log"; then fail 'certificate diagnostic exposed a path or file content'; fi
+    done
+    dump_database >"$work/cert-file-after.sql"
+    cmp "$work/cert-file-before.sql" "$work/cert-file-after.sql" || fail 'certificate-file refusal changed database contents'
+done
+
+say 'checking refusal of unrelated data and incompatible history'
+database=unrelated
+sql "CREATE TABLE unrelated_note (note text); INSERT INTO unrelated_note VALUES ('preserve unrelated data')" >"$work/unrelated-setup.log"
+app_settings unrelated "$binds/empty"
+dump_database >"$work/unrelated-before.sql"
+expect_failure 'database is not an empty or owned Sidereal database'
+dump_database >"$work/unrelated-after.sql"
+cmp "$work/unrelated-before.sql" "$work/unrelated-after.sql" || fail 'unrelated-data refusal changed database contents'
+helper "$binds/empty" sh -c 'test -z "$(ls -A /target)"' || fail 'unrelated-data refusal created storage files'
+
+# Clone the disposable compatible database with the app role owning its objects.
+database=binds
+dump_database >"$work/newer-base.sql"
+fixture_compose exec -T db psql -X -U sidereal -d newer -v ON_ERROR_STOP=1 <"$work/newer-base.sql" >"$work/newer-restore.log" 2>&1
+database=newer
+sql "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) VALUES (999999, 'future migration', true, decode('00','hex'), 0)" >"$work/newer-setup.log"
+app_settings newer "$binds/storage"
+dump_database >"$work/newer-before.sql"
+expect_failure 'incompatible migration history'
+dump_database >"$work/newer-after.sql"
+cmp "$work/newer-before.sql" "$work/newer-after.sql" || fail 'history refusal changed database contents'
+app_settings binds "$binds/storage"
+start_app
+if [ "${1:-}" = --safeguards-only ]; then
+    say 'certificate-file, unrelated-data and incompatible-history safeguards passed'
     exit 0
 fi
