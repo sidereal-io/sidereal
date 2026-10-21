@@ -4,12 +4,16 @@ The `Dependabot auto-merge` workflow enables GitHub auto-merge for verified patc
 and minor updates targeting `main`. Every dependency in a group must qualify.
 Major updates and updates without recognized semver metadata stay manual.
 
-The CI, Nix, and CodeQL workflows retain their configuration from before the
-merge-queue setup. There is no merge queue, extra path-selection job, or custom
-branch-update script. GitHub requires configured checks and an up-to-date branch.
+CI runs the server and web checks on every pull request and push to `main`,
+so required checks report a result regardless of which files changed.
+There is no merge queue or extra path-selection job. GitHub requires configured
+checks and an up-to-date branch.
 Existing passing checks remain usable while the PR and its base stay unchanged.
 When `main` advances, update the PR branch and wait for its checks again.
-Dependabot may rebase its own PRs; a maintainer can request a rebase if needed.
+The auto-merge workflow updates approved Dependabot branches when they are behind,
+both when enabling auto-merge and after pushes to `main`. These App-authenticated
+updates trigger CI. PRs without auto-merge enabled and human-authored PRs are left
+alone. Conflicts require manual attention.
 Human-authored PRs keep their normal manual merge process.
 
 This setup covers `main`. The `v0.x` branch keeps its own CI and merge process.
@@ -45,9 +49,8 @@ Enable **Allow auto-merge** in the repository settings. In the ruleset for
 `main`, enable required checks and **Require branches to be up to date before
 merging**. Leave **Require merge queue** disabled.
 
-Workflow-level path filters mean some PRs will not report server, web, or Nix
-checks. Requiring those checks globally can leave such PRs blocked. Maintainers
-must handle that case explicitly; the auto-merge workflow never bypasses rules.
+The Nix workflow still uses path filters. Require only checks that run on every
+pull request; the auto-merge workflow never bypasses rules.
 
 To pause automatic merging, disable **Dependabot auto-merge** in the Actions UI
 and cancel any existing auto-merge requests that should stop.
