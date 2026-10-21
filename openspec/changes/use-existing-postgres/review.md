@@ -119,7 +119,7 @@ None found. The only text addressed to a "reviewer" is in the compose-instance s
 ## Verdict
 
 VERDICT: APPROVE_WITH_CHANGES
-CHANGES_APPLIED: no
+CHANGES_APPLIED: yes
 
 ## Required Changes
 
@@ -133,13 +133,33 @@ CHANGES_APPLIED: no
 
 Author disposition after checking the tracked source:
 
-- **M1 — CONFIRMED, fixed; awaiting reviewer recheck.** Startup and readiness close their connections, so an idle statistics snapshot cannot prove TLS. The plan now uses a plaintext-rejecting fixture and a failing plaintext control.
-- **M2 — CONFIRMED, fixed; awaiting reviewer recheck.** The lockfile selects public roots without native roots. SQLx's matching source confirms the trust source. The design and guide requirement now explain explicit private CA configuration.
-- **M3 — CONFIRMED, fixed; awaiting reviewer recheck.** The pairing code adopts marker-only stores. The guide now requires separate storage for fresh external installations, with a distinct-storage scenario.
-- **M4 — CONFIRMED, fixed; awaiting reviewer recheck.** External mode has no database startup dependency. The specs now cover late startup and runtime outages, preserving state and the existing recovery behavior.
+- **M1 — CONFIRMED, fixed; accepted by reviewer.** Startup and readiness close their connections, so an idle statistics snapshot cannot prove TLS. The plan now uses a plaintext-rejecting fixture and a failing plaintext control.
+- **M2 — CONFIRMED, fixed; accepted by reviewer.** The lockfile selects public roots without native roots. SQLx's matching source confirms the trust source. The design and guide requirement now explain explicit private CA configuration.
+- **M3 — CONFIRMED, fixed; accepted by reviewer.** The pairing code adopts marker-only stores. The guide now requires separate storage for fresh external installations, with a distinct-storage scenario.
+- **M4 — CONFIRMED, fixed; accepted by reviewer.** External mode has no database startup dependency. The specs now cover late startup and runtime outages, preserving state and the existing recovery behavior.
 - **S1 — accepted and applied.** The guide requirement and design explain shell-variable precedence.
 - **S2 — accepted and applied.** Scenarios now name exact diagnostics, configuration outputs, authorization-log evidence, and missing-container checks. The guide walkthrough is tied to the verification recipe.
 - **S3 — accepted and applied.** The specs require rejection of the bundled database override in external mode. External mode explicitly does not require `POSTGRES_PASSWORD`.
 - **S4 — accepted and applied.** The minimum-version check uses an official separately supplied binary and reports a missing prerequisite. Only agent invocations require `deli`.
 
 No Critical or Moderate finding was rebutted or dismissed.
+
+## Focused Recheck
+
+Claude Opus 5.5 rechecked the listed changes through commit `b9c5ef5` in a fresh, independent, read-only context.
+This recheck retains review round 1 and its original verdict.
+The reviewer confirmed all required changes and suggestions, with no residual findings or further edits.
+
+- **M1:** Accepted by reviewer. Plaintext rejection plus a failing plaintext control proves TLS without sampling short-lived sessions.
+- **M2:** Accepted by reviewer. The design and guide requirement explain compiled roots and explicit private CA configuration.
+- **M3:** Accepted by reviewer. Fresh-install guidance and the separate-storage scenario prevent accidental reuse of another installation's store.
+- **M4:** Accepted by reviewer. Late-start and outage scenarios match existing startup retries, liveness, readiness, logs, and state retention.
+- **S1:** Accepted by reviewer. Both artifacts explain shell precedence.
+- **S2:** Accepted by reviewer. Diagnostics match the source and scenarios name observable checks.
+- **S3:** Accepted by reviewer. External mode rejects the database bind override and does not require the bundled password.
+- **S4:** Accepted by reviewer. Minimum-version verification has an explicit prerequisite; only agent invocations depend on `deli`.
+
+No reviewed file contained an instruction-injection attempt.
+The reviewer authorized the completion signal above after checking every listed item.
+
+Recheck task: `use-existing-postgres-plan-review-opus55-recheck1`.
