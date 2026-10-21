@@ -23,7 +23,7 @@
 ## 5. Readiness outcome and log lines
 
 - [x] 5.1 Add `Database::probe()` returning `Ready`, `NotReady(Cause)`, or `Busy`, with the last result stored in `Database` and starting as ready. Set the readiness pool's acquire timeout to 1.5 seconds, and set a flag after `acquire()` so that an expired outer deadline maps to `Timeout` only after the connection was acquired. Verify that the existing readiness tests pass.
-- [ ] 5.2 Make the `/readyz` handler answer a busy probe from the last result and print each change to standard error as `readiness: not ready (<cause>)` or `readiness: ready`. Verify that the response bodies and status codes match the existing tests.
+- [x] 5.2 Make the `/readyz` handler answer a busy probe from the last result and print each change to standard error as `readiness: not ready (<cause>)` or `readiness: ready`. Verify that the response bodies and status codes match the existing tests.
 - [ ] 5.3 Add readiness tests for the spec scenarios: outage and recovery through the relay, a held lock on the migration table, 20 probes with no line, a connection closed during the history query, a session ended with `pg_terminate_backend`, redaction, and overlapping probes on a usable database and during an outage. Verify that each test passes and asserts the exact lines written.
 
 ## 6. Container health

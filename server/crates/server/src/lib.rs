@@ -43,7 +43,11 @@ async fn healthz() -> Json<Value> {
     Json(json!({ "status": "ok" }))
 }
 async fn readyz(State(database): State<Database>) -> (StatusCode, Json<Value>) {
-    if database.ready().await {
+    let probe = database.probe().await;
+    if let Some(change) = probe.change {
+        eprintln!("{change}");
+    }
+    if probe.is_ready() {
         (StatusCode::OK, Json(json!({"status":"ready"})))
     } else {
         (
