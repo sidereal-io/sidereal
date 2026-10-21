@@ -175,6 +175,25 @@ Grant UID/GID `10001:10001` directory traversal and file-read access, including 
 Restrict private-key access to the app's mapped identity; do not make keys world-readable.
 The app and override never change file permissions. Named certificate files must be regular, readable files no larger than 1 MiB.
 
+### Keep each installation's storage separate
+
+For a fresh external database, use a new Compose project name, as in the example, or a new empty managed-storage bind directory.
+Never reuse another installation's storage volume or bind directory.
+An unpaired database can adopt a directory holding only a valid marker. Reusing that directory could pair two databases with one store.
+
+This is a fresh-install procedure. Changing `COMPOSE_FILE` does not transfer an existing database or stop an old bundled database container.
+Moving an established instance requires consistent copies of its database and matching managed storage; that migration is outside this guide.
+A paired database refuses empty substitute storage with `storage marker is missing` and retains its pairing.
+Restore the matching storage instead of making a new marker or resetting the database.
+
+External PostgreSQL backups, access, upgrades, availability, and deletion remain your responsibility.
+App-project `stop` and `down` commands leave the external service running.
+`down --volumes` still deletes the app project's named storage volume, so a later start against its paired external database will refuse.
+It does not delete the external database or host bind directories.
+Back up and restore the external database together with its matching storage and private settings.
+When storage is lost permanently, restore both locations from consistent backups or deliberately prepare a fresh database and fresh storage.
+Never delete data or edit pairing records to make startup pass.
+
 ### Database availability and credential rotation
 
 If PostgreSQL starts late, startup reports `database unreachable` and exits without serving HTTP.
@@ -199,7 +218,8 @@ Sidereal keeps data in two locations:
 - **Storage** holds managed files. Today it holds only the storage marker, `.sidereal-storage.json`.
 - **The database** holds PostgreSQL data, including the storage pairing.
 
-By default, both live in Docker volumes named `storage` and `database`. You need no settings for this.
+In bundled mode, both live in Docker volumes named `storage` and `database` by default. You need no settings for this.
+External mode creates only the `storage` volume; its database remains outside this Compose project.
 
 You can keep either location, or both, in a directory on your machine instead. Choose each one independently.
 
@@ -232,7 +252,8 @@ setfacl -m u:10001:rwx /mnt/photos/sidereal-storage
 
 Change only the new directory. Never change ownership or permissions of a whole disk or tree, and never run the app with more privileges. The app never changes ownership or permissions itself.
 
-The database directory needs no preparation beyond being new and empty. The PostgreSQL image sets up its own files and user.
+In bundled mode, the database directory needs no preparation beyond being new and empty.
+The PostgreSQL image sets up its own files and user.
 
 Some hosts need more:
 
@@ -334,6 +355,7 @@ Do not create a new marker, and do not empty the storage location to make startu
 | Update to newer code | `git pull`, then `docker compose up -d --build --wait` | Kept |
 
 Removing the containers keeps both data locations, whether they are Docker volumes or host directories.
+In external mode these commands manage only the app; the database service remains separate.
 
 ## What Sidereal keeps
 
@@ -341,7 +363,8 @@ Removing the containers keeps both data locations, whether they are Docker volum
 |---|---|---|
 | `.env`, with your password and mount settings | The repository root | Kept |
 | Storage, with the storage marker | The `storage` volume, or `SIDEREAL_STORAGE_PATH` | Deleted from the volume. Kept in a host directory |
-| The database, with the storage pairing | The `database` volume, or `SIDEREAL_DATABASE_PATH` | Deleted from the volume. Kept in a host directory |
+| Bundled database, with the storage pairing | The `database` volume, or `SIDEREAL_DATABASE_PATH` | Deleted from the volume. Kept in a host directory |
+| External database, with the storage pairing | Your separate PostgreSQL service | Kept; managed by its administrator |
 
 Back up `.env` and both data locations together. The marker and the pairing must match when you restore them.
 
@@ -361,7 +384,8 @@ When you use only one host directory, this command deletes one location and keep
 - **Database deleted, storage kept with only its marker**: the new database adopts that marker on the next start.
 - **Database deleted, storage kept with other files**: every later start refuses.
 
-To delete everything, run `docker compose down --volumes`, then delete the contents of each host directory you use.
+To delete everything in bundled mode, run `docker compose down --volumes`, then delete the contents of each host directory you use.
+External mode additionally requires your database administrator to remove its dedicated database deliberately.
 
 ### When storage is lost for good
 
@@ -386,7 +410,7 @@ PostgreSQL reads `POSTGRES_PASSWORD` only on the first start, when it creates th
 
 After an update, the database holds a newer migration history. An older app refuses to start against it. To go back, restore copies of both data locations taken before the update. Do not edit the migration history, and do not delete data to force an older release to start.
 
-### Run one instance per machine
+### Give each instance its own project name
 
 Compose names an instance after the folder that holds `compose.yml`. Two clones in folders with the same name share their containers, volumes, and image. To run a second instance, set a different `COMPOSE_PROJECT_NAME` and a different `SIDEREAL_PORT` for it.
 

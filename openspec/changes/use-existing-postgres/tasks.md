@@ -10,7 +10,7 @@
 - [x] 2.1 Update `.env.example` with mode-specific settings and optional certificate paths; verify every supported setting appears without a real credential.
 - [x] 2.2 Document entry selection, container reachability, URL encoding, shell precedence, TLS modes, compiled trust roots, and certificate access; verify examples match resolved Compose configuration.
 - [x] 2.3 Document PostgreSQL 18, dedicated database ownership, migration privileges, metadata updates, and credential rotation; verify guidance matches existing startup and pairing operations.
-- [ ] 2.4 Document separate storage for fresh external installs, matching storage for established databases, and database lifecycle responsibilities; verify marker-adoption and recovery warnings are explicit.
+- [x] 2.4 Document separate storage for fresh external installs, matching storage for established databases, and database lifecycle responsibilities; verify marker-adoption and recovery warnings are explicit.
 
 ## 3. Isolated external verification
 
