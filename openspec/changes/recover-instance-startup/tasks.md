@@ -17,7 +17,7 @@
 ## 4. Startup diagnostics
 
 - [x] 4.1 Give the startup connect step its own timeout that maps to `Unreachable`, and keep `StartupDeadline` for later steps. Verify with a test that a silent relay and a 1-second deadline fail with `database unreachable` within 1.25 seconds.
-- [ ] 4.2 Add server tests for each connection cause: a closed loopback port, a `.invalid` host, a wrong password, an untrusted certificate, a certificate for another host, and a missing database. Verify that each output starts with its phrase and holds no password or connection string.
+- [x] 4.2 Add server tests for each connection cause: a closed loopback port, a `.invalid` host, a wrong password, an untrusted certificate, a certificate for another host, and a missing database. Verify that each output starts with its phrase and holds no password or connection string.
 - [ ] 4.3 Add a test that starts with `sslmode=verify-ca` and a trusted CA. Verify that startup succeeds and `/readyz` returns 200.
 
 ## 5. Readiness outcome and log lines
