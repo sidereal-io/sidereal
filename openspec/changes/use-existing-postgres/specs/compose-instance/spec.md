@@ -4,7 +4,7 @@
 
 The bundled entry file `compose.yml` SHALL read the database password from `POSTGRES_PASSWORD`. It SHALL hold no default password.
 Bundled mode SHALL refuse to start when `POSTGRES_PASSWORD` is missing or empty.
-External mode SHALL require only its own database connection setting.
+External mode SHALL NOT require `POSTGRES_PASSWORD`.
 The repo SHALL hold `.env.example`, which lists every supported Compose setting, identifies which mode needs each setting, and leaves `POSTGRES_PASSWORD` empty.
 Git SHALL ignore `.env`.
 The supported password alphabet SHALL be ASCII letters and digits. `.env.example` SHALL state that alphabet beside the setting.

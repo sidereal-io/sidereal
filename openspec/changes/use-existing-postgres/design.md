@@ -33,12 +33,14 @@ Sam selects the external entry through retained `.env` configuration:
 
 ```dotenv
 COMPOSE_FILE=compose.external-db.yml
+COMPOSE_PROJECT_NAME=sidereal-external
 DATABASE_URL='postgres://sidereal:encoded-password@postgres.example.net:5432/sidereal?sslmode=verify-full'
 ```
 
 The normal `docker compose up -d --build --wait` command then starts only the app.
 Sam can append `compose.storage-bind.yml` exactly as in bundled mode.
 Document the Windows `;` separator and explicit `-f` alternatives.
+Explain that exported shell variables override `.env`, including `DATABASE_URL` and `COMPOSE_FILE`.
 The database bind override remains bundled-only; combining it with external mode must fail configuration validation.
 
 An override that subtracts the bundled database cannot bypass required password interpolation in the original file.
@@ -57,6 +59,10 @@ Remote names default to `verify-full`; examples specify it explicitly so the int
 Literal loopback, `localhost`, and Unix sockets retain their existing local plaintext default.
 Inside the app container, `localhost` refers to that container, not the Docker host or a sibling database.
 The guide requires an address reachable from the app container and matching the database certificate.
+The current SQLx rustls build trusts compiled public roots when no explicit CA is supplied.
+It does not use the host trust store or certificates added to the image's `/etc/ssl/certs` directory.
+Those compiled roots update only when the app image is rebuilt with updated dependencies.
+Other CAs require an explicit `sslrootcert` path through the certificate mount described below.
 
 Explain the accepted explicit modes: `disable`, `verify-ca`, and `verify-full`.
 Explain that `verify-ca` checks certificate trust without hostname verification.
@@ -93,28 +99,42 @@ The startup checks reject unrelated tables, extensions, custom schemas, and unsu
 The guide distinguishes a fresh external installation from moving an existing database.
 An established database requires its matching managed-storage marker; selecting a new empty directory cannot reset that pairing.
 Moving an instance requires consistent database and storage copies and remains outside this story's automation.
+For a fresh external installation, choose a new Compose project name or a new empty managed-storage bind directory.
+Never reuse another installation's named storage volume or bind directory for that fresh database.
+An unpaired database can adopt a marker-only directory, so reusing it could pair two databases with one store.
+
+External mode relies on the existing restart policy when its database starts late.
+The guide explains startup retries and recovery without restarting an already running app after a database outage.
+After rotating the password on PostgreSQL, Sam updates `DATABASE_URL` in `.env` and recreates the app to apply it.
 
 ### 5. Verify the packaged installation against a separate disposable service
 
 Add `just external-db-verify` backed by `scripts/external-db-verify.sh`.
 Keep the bundled `just instance-verify` checks as regression coverage after extraction.
-Run heavy recipes through `deli --`.
+Agents invoke heavy recipes through `deli --`; repository recipes do not require that machine-specific tool.
 
 The external recipe owns separate fixture and app Compose projects, generated credentials, and a dedicated network.
 Use the existing pinned PostgreSQL image from `server/postgres-image.env` for the fixture.
 Generate fixture certificates under `.workspace/external-db-verify/` with a DNS name matching the fixture's network alias.
 The existing development certificate only names `localhost`, so it cannot verify that network alias.
 Use a separate wrong CA and a second network alias for rejection cases.
-The fixture accepts plaintext as well as TLS so a failed verification case would expose an accidental plaintext fallback.
+For the positive TLS case, reject plaintext for the app login with a `hostnossl` rule before broader access rules.
+An explicit `sslmode=disable` control must fail, while the default remote mode reaches readiness with `sslrootcert` set.
+Before certificate-rejection cases, reload access rules to accept plaintext and TLS so an accidental plaintext fallback would succeed and fail the test.
 The fixture creates its dedicated database using an administrator; the app connects with a non-superuser owner login.
 
 A test-only app override joins the fixture network without adding a database service to the product entry file.
 Keep the network alive while removing the app project; remove it only during fixture cleanup.
 Use a separate administrator connection to snapshot schema, rows, migration records, and storage pairing.
-Compare `pg_stat_ssl` for the app login to prove successful remote connections use TLS.
+Use readiness against the plaintext-rejecting fixture and its failed plaintext control as stable proof of TLS.
+Do not sample `pg_stat_ssl`: readiness closes connections immediately, so the view can be empty between probes.
+Enable fixture connection authorization logging to prove unreadable certificate cases create no new authenticated app connection.
 Use first-start and app-recreation cases for both named-volume and bind-mounted managed storage.
 Check certificate mount permissions, startup refusal, unchanged data, and redacted logs for the spec's negative cases.
 Compare the external service's container ID and start time around app removal and recreation.
+Separately stop the fixture before app startup, observe a failed attempt, then start it and wait for automatic recovery.
+After a ready start, interrupt the fixture and check readiness loss and recovery without app restart.
+Save and compare migration records, pairing, and marker bytes across both cases.
 
 The recipe clears inherited connection, Compose, PostgreSQL, certificate, and storage settings before generating its own environment file.
 Always pass explicit project names, env files, project directory, and Compose file lists.
@@ -123,6 +143,8 @@ Follow the existing verification script's locking and resource-ownership checks;
 Capture command output privately under `.workspace/` and do not print resolved credential-bearing configuration.
 
 Verify configuration resolution on Compose 2.20 and the installed current version.
+For the minimum-version check, use a separately supplied official Compose 2.20 release binary and record its version.
+Treat that check as a required manual compatibility check; report a missing binary as blocked rather than silently skipping it.
 Check required-variable failures, app settings equivalence, supported override combinations, and invalid bundled-database override combinations.
 Run deployment demonstrations on the available Docker installation and record its version.
 
@@ -139,6 +161,7 @@ Run deployment demonstrations on the available Docker installation and record it
 
 Existing bundled operators keep their `.env`, project name, command, volumes, and bind overrides.
 Fresh external operators select the alternative entry file and supply their dedicated database URL.
+They use a separate project name or fresh managed-storage bind directory instead of another installation's storage.
 The implementation introduces no database migration or data format change.
 Reverting the Compose extraction preserves bundled resource names and stored data.
 An external operator must keep the external configuration when reverting; starting a bundled database does not transfer external state.
