@@ -7,7 +7,7 @@
 
 ## 2. Certificate file check
 
-- [ ] 2.1 In `server/src/config.rs`, find the `sslrootcert`, `sslcert`, and `sslkey` values through `to_url_lossy()`, and read only values with the `file: ` prefix. Verify with config tests that a path in the URL and a path in `PGSSLROOTCERT` are both checked, and that inline PEM is not.
+- [x] 2.1 In `server/src/config.rs`, find the `sslrootcert`, `sslcert`, and `sslkey` values through `to_url_lossy()`, and read only values with the `file: ` prefix. Verify with config tests that a path in the URL and a path in `PGSSLROOTCERT` are both checked, and that inline PEM is not.
 - [ ] 2.2 Reject a path that is not a regular file, and read at most 1 MiB, returning `CertificateFile`. Verify with config tests for a missing file, a directory, a named pipe that returns within 1 second, and a file over 1 MiB. Each test also checks that the message does not contain the path.
 
 ## 3. Test relay
