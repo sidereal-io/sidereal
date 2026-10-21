@@ -108,7 +108,10 @@ impl Database {
             let result = async {
                 conn.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
                     .await?;
-                conn.execute("SET LOCAL statement_timeout = '2000ms'")
+                // The outer deadline owns cancellation and closes this detached
+                // connection. Server-side timers must not race it into a schema
+                // or history diagnostic, including inherited role lock timeouts.
+                conn.execute("SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = 0")
                     .await?;
                 let prefix = preflight(&mut conn, &MIGRATOR, &baselines(), None).await?;
                 if prefix != Some(MIGRATOR.iter().count()) {

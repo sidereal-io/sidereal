@@ -212,7 +212,7 @@ async fn outage_recovery_and_overlapping_probes_are_redacted() {
 #[tokio::test]
 async fn locked_history_times_out_and_overlapping_probe_keeps_last_answer() {
     let db = TestDatabase::new();
-    let server = Server::start(db.options.clone()).await;
+    let server = Server::start(db.options.clone().options([("lock_timeout", "25ms")])).await;
     let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
     conn.execute("BEGIN; LOCK TABLE public._sqlx_migrations IN ACCESS EXCLUSIVE MODE")
         .await
