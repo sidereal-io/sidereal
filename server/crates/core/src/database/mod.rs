@@ -42,6 +42,28 @@ impl fmt::Display for DatabaseError {
     }
 }
 impl std::error::Error for DatabaseError {}
+impl DatabaseError {
+    /// Fixed readiness labels never include configuration or driver details.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MissingConfiguration => "missing database configuration",
+            Self::Configuration => "invalid database configuration",
+            Self::Connection => "database connection failed",
+            Self::Unreachable => "database unreachable",
+            Self::LoginRejected => "database login rejected",
+            Self::Tls => "database TLS verification failed",
+            Self::DatabaseMissing => "database does not exist",
+            Self::CertificateFile => "database TLS certificate file unreadable",
+            Self::Permission => "database permission denied",
+            Self::Version => "unsupported database version",
+            Self::Ownership => "database is not an empty or owned Sidereal database",
+            Self::History => "incompatible migration history",
+            Self::Schema => "incompatible database schema",
+            Self::StartupDeadline => "database startup deadline exceeded",
+            Self::Migration => "database migration failed",
+        }
+    }
+}
 impl From<sqlx::Error> for DatabaseError {
     fn from(error: sqlx::Error) -> Self {
         match error {
@@ -98,7 +120,7 @@ impl From<StorageError> for StartupError {
 
 mod pairing;
 mod startup;
-pub use startup::{initialize, initialize_with_storage, Database};
+pub use startup::{initialize, initialize_with_storage, Cause, Change, Database, Probe, ProbeResult};
 
 #[cfg(test)]
 mod tests {

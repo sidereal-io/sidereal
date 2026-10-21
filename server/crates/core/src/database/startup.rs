@@ -7,7 +7,7 @@ use sqlx::{
     Connection, Executor, PgConnection, PgPool, Row,
 };
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio::{sync::Semaphore, time::timeout};
@@ -23,24 +23,85 @@ const LOCK: &str = "SELECT pg_advisory_lock(1397310533, 1)";
 const UNLOCK: &str = "SELECT pg_advisory_unlock(1397310533, 1)";
 const READY_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cause {
+    Database(DatabaseError),
+    Timeout,
+}
+
+impl std::fmt::Display for Cause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Timeout => f.write_str("timed out"),
+            Self::Database(error) => f.write_str(error.label()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Probe {
+    Ready,
+    NotReady(Cause),
+    Busy,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change {
+    Ready,
+    NotReady(Cause),
+}
+
+impl std::fmt::Display for Change {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ready => f.write_str("readiness: ready"),
+            Self::NotReady(cause) => write!(f, "readiness: not ready ({cause})"),
+        }
+    }
+}
+
+pub struct ProbeResult {
+    pub outcome: Probe,
+    pub change: Option<Change>,
+    ready: bool,
+}
+
+impl ProbeResult {
+    /// Includes the cached answer when another probe is already active.
+    pub fn is_ready(&self) -> bool {
+        self.ready
+    }
+}
+
 #[derive(Clone)]
 pub struct Database {
     operational: PgPool,
     readiness: PgPool,
     permit: Arc<Semaphore>,
+    last: Arc<Mutex<Option<Cause>>>,
 }
 
 impl Database {
     pub async fn ready(&self) -> bool {
+        self.probe().await.is_ready()
+    }
+
+    pub async fn probe(&self) -> ProbeResult {
         let Ok(_permit) = self.permit.try_acquire() else {
-            return false;
+            return ProbeResult {
+                outcome: Probe::Busy,
+                change: None,
+                ready: self.last.lock().unwrap().is_none(),
+            };
         };
+        let mut acquired = false;
         let result = timeout(READY_TIMEOUT, async {
             let conn = self
                 .readiness
                 .acquire()
                 .await
                 .map_err(DatabaseError::from)?;
+            acquired = true;
             // Detach immediately: cancellation always closes the socket instead of
             // returning a connection with outstanding work to the readiness pool.
             let mut conn = conn.detach();
@@ -61,7 +122,24 @@ impl Database {
             result
         })
         .await;
-        matches!(result, Ok(Ok(())))
+        let cause = match result {
+            Ok(Ok(())) => None,
+            Ok(Err(error)) => Some(Cause::Database(error)),
+            Err(_) if acquired => Some(Cause::Timeout),
+            Err(_) => Some(Cause::Database(DatabaseError::Unreachable)),
+        };
+        let mut last = self.last.lock().unwrap();
+        let change = if *last != cause {
+            *last = cause;
+            Some(cause.map_or(Change::Ready, Change::NotReady))
+        } else {
+            None
+        };
+        ProbeResult {
+            outcome: cause.map_or(Probe::Ready, Probe::NotReady),
+            change,
+            ready: cause.is_none(),
+        }
     }
 
     pub async fn close(&self) {
@@ -109,9 +187,10 @@ impl Database {
                 .connect_lazy_with(options.clone()),
             readiness: PgPoolOptions::new()
                 .max_connections(1)
-                .acquire_timeout(READY_TIMEOUT)
+                .acquire_timeout(Duration::from_millis(1500))
                 .connect_lazy_with(options),
             permit: Arc::new(Semaphore::new(1)),
+            last: Arc::new(Mutex::new(None)),
         }
     }
 }

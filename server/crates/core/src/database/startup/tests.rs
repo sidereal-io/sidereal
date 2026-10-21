@@ -298,7 +298,7 @@ async fn readiness_is_bounded_consistent_and_read_only() {
     assert!(database.ready().await);
     let permit = database.permit.acquire().await.unwrap();
     let start = Instant::now();
-    assert!(!database.ready().await);
+    assert!(database.ready().await);
     assert!(start.elapsed() < Duration::from_millis(100));
     drop(permit);
     let mut conn = connection(&db).await;
