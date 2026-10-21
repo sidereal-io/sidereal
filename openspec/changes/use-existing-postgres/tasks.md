@@ -1,0 +1,30 @@
+## 1. Compose installation modes
+
+- [ ] 1.1 Extract common app settings into `compose.app.yml`; verify bundled configuration preserves service names, resource names, build context, ports, security restrictions, and storage mounts.
+- [ ] 1.2 Add `compose.external-db.yml`; verify configuration lists only `app` and `storage`, requires `DATABASE_URL`, and succeeds without `POSTGRES_PASSWORD`.
+- [ ] 1.3 Add `compose.database-tls.yml`; verify its certificate mount is read-only, uses the documented container target, and refuses missing source paths without creating them.
+- [ ] 1.4 Verify both entry files with storage overrides; confirm external mode rejects `compose.database-bind.yml` and bundled mode still rejects missing or empty passwords.
+
+## 2. Operator guidance
+
+- [ ] 2.1 Update `.env.example` with mode-specific settings and optional certificate paths; verify every supported setting appears without a real credential.
+- [ ] 2.2 Document entry selection, container reachability, URL encoding, shell precedence, TLS modes, compiled trust roots, and certificate access; verify examples match resolved Compose configuration.
+- [ ] 2.3 Document PostgreSQL 18, dedicated database ownership, migration privileges, metadata updates, and credential rotation; verify guidance matches existing startup and pairing operations.
+- [ ] 2.4 Document separate storage for fresh external installs, matching storage for established databases, and database lifecycle responsibilities; verify marker-adoption and recovery warnings are explicit.
+
+## 3. Isolated external verification
+
+- [ ] 3.1 Add `scripts/external-db-verify.sh` and its root recipe with separate fixture/app projects, generated credentials, and cleanup ownership checks; verify caller settings cannot reach test resources.
+- [ ] 3.2 Add disposable fixture TLS and network setup using the existing image pin; verify app-only cleanup leaves the external service and fixture network running.
+- [ ] 3.3 Demonstrate named-volume and bind-storage initialization and app recreation; compare migration records, pairing, marker bytes, sentinel bytes, and external container identity before and after.
+- [ ] 3.4 Demonstrate fresh-install storage isolation and missing paired-marker refusal; verify distinct installation UUIDs, preserved existing storage, and unchanged pairing after refusal.
+- [ ] 3.5 Prove default remote TLS using plaintext rejection and a failing plaintext control; verify trusted `sslrootcert` configuration reaches readiness without explicit `sslmode`.
+- [ ] 3.6 Exercise untrusted CA and wrong-host cases while the fixture permits plaintext; verify startup refusal, exact diagnostics, unchanged database contents, and redacted app logs.
+- [ ] 3.7 Exercise unreadable certificate files, unrelated data, and incompatible history; verify the specified diagnostics, preserved state, and no authenticated connection for certificate-file failures.
+- [ ] 3.8 Demonstrate late database startup and runtime outage recovery; verify startup retries, stable runtime restart count, expected health responses, recovery logs, and retained state.
+
+## 4. Integrated validation
+
+- [ ] 4.1 Resolve the configuration matrix with official Compose 2.20 and the installed version; record versions and report unavailable minimum-version prerequisites as blocked.
+- [ ] 4.2 Run `deli -- just instance-verify` and `deli -- just external-db-verify`; verify both demonstrations pass and leave only their intended diagnostic output.
+- [ ] 4.3 Run `deli -- just check` with its database fixture prepared; verify the server and web gates pass before the implementation PR proceeds.
