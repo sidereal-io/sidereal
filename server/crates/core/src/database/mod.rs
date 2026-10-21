@@ -120,7 +120,9 @@ impl From<StorageError> for StartupError {
 
 mod pairing;
 mod startup;
-pub use startup::{initialize, initialize_with_storage, Cause, Change, Database, Probe, ProbeResult};
+pub use startup::{
+    initialize, initialize_with_storage, Cause, Change, Database, Probe, ProbeResult,
+};
 
 #[cfg(test)]
 mod tests {

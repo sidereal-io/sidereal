@@ -40,4 +40,4 @@
 
 ## 9. Gate
 
-- [ ] 9.1 Run `deli -- just check` and verify that it exits 0.
+- [x] 9.1 Run `deli -- just check` and verify that it exits 0.

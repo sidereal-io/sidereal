@@ -199,23 +199,38 @@ mod tests {
 
     #[test]
     fn certificate_paths_are_checked_and_redacted() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../.workspace/certificate-tests");
+        let root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.workspace/certificate-tests");
         std::fs::create_dir_all(&root).unwrap();
         let root = root.canonicalize().unwrap();
         let valid = root.join("valid.pem");
         std::fs::write(&valid, "test certificate bytes").unwrap();
         let large = root.join("large.pem");
-        std::fs::File::create(&large).unwrap().set_len(1024 * 1024 + 1).unwrap();
+        std::fs::File::create(&large)
+            .unwrap()
+            .set_len(1024 * 1024 + 1)
+            .unwrap();
         let pipe = root.join("pipe");
         let _ = std::fs::remove_file(&pipe);
-        assert!(std::process::Command::new("mkfifo").arg(&pipe).status().unwrap().success());
-        for path in [root.join("missing.pem"), root.clone(), pipe.clone(), large.clone()] {
+        assert!(std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .unwrap()
+            .success());
+        for path in [
+            root.join("missing.pem"),
+            root.clone(),
+            pipe.clone(),
+            large.clone(),
+        ] {
             for key in ["sslrootcert", "sslcert", "sslkey"] {
                 let mut url = url::Url::parse("postgres://localhost/db").unwrap();
-                url.query_pairs_mut().append_pair(key, path.to_str().unwrap());
+                url.query_pairs_mut()
+                    .append_pair(key, path.to_str().unwrap());
                 let start = std::time::Instant::now();
-                let error = DatabaseConfig::parse(Some(url.as_str()), None, None).err().unwrap();
+                let error = DatabaseConfig::parse(Some(url.as_str()), None, None)
+                    .err()
+                    .unwrap();
                 assert!(start.elapsed() < Duration::from_secs(1));
                 assert_eq!(error, DatabaseError::CertificateFile);
                 assert!(!error.to_string().contains(path.to_str().unwrap()));
@@ -237,17 +252,27 @@ mod tests {
     fn certificate_environment_is_checked() {
         const CHILD: &str = "SIDEREAL_CERTIFICATE_ENV_TEST";
         if std::env::var_os(CHILD).is_some() {
-            let error = DatabaseConfig::parse(Some("postgres://localhost/db"), None, None).err().unwrap();
+            let error = DatabaseConfig::parse(Some("postgres://localhost/db"), None, None)
+                .err()
+                .unwrap();
             assert_eq!(error, DatabaseError::CertificateFile);
             assert!(!error.to_string().contains("distinctive-missing-ca.pem"));
             return;
         }
         let result = std::process::Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "config::tests::certificate_environment_is_checked"])
+            .args([
+                "--exact",
+                "config::tests::certificate_environment_is_checked",
+            ])
             .env(CHILD, "1")
             .env("PGSSLROOTCERT", "distinctive-missing-ca.pem")
-            .output().unwrap();
-        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stdout));
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stdout)
+        );
     }
 
     #[test]

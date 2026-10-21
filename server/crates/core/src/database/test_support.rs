@@ -150,9 +150,14 @@ struct HistoryGate {
     release: tokio::sync::Notify,
 }
 
-async fn forward(client: &mut tokio::net::TcpStream, server: &mut tokio::net::TcpStream, gate: &HistoryGate) -> std::io::Result<()> {
+async fn forward(
+    client: &mut tokio::net::TcpStream,
+    server: &mut tokio::net::TcpStream,
+    gate: &HistoryGate,
+) -> std::io::Result<()> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    const QUERY: &[u8] = b"SELECT version, description, success, checksum FROM public._sqlx_migrations";
+    const QUERY: &[u8] =
+        b"SELECT version, description, success, checksum FROM public._sqlx_migrations";
     let (mut incoming, mut outgoing) = client.split();
     let (mut reply, mut destination) = server.split();
     let send = async {
@@ -160,14 +165,20 @@ async fn forward(client: &mut tokio::net::TcpStream, server: &mut tokio::net::Tc
         let mut tail = Vec::new();
         loop {
             let count = incoming.read(&mut buffer).await?;
-            if count == 0 { return destination.shutdown().await; }
+            if count == 0 {
+                return destination.shutdown().await;
+            }
             tail.extend_from_slice(&buffer[..count]);
-            if gate.paused.load(Ordering::SeqCst) && tail.windows(QUERY.len()).any(|part| part == QUERY) {
+            if gate.paused.load(Ordering::SeqCst)
+                && tail.windows(QUERY.len()).any(|part| part == QUERY)
+            {
                 gate.reached.notify_one();
                 gate.release.notified().await;
             }
             destination.write_all(&buffer[..count]).await?;
-            if tail.len() > QUERY.len() { tail.drain(..tail.len() - QUERY.len()); }
+            if tail.len() > QUERY.len() {
+                tail.drain(..tail.len() - QUERY.len());
+            }
         }
     };
     let receive = tokio::io::copy(&mut reply, &mut outgoing);
@@ -213,7 +224,12 @@ impl Relay {
                 }
             }
         });
-        Self { port, mode, task, history }
+        Self {
+            port,
+            mode,
+            task,
+            history,
+        }
     }
 
     pub fn hold_history(&self) {
@@ -221,7 +237,9 @@ impl Relay {
     }
 
     pub async fn history_reached(&self) {
-        tokio::time::timeout(Duration::from_secs(1), self.history.reached.notified()).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(1), self.history.reached.notified())
+            .await
+            .unwrap();
     }
 
     pub fn release_history(&self) {

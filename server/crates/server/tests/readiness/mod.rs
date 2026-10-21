@@ -268,7 +268,9 @@ async fn history_connection_loss_and_backend_shutdown_are_unreachable() {
         let port = server.port;
         let pending = tokio::spawn(request(port, "/readyz", false));
         relay.history_reached().await;
-        conn.execute("BEGIN; LOCK TABLE public._sqlx_migrations IN ACCESS EXCLUSIVE MODE").await.unwrap();
+        conn.execute("BEGIN; LOCK TABLE public._sqlx_migrations IN ACCESS EXCLUSIVE MODE")
+            .await
+            .unwrap();
         relay.release_history();
         let pid = blocked_query(&mut conn, true).await;
         if terminate {
