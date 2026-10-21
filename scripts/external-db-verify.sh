@@ -196,6 +196,36 @@ done
 rm -f "$envfile"
 envfile=$main_envfile
 
+# Compare the product entries without the verification-only image and network.
+entry_config() {
+    POSTGRES_PASSWORD="$password" docker compose --project-name "$project" --project-directory "$root" \
+        --env-file "$envfile" "$@" config
+}
+app_contract() {
+    awk '
+        /^[^ ]/ { services = ($0 == "services:") }
+        services && /^  [^ ]/ { app = ($0 == "  app:") }
+        app && /^    [^ ]/ { keep = ($1 ~ /^(build|ports|volumes|cap_drop|security_opt|restart):$/) }
+        services && app && keep { print }' "$1"
+}
+entry_config -f "$root/compose.yml" >"$work/bundled-config.log" 2>&1
+entry_config -f "$root/compose.external-db.yml" >"$work/external-config.log" 2>&1
+app_contract "$work/bundled-config.log" >"$work/bundled-contract.yml"
+app_contract "$work/external-config.log" >"$work/external-contract.yml"
+cmp "$work/bundled-contract.yml" "$work/external-contract.yml" || fail 'bundled and external app settings differ'
+for setting in '    build:' '    ports:' '    volumes:' '    cap_drop:' '      - ALL' \
+    '    security_opt:' '      - no-new-privileges:true' '    restart: unless-stopped' \
+    '        target: /var/lib/sidereal/storage'; do
+    grep -Fxq "$setting" "$work/external-contract.yml" || fail "app configuration lost $setting"
+done
+if SIDEREAL_DATABASE_PATH="$binds/database" entry_config -f "$root/compose.external-db.yml" \
+    -f "$root/compose.database-bind.yml" >"$work/database-bind-refusal.log" 2>&1; then
+    fail 'external mode accepted the bundled database bind override'
+fi
+grep -Fq 'neither an image nor a build' "$work/database-bind-refusal.log" || fail 'unexpected database bind override refusal'
+# Resolved URLs stay private and are unnecessary once these checks pass.
+rm -f "$work/bundled-config.log" "$work/external-config.log"
+
 if [ "${1:-}" = --config-only ]; then
     [ "$(compose config --services)" = app ] || fail 'external configuration includes another service'
     [ "$(compose config --volumes)" = storage ] || fail 'external configuration includes database storage'
