@@ -14,7 +14,7 @@
 
 ## 3. Isolated external verification
 
-- [ ] 3.1 Add `scripts/external-db-verify.sh` and its root recipe with separate fixture/app projects, generated credentials, and cleanup ownership checks; verify caller settings cannot reach test resources.
+- [x] 3.1 Add `scripts/external-db-verify.sh` and its root recipe with separate fixture/app projects, generated credentials, and cleanup ownership checks; verify caller settings cannot reach test resources.
 - [ ] 3.2 Add disposable fixture TLS and network setup using the existing image pin; verify app-only cleanup leaves the external service and fixture network running.
 - [ ] 3.3 Demonstrate named-volume and bind-storage initialization and app recreation; compare migration records, pairing, marker bytes, sentinel bytes, and external container identity before and after.
 - [ ] 3.4 Demonstrate fresh-install storage isolation and missing paired-marker refusal; verify distinct installation UUIDs, preserved existing storage, and unchanged pairing after refusal.

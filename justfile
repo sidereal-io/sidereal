@@ -74,6 +74,10 @@ check-web:
 instance-verify:
     @sh scripts/instance-verify.sh
 
+# Check the app against a separate disposable PostgreSQL service.
+external-db-verify:
+    @sh scripts/external-db-verify.sh
+
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:
     @sh server/scripts/db-fixture.sh orphan-clean
