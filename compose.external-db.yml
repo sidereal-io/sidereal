@@ -1,0 +1,12 @@
+# App-only installation. The operator manages PostgreSQL separately.
+# Select this entry in .env; use separate storage for a fresh installation.
+services:
+  app:
+    extends:
+      file: compose.app.yml
+      service: app
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env for the external database}
+
+volumes:
+  storage:

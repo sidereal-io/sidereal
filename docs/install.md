@@ -1,6 +1,7 @@
 # Install Sidereal with Docker Compose
 
-This guide starts a private Sidereal instance on one machine. Docker Compose runs two containers: the Sidereal app and its PostgreSQL database.
+This guide starts a private Sidereal instance. By default, Docker Compose runs the app and its PostgreSQL database.
+To use a database you manage separately, follow [Use an existing PostgreSQL service](#use-an-existing-postgresql-service).
 
 > [!WARNING]
 > This installs the rebuild of Sidereal from the `main` branch. Today it shows only the server's health. To manage your images now, use the [`v0.x` branch](https://github.com/sidereal-io/sidereal/tree/v0.x).
@@ -45,13 +46,21 @@ Git ignores `.env`. Keep it private: it holds your password.
 
 | Setting | Default | Purpose |
 |---|---|---|
-| `POSTGRES_PASSWORD` | None. You must set it | The database password |
+| `POSTGRES_PASSWORD` | None | Required only by bundled mode; the database password |
 | `SIDEREAL_PORT` | `5000` | The port on your machine that the app listens on |
-| `COMPOSE_FILE` | Not set | The Compose files to use. Set it only to keep data in host directories |
+| `COMPOSE_FILE` | `compose.yml` | Installation entry and optional overrides |
+| `COMPOSE_PROJECT_NAME` | The folder name | Instance name; also separates named volumes |
+| `DATABASE_URL` | None | Required only by the external entry file |
 | `SIDEREAL_STORAGE_PATH` | Not set | The host directory for managed storage, with `compose.storage-bind.yml` |
 | `SIDEREAL_DATABASE_PATH` | Not set | The host directory for PostgreSQL data, with `compose.database-bind.yml` |
+| `SIDEREAL_DATABASE_TLS_PATH` | Not set | Dedicated certificate directory, with `compose.database-tls.yml` |
 
-To keep data in Docker volumes, leave the last three settings unset. To choose host directories, see [Choose where your data lives](#choose-where-your-data-lives).
+For the default bundled installation, leave optional settings unset to use Docker volumes.
+To choose host directories, see [Choose where your data lives](#choose-where-your-data-lives).
+
+Exported shell variables override `.env`, including `DATABASE_URL` and `COMPOSE_FILE`.
+Unset any development settings that should no longer apply before running Compose.
+See Docker's [variable precedence guidance](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/).
 
 ## Start the instance
 
@@ -67,6 +76,141 @@ Compose stops with an error that names `POSTGRES_PASSWORD` when `.env` is missin
 
 The first start also prepares storage. The app writes one small file, `.sidereal-storage.json`, into the empty storage location. It records the same identity in the database. This pairing lets later starts tell the right storage from an empty substitute. See [Startup checks your storage](#startup-checks-your-storage).
 
+## Use an existing PostgreSQL service
+
+This entry starts only the app. You prepare and operate PostgreSQL separately.
+Copy `.env.example` to `.env` if you have not already done so, then set:
+
+```dotenv
+COMPOSE_FILE=compose.external-db.yml
+COMPOSE_PROJECT_NAME=sidereal-external
+DATABASE_URL='postgres://sidereal:encoded-password@postgres.example.net:5432/sidereal?sslmode=verify-full'
+```
+
+Replace the example address and credentials. External mode does not need `POSTGRES_PASSWORD`.
+It refuses a missing or empty `DATABASE_URL` before creating containers.
+Start with the usual command:
+
+```sh
+docker compose up -d --build --wait
+```
+
+The address must be reachable from the app container and match the database certificate.
+Inside that container, `localhost` and loopback addresses refer to the app itself.
+Use your service's reachable DNS name; your database administrator must permit the connection.
+
+Percent-encode reserved characters in URL usernames and passwords, such as `@` as `%40`, `/` as `%2F`, and `#` as `%23`.
+Single-quote the `.env` value so dollar signs stay literal.
+Keep the file private and out of Git. `docker compose config` can print the whole URL, including credentials; keep its output private too.
+
+### Prepare the dedicated database
+
+Sidereal supports PostgreSQL 18 only. Use its current minor update, as recommended by the [PostgreSQL version policy](https://www.postgresql.org/support/versioning/).
+Your external service need not match the bundled image's digest.
+
+Ask your administrator for a dedicated, empty database and a dedicated non-superuser login that owns it.
+The login should also own every object Sidereal creates. Neither superuser nor `CREATEDB` is required by the app.
+The administrator controls network access and PostgreSQL client access rules.
+
+The login needs `CONNECT` on the database and `USAGE` and `CREATE` on its `public` schema.
+Object ownership permits future migration changes; see PostgreSQL's [schema privileges](https://www.postgresql.org/docs/18/ddl-schemas.html).
+For an established database, it also needs migration-table reads and pending-migration writes, plus metadata reads and updates for first storage pairing.
+A read-only runtime login is insufficient. Dedicated ownership covers these operations without granting cluster administration.
+
+Each startup validates the server version and database contents, then applies pending migrations automatically.
+It rejects unrelated tables, extensions, custom schemas, and unsupported migration histories before changing application data.
+Do not point Sidereal at a shared application database, even if its tables use another schema.
+
+### Select overrides
+
+Append overrides to the selected entry in `.env`, for example:
+
+```dotenv
+COMPOSE_FILE=compose.external-db.yml:compose.storage-bind.yml:compose.database-tls.yml
+SIDEREAL_STORAGE_PATH=/mnt/photos/sidereal-external-storage
+SIDEREAL_DATABASE_TLS_PATH=/srv/sidereal-database-tls
+```
+
+Prepare each directory before starting. Storage preparation follows [Give the app access](#give-the-app-access).
+On Windows, separate file names with `;` instead of `:`.
+Alternatively, name the same files in every command:
+
+```sh
+docker compose -f compose.external-db.yml -f compose.storage-bind.yml -f compose.database-tls.yml up -d --build --wait
+```
+
+Do not combine external mode with `compose.database-bind.yml`.
+That override configures the bundled database and fails configuration validation with the external entry.
+
+### Verify database transport
+
+Named remote hosts default to `verify-full` when `sslmode` is absent.
+The example makes that protection explicit. The accepted modes are:
+
+| `sslmode` | Protection |
+|---|---|
+| `verify-full` | Verifies certificate trust and the hostname |
+| `verify-ca` | Verifies certificate trust, without checking the hostname |
+| `disable` | Plaintext; use only as an explicit choice on a trusted network |
+
+The app rejects `allow`, `prefer`, and `require`. Certificate failure never triggers a plaintext retry.
+Literal loopback, `localhost`, and Unix sockets keep their local plaintext default.
+
+The app's database TLS library trusts public roots compiled into the binary.
+They update only when the image is rebuilt with updated dependencies.
+The host trust store and additions to the image's `/etc/ssl/certs` do not change database trust.
+For another CA, select `compose.database-tls.yml` and name its file explicitly:
+
+```dotenv
+COMPOSE_FILE=compose.external-db.yml:compose.database-tls.yml
+SIDEREAL_DATABASE_TLS_PATH=/srv/sidereal-database-tls
+DATABASE_URL='postgres://sidereal:encoded-password@postgres.example.net:5432/sidereal?sslmode=verify-full&sslrootcert=/etc/sidereal/postgres/ca.crt'
+```
+
+The override mounts the existing dedicated directory read-only at `/etc/sidereal/postgres`.
+It refuses a missing directory and never creates it. Keep only the needed database certificates and keys there.
+For client certificate authentication, add `sslcert=/etc/sidereal/postgres/client.crt` and `sslkey=/etc/sidereal/postgres/client.key` to the URL.
+
+Grant UID/GID `10001:10001` directory traversal and file-read access, including mapped IDs on rootless hosts.
+Restrict private-key access to the app's mapped identity; do not make keys world-readable.
+The app and override never change file permissions. Named certificate files must be regular, readable files no larger than 1 MiB.
+
+### Keep each installation's storage separate
+
+For a fresh external database, use a new Compose project name, as in the example, or a new empty managed-storage bind directory.
+Never reuse another installation's storage volume or bind directory.
+An unpaired database can adopt a directory holding only a valid marker. Reusing that directory could pair two databases with one store.
+
+This is a fresh-install procedure. Changing `COMPOSE_FILE` does not transfer an existing database or stop an old bundled database container.
+Moving an established instance requires consistent copies of its database and matching managed storage; that migration is outside this guide.
+A paired database refuses empty substitute storage with `storage marker is missing` and retains its pairing.
+Restore the matching storage instead of making a new marker or resetting the database.
+
+External PostgreSQL backups, access, upgrades, availability, and deletion remain your responsibility.
+App-project `stop` and `down` commands leave the external service running.
+`down --volumes` still deletes the app project's named storage volume, so a later start against its paired external database will refuse.
+It does not delete the external database or host bind directories.
+Back up and restore the external database together with its matching storage and private settings.
+When storage is lost permanently, restore both locations from consistent backups or deliberately prepare a fresh database and fresh storage.
+Never delete data or edit pairing records to make startup pass.
+
+### Database availability and credential rotation
+
+If PostgreSQL starts late, startup reports `database unreachable` and exits without serving HTTP.
+Docker's restart policy retries until the database becomes available.
+An outage after startup leaves `/healthz` available while `/readyz` fails.
+Readiness recovers without restarting the app once PostgreSQL is usable again.
+Logs report readiness loss and recovery; see [Troubleshoot a failed start or an unhealthy app](#troubleshoot-a-failed-start-or-an-unhealthy-app).
+
+To rotate external credentials, change the password in PostgreSQL, update `DATABASE_URL` in `.env`, then recreate the app:
+
+```sh
+docker compose up -d --force-recreate --wait
+```
+
+Existing exported shell settings override the file. Check them before applying the new URL.
+Changing `.env` alone never changes PostgreSQL's password.
+
 ## Choose where your data lives
 
 Sidereal keeps data in two locations:
@@ -74,7 +218,8 @@ Sidereal keeps data in two locations:
 - **Storage** holds managed files. Today it holds only the storage marker, `.sidereal-storage.json`.
 - **The database** holds PostgreSQL data, including the storage pairing.
 
-By default, both live in Docker volumes named `storage` and `database`. You need no settings for this.
+In bundled mode, both live in Docker volumes named `storage` and `database` by default. You need no settings for this.
+External mode creates only the `storage` volume; its database remains outside this Compose project.
 
 You can keep either location, or both, in a directory on your machine instead. Choose each one independently.
 
@@ -107,7 +252,8 @@ setfacl -m u:10001:rwx /mnt/photos/sidereal-storage
 
 Change only the new directory. Never change ownership or permissions of a whole disk or tree, and never run the app with more privileges. The app never changes ownership or permissions itself.
 
-The database directory needs no preparation beyond being new and empty. The PostgreSQL image sets up its own files and user.
+In bundled mode, the database directory needs no preparation beyond being new and empty.
+The PostgreSQL image sets up its own files and user.
 
 Some hosts need more:
 
@@ -209,6 +355,7 @@ Do not create a new marker, and do not empty the storage location to make startu
 | Update to newer code | `git pull`, then `docker compose up -d --build --wait` | Kept |
 
 Removing the containers keeps both data locations, whether they are Docker volumes or host directories.
+In external mode these commands manage only the app; the database service remains separate.
 
 ## What Sidereal keeps
 
@@ -216,7 +363,8 @@ Removing the containers keeps both data locations, whether they are Docker volum
 |---|---|---|
 | `.env`, with your password and mount settings | The repository root | Kept |
 | Storage, with the storage marker | The `storage` volume, or `SIDEREAL_STORAGE_PATH` | Deleted from the volume. Kept in a host directory |
-| The database, with the storage pairing | The `database` volume, or `SIDEREAL_DATABASE_PATH` | Deleted from the volume. Kept in a host directory |
+| Bundled database, with the storage pairing | The `database` volume, or `SIDEREAL_DATABASE_PATH` | Deleted from the volume. Kept in a host directory |
+| External database, with the storage pairing | Your separate PostgreSQL service | Kept; managed by its administrator |
 
 Back up `.env` and both data locations together. The marker and the pairing must match when you restore them.
 
@@ -236,7 +384,8 @@ When you use only one host directory, this command deletes one location and keep
 - **Database deleted, storage kept with only its marker**: the new database adopts that marker on the next start.
 - **Database deleted, storage kept with other files**: every later start refuses.
 
-To delete everything, run `docker compose down --volumes`, then delete the contents of each host directory you use.
+To delete everything in bundled mode, run `docker compose down --volumes`, then delete the contents of each host directory you use.
+External mode additionally requires your database administrator to remove its dedicated database deliberately.
 
 ### When storage is lost for good
 
@@ -261,7 +410,7 @@ PostgreSQL reads `POSTGRES_PASSWORD` only on the first start, when it creates th
 
 After an update, the database holds a newer migration history. An older app refuses to start against it. To go back, restore copies of both data locations taken before the update. Do not edit the migration history, and do not delete data to force an older release to start.
 
-### Run one instance per machine
+### Give each instance its own project name
 
 Compose names an instance after the folder that holds `compose.yml`. Two clones in folders with the same name share their containers, volumes, and image. To run a second instance, set a different `COMPOSE_PROJECT_NAME` and a different `SIDEREAL_PORT` for it.
 
