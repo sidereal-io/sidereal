@@ -44,14 +44,28 @@ impl fmt::Display for DatabaseError {
 impl std::error::Error for DatabaseError {}
 impl From<sqlx::Error> for DatabaseError {
     fn from(error: sqlx::Error) -> Self {
-        if error
-            .as_database_error()
-            .and_then(|error| error.code())
-            .is_some_and(|code| code == "42501")
-        {
-            Self::Permission
-        } else {
-            Self::Connection
+        match error {
+            sqlx::Error::Io(ref error)
+                if error
+                    .get_ref()
+                    .is_some_and(|inner| inner.is::<rustls::Error>()) =>
+            {
+                Self::Tls
+            }
+            sqlx::Error::Tls(_) => Self::Tls,
+            sqlx::Error::Io(_) | sqlx::Error::PoolTimedOut => Self::Unreachable,
+            sqlx::Error::Database(error) => match error.code().as_deref() {
+                Some(code)
+                    if code.starts_with("08") || matches!(code, "57P01" | "57P02" | "57P03") =>
+                {
+                    Self::Unreachable
+                }
+                Some("28P01" | "28000") => Self::LoginRejected,
+                Some("3D000") => Self::DatabaseMissing,
+                Some("42501") => Self::Permission,
+                _ => Self::Connection,
+            },
+            _ => Self::Connection,
         }
     }
 }
@@ -108,4 +122,28 @@ mod tests {
         }
     }
 
+    #[test]
+    fn connection_errors_are_classified_by_type() {
+        let tls = std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            rustls::Error::NoCertificatesPresented,
+        );
+        assert_eq!(
+            DatabaseError::from(sqlx::Error::Io(tls)),
+            DatabaseError::Tls
+        );
+        for kind in [
+            std::io::ErrorKind::ConnectionRefused,
+            std::io::ErrorKind::InvalidData,
+        ] {
+            assert_eq!(
+                DatabaseError::from(sqlx::Error::Io(std::io::Error::from(kind))),
+                DatabaseError::Unreachable
+            );
+        }
+        assert_eq!(
+            DatabaseError::from(sqlx::Error::PoolTimedOut),
+            DatabaseError::Unreachable
+        );
+    }
 }
