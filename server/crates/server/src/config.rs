@@ -198,13 +198,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn inline_certificates_need_no_file() {
+    fn certificate_paths_are_checked_and_redacted() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../.workspace/certificate-tests");
+        std::fs::create_dir_all(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let valid = root.join("valid.pem");
+        std::fs::write(&valid, "test certificate bytes").unwrap();
+        let large = root.join("large.pem");
+        std::fs::File::create(&large).unwrap().set_len(1024 * 1024 + 1).unwrap();
+        let pipe = root.join("pipe");
+        let _ = std::fs::remove_file(&pipe);
+        assert!(std::process::Command::new("mkfifo").arg(&pipe).status().unwrap().success());
+        for path in [root.join("missing.pem"), root.clone(), pipe.clone(), large.clone()] {
+            for key in ["sslrootcert", "sslcert", "sslkey"] {
+                let mut url = url::Url::parse("postgres://localhost/db").unwrap();
+                url.query_pairs_mut().append_pair(key, path.to_str().unwrap());
+                let start = std::time::Instant::now();
+                let error = DatabaseConfig::parse(Some(url.as_str()), None, None).err().unwrap();
+                assert!(start.elapsed() < Duration::from_secs(1));
+                assert_eq!(error, DatabaseError::CertificateFile);
+                assert!(!error.to_string().contains(path.to_str().unwrap()));
+            }
+        }
+        let options = PgConnectOptions::new().ssl_root_cert(&valid);
+        assert_eq!(certificate_files(&options), Ok(()));
         let inline = PgConnectOptions::new()
             .ssl_root_cert_from_pem(b"inline CA".to_vec())
             .ssl_client_cert_from_pem(b"inline certificate")
             .ssl_client_key_from_pem(b"inline key");
         assert_eq!(certificate_files(&inline), Ok(()));
-        assert!(matches!(DatabaseConfig::parse(Some("postgres://localhost/db?sslrootcert=distinctive-missing-ca.pem"), None, None), Err(DatabaseError::CertificateFile)));
+        std::fs::remove_file(pipe).unwrap();
+        std::fs::remove_file(large).unwrap();
+        std::fs::remove_file(valid).unwrap();
     }
 
     #[test]
