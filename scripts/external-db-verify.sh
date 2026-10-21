@@ -500,3 +500,57 @@ if [ "${1:-}" = --safeguards-only ]; then
     say 'certificate-file, unrelated-data and incompatible-history safeguards passed'
     exit 0
 fi
+
+say 'checking automatic recovery when the database starts late'
+retained >"$work/late-before"
+compose down --timeout 10 >"$work/late-down.log" 2>&1
+fixture_compose stop --timeout 10 db >"$work/late-database.log" 2>&1
+compose up -d --no-build >"$work/late-app.log" 2>&1
+waited=0
+until app_logs 2>/dev/null | grep -Fq 'database unreachable'; do
+    [ "$waited" -lt 180 ] || fail 'late-start case did not report database unreachable'
+    sleep 1
+    waited=$((waited + 1))
+done
+[ "$(code /healthz)" = 000 ] || fail 'unavailable database startup bound HTTP'
+app=$(compose ps -a -q app)
+waited=0
+until [ "$(docker inspect --format '{{.RestartCount}}' "$app")" -gt 0 ]; do
+    [ "$waited" -lt 180 ] || fail 'restart policy did not retry failed startup'
+    sleep 1
+    waited=$((waited + 1))
+done
+fixture_compose start db >>"$work/late-database.log" 2>&1
+wait_database >"$work/late-ready.log" 2>&1
+wait_ready
+retained >"$work/late-after"
+cmp "$work/late-before" "$work/late-after" || fail 'late database startup changed retained state'
+no_secret
+
+say 'checking a 60-second runtime outage and recovery without app restart'
+retained >"$work/outage-before"
+app=$(compose ps -q app)
+restarts=$(docker inspect --format '{{.RestartCount}}' "$app")
+fixture_compose stop --timeout 10 db >"$work/outage-database.log" 2>&1
+outage_end=$(($(date +%s) + 60))
+while [ "$(date +%s)" -lt "$outage_end" ]; do
+    [ "$(code /healthz)" = 200 ] || fail 'liveness failed during runtime database outage'
+    [ "$(code /readyz)" = 503 ] || fail 'readiness did not return 503 during database outage'
+    sleep 1
+done
+fixture_compose start db >>"$work/outage-database.log" 2>&1
+wait_database >"$work/outage-ready.log" 2>&1
+recovery_deadline=$(($(date +%s) + 5))
+until [ "$(code /readyz)" = 200 ]; do
+    [ "$(date +%s)" -lt "$recovery_deadline" ] || fail 'readiness did not recover within five seconds of database availability'
+    sleep 1
+done
+app_logs >"$work/recovery-app.log" 2>&1
+awk '/readiness: not ready \(database unreachable\)/ {lost=1} lost && /readiness: ready/ {recovered=1} END {exit !recovered}' \
+    "$work/recovery-app.log" || fail 'readiness loss and recovery logs are missing or out of order'
+[ "$(compose ps -q app)" = "$app" ] || fail 'runtime outage replaced the app container'
+[ "$(docker inspect --format '{{.RestartCount}}' "$app")" = "$restarts" ] || fail 'runtime outage restarted the app'
+retained >"$work/outage-after"
+cmp "$work/outage-before" "$work/outage-after" || fail 'runtime outage changed retained state'
+no_secret
+say 'passed. Removing only this run’s app, bundled baseline, fixture and scratch data'
