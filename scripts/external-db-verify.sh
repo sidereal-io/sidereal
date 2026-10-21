@@ -401,3 +401,32 @@ if [ "${1:-}" = --tls-only ]; then
     say 'default remote TLS and failing plaintext control passed'
     exit 0
 fi
+
+dump_database() {
+    # PostgreSQL randomizes the psql restriction token on each dump.
+    fixture_compose exec -T db pg_dump -U postgres -d "$database" --no-owner --no-privileges \
+        | sed '/^\\restrict /d; /^\\unrestrict /d'
+}
+say 'checking CA and hostname rejection with plaintext available'
+hba allow-plaintext
+sql 'SELECT pg_reload_conf()' >"$work/hba-reload.log"
+# A successful plaintext control proves fallback would succeed here.
+app_settings binds "$binds/storage" sslmode=disable
+start_app
+dump_database >"$work/rejection-before.sql"
+compose down --timeout 10 >"$work/rejection-down.log" 2>&1
+for rejection in untrusted wrong-host; do
+    case "$rejection" in
+        untrusted) app_settings binds "$binds/storage" sslrootcert=/etc/sidereal/postgres/wrong-ca.crt ;;
+        wrong-host) app_settings binds "$binds/storage" sslrootcert=/etc/sidereal/postgres/ca.crt wrong-host ;;
+    esac
+    expect_failure 'database TLS verification failed'
+    dump_database >"$work/rejection-after.sql"
+    cmp "$work/rejection-before.sql" "$work/rejection-after.sql" || fail 'TLS refusal changed database contents'
+done
+app_settings binds "$binds/storage"
+start_app
+if [ "${1:-}" = --rejection-only ]; then
+    say 'untrusted CA and wrong hostname refused without plaintext fallback'
+    exit 0
+fi
