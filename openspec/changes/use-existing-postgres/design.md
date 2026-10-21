@@ -74,6 +74,8 @@ Keep connection URLs out of committed files and logs; warn that Compose inspecti
 ### 3. Add an optional directory mount for certificate files
 
 `compose.database-tls.yml` adds one long-syntax bind mount to the app.
+Operator guidance selects it with the external entry, whose URL can name certificate files.
+The bundled entry keeps its fixed local plaintext URL.
 It requires `SIDEREAL_DATABASE_TLS_PATH`, mounts at `/etc/sidereal/postgres`, sets `read_only: true`, and sets `create_host_path: false`.
 The source is a dedicated existing directory holding only the needed database CA, client certificate, and client key files.
 The override sets no TLS mode and introduces no environment forwarding for host PostgreSQL variables.

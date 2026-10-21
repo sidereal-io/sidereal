@@ -1,4 +1,4 @@
-# Read-only database certificates. Select beside either installation entry.
+# Read-only database certificates. Select beside the external installation entry.
 # Name files by their container paths in DATABASE_URL; see docs/install.md.
 services:
   app:
