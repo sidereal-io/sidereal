@@ -103,6 +103,24 @@ Percent-encode reserved characters in URL usernames and passwords, such as `@` a
 Single-quote the `.env` value so dollar signs stay literal.
 Keep the file private and out of Git. `docker compose config` can print the whole URL, including credentials; keep its output private too.
 
+### Prepare the dedicated database
+
+Sidereal supports PostgreSQL 18 only. Use its current minor update, as recommended by the [PostgreSQL version policy](https://www.postgresql.org/support/versioning/).
+Your external service need not match the bundled image's digest.
+
+Ask your administrator for a dedicated, empty database and a dedicated non-superuser login that owns it.
+The login should also own every object Sidereal creates. Neither superuser nor `CREATEDB` is required by the app.
+The administrator controls network access and PostgreSQL client access rules.
+
+The login needs `CONNECT` on the database and `USAGE` and `CREATE` on its `public` schema.
+Object ownership permits future migration changes; see PostgreSQL's [schema privileges](https://www.postgresql.org/docs/18/ddl-schemas.html).
+For an established database, it also needs migration-table reads and pending-migration writes, plus metadata reads and updates for first storage pairing.
+A read-only runtime login is insufficient. Dedicated ownership covers these operations without granting cluster administration.
+
+Each startup validates the server version and database contents, then applies pending migrations automatically.
+It rejects unrelated tables, extensions, custom schemas, and unsupported migration histories before changing application data.
+Do not point Sidereal at a shared application database, even if its tables use another schema.
+
 ### Select overrides
 
 Append overrides to the selected entry in `.env`, for example:
@@ -156,6 +174,23 @@ For client certificate authentication, add `sslcert=/etc/sidereal/postgres/clien
 Grant UID/GID `10001:10001` directory traversal and file-read access, including mapped IDs on rootless hosts.
 Restrict private-key access to the app's mapped identity; do not make keys world-readable.
 The app and override never change file permissions. Named certificate files must be regular, readable files no larger than 1 MiB.
+
+### Database availability and credential rotation
+
+If PostgreSQL starts late, startup reports `database unreachable` and exits without serving HTTP.
+Docker's restart policy retries until the database becomes available.
+An outage after startup leaves `/healthz` available while `/readyz` fails.
+Readiness recovers without restarting the app once PostgreSQL is usable again.
+Logs report readiness loss and recovery; see [Troubleshoot a failed start or an unhealthy app](#troubleshoot-a-failed-start-or-an-unhealthy-app).
+
+To rotate external credentials, change the password in PostgreSQL, update `DATABASE_URL` in `.env`, then recreate the app:
+
+```sh
+docker compose up -d --force-recreate --wait
+```
+
+Existing exported shell settings override the file. Check them before applying the new URL.
+Changing `.env` alone never changes PostgreSQL's password.
 
 ## Choose where your data lives
 
