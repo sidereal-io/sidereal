@@ -1,0 +1,313 @@
+name: lets-standard
+version: 1
+description: OpenSpec workflow for normal feature work - brainstorm → proposal → specs → design → adr → review → tasks
+artifacts:
+  - id: brainstorm
+    generates: brainstorm.md
+    description: Decision ledger from grilling the story with the user, before any plan is written
+    template: brainstorm.md
+    instruction: |
+      Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
+      from the code repository root (not the planning store or change directory).
+      Use `planningHome.root` from this artifact's
+      instructions to read project context, the selected shared glossary, and
+      existing ancestor and affected-scope glossaries. Resolve ambiguity before
+      dependent work. Write agreed definitions outside change delta folders.
+
+      Shape the story with the user before any plan is written. One change
+      delivers one story. Run the `lets-brainstorm` skill: it says how to
+      question the user, how to fill the ledger and when to split the story.
+
+      1. Find the story. `lets-build` picked and claimed it, and named the
+         change after it. Use the issue you were given. Otherwise look for an
+         open issue assigned to you whose title starts with the change's name
+         and ` — `. If there is none, stop: a change starts from the
+         `lets-build` skill, which picks and claims its story.
+      2. Read the story packet: the issue body. Then read the code, tests and
+         specs it touches. `openspec list --specs` lists the project's
+         capabilities, and `openspec show <spec-id> --type spec` prints one.
+         Use full capability IDs and read relevant shared behavior too.
+         The brainstorm skill explains how to find affected domains without
+         adding a selection step when the scope is clear.
+      3. Question the user as the skill says, until you share one
+         understanding of scope, behavior and acceptance. Leave the how to
+         design.md.
+      4. Write brainstorm.md from the template: the story line, one ledger row
+         per resolved question, and the changes from the story. File any
+         split-out work as a new issue, as the skill says.
+      5. Show the ledger and the changes, and ask the user to confirm them.
+         Only then change the last line to `Confirmed by user: yes`. Until
+         then it stays `no`.
+
+      Commit brainstorm.md on its own as `docs:`. Then push the branch and
+      open a draft pull request whose description says `Closes #<n>`.
+    requires: []
+
+  - id: proposal
+    generates: proposal.md
+    description: Initial proposal document outlining the change
+    template: proposal.md
+    instruction: |
+      Read brainstorm.md. If its last line is not `Confirmed by user: yes`,
+      stop: the brainstorm is unfinished, so return to it.
+
+      Write proposal.md from the template: why this change is needed and what
+      it changes. Build it from the story and the ledger, and cite a ledger
+      row by number, such as (D2), rather than repeating it. Keep it to one or
+      two pages, and leave the how to design.md.
+
+      - Why: one or two sentences. What problem, and why now.
+      - What Changes: a bullet list. Name new capabilities, modifications and
+        removals. Mark a breaking change **BREAKING**.
+      - Capabilities: the contract with the specs step. Run
+        `openspec list --specs` and read the specs this change touches before
+        you fill it in. Read relevant shared specs too; list them below only
+        when their requirements change. One change can affect several domains.
+        - New Capabilities: each becomes `specs/<capability-path>/spec.md`.
+          New path segments are kebab-case, such as `user-auth` or
+          `identity/user-auth`, and follow the project's existing layout.
+        - Modified Capabilities: only those whose requirements change, not
+          their implementation. Use the exact existing path under
+          `openspec/specs/`, confirmed by its full ID in `openspec list --specs`.
+          Leave it empty when no requirement changes.
+      - Impact: affected code, APIs, dependencies and systems.
+
+      A change declares at least one capability, or opts out of specs:
+      `openspec validate` rejects a change with no deltas unless the change's
+      `.openspec.yaml` sets `skip_specs: true`. Use that only when no behavior
+      changes, such as a pure refactor, tooling or docs. Never invent a
+      requirement to pass validation.
+
+      Commit proposal.md on its own as `docs:`, then push the branch.
+    requires:
+      - brainstorm
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Detailed specifications for the change
+    template: spec.md
+    instruction: |
+      Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
+      from the code repository root (not the planning store or change directory).
+      Use `planningHome.root` from this artifact's
+      instructions to read project context, the selected shared glossary, and
+      existing ancestor and affected-scope glossaries. Resolve ambiguity before
+      dependent work. Write agreed definitions outside change delta folders.
+
+      Write one spec file per capability the proposal lists. The
+      `lets-write-specs` skill says what belongs in a requirement, how to write a
+      scenario a test can assert, and how to change an existing requirement.
+      This step says where the files go and what the parser needs.
+
+      Where each file goes. `<capability-path>` is the directory under
+      `specs/`, such as `user-auth` or `identity/user-auth`.
+      - A new capability: `specs/<capability-path>/spec.md`, at the path the
+        proposal gives. New path segments are kebab-case. Follow the project's
+        layout; do not add a domain level when the project's specs are flat.
+      - A modified capability: `specs/<capability-path>/spec.md`, at the exact
+        path of the existing spec. Do not move or rename the capability.
+        Confirm its full ID with `openspec list --specs` before writing the
+        delta. Strict validation alone does not prove the path matches.
+      - The existing specs live under `<planningHome.root>/openspec/specs/`.
+        Take `planningHome.root` from the `openspec instructions ... --json`
+        output. It is the repository, or the store when the change lives in
+        one.
+
+      Read relevant shared specs, but write deltas only for capabilities whose
+      requirements change. One change can include several domains. The spec
+      writing skill explains how to preserve full paths for every delta type.
+
+      There must be at least one spec file, unless the change sets
+      `skip_specs: true` as the proposal step describes. If the proposal lists
+      no capabilities and `skip_specs` is not set, return to the proposal.
+
+      What the parser needs. Validation and archive read these exactly.
+      - Delta sections are `## ADDED Requirements`, `## MODIFIED Requirements`,
+        `## REMOVED Requirements` and `## RENAMED Requirements`.
+      - Each requirement is `### Requirement: <name>` followed by its text.
+      - Each scenario is `#### Scenario: <name>`, with four hashes, followed by
+        `- **WHEN** ...` and `- **THEN** ...` lines. Three hashes or a bullet
+        fail silently.
+      - Every requirement has at least one scenario.
+      - MODIFIED carries the whole requirement block, with its heading
+        identical to the existing one. REMOVED carries **Reason** and
+        **Migration**. RENAMED uses `FROM:` and `TO:` lines.
+      - A new capability starts with `## Purpose`: one or two sentences of at
+        least 50 characters, or `openspec validate --strict` reports it as too
+        brief. Archive copies it into the new main spec. A delta on an existing
+        capability has no `## Purpose`. To change an existing Purpose, edit the
+        main spec directly.
+
+      Commit the spec files together, on their own, as `docs:`.
+    requires:
+      - proposal
+
+  - id: design
+    generates: design.md
+    description: Technical design document with implementation details
+    template: design.md
+    instruction: |
+      Write design.md from the template: how to build what the proposal and
+      the specs describe. The proposal holds the why; do not restate it.
+
+      Fill each section the template names.
+      - Context: only the current state and constraints that shape the
+        approach.
+      - Goals and Non-Goals: design-level boundaries, not the proposal's
+        scope.
+      - Test Seams: where the change will be tested, as the template's note
+        defines a seam. Prefer seams that exist. Fewer is better; one is
+        ideal.
+      - Scrutiny Tier and Blast Radius: `low`, `medium` or `high`, by the
+        template's scale. The review step uses the tier to set how hard the
+        reviewer looks.
+      - Decisions: each technical choice, the alternatives, and why this one.
+        A decision that is costly to reverse gets a record in the ADR step.
+        Here, make the decision and name it.
+      - Risks and Trade-offs: each as `[Risk] → Mitigation`.
+      - Migration and Rollback: deploy steps, data migrations and how to
+        undo. `N/A` when nothing changes shape.
+      - Open Questions: unknowns that can wait without changing the specs,
+        the approach or the tasks. The tasks step reads this section. Omit it
+        when there are none.
+
+      Commit design.md on its own as `docs:`.
+    requires:
+      - proposal
+
+  - id: adr
+    generates: adr.md
+    description: Per-change ADR review manifest and durable decision handoff
+    template: adr.md
+    instruction: |
+      Decide which of design.md's decisions need an architecture decision
+      record (ADR), write them, and write adr.md as this change's manifest.
+      The `lets-write-adrs` skill says what qualifies and how to write a record.
+
+      1. Read every record in `docs/decisions/`, if the folder exists. They
+         are context; they never count as this change's output.
+      2. Re-read design.md's Decisions, and apply the skill's test to each.
+      3. For each decision that qualifies, create
+         `docs/decisions/ADR-NNN-<slug>.md` from
+         `openspec/schemas/lets-standard/templates/adr-template.md`. NNN is the next
+         number after the highest in use, or 001 for the first. Create the
+         folder with the first record.
+      4. Write adr.md from the template. List the in-force records you read,
+         and every record this change created. Link a record; do not repeat
+         its content.
+      5. If nothing qualifies, adr.md says so in its last section, and no
+         record or folder is created.
+
+      Commit adr.md and any new records together, on their own, as `docs:`.
+    requires:
+      - design
+
+  - id: review
+    generates: review.md
+    description: Independent review of the plan, recorded with a verdict the tasks step reads
+    template: review.md
+    instruction: |
+      Run the `lets-review-plan` skill on this change's plan: brainstorm.md,
+      proposal.md, design.md, specs/ and adr.md. The review runs in a fresh
+      session, from another model family when one is available. The skill
+      runs it read-only, and says how to judge severity, rebuttals and
+      rounds. Use design.md's scrutiny tier as the reviewer's effort.
+
+      Add these checks to the reviewer's prompt, beside the skill's own.
+      - Assumption rows. Read brainstorm.md first. An `Assumption` row the
+        plan depends on, with nothing to support it, is a finding. Respect
+        `User` rows as decisions, but report it when the code shows one is
+        infeasible or unsafe, or when two rows contradict each other or the
+        specs.
+      - Scenario testability. Every scenario's THEN is something a test can
+        assert.
+      - Test seams. The tests sit at the seam design.md names.
+      - Scope. Nothing beyond the proposal: no creep, no gold-plating.
+      - Contradictions. A design choice that conflicts with a spec
+        requirement.
+
+      Record the review in review.md from the template: who reviewed, whether
+      it was independent, the round, every finding with its check, and the
+      rebuttals. Write the verdict line exactly as one of `VERDICT: APPROVE`,
+      `VERDICT: APPROVE_WITH_CHANGES` or `VERDICT: REVISE`. Under
+      APPROVE_WITH_CHANGES, list the required changes, apply them, and set
+      `CHANGES_APPLIED: yes`. Otherwise set `CHANGES_APPLIED: n/a`. The tasks
+      step reads these two lines.
+
+      A verdict covers the exact files it reviewed. If brainstorm.md,
+      proposal.md, design.md, specs/ or adr.md change afterwards, other than
+      by a listed required change, the verdict is void: run a new round.
+      After two REVISE verdicts in a row, stop and ask the user.
+
+      Commit review.md on its own as `docs:`.
+    requires:
+      - proposal
+      - design
+      - adr
+      - specs
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      Break the approved plan into tasks. The `lets-write-tasks` skill says how to
+      size, order, tag and verify them. Before you start:
+      - Read review.md. Its verdict line must be `VERDICT: APPROVE`, or
+        `VERDICT: APPROVE_WITH_CHANGES` with `CHANGES_APPLIED: yes`. Any other
+        value, including an unfilled template, means the review is not
+        finished: stop and return to it.
+      - Read design.md's Open Questions. If one would change what gets built,
+        settle it with the user first.
+
+      Write tasks.md from the template. The apply step parses it, so every
+      task is one checkbox line:
+      `- [ ] X.Y [tags] <behavior> (verify: <command>)`
+      A task that is not a `- [ ]` line is not tracked. The tags the apply
+      step reads are `[easy]`, `[medium]`, `[complex]`, `[parallel]` and, on a
+      section heading, `[depends-on: <section>]`.
+
+      If a decision that is costly to reverse comes up while planning, stop
+      and return to design.md. That change voids the review, so run a new
+      review round after it.
+
+      Commit tasks.md on its own as `docs:`.
+    requires:
+      - review
+
+apply:
+  requires: [ tasks ]
+  tracks: tasks.md
+  instruction: |
+    Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
+    from the code repository root (not the planning store or change directory).
+    Use `root.path` from this apply instruction's
+    JSON to resolve project config context, the selected shared glossary, and
+    existing ancestor and affected-scope glossaries. Read them again before
+    implementation, including in a separate planning store. Preserve domain
+    meaning across code representations; investigate apparent contradictions
+    and pause dependent work for discussion. Unrelated work may continue.
+    Review glossary definitions when retiring a capability; spec deletion
+    alone must not remove its glossary. Add no review stage to a flow.
+
+    Read brainstorm.md, design.md, the specs and tasks.md. Then work through
+    the pending tasks in order. You may run `[parallel]` tasks in concurrent
+    subagents once the sections they depend on are done.
+
+    Work on each task test-first with the `lets-test-first` skill:
+    write the test, watch it fail for the right reason, then write the code
+    that makes it pass.
+
+    Tick a task `- [x]` only with its evidence on the same line, such as
+    `(✓ <command> passed)`. Never tick ahead. Commit each task on its own with
+    its real type, `feat:`, `fix:`, `refactor:` or `test:`, and include the
+    ticked checkbox in the same commit.
+
+    Record a small departure from the plan under `## Deviations Ledger` in
+    tasks.md. Stop and ask the user about a large one: a changed guarantee, a
+    trust boundary, a data schema, or a decision that is costly to reverse.
+    Stop too on an unexpected blocker, or a test that keeps failing.
+
+    When every task is done, follow the *Finish the change* section of the
+    `lets-build` skill. It follows the project's finishing rules, runs the
+    `openspec-verify-change` skill, then archives the change.
