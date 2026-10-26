@@ -74,6 +74,29 @@ check-web:
 instance-verify:
     @sh scripts/instance-verify.sh
 
+# End-to-end tests: boot the server and Vite, then drive Chromium against them.
+# The database fixture must already be up (`just db-up`); the webServer blocks
+# in web/playwright.config.ts start everything else. Reuses an already-running
+# `just dev`, so in a normal dev shell this only pays for the browser launch.
+[doc('Run the Playwright end-to-end suite.')]
+e2e:
+    #!/bin/sh
+    set -eu
+    # The server reads DATABASE_URL, not TEST_DATABASE_URL, and exits without
+    # it. Fall back to the local fixture when the caller has not picked one;
+    # `db-schema` resolves its own URL the same way.
+    if [ -z "${DATABASE_URL:-}" ]; then
+      DATABASE_URL=$(just db-url)
+      export DATABASE_URL
+    fi
+    cd web
+    pnpm install --frozen-lockfile --reporter=append-only
+    # Playwright owns its own browser. The download is skipped when the
+    # browser this version wants is already in the cache, so a bare
+    # `just e2e` keeps working with no setup step.
+    pnpm exec playwright install chromium
+    pnpm e2e
+
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:
     @sh server/scripts/db-fixture.sh orphan-clean

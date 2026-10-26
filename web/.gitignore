@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Playwright writes both on every run; neither is source.
+playwright-report
+test-results
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
