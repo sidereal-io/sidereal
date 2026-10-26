@@ -56,6 +56,63 @@ jobs:
       - name: Web gate
         run: nix develop --command just check-web
 
+  # End-to-end gate. Kept out of `check` because it boots the server and a
+  # browser, so it runs on its own runner instead of competing with the
+  # unit jobs for CPU.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+          cmd-format: nix develop -c {0}
+
+      - name: Prepare PostgreSQL fixture
+        run: |
+          nix develop --command just db-up
+          db_url=$(nix develop --command just db-url)
+          echo "::add-mask::$db_url"
+          printf 'DATABASE_URL=%s\n' "$db_url" >> "$GITHUB_ENV"
+
+      # `cargo run` inside Playwright's webServer block would compile here,
+      # within the 300s startup timeout. Build first so a cold cache cannot
+      # spend that window on rustc.
+      - name: Build the server
+        run: nix develop --command cargo build -p sidereal-server --manifest-path server/Cargo.toml
+
+      # A bare runner lacks the shared libraries Chromium links against.
+      # `just e2e` installs the browser without touching the system, so the
+      # package set is installed here where root is available.
+      - name: Install Chromium and its system libraries
+        working-directory: web
+        run: |
+          nix develop --command pnpm install --frozen-lockfile --reporter=append-only
+          nix develop --command pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end gate
+        run: nix develop --command just e2e
+
+      - name: Stop PostgreSQL fixture
+        if: always()
+        run: nix develop --command just db-down
+
+      # The HTML report carries the failure screenshot, diff and console log,
+      # which is the whole reason to bother uploading it.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
+
   # The skills, schemas and rules block that lets sync writes must match the
   # release flake.lock pins. The dev shell's hook skips the sync when CI is set.
   lets-spec:
