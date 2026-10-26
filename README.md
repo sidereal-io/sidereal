@@ -69,7 +69,7 @@ This starts the server and the web interface together. Open `http://localhost:51
 just check
 ```
 
-This is the gate for every pull request. It runs the server checks (format, clippy, tests, and the dependency-direction lint), then the web checks (type check, lint, format check, and unit tests). CI runs the same checks.
+This is the gate for every pull request. It checks the Compose configuration without a running Docker daemon, then runs the server checks (format, clippy, tests, and the dependency-direction lint) and the web checks (type check, lint, format check, and unit tests). CI runs the same checks.
 
 ### How work is planned
 

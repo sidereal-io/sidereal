@@ -15,6 +15,15 @@ permissions:
   contents: read
 
 jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Compose configuration checks (no daemon required)
+        run: sh scripts/compose-config-check.sh
+
   server:
     runs-on: ubuntu-latest
     steps:

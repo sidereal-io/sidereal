@@ -39,7 +39,8 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
   `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
   CI. Never put a Rust release number in a build file or doc. **`just check`**
-  is the gate — green before every PR. It runs `check-server` (`cargo fmt --check` +
+  is the gate — green before every PR. It runs `check-compose` (Compose config checks
+  with no daemon), then `check-server` (`cargo fmt --check` +
   `clippy -D warnings` + `cargo test` + arch lint), then `check-web` (type check +
   lint + format check + `DESIGN.md` lint + token drift check + unit tests for
   `web/`).
@@ -77,9 +78,9 @@ How screens in `web/` look is defined in [`DESIGN.md`](DESIGN.md)
   branch and PR with Conventional Commits.
 - **Change a version only where it is set.** [`CONTRIBUTING.md`](CONTRIBUTING.md#where-versions-are-set)
   lists the one file that sets each tool version and product version.
-- **Gate with `just check`** (`check-server`, then `check-web`) after every change
-  to `server/` or `web/`. CI runs the same recipes in the `ci` workflow's `server` and
-  `web` jobs. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
+- **Gate with `just check`** (`check-compose`, `check-server`, then `check-web`) after every change
+  to `server/` or `web/`. CI runs the same checks in the `ci` workflow's `compose`,
+  `server`, and `web` jobs. Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 - **`main` does not release yet.** v0.10.x releases are tagged from `v0.x`. A later
   change defines how `main` releases. Never `gh release create` manually.
 
