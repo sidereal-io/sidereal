@@ -122,11 +122,11 @@
     "drizzle-kit": "^0.31.11",
     "esbuild": "^0.28.2",
     "nodemon": "^3.1.14",
-    "postcss": "^8.5.30",
+    "postcss": "^8.5.31",
     "tailwindcss": "^4.1.11",
     "tsx": "^4.23.13",
     "typescript": "7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
