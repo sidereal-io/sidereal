@@ -8,6 +8,11 @@
 
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Follows main; flake.lock pins the commit. Its own nixpkgs pins the
+    # OpenSpec CLI the release's openspec-* skills were generated from, so
+    # it does not follow ours.
+    lets-spec.url = "github:sidereal-io/lets-spec";
   };
 
   outputs = inputs@{ flake-parts, ... }:
@@ -17,7 +22,7 @@
       imports = [
         ./nix/devshell.nix
         ./nix/toolchains.nix
-        ./nix/openspec.nix
+        ./nix/lets-spec.nix
       ];
 
       # Every module below gets a `pkgs` with the rust-overlay applied, so

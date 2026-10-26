@@ -26,23 +26,6 @@ db-url:
 db-test-url:
     @sh server/scripts/db-fixture.sh test-url
 
-# Generate the OpenSpec agent skills into .agents/skills (see scripts/skills.sh).
-skills:
-    @scripts/skills.sh
-
-# Refresh stale OpenSpec skills. The dev shell runs this when it loads.
-enter:
-    @scripts/skills.sh --if-stale >/dev/null 2>&1 || echo "warning: could not refresh the OpenSpec skills; run \`just skills\` to see why" >&2
-
-# Set each issue's Status on the project board from its state (see scripts/board-sync.sh).
-# Pass --dry-run to print the changes without writing them.
-board-sync *args:
-    @scripts/board-sync.sh {{args}}
-
-# Check the board's Status rules against a fixture (see scripts/board-status-test.sh).
-board-sync-test:
-    @scripts/board-status-test.sh
-
 # When either one exits, stop the other. POSIX sh, so macOS's /bin/sh runs it.
 # Run both recipes in parallel; press Ctrl+C to stop them.
 [doc('Run the server and web shell together.')]
@@ -81,6 +64,29 @@ instance-verify:
 # Check TLS startup and recreation against a separate disposable PostgreSQL service.
 external-db-verify:
     @sh scripts/external-db-verify.sh
+
+# End-to-end tests: boot the server and Vite, then drive Chromium against them.
+# The database fixture must already be up (`just db-up`); the webServer blocks
+# in web/playwright.config.ts start everything else. Reuses an already-running
+# `just dev`, so in a normal dev shell this only pays for the browser launch.
+[doc('Run the Playwright end-to-end suite.')]
+e2e:
+    #!/bin/sh
+    set -eu
+    # The server reads DATABASE_URL, not TEST_DATABASE_URL, and exits without
+    # it. Fall back to the local fixture when the caller has not picked one;
+    # `db-schema` resolves its own URL the same way.
+    if [ -z "${DATABASE_URL:-}" ]; then
+      DATABASE_URL=$(just db-url)
+      export DATABASE_URL
+    fi
+    cd web
+    pnpm install --frozen-lockfile --reporter=append-only
+    # Playwright owns its own browser. The download is skipped when the
+    # browser this version wants is already in the cache, so a bare
+    # `just e2e` keeps working with no setup step.
+    pnpm exec playwright install chromium
+    pnpm e2e
 
 # Remove killed-test leftovers only from this worktree's fixture.
 db-test-clean:

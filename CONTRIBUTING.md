@@ -72,7 +72,6 @@ just check-server   # Server checks: format, clippy, tests, dependency-direction
 just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 just instance-verify  # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
 just external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
-just board-sync     # Set Status on the project board from each issue's state (--dry-run to preview)
 ```
 
 `just check-compose` compares the resolved app services, checks the external entry's
@@ -95,8 +94,9 @@ cover database outage and recovery. Keep these cases there when changing deploym
 
 ## 🧰 Development Environment
 
-The repo pins its tools — Rust, Node, pnpm, `just`, `jq`, and the `openspec` CLI — through a
-Nix flake. Nix is optional. Pick either route.
+The repo pins its tools — Rust, Node, pnpm, `just`, `gh`, the `openspec` CLI and
+[Let's Spec](https://github.com/sidereal-io/lets-spec) — through a Nix flake. Nix is
+optional. Pick either route.
 
 If you cloned before the Rust workspace moved from `backend/` to `server/`, run
 `rm -rf backend/target` once after you pull. Git ignores that folder, so it stays behind.
@@ -123,8 +123,8 @@ If you cloned before the Rust workspace moved from `backend/` to `server/`, run
    command in the shell, and again whenever `flake.lock` brings a new Rust
    release. The shell's compiler is not the one rustup installed, so cargo's
    cached build data doesn't carry over.
-4. Nothing to run for the OpenSpec agent skills. The shell generates them when
-   it loads, and again only when they are stale. See
+4. Nothing to run for the agent skills. The shell runs `lets sync` when it
+   loads, which keeps them at the pinned Let's Spec release. See
    [Agent skills](#agent-skills).
 
 Nix sees only files tracked by git. A new file under `nix/` stays invisible to
@@ -153,27 +153,19 @@ it, and it loads after the pinned shell, so your settings take precedence.
    In `web/`, pnpm switches itself to the exact release that
    `web/package.json` pins, so any pnpm 12 works. See
    [`web/README.md`](web/README.md).
-4. Install [`just`](https://github.com/casey/just) and [`jq`](https://jqlang.org/).
-   `just board-sync` also needs the [GitHub CLI](https://cli.github.com/), `gh`.
-5. Install the `openspec` CLI, then run `just skills`:
+4. Install [`just`](https://github.com/casey/just) and the
+   [GitHub CLI](https://cli.github.com/), `gh`, 2.102.0 or later. The agent
+   skills set Project fields and issue links with it.
+5. Install the `openspec` CLI at the version the pinned Let's Spec release
+   names in its [release notes](https://github.com/sidereal-io/lets-spec/releases):
 
    ```
-   npm install -g @fission-ai/openspec
-   just skills
+   npm install -g @fission-ai/openspec@<version>
    ```
 
-   The Nix shell pins the CLI version that the repo tests with. Without Nix,
-   you get the latest release, so your skill text can differ slightly.
-6. Optional: refresh the skills each time you enter the repo, as the Nix shell
-   does. Install [direnv](https://direnv.net/), add this line to `.envrc.local`
-   in the repo root, then run `direnv allow`:
-
-   ```
-   just enter
-   ```
-
-   The `enter` recipe regenerates the skills only when they are stale. If it
-   fails, it prints one warning line, and direnv still loads.
+   The agent skills, schemas and rules are committed, so you have them without
+   running anything. Only the Nix shell keeps them up to date: see
+   [Agent skills](#agent-skills).
 
 Both routes pass the same `just check` gate. Prepare the PostgreSQL fixture and export
 `DATABASE_URL` and `TEST_DATABASE_URL` using the commands above. Docker Engine or
@@ -181,8 +173,8 @@ Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates loca
 See [server setup](server/README.md) for container-free test prerequisites.
 
 **Run `direnv deny` before you check out a branch you don't trust.** Loading
-the shell runs code from the working tree: the flake, the `justfile` and
-`scripts/skills.sh`. direnv asks for approval again only when `.envrc` changes,
+the shell runs code from the working tree: the flake and the `lets-spec` release
+it pins. direnv asks for approval again only when `.envrc` changes,
 so a checkout can run a branch's code without asking. After you read the
 branch's changes, run `direnv allow` again.
 
@@ -199,7 +191,8 @@ Each version lives in one file. Change it there, and nowhere else.
 | Rust | `server/rust-toolchain.toml` | Names the `stable` channel. In the Nix shell and CI, `flake.lock` decides the exact release. Without Nix, rustup uses the latest stable release you have installed |
 | Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step. The root `Dockerfile` names the same major version for the image's web build |
 | pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12 |
-| `just`, `jq`, and `openspec` | `flake.lock` | Exact releases, through the Nix shell |
+| `just` | `flake.lock` | Exact release, through the Nix shell |
+| Let's Spec, with `openspec` and `gh` | `flake.lock`, under the `lets-spec` input | One release of [Let's Spec](https://github.com/sidereal-io/lets-spec). It pins the `openspec` CLI its skills were generated from, and the `gh` the skills call. Without Nix, install the `openspec` version its release notes name |
 
 Never write a Rust release number in a build file or a document. The channel and `flake.lock` decide it.
 
@@ -217,37 +210,26 @@ Dependabot proposes updates to these pins every week: `flake.lock`, `server/Carg
 AI agents read skills from `.agents/skills`. Claude Code reads the same folder
 through the `.claude/skills` link. The folder holds two kinds of skill:
 
-- **Authored skills**, such as `peer-code-review` and `discovery`. People write
-  them, and git tracks them.
-- **Generated skills**, named `openspec-*`. `just skills` creates them, and git
-  ignores them.
+- **Authored skills**, such as `visual-options`. People write them, and git
+  tracks them.
+- **Let's Spec skills**, named `lets-*` and `openspec-*`. `lets sync` copies
+  them from the pinned [Let's Spec](https://github.com/sidereal-io/lets-spec)
+  release, with the `lets-*` schemas in `openspec/schemas/` and the rules block
+  in `AGENTS.md`. Git tracks the copies, so every clone has them.
 
-The Nix shell refreshes the generated skills when it loads, but only when they
-are stale. They are stale when any of these changed since the last run: the
-`openspec` version, `.config/openspec/config.json` or `scripts/skills.sh`. A
-missing generated folder also makes them stale. `just skills` records its
-inputs in `.agents/skills/.openspec-stamp`, which git ignores.
+The Nix shell runs `lets sync` when it loads. It rewrites any copy that differs
+from the release and tells you to commit, and it prints nothing when all is
+well. CI runs `lets sync --check`, which fails when a committed copy is out of
+date. Never edit a `lets-*` or `openspec-*` skill, a `lets-*` schema or the
+rules block by hand: the next sync undoes it. Change Let's Spec instead.
 
-`just skills` still forces a full run whenever you call it. For a given CLI
-version, it gives the same skills on every machine:
+To move to a newer Let's Spec, run `nix flake update lets-spec`, enter the
+shell, and commit what `lets sync` wrote with `flake.lock`. Read its
+[upgrading notes](https://github.com/sidereal-io/lets-spec/blob/main/docs/upgrading.md)
+first: some releases need a step of your own.
 
-- It stops if `openspec` is not installed. The error message names the install
-  command.
-- It deletes every `openspec-*` skill, the `.openspec-target` marker and the
-  stamp, then generates them again.
-- It reads the skill settings from the repo, never from your own
-  `~/.config/openspec/config.json`. It leaves that file unchanged.
-
-The skill settings live in `.config/openspec/config.json`: the profile, the
-delivery mode and the workflow list. To add or remove a workflow, edit that
-file and run `just skills`. The other OpenSpec file, `openspec/config.yaml`,
-holds the schema, the project context and the artifact rules.
-
-**The `openspec-` prefix is reserved.** `just skills` deletes any skill folder
-with that prefix, so give an authored skill a different name.
-
-Don't run `openspec init` or `openspec update` by hand. They use your global
-settings instead of the repo's. If you do, run `just skills` to restore the
+Don't run `openspec init` or `openspec update` by hand. They write skills of
+their own from your global settings. If you do, run `lets sync` to restore the
 repo's skills.
 
 To support another agent, pick the case that fits it:
@@ -255,84 +237,6 @@ To support another agent, pick the case that fits it:
 - **It reads `.agents/skills`:** do nothing.
 - **It reads only its own folder:** add a tracked link from that folder to
   `.agents/skills`, as `.claude/skills` does.
-- **It needs different skill text:** it needs its own generated set. That takes
-  a change to `scripts/skills.sh`.
-
-### Penpot MCP
-
-Agents design v2 screens in the **Sidereal Design System** file in Penpot. They
-reach it through Penpot's MCP server. Each contributor connects it through
-their own claude.ai account, so the repo holds no token and no MCP config.
-
-You need a Penpot account and a claude.ai account, and you must sign in to
-Claude Code with that claude.ai account. The connector doesn't work if you sign
-in with an API key.
-
-1. In Penpot, open **Your account**, then **Integrations**, then **MCP Server**,
-   and turn on MCP.
-2. Create an MCP key, then copy the server URL from the same page. Penpot shows
-   the key only once.
-
-   **The URL contains your key, so treat it like a password.** Don't paste it
-   into the repo, an issue or a chat. Each Penpot user has one key. Creating a
-   new key revokes the old one, so you then repeat step 3 with the new URL.
-3. In claude.ai, open **Settings**, then **Connectors**, and add a custom
-   connector named `Penpot` with the server URL.
-4. Open the Sidereal Design System file in Penpot. Choose **File**, then
-   **MCP Server**, then **Connect**.
-
-   Keep that browser tab open while the agent works. The plugin runs inside the
-   tab. If the browser puts the tab to sleep, the agent's Penpot calls fail
-   until you connect again.
-5. Start Claude Code and run `/mcp`. It lists **claude.ai Penpot** as connected.
-
-If a step is missing, you see one of these:
-
-- **`/mcp` doesn't list claude.ai Penpot:** you signed in to Claude Code with an
-  API key or with another claude.ai account, or the connector isn't added.
-- **The connector is listed, but Penpot calls fail:** the plugin isn't connected
-  in the Sidereal Design System file, or its tab went to sleep. Repeat step 4.
-
-If you set up Penpot by hand in Claude Code before, remove that setup in the
-repo root. Otherwise the agent gets two copies of the Penpot tools:
-
-```
-claude mcp remove penpot -s local
-```
-
-### Reviewing a pin update
-
-Patch and minor Dependabot updates to `main` can merge automatically after
-required checks pass on an up-to-date branch. Major updates need manual review.
-See [dependency updates and setup](docs/dependency-updates.md).
-
-Every Monday, Dependabot may open pull requests that update the pinned tools.
-Check these points before you merge one:
-
-- **Nix pull requests change `flake.lock`.** The flake check CI job builds the
-  shell with the new pins. A green check means the shell builds. The job log
-  also prints the Rust, `openspec`, Node, pnpm, and `just` versions inside the new
-  shell.
-  The `ci` workflow's `server` and `web` jobs also run. They run
-  `just check-server` and `just check-web` inside the new shell. Green checks
-  mean both gates pass with the new pins.
-- **A `flake.lock` update can bring a new Rust release.** The
-  `rustc --version` line in the flake check log shows the release the update
-  brings. A new release can add clippy lints that fail the `server` job. If it does, fix the
-  lints in a separate pull request to `main`, then comment
-  `@dependabot rebase` on the update.
-- **A new `openspec` version changes every agent's skills.** The shell
-  regenerates the skills from the CLI, so read the
-  [`openspec` release notes](https://github.com/Fission-AI/OpenSpec/releases)
-  before you merge an update that changes its version.
-- **Cargo pull requests change `server/Cargo.lock`.** The `ci` workflow's
-  `server` job checks them, the same as any other change under `server/`.
-- **npm pull requests for `web/` change `web/package.json` and
-  `web/pnpm-lock.yaml`.** The `ci` workflow's `web` job checks them, the same
-  as any other change under `web/`.
-- **Some pull requests target `v0.x`.** Dependabot sends version updates for
-  the v0.10.x app's npm, Docker and GitHub Actions dependencies to the `v0.x`
-  branch. Review them there, with `v0.x`'s own checks.
 
 ## 📝 Code Standards
 

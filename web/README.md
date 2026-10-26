@@ -56,6 +56,20 @@ To run one check alone, run its script in `web/`:
 To fix formatting, run `pnpm format`. To rerun the tests on every save, run
 `pnpm vitest`.
 
+## End-to-end tests
+
+`just e2e` boots the Rust server and Vite, then drives Chromium against them
+through one smoke test. It downloads the Chromium build that `@playwright/test`
+asks for the first time it runs; after that the download is skipped, so there
+is no separate install step.
+
+Playwright owns its browser rather than taking one from Nix, so the versions
+cannot drift: bump `@playwright/test` in `package.json` and Playwright fetches
+the matching browser. On NixOS that download cannot run, because the browser
+expects a system dynamic loader. Point `PLAYWRIGHT_BROWSERS_PATH` at the
+browsers from nixpkgs when their version matches the npm package, or run the
+suite from a non-NixOS host or container.
+
 ## Change a design token
 
 [`DESIGN.md`](../DESIGN.md) holds every token value. `src/styles/tokens.css` is
