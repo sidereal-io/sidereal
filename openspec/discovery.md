@@ -190,10 +190,11 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 1. **Clone** — `git clone` works — supported.
 2. **Enter env** — `flake.nix`, `nix/`, and `.envrc` give Nico a pinned shell through
    direnv; Dana installs the same tools by hand — supported.
-3. **Get skills** — `just skills` generates the same skills on every machine, and the
-   shell refreshes them when it loads. An agent started outside the shell can still
-   run a different `openspec` from the one that generated its skills. The project
-   accepts this gap and does not plan to close it — partial.
+3. **Get skills** — `lets sync` copies the same skills, schemas and rules into
+   every clone when the shell loads, and they are committed, so an agent started
+   outside the shell reads the same text. The `openspec` it runs can still differ
+   from the one the skills were generated from. The project accepts this gap and
+   does not plan to close it — partial.
 4. **Work & check** — `just dev` runs the server and web shell together, and
    `just check` gates both the Rust workspace and `web/` with pinned tools.
    `DESIGN.md` defines the design system, but the web shell doesn't use its

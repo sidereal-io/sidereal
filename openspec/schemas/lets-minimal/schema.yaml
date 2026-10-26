@@ -1,0 +1,166 @@
+name: lets-minimal
+version: 1
+description: OpenSpec workflow for small changes - brainstorm → specs → tasks, then apply test-first
+artifacts:
+  - id: brainstorm
+    generates: brainstorm.md
+    description: Why the change is needed, and a decision ledger from grilling the story with the user, before any spec is written
+    template: brainstorm.md
+    instruction: |
+      Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
+      from the code repository root (not the planning store or change directory).
+      Use `planningHome.root` from this artifact's
+      instructions to read project context, the selected shared glossary, and
+      existing ancestor and affected-scope glossaries. Resolve ambiguity before
+      dependent work. Write agreed definitions outside change delta folders.
+
+      Shape the story with the user before any spec is written. One change
+      delivers one story. Run the `lets-brainstorm` skill: it says how to
+      question the user, how to fill the ledger and when to split the story.
+
+      1. Find the story. `lets-build` picked and claimed it, and named the
+         change after it. Use the issue you were given. Otherwise look for an
+         open issue assigned to you whose title starts with the change's name
+         and ` — `. If there is none, stop: a change starts from the
+         `lets-build` skill, which picks and claims its story.
+      2. Read the story packet: the issue body. Then read the code, tests and
+         specs it touches. `openspec list --specs` lists the project's
+         capabilities, and `openspec show <spec-id> --type spec` prints one.
+         Use full capability IDs and read relevant shared behavior too.
+         The brainstorm skill explains how to find affected domains without
+         adding a selection step when the scope is clear.
+      3. Question the user as the skill says, until you share one
+         understanding of scope, behavior and acceptance. This flow has no
+         design step, so settle as much of the how as the tasks will need.
+      4. Write brainstorm.md from the template. Its first line is `**Why:**`
+         and one sentence: the problem this change solves, and why now. This
+         flow has no other place for it. Then the story line, one ledger row
+         per resolved question, and the changes from the story. File any
+         split-out work as a new issue, as the skill says.
+      5. Show the Why line, the ledger and the changes, and ask the user to
+         confirm them. Only then change the last line to
+         `Confirmed by user: yes`. Until then it stays `no`.
+
+      Commit brainstorm.md on its own as `docs:`. Then push the branch and
+      open a draft pull request whose description says `Closes #<n>`.
+    requires: []
+
+  - id: specs
+    generates: "specs/**/*.md"
+    description: Detailed specifications for the change
+    template: spec.md
+    instruction: |
+      Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
+      from the code repository root (not the planning store or change directory).
+      Use `planningHome.root` from this artifact's
+      instructions to read project context, the selected shared glossary, and
+      existing ancestor and affected-scope glossaries. Resolve ambiguity before
+      dependent work. Write agreed definitions outside change delta folders.
+
+      Write one spec file per capability this change adds, or whose
+      requirements it changes. The ledger in brainstorm.md says which. The
+      `lets-write-specs` skill says what belongs in a requirement, how to write a
+      scenario a test can assert, and how to change an existing requirement.
+      This step says where the files go and what the parser needs.
+
+      Where each file goes. `<capability-path>` is the directory under
+      `specs/`, such as `user-auth` or `identity/user-auth`.
+      - A new capability: `specs/<capability-path>/spec.md`. New path segments
+        are kebab-case. Follow the project's layout; do not add a domain level
+        when the project's specs are flat.
+      - A modified capability: `specs/<capability-path>/spec.md`, at the exact
+        path of the existing spec. Do not move or rename the capability.
+        Confirm its full ID with `openspec list --specs` before writing the
+        delta. Strict validation alone does not prove the path matches.
+      - The existing specs live under `<planningHome.root>/openspec/specs/`.
+        Take `planningHome.root` from the `openspec instructions ... --json`
+        output. It is the repository, or the store when the change lives in
+        one.
+
+      Read relevant shared specs, but write deltas only for capabilities whose
+      requirements change. One change can include several domains. The spec
+      writing skill explains how to preserve full paths for every delta type.
+
+      There must be at least one spec file, unless no behavior changes. Then
+      set `skip_specs: true` in the change's `.openspec.yaml`, or
+      `openspec validate` rejects the change. Never invent a requirement to
+      pass validation.
+
+      What the parser needs. Validation and archive read these exactly.
+      - Delta sections are `## ADDED Requirements`, `## MODIFIED Requirements`,
+        `## REMOVED Requirements` and `## RENAMED Requirements`.
+      - Each requirement is `### Requirement: <name>` followed by its text.
+      - Each scenario is `#### Scenario: <name>`, with four hashes, followed by
+        `- **WHEN** ...` and `- **THEN** ...` lines. Three hashes or a bullet
+        fail silently.
+      - Every requirement has at least one scenario.
+      - MODIFIED carries the whole requirement block, with its heading
+        identical to the existing one. REMOVED carries **Reason** and
+        **Migration**. RENAMED uses `FROM:` and `TO:` lines.
+      - A new capability starts with `## Purpose`: one or two sentences of at
+        least 50 characters, or `openspec validate --strict` reports it as too
+        brief. Archive copies it into the new main spec. A delta on an existing
+        capability has no `## Purpose`. To change an existing Purpose, edit the
+        main spec directly.
+
+      Commit the spec files together, on their own, as `docs:`.
+    requires:
+      - brainstorm
+
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      Break the change into tasks. The `lets-write-tasks` skill says how to size,
+      order, tag and verify them. Read brainstorm.md and the specs first: this
+      flow has no design, so the ledger holds the decisions the tasks follow.
+
+      Write tasks.md from the template. The apply step parses it, so every
+      task is one checkbox line:
+      `- [ ] X.Y [tags] <behavior> (verify: <command>)`
+      A task that is not a `- [ ]` line is not tracked. The tags the apply
+      step reads are `[easy]`, `[medium]` and `[complex]`. This flow builds
+      tasks in order, so it has no parallel tags.
+
+      If a decision that is costly to reverse comes up while planning, stop
+      and ask the user. This flow has no design step to hold it.
+
+      Commit tasks.md on its own as `docs:`.
+    requires:
+      - specs
+
+apply:
+  requires: [ tasks ]
+  tracks: tasks.md
+  instruction: |
+    Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
+    from the code repository root (not the planning store or change directory).
+    Use `root.path` from this apply instruction's
+    JSON to resolve project config context, the selected shared glossary, and
+    existing ancestor and affected-scope glossaries. Read them again before
+    implementation, including in a separate planning store. Preserve domain
+    meaning across code representations; investigate apparent contradictions
+    and pause dependent work for discussion. Unrelated work may continue.
+    Review glossary definitions when retiring a capability; spec deletion
+    alone must not remove its glossary. Add no review stage to a flow.
+
+    Read brainstorm.md, the specs and tasks.md. Then work through the pending
+    tasks yourself, in order: no subagents.
+
+    Work on each task test-first with the `lets-test-first` skill:
+    write the test, watch it fail for the right reason, then write the code
+    that makes it pass.
+
+    Tick a task `- [x]` only with its evidence on the same line, such as
+    `(✓ <command> passed)`. Never tick ahead. Commit each task on its own with
+    its real type, `feat:`, `fix:`, `refactor:` or `test:`, and include the
+    ticked checkbox in the same commit.
+
+    Stop and ask the user about a departure from the plan that changes a
+    guarantee, a trust boundary or a data schema. Stop too on an unexpected
+    blocker, or a test that keeps failing.
+
+    When every task is done, follow the *Finish the change* section of the
+    `lets-build` skill. It follows the project's finishing rules, runs the
+    `openspec-verify-change` skill, then archives the change.

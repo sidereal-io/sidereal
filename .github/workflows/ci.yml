@@ -112,3 +112,17 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 7
+
+  # The skills, schemas and rules block that lets sync writes must match the
+  # release flake.lock pins. The dev shell's hook skips the sync when CI is set.
+  lets-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: Check the Let's Spec files
+        run: nix develop --command lets sync --check
