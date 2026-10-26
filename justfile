@@ -40,8 +40,12 @@ server:
 web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm dev
 
-# The gate to pass before every PR: runs check-server, then check-web.
-check: check-server check-web
+# The gate to pass before every PR: Compose configuration, server, then web.
+check: check-compose check-server check-web
+
+# Check Compose installation wiring; needs the Compose CLI and jq, no daemon.
+check-compose:
+    @sh scripts/compose-config-check.sh
 
 # Server gate: format, lint (deny warnings), tests, dependency-direction lint.
 check-server:
@@ -56,6 +60,10 @@ check-web:
 # Build the app image, start a disposable Compose instance, check it, and remove it.
 instance-verify:
     @sh scripts/instance-verify.sh
+
+# Check TLS startup and recreation against a separate disposable PostgreSQL service.
+external-db-verify:
+    @sh scripts/external-db-verify.sh
 
 # End-to-end tests: boot the server and Vite, then drive Chromium against them.
 # The database fixture must already be up (`just db-up`); the webServer blocks

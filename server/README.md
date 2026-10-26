@@ -40,7 +40,7 @@ Prepare the fixture and exports before running it.
 ## Verify changes and manage fixture data
 
 ```sh
-just check          # Complete server and web gates
+just check          # Complete Compose configuration, server, and web gates
 just db-schema      # Regenerate committed normalized schema descriptions
 just db-down        # Stop this fixture while retaining its volume
 just db-test-clean  # Remove this fixture's killed-test leftovers only

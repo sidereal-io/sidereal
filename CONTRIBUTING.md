@@ -67,10 +67,30 @@ just dev            # Run the server and the web interface together
 just server         # Run the server only
 just web            # Run the web interface only
 just check          # The gate to pass before every pull request
+just check-compose  # Compose configuration checks (Compose CLI + jq; no daemon)
 just check-server   # Server checks: format, clippy, tests, dependency-direction lint
 just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 just instance-verify  # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
+just external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
 ```
+
+`just check-compose` compares the resolved app services, checks the external entry's
+services and volumes, and verifies URL requirements and mount settings. It needs
+Docker Compose and `jq`, but no running Docker daemon. CI runs it on every pull request.
+
+`just external-db-verify` builds the app and uses one disposable PostgreSQL fixture
+in a separate Compose project. It checks an absent certificate directory is refused,
+starts through the read-only CA mount against a TLS-only database, then recreates
+the app and compares migration rows, pairing, the storage marker, and a stored file.
+The fixture container and its network must survive app removal.
+
+Server safeguards run in the Rust gate: [startup tests](server/crates/core/src/database/startup/tests.rs)
+cover unrelated data, incompatible migration history, and TLS rejection without writes;
+[configuration tests](server/crates/server/src/config.rs) cover transport policy and certificate-file
+refusals; [server database tests](server/crates/server/tests/database.rs) cover safe startup
+errors and trusted TLS; [storage tests](server/crates/server/tests/storage.rs) cover pairing
+and missing markers; and [readiness tests](server/crates/server/tests/readiness/mod.rs)
+cover database outage and recovery. Keep these cases there when changing deployment checks.
 
 ## 🧰 Development Environment
 

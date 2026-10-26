@@ -39,7 +39,8 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
   `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
   CI. Never put a Rust release number in a build file or doc. **`just check`**
-  is the gate — green before every PR. It runs `check-server` (`cargo fmt --check` +
+  is the gate — green before every PR. It runs `check-compose` (Compose config checks
+  with no daemon), then `check-server` (`cargo fmt --check` +
   `clippy -D warnings` + `cargo test` + arch lint), then `check-web` (type check +
   lint + format check + `DESIGN.md` lint + token drift check + unit tests for
   `web/`).
@@ -142,9 +143,9 @@ These rules add to the Let's Spec block above.
   `lets-shape` files issues and sets their fields; `lets-build` claims the next one.
   `openspec/discovery.md` holds the personas and journeys that `lets-shape` keeps. A
   milestone issue or an ADR holds the product intent.
-- **Gate with `just check`** (`check-server`, then `check-web`) after every change
-  to `server/` or `web/`. CI runs the same recipes in the `ci` workflow's `server` and
-  `web` jobs, and its `lets-spec` job runs `lets sync --check`.
+- **Gate with `just check`** (`check-compose`, `check-server`, then `check-web`) after every change
+  to `server/` or `web/`. CI runs the same checks in the `ci` workflow's `compose`,
+  `server`, and `web` jobs, and its `lets-spec` job runs `lets sync --check`.
 - **Epics describe outcomes.** Record the people served, scope, constraints, and
   exit demonstration. Identify groundwork and relevant code when exploring and
   cutting stories; do not put a "Relevant code" section in an epic.
