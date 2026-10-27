@@ -48,9 +48,9 @@ updates. The token is revoked when the job finishes.
 
 ## Repository settings
 
-Enable **Allow auto-merge** in the repository settings. In the ruleset for
-`main`, enable required checks and **Require branches to be up to date before
-merging**. Leave **Require merge queue** disabled.
+Enable **Allow auto-merge** in the repository settings. In the rulesets for
+`main` and `v0.x`, enable each branch's required checks and **Require branches
+to be up to date before merging**. Leave **Require merge queue** disabled.
 
 The Nix workflow still uses path filters. Require only checks that run on every
 pull request; the auto-merge workflow never bypasses rules.
