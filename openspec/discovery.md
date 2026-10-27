@@ -24,16 +24,19 @@
 
 #### Sam — the self-hoster
 
-- **Who**: runs Sidereal on their own hardware, such as a home server or NAS, and may
-  be upgrading an existing install.
+- **Who**: runs Sidereal on their own hardware, such as a home server or NAS, usually
+  behind a reverse proxy they also run, and may be upgrading an existing install.
 - **Goal**: stand Sidereal up quickly, keep it running, and trust it with files that
   cannot be replaced.
 - **Pain today**: photo tools either want files in someone else's cloud or take over
   the folder layout. One bug can corrupt originals that took months of clear nights to
-  capture, and a major-version upgrade puts the whole library at risk.
-- **Success looks like**: installs with one command; originals are never altered;
-  corruption is detected and can be repaired; upgrades run against a verified backup
-  and report anything that didn't carry over.
+  capture, and a major-version upgrade puts the whole library at risk. A published port
+  is reachable by everyone on the network, and a lost password too often means a lost
+  install.
+- **Success looks like**: installs with one command; only Sam can get in, and Sam can
+  always get back in from the box itself; originals are never altered; corruption is
+  detected and can be repaired; upgrades run against a verified backup and report
+  anything that didn't carry over.
 
 #### Pat — the plugin author
 
@@ -90,7 +93,8 @@
 
 ## Journey Map
 
-Stage status checked against the code on 2026-10-02. Status describes the server
+Stage status checked against the code on 2026-10-02; the self-host journey and the
+library journey's sign-in stage re-checked on 2026-10-26. Status describes the server
 in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -98,12 +102,14 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 **Library journey** (Nova):
 
 ```
-  Point at ─► Ingest   ─► Read     ─► See it   ─► Group    ─► Match    ─► Plate    ─► Trace    ─► Find &
-  folder                  metadata                sessions    calibr.     solve       lineage     publish
-     │           │           │           │           │           │           │           │           │
-    gap         gap         gap         gap         gap         gap         gap         gap         gap
+  Sign in ─► Point at ─► Ingest   ─► Read     ─► See it   ─► Group    ─► Match    ─► Plate    ─► Trace    ─► Find &
+             folder                  metadata                sessions    calibr.     solve       lineage     publish
+     │          │           │           │           │           │           │           │           │           │
+    gap        gap         gap         gap         gap         gap         gap         gap         gap         gap
 ```
 
+0. **Sign in** — Nova signs in to the private instance before anything else — gap
+   ([#447](https://github.com/sidereal-io/sidereal/issues/447)).
 1. **Point at a folder** — Sidereal watches a folder for new files — gap
    ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
 2. **Ingest** — copy each file, hash it with BLAKE3, skip duplicates, and record an
@@ -131,26 +137,33 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 **Self-host journey** (Sam):
 
 ```
-  Install ─► Configure ─► Protect ─► Detect & ─► Back up & ─► Upgrade from
-  (1 cmd)                 originals   repair      restore      v0.10.x
-     │           │            │           │           │            │
-  partial       gap          gap         gap         gap          gap
+  Install ─► Configure ─► Claim ─► Sign in ─► Recover ─► Protect  ─► Detect & ─► Back up & ─► Upgrade from
+  (1 cmd)                 admin     & out      access     originals   repair      restore      v0.10.x
+     │          │           │          │          │           │           │           │            │
+ supported  supported      gap        gap        gap         gap         gap         gap          gap
 ```
 
-1. **Install** — Postgres and the app come up together from one command — partial:
-   `server/Dockerfile` and the axum shell exist, with no database or compose bundle
-   ([#285](https://github.com/sidereal-io/sidereal/issues/285)).
-2. **Configure** — storage root and watched folders set through config or environment
-   — gap ([#281](https://github.com/sidereal-io/sidereal/issues/281)). An admin
-   configuration UI has no story yet.
-3. **Protect originals** — ingest copies and never moves, renames, or deletes files in
-   the watched folder — gap ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
-4. **Detect & repair** — a corrupted stored file is found, and the user can adopt,
-   restore, or ignore it — gap ([#284](https://github.com/sidereal-io/sidereal/issues/284)).
-5. **Back up & restore** — a documented, verified backup of both the database and the
-   storage root — gap.
-6. **Upgrade from v0.10.x** — a one-way importer with a dry run and a report of what
-   didn't map — gap.
+1. **Install** — `compose.yml` and `.env` bring up the app and PostgreSQL together, and
+   `docs/install.md` walks through it — supported.
+2. **Configure** — storage root, database and bind mounts through `.env`, and an
+   existing PostgreSQL service through a Compose override — supported. Watched folders
+   are a gap owned by [#358](https://github.com/sidereal-io/sidereal/issues/358).
+3. **Claim administrator** — the first visitor to an unclaimed instance creates the
+   sole administrator, or the operator does it from the box with `sidectl` — gap: the
+   server has no users and serves no claim screen ([#447](https://github.com/sidereal-io/sidereal/issues/447), [#449](https://github.com/sidereal-io/sidereal/issues/449)).
+4. **Sign in and out** — a session in a secure cookie, revoked on sign-out or expiry;
+   every other caller is refused — gap: no sessions, no middleware, no cookie
+   ([#447](https://github.com/sidereal-io/sidereal/issues/447), [#448](https://github.com/sidereal-io/sidereal/issues/448), [#450](https://github.com/sidereal-io/sidereal/issues/450), [#451](https://github.com/sidereal-io/sidereal/issues/451), [#452](https://github.com/sidereal-io/sidereal/issues/452)).
+5. **Recover access** — reset a lost administrator password from the box, signing out
+   every session — gap: the app image has no `sidectl` ([#449](https://github.com/sidereal-io/sidereal/issues/449), [#453](https://github.com/sidereal-io/sidereal/issues/453)).
+6. **Protect originals** — ingest copies and never moves, renames, or deletes files in
+   the watched folder — gap ([#356](https://github.com/sidereal-io/sidereal/issues/356)).
+7. **Detect & repair** — a corrupted stored file is found, and the user can adopt,
+   restore, or ignore it — gap ([#371](https://github.com/sidereal-io/sidereal/issues/371)).
+8. **Back up & restore** — a documented, verified backup of both the database and the
+   storage root — gap ([#371](https://github.com/sidereal-io/sidereal/issues/371)).
+9. **Upgrade from v0.10.x** — a one-way importer with a dry run and a report of what
+   didn't map — gap ([#372](https://github.com/sidereal-io/sidereal/issues/372)).
 
 **Plugin journey** (Pat):
 
