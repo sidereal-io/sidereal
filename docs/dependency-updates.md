@@ -1,7 +1,7 @@
 # Dependabot auto-merge
 
 The `Dependabot auto-merge` workflow enables GitHub auto-merge for verified patch
-and minor updates targeting `main`. Every dependency in a group must qualify.
+and minor updates targeting `main` or `v0.x`. Every dependency in a group must qualify.
 Major updates and updates without recognized semver metadata stay manual.
 
 CI runs the server and web checks on every pull request and push to `main`,
@@ -9,14 +9,17 @@ so required checks report a result regardless of which files changed.
 There is no merge queue or extra path-selection job. GitHub requires configured
 checks and an up-to-date branch.
 Existing passing checks remain usable while the PR and its base stay unchanged.
-When `main` advances, update the PR branch and wait for its checks again.
+When the target branch advances, update the PR branch and wait for its checks again.
 The auto-merge workflow updates approved Dependabot branches when they are behind,
-both when enabling auto-merge and after pushes to `main`. These App-authenticated
+both when enabling auto-merge and after pushes to the target branch. These App-authenticated
 updates trigger CI. PRs without auto-merge enabled and human-authored PRs are left
 alone. Conflicts require manual attention.
 Human-authored PRs keep their normal manual merge process.
 
-This setup covers `main`. The `v0.x` branch keeps its own CI and merge process.
+The workflow on `main` handles PR events for both branches. The workflow on
+`v0.x` handles pushes to `v0.x`, refreshing approved maintenance PRs. Its PR
+trigger is unused because GitHub reads `pull_request_target` workflows from the
+default branch. The `v0.x` branch keeps its own CI checks.
 
 ## Set up the GitHub App
 
@@ -37,7 +40,7 @@ of commits, issues, and chat.
 5. Generate a private key and upload its PEM contents as the repository's
    Actions secret `DEPENDABOT_MERGE_APP_PRIVATE_KEY`.
 
-The workflow uses `pull_request_target` to read the base branch's workflow and
+The workflow uses `pull_request_target` to read the default branch's workflow and
 access these Actions credentials. It checks the PR author and repository,
 verifies Dependabot metadata, and never checks out or executes PR code. It
 creates an installation token scoped to this repository only for eligible
