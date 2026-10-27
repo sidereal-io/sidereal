@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
   pull_request_target:
-    branches: [main]
+    # GitHub reads pull_request_target workflows from the default branch.
+    branches: [main, v0.x]
     types: [opened, reopened, synchronize, ready_for_review]
 
 # Read metadata with the default token; merge and refresh use App credentials.
