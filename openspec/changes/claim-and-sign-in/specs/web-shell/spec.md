@@ -25,7 +25,7 @@ In development, the web shell SHALL request the server's health at `/healthz` an
 
 ### Requirement: The home screen shows the access state
 
-The home screen SHALL show, beside the health status, exactly one of: the claim form while `GET /api/claim` answers open; the sign-in form while the claim is closed and `GET /api/session` answers 401; the signed-in user's username and a button labelled `Sign out` while `GET /api/session` answers 200. Before the first answers arrive it SHALL show none of the three. Each form SHALL have a username field, a password field and one submit button, labelled `Claim` or `Sign in`. A submitted claim that succeeds SHALL show the sign-in form. A sign-in that succeeds SHALL show the username. A sign-out SHALL show the sign-in form. A claim or sign-in the server refuses SHALL show the text `Invalid username or password` for a 400 or 401 and `Something went wrong` otherwise, and SHALL NOT show any text taken from the server's response.
+The home screen SHALL show an access section beside the health status. The section SHALL show exactly one of three views. It shows the claim form while `GET /api/claim` answers open. It shows the sign-in form while the claim is closed and `GET /api/session` answers 401. It shows the signed-in user's username and a button labelled `Sign out` while `GET /api/session` answers 200. Before the first answers arrive it SHALL show none of the three. When `GET /api/claim` or `GET /api/session` fails with a network error or a status the section does not expect, it SHALL show the text `Something went wrong` and no form. Each form SHALL have a username field, a password field and one submit button, labelled `Claim` or `Sign in`. A submitted claim that succeeds SHALL show the sign-in form. A sign-in that succeeds SHALL show the username. A sign-out SHALL show the sign-in form. A claim or sign-in the server refuses SHALL show the text `Invalid username or password` for a 400 or 401 and `Something went wrong` otherwise, and SHALL NOT show any text taken from the server's response.
 
 #### Scenario: Unclaimed instance
 
@@ -41,6 +41,11 @@ The home screen SHALL show, beside the health status, exactly one of: the claim 
 
 - **WHEN** `GET /api/session` answers `{"username":"sam","role":"admin"}` and a user opens the home page
 - **THEN** the page shows the text `sam` and a `Sign out` button and no form
+
+#### Scenario: The server is unavailable
+
+- **WHEN** `GET /api/claim` answers 503 and a user opens the home page
+- **THEN** the page shows the text `Something went wrong` and no `Claim`, `Sign in` or `Sign out` button
 
 #### Scenario: Claim succeeds
 
@@ -68,7 +73,7 @@ The access section SHALL take every color, size, radius and font from the token 
 
 ### Requirement: The access section has unit tests
 
-The access section SHALL have unit tests that run with no server, with `fetch` replaced by a stub, covering the unclaimed, signed-out and signed-in states and the claim, failed sign-in and sign-out transitions. `pnpm test` in `web/` SHALL run them.
+The access section SHALL have unit tests that run with no server, with `fetch` replaced by a stub, covering the unclaimed, signed-out, signed-in and unavailable states and the claim, failed sign-in and sign-out transitions. `pnpm test` in `web/` SHALL run them.
 
 #### Scenario: The tests run with no server
 

@@ -46,7 +46,7 @@ Sam claims an unclaimed instance as its one administrator, signs in to get a ses
 
 ### Requirement: Claimed credentials meet the length rules
 
-`POST /api/claim` SHALL reject, with status 400 and the body `{"error":"invalid credentials"}`, before any write: a body that is not a JSON object with string `username` and `password`; a username shorter than 1 or longer than 64 characters; a username with leading or trailing whitespace; a password shorter than 8 or longer than 256 bytes.
+`POST /api/claim` SHALL answer 400 with the body `{"error":"invalid credentials"}` and write nothing when the request breaks a rule. The rules are: the body is a JSON object with string `username` and `password`; the username is 1 to 64 characters; the username has no leading or trailing whitespace; the password is 8 to 256 bytes.
 
 #### Scenario: Short password
 - **WHEN** no administrator exists and a caller sends `POST /api/claim` with username `sam` and password `short`
@@ -62,7 +62,7 @@ Sam claims an unclaimed instance as its one administrator, signs in to get a ses
 
 ### Requirement: Sign-in creates a session
 
-`POST /api/session` with the JSON body `{"username":"<u>","password":"<p>"}` SHALL, when the username exists and the password matches its hash, create a session row holding the SHA-256 hash of a new random 32-byte token, the authentication type `password`, and its created, last-used and expiry times, and answer 200 with the body `{"username":"<u>","role":"<role>"}` and a `Set-Cookie` header for `sidereal_session` whose value is the token. Otherwise it SHALL answer 401 with the body `{"error":"invalid credentials"}` and create nothing. It SHALL verify a password hash whether or not the username exists, so the two failures take the same work.
+`POST /api/session` takes the JSON body `{"username":"<u>","password":"<p>"}`. When the username exists and the password matches its hash, it SHALL create a session row and answer 200 with the body `{"username":"<u>","role":"<role>"}` and a `Set-Cookie` header for `sidereal_session` whose value is the token. The session row SHALL hold the SHA-256 hash of a new random 32-byte token, the authentication type `password`, and its created, last-used and expiry times. When the username does not exist or the password does not match, it SHALL answer 401 with the body `{"error":"invalid credentials"}` and create nothing. It SHALL verify a password hash whether or not the username exists, so the two failures take the same work. A body that is not a JSON object with string `username` and `password` SHALL answer 400 with the same body.
 
 #### Scenario: Correct credentials
 - **WHEN** Sam signs in with the username and password of the claim
