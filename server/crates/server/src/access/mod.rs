@@ -125,13 +125,15 @@ async fn sign_in(
 async fn current_session(
     State(database): State<Database>,
     headers: HeaderMap,
-) -> Result<Json<Value>, AccessError> {
+) -> Result<Response, AccessError> {
     let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
     let signed_in = database
         .session(token)
         .await?
         .ok_or(AccessError::Unauthenticated)?;
-    Ok(user(&signed_in))
+    // Keep the browser token alive as the database slides the session expiry.
+    let cookie = cookie::session(token, ARRIVED_OVER_HTTPS);
+    Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
 async fn sign_out(

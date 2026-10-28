@@ -480,6 +480,9 @@ mod lifetime {
         moved(&db, "UPDATE public.sessions SET last_used_at = now() - interval '29 days', expires_at = now() + interval '1 day'").await;
         let response = with_cookie(&app, "GET", &cookie).await;
         assert_eq!(response.status(), StatusCode::OK);
+        let renewed = response.headers()[header::SET_COOKIE].to_str().unwrap();
+        assert!(renewed.starts_with(&format!("{cookie};")));
+        assert!(renewed.contains("Max-Age=2592000"));
         assert!(holds(&db, "SELECT bool_and(expires_at >= now() + interval '30 days' - interval '1 minute') FROM public.sessions").await);
     }
 
