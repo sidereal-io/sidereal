@@ -38,5 +38,6 @@ libc = "0.2"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.7", features = ["fs"] }
 argon2 = "0.6"
+base64ct = { version = "1", features = ["alloc"] }
 rand = "0.10"
 sha2 = "0.11"

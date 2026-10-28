@@ -13,5 +13,6 @@ uuid = { workspace = true }
 libc = { workspace = true }
 rustls = { workspace = true }
 argon2 = { workspace = true }
+base64ct = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }

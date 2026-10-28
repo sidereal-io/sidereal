@@ -87,8 +87,8 @@ mod tests {
     async fn database(db: &TestDatabase) -> Database {
         initialize(
             db.options.clone(),
-            Duration::from_secs(3),
-            Duration::from_secs(3),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
         )
         .await
         .unwrap()

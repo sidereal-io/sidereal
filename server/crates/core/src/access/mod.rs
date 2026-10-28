@@ -4,8 +4,10 @@ use std::fmt;
 
 mod claim;
 mod password;
+mod session;
 
 pub use claim::ClaimError;
+pub use session::{Token, SESSION_LIFETIME};
 
 /// What a user may do. This release has one role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,6 +20,10 @@ impl Role {
         match self {
             Self::Admin => "admin",
         }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        (value == "admin").then_some(Self::Admin)
     }
 }
 
