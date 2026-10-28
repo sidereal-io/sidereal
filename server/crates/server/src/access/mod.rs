@@ -1,7 +1,7 @@
 //! The instance claim and the session routes.
 use axum::{
     extract::{rejection::JsonRejection, State},
-    http::StatusCode,
+    http::{header::SET_COOKIE, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Json, Router,
@@ -15,7 +15,12 @@ use sidereal_core::{
 pub mod cookie;
 
 pub fn routes() -> Router<Database> {
-    Router::new().route("/api/claim", get(claim_state).post(claim))
+    Router::new()
+        .route("/api/claim", get(claim_state).post(claim))
+        .route(
+            "/api/session",
+            get(current_session).post(sign_in).delete(sign_out),
+        )
 }
 
 /// Every refusal has a fixed body, so no driver error, password or hash can
@@ -98,4 +103,45 @@ async fn claim(
         .claim(&credentials.username, &credentials.password)
         .await?;
     Ok((StatusCode::CREATED, user(&created)))
+}
+
+// The server listens on plain TCP only, so no request arrives over HTTPS
+// yet. The trusted-proxy story (#450) sets this from the request.
+const ARRIVED_OVER_HTTPS: bool = false;
+
+async fn sign_in(
+    State(database): State<Database>,
+    body: Result<Json<Value>, JsonRejection>,
+) -> Result<Response, AccessError> {
+    let credentials = Credentials::try_from(body)?;
+    let (signed_in, token) = database
+        .sign_in(&credentials.username, &credentials.password)
+        .await?
+        .ok_or(AccessError::WrongCredentials)?;
+    let cookie = cookie::session(token.as_str(), ARRIVED_OVER_HTTPS);
+    Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
+}
+
+async fn current_session(
+    State(database): State<Database>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, AccessError> {
+    let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
+    let signed_in = database
+        .session(token)
+        .await?
+        .ok_or(AccessError::Unauthenticated)?;
+    Ok(user(&signed_in))
+}
+
+async fn sign_out(
+    State(database): State<Database>,
+    headers: HeaderMap,
+) -> Result<Response, AccessError> {
+    let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
+    if !database.sign_out(token).await? {
+        return Err(AccessError::Unauthenticated);
+    }
+    let cookie = cookie::cleared(ARRIVED_OVER_HTTPS);
+    Ok((StatusCode::NO_CONTENT, [(SET_COOKIE, cookie)]).into_response())
 }
