@@ -18,7 +18,7 @@
 ## 3. Web shell [depends-on: 1]
 
 - [x] 3.1 [medium] [parallel] The home screen's access section shows the claim form with a `Claim` button when `GET /api/claim` answers open, the sign-in form with a `Sign in` button when the claim is closed and `GET /api/session` answers 401, the username and a `Sign out` button when `GET /api/session` answers 200, nothing before the first answers, and `Something went wrong` with no form when `GET /api/claim` answers 503, with `fetch` stubbed in Vitest and the dev proxy forwarding `/api` (verify: `cd web && pnpm test -- Access`) (✓ `pnpm test -- Access` passed, 6 Access tests)
-- [ ] 3.2 [medium] Submitting the claim form moves to the sign-in form on 201; a sign-in answered 401 with `{"error":"<b>nope</b>"}` shows `Invalid username or password`, keeps the form and never shows `nope`; a sign-in answered 200 shows the username; pressing `Sign out` moves to the sign-in form on 204; and the stylesheet uses only tokens, with the submit button computing to `rgb(124, 58, 237)` and a `4px` radius (verify: `cd web && pnpm test -- Access`)
+- [x] 3.2 [medium] Submitting the claim form moves to the sign-in form on 201; a sign-in answered 401 with `{"error":"<b>nope</b>"}` shows `Invalid username or password`, keeps the form and never shows `nope`; a sign-in answered 200 shows the username; pressing `Sign out` moves to the sign-in form on 204; and the stylesheet uses only tokens, with the submit button computing to `rgb(124, 58, 237)` and a `4px` radius (verify: `cd web && pnpm test -- Access`) (✓ `pnpm test -- Access` passed, 13 Access tests)
 
 ## 4. Gate [depends-on: 2] [depends-on: 3]
 
@@ -33,3 +33,4 @@
 - 2026-10-27, 2.2: request bodies are read as `serde_json::Value` and must be an object with string `username` and `password`, instead of a `serde` derive. A derived deserializer also accepts a positional array such as `["sam","<password>"]`, which the spec counts as not a credentials object. The server gains no `serde` dependency.
 - 2026-10-27, 2.4: the router tests passed on first run, because 1.3 built the behavior in core. A temporary mutation, logging the password and skipping the refresh, made the secrecy and refresh tests fail, then it was reverted.
 - 2026-10-27, 2.5: the readiness tests in `tests/readiness/mod.rs` compare stderr exactly, so their log capture now skips the `instance unclaimed:` line. They test readiness lines only; `tests/access.rs` owns the warning.
+- 2026-10-27, 3.2: Vitest now loads stylesheets (`test.css: true` in `vite.config.ts`). jsdom applies them but does not resolve `var()`, so the style test follows the button's `var()` to its `:root` value, then reads the color back in `rgb()` form. Pointing the button at `violet-500` made the test fail.

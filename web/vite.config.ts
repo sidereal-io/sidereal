@@ -23,6 +23,8 @@ export default defineConfig({
   // Unit tests run once in a simulated browser DOM, with no server.
   test: {
     environment: "jsdom",
+    // Load stylesheets, so a test can check a computed token value.
+    css: true,
     // Vitest replaces `exclude` rather than extending it, so the defaults
     // (dist/, .git/ and the like) have to be spread back in explicitly or a
     // stale build would be collected as tests. The e2e folders are not
