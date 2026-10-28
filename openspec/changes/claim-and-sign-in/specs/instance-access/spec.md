@@ -110,11 +110,11 @@ The `sidereal_session` cookie SHALL carry the attributes `HttpOnly`, `SameSite=L
 
 ### Requirement: A session lasts 30 days from its last use
 
-A session SHALL expire 30 days after its most recent use. A use SHALL move the expiry to at least 30 days from that use; the server MAY record a use up to one hour late. A session SHALL stay valid across a server restart, because PostgreSQL holds it.
+A session SHALL expire 30 days after its most recent use. A use SHALL move the expiry to at least 30 days from that use; the server MAY record a use up to one hour late. A successful `GET /api/session` SHALL set the `sidereal_session` cookie again with the same value and attributes, so the browser keeps the cookie as long as the server keeps the row. A session SHALL stay valid across a server restart, because PostgreSQL holds it.
 
 #### Scenario: Use refreshes the expiry
 - **WHEN** a session row's last-used time and expiry are set as if last used 29 days ago, and its cookie is sent to `GET /api/session`
-- **THEN** the status is 200 and the row's expiry is now at least 30 days away
+- **THEN** the status is 200, the row's expiry is now at least 30 days away, and the response sets `sidereal_session` to the same token with `Max-Age=2592000`
 
 #### Scenario: Valid after a restart
 - **WHEN** Sam signs in, the server process stops, and a new process serves `GET /api/session` with the same cookie against the same database
