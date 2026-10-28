@@ -7,6 +7,11 @@ use tokio::sync::OnceCell;
 
 static DUMMY: OnceCell<String> = OnceCell::const_new();
 
+#[cfg(test)]
+tokio::task_local! {
+    pub(super) static VERIFICATIONS: std::cell::Cell<usize>;
+}
+
 pub(super) async fn hash(password: &str) -> Result<String, Unavailable> {
     let password = password.to_owned();
     tokio::task::spawn_blocking(move || {
@@ -21,6 +26,8 @@ pub(super) async fn hash(password: &str) -> Result<String, Unavailable> {
 
 /// Whether `password` matches `hash`. An unreadable hash never matches.
 pub(super) async fn verify(password: &str, hash: String) -> Result<bool, Unavailable> {
+    #[cfg(test)]
+    let _ = VERIFICATIONS.try_with(|count| count.set(count.get() + 1));
     let password = password.to_owned();
     tokio::task::spawn_blocking(move || {
         Argon2::default()

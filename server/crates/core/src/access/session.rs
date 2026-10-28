@@ -256,6 +256,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn known_and_unknown_usernames_both_verify_a_password() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        for username in ["sam", "nobody"] {
+            password::VERIFICATIONS
+                .scope(std::cell::Cell::new(0), async {
+                    assert_eq!(database.sign_in(username, "wrong-password").await, Ok(None));
+                    assert_eq!(
+                        password::VERIFICATIONS.with(|count| count.get()),
+                        1,
+                        "{username}"
+                    );
+                })
+                .await;
+        }
+    }
+
+    #[tokio::test]
     async fn a_token_names_its_user() {
         let db = TestDatabase::new();
         let database = claimed(&db).await;
