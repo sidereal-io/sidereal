@@ -375,8 +375,8 @@ instance() {
         || fail 'the db container publishes a host port'
 
     say "checking storage initialization ($1)"
-    [ "$(sql 'SELECT count(*) FROM _sqlx_migrations WHERE success')" = 2 ] \
-        || fail 'the database does not hold two successful migrations'
+    [ "$(sql 'SELECT count(*) FROM _sqlx_migrations WHERE success')" = 3 ] \
+        || fail 'the database does not hold three successful migrations'
     [ "$(compose exec -T app ls -A "$storage")" = "$marker" ] \
         || fail "storage holds more than its identity marker after the first start"
     id=$(sql 'SELECT storage_id FROM sidereal_metadata')
