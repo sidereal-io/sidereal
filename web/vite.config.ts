@@ -17,6 +17,7 @@ export default defineConfig({
     // to the server.
     proxy: {
       "/healthz": "http://localhost:5000",
+      "/api": "http://localhost:5000",
     },
   },
   // Unit tests run once in a simulated browser DOM, with no server.

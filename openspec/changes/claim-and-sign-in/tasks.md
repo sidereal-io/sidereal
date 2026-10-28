@@ -17,7 +17,7 @@
 
 ## 3. Web shell [depends-on: 1]
 
-- [ ] 3.1 [medium] [parallel] The home screen's access section shows the claim form with a `Claim` button when `GET /api/claim` answers open, the sign-in form with a `Sign in` button when the claim is closed and `GET /api/session` answers 401, the username and a `Sign out` button when `GET /api/session` answers 200, nothing before the first answers, and `Something went wrong` with no form when `GET /api/claim` answers 503, with `fetch` stubbed in Vitest and the dev proxy forwarding `/api` (verify: `cd web && pnpm test -- Access`)
+- [x] 3.1 [medium] [parallel] The home screen's access section shows the claim form with a `Claim` button when `GET /api/claim` answers open, the sign-in form with a `Sign in` button when the claim is closed and `GET /api/session` answers 401, the username and a `Sign out` button when `GET /api/session` answers 200, nothing before the first answers, and `Something went wrong` with no form when `GET /api/claim` answers 503, with `fetch` stubbed in Vitest and the dev proxy forwarding `/api` (verify: `cd web && pnpm test -- Access`) (✓ `pnpm test -- Access` passed, 6 Access tests)
 - [ ] 3.2 [medium] Submitting the claim form moves to the sign-in form on 201; a sign-in answered 401 with `{"error":"<b>nope</b>"}` shows `Invalid username or password`, keeps the form and never shows `nope`; a sign-in answered 200 shows the username; pressing `Sign out` moves to the sign-in form on 204; and the stylesheet uses only tokens, with the submit button computing to `rgb(124, 58, 237)` and a `4px` radius (verify: `cd web && pnpm test -- Access`)
 
 ## 4. Gate [depends-on: 2] [depends-on: 3]
