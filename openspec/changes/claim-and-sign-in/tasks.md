@@ -22,7 +22,7 @@
 
 ## 4. Gate [depends-on: 2] [depends-on: 3]
 
-- [ ] 4.1 [easy] The whole gate is green, including `cargo fmt --check`, `clippy -D warnings`, the arch lint, `design:lint`, `tokens:check` and the web unit tests (verify: `just check`)
+- [x] 4.1 [easy] The whole gate is green, including `cargo fmt --check`, `clippy -D warnings`, the arch lint, `design:lint`, `tokens:check` and the web unit tests (verify: `just check`) (✓ `just check` passed; `curl -s http://localhost:5173/api/claim` through the dev proxy printed `{"open":true}`)
 
 ## Deviations Ledger
 
