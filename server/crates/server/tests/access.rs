@@ -356,3 +356,169 @@ async fn session_sign_out_without_a_session_is_unauthenticated() {
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body(response).await, r#"{"error":"unauthenticated"}"#);
 }
+
+/// A running server binary, killed when the test ends.
+mod spawned {
+    use super::TestDatabase;
+    use sqlx::ConnectOptions;
+    use std::{
+        io::{Read, Write},
+        net::TcpStream,
+        process::{Child, Command, Stdio},
+        time::{Duration, Instant},
+    };
+
+    pub struct Server {
+        child: Child,
+        pub port: u16,
+    }
+
+    impl Server {
+        /// Start the server and wait until `/readyz` answers ready.
+        pub fn ready(db: &TestDatabase) -> Self {
+            let port = std::net::TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port();
+            let child = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
+                .env("DATABASE_URL", db.options.to_url_lossy().to_string())
+                .env("PORT", port.to_string())
+                .env("DATABASE_STARTUP_TIMEOUT_SECONDS", "10")
+                .env_remove("WEB_ROOT")
+                .env_remove("STORAGE_ROOT")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut server = Self { child, port };
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while !server
+                .request("GET", "/readyz", None)
+                .is_some_and(|r| r.ends_with(r#"{"status":"ready"}"#))
+            {
+                if let Some(status) = server.child.try_wait().unwrap() {
+                    panic!("server exited before readiness: {status}");
+                }
+                assert!(Instant::now() < deadline, "server never became ready");
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            server
+        }
+
+        /// The whole HTTP response, head and body.
+        pub fn request(&self, method: &str, path: &str, body: Option<&str>) -> Option<String> {
+            let mut stream = TcpStream::connect(("127.0.0.1", self.port)).ok()?;
+            stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
+            let body = body.unwrap_or("");
+            write!(
+                stream,
+                "{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .ok()?;
+            let mut response = String::new();
+            stream.read_to_string(&mut response).ok()?;
+            Some(response)
+        }
+
+        /// Stop the server and return everything it wrote to stdout and stderr.
+        pub fn output(mut self) -> String {
+            let _ = self.child.kill();
+            let output = std::mem::replace(&mut self.child, Command::new("true").spawn().unwrap())
+                .wait_with_output()
+                .unwrap();
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        }
+    }
+
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+mod lifetime {
+    use super::*;
+
+    async fn moved(db: &TestDatabase, sql: &'static str) {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query(sql).execute(&mut conn).await.unwrap();
+    }
+
+    async fn holds(db: &TestDatabase, sql: &'static str) -> bool {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_scalar(sql).fetch_one(&mut conn).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_expired_session_is_refused_and_deleted() {
+        let db = TestDatabase::new();
+        let app = claimed(&db).await;
+        let cookie = signed_in(&app).await;
+        moved(
+            &db,
+            "UPDATE public.sessions SET expires_at = now() - interval '1 minute'",
+        )
+        .await;
+        let response = with_cookie(&app, "GET", &cookie).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(holds(&db, "SELECT NOT EXISTS (SELECT 1 FROM public.sessions)").await);
+    }
+
+    #[tokio::test]
+    async fn a_use_moves_the_expiry_30_days_out() {
+        let db = TestDatabase::new();
+        let app = claimed(&db).await;
+        let cookie = signed_in(&app).await;
+        moved(&db, "UPDATE public.sessions SET last_used_at = now() - interval '29 days', expires_at = now() + interval '1 day'").await;
+        let response = with_cookie(&app, "GET", &cookie).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(holds(&db, "SELECT bool_and(expires_at >= now() + interval '30 days' - interval '1 minute') FROM public.sessions").await);
+    }
+
+    #[tokio::test]
+    async fn a_cookie_stays_valid_on_a_new_router() {
+        let db = TestDatabase::new();
+        let cookie = signed_in(&claimed(&db).await).await;
+        let response = with_cookie(&router(&db).await, "GET", &cookie).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(json(response).await, sam());
+    }
+
+    #[tokio::test]
+    async fn no_answer_or_output_holds_the_password_or_its_hash() {
+        const DISTINCTIVE: &str = "distinctive-claim-password-7f3a";
+        let db = TestDatabase::new();
+        let server = spawned::Server::ready(&db);
+        let body = credentials("sam", DISTINCTIVE);
+        let mut answers = String::new();
+        for (method, path, body) in [
+            ("POST", "/api/claim", Some(body.as_str())),
+            ("POST", "/api/claim", Some(body.as_str())),
+            ("POST", "/api/session", Some(body.as_str())),
+            (
+                "POST",
+                "/api/session",
+                Some(r#"{"username":"sam","password":"wrong-password"}"#),
+            ),
+        ] {
+            answers += &server.request(method, path, body).unwrap();
+        }
+        assert!(answers.contains("201 Created") && answers.contains("200 OK"));
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let hash: String = sqlx::query_scalar("SELECT password_hash FROM public.users")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
+        let captured = answers + &server.output();
+        assert!(!captured.contains(DISTINCTIVE));
+        assert!(!captured.contains(&hash));
+    }
+}
