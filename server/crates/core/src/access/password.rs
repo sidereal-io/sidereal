@@ -2,6 +2,7 @@
 //! of milliseconds.
 use super::Unavailable;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use base64ct::{Base64UrlUnpadded, Encoding};
 use tokio::sync::OnceCell;
 
 static DUMMY: OnceCell<String> = OnceCell::const_new();
@@ -31,10 +32,27 @@ pub(super) async fn verify(password: &str, hash: String) -> Result<bool, Unavail
 }
 
 /// A hash no user has, computed once, to verify against when a sign-in names
-/// an unknown username.
+/// an unknown username. Its input is random: no password matches it, and
+/// verifying against it costs the same as verifying a real hash.
 pub(super) async fn dummy() -> Result<String, Unavailable> {
     DUMMY
-        .get_or_try_init(|| hash("sidereal-unknown-user"))
+        .get_or_try_init(|| async {
+            let mut bytes = [0; 32];
+            rand::fill(&mut bytes);
+            hash(&Base64UrlUnpadded::encode_string(&bytes)).await
+        })
         .await
         .cloned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn the_dummy_is_one_argon2id_hash_for_the_whole_process() {
+        let first = dummy().await.unwrap();
+        assert!(first.starts_with("$argon2id$"));
+        assert_eq!(dummy().await.unwrap(), first);
+    }
 }
