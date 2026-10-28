@@ -90,8 +90,8 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: First startup
 - **WHEN** Sam starts the server against an empty dedicated database
-- **THEN** the database contains the Sidereal identity row and three successful migration records
-- **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, `users` and `sessions`
+- **THEN** the database contains the Sidereal identity row and two successful migration records
+- **AND** its only application tables are `sidereal_metadata` and `_sqlx_migrations`
 
 #### Scenario: Repeated startup
 - **WHEN** Sam restarts against an initialized database
@@ -99,7 +99,7 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: Concurrent startup
 - **WHEN** two servers start against the same empty database
-- **THEN** both complete startup and exactly three successful migration records exist
+- **THEN** both complete startup and exactly two successful migration records exist
 
 #### Scenario: Incompatible history or schema
 - **WHEN** a fixture contains a newer version, changed checksum, missing history entry, failed record, or altered expected table
@@ -115,10 +115,6 @@ Concurrent server startups SHALL apply each migration exactly once.
 - **WHEN** the new binary applies the storage pairing migration
 - **THEN** the original migration record and metadata remain identical
 - **AND** the existing metadata row gains a null storage UUID before storage initialization
-
-#### Scenario: Upgrade adds the access tables
-- **WHEN** a database holding the first two migrations starts under the new binary
-- **THEN** the first two migration records remain identical, a third successful record exists, and the `users` and `sessions` tables are empty
 
 ### Requirement: Separate liveness and readiness
 
