@@ -1,0 +1,586 @@
+{
+  "extensions": [],
+  "functions": [],
+  "relations": [
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "description",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": "",
+          "identity": "",
+          "name": "installed_on",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "success",
+          "nullable": false,
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "checksum",
+          "nullable": false,
+          "type": "bytea"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "execution_time",
+          "nullable": false,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [
+        "NOT NULL checksum",
+        "NOT NULL description",
+        "NOT NULL execution_time",
+        "NOT NULL installed_on",
+        "NOT NULL success",
+        "NOT NULL version",
+        "PRIMARY KEY (version)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "_sqlx_migrations",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "_sqlx_migrations_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "a",
+          "name": "id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "token_hash",
+          "nullable": false,
+          "type": "bytea"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "user_id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "auth_type",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "created_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "last_used_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "expires_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK (auth_type = 'password'::text)",
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "NOT NULL auth_type",
+        "NOT NULL created_at",
+        "NOT NULL expires_at",
+        "NOT NULL id",
+        "NOT NULL last_used_at",
+        "NOT NULL token_hash",
+        "NOT NULL user_id",
+        "PRIMARY KEY (id)",
+        "UNIQUE (token_hash)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX sessions_token_hash_key ON public.sessions USING btree (token_hash)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "sessions",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "last_value",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "log_cnt",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "is_called",
+          "nullable": false,
+          "type": "boolean"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "S",
+      "name": "sessions_id_seq",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sessions_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "token_hash",
+          "nullable": true,
+          "type": "bytea"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sessions_token_hash_key",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "product",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "format_version",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "storage_id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [
+        "CHECK (format_version = 1)",
+        "CHECK (product = 'sidereal'::text)",
+        "NOT NULL format_version",
+        "NOT NULL product",
+        "PRIMARY KEY (product)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX sidereal_metadata_pkey ON public.sidereal_metadata USING btree (product)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "sidereal_metadata",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "product",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sidereal_metadata_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "a",
+          "name": "id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "username",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "password_hash",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "role",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "created_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK (role = 'admin'::text)",
+        "NOT NULL created_at",
+        "NOT NULL id",
+        "NOT NULL password_hash",
+        "NOT NULL role",
+        "NOT NULL username",
+        "PRIMARY KEY (id)",
+        "UNIQUE (username)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX users_one_admin ON public.users USING btree (role) WHERE (role = 'admin'::text)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX users_username_key ON public.users USING btree (username)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "users",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "last_value",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "log_cnt",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "is_called",
+          "nullable": false,
+          "type": "boolean"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "S",
+      "name": "users_id_seq",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "role",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "users_one_admin",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "users_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "username",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "users_username_key",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    }
+  ],
+  "schemas": [
+    "public"
+  ],
+  "triggers": [],
+  "types": [
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "__sqlx_migrations",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_sessions",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_sidereal_metadata",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "_sqlx_migrations",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_users",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "sessions",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "sidereal_metadata",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "users",
+      "not_null": false,
+      "schema": "public"
+    }
+  ]
+}

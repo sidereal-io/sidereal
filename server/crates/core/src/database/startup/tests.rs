@@ -117,7 +117,75 @@ async fn upgrade_preserves_the_original_migration_and_metadata() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!(migrations, 2);
+    assert_eq!(migrations, 3);
+}
+
+async fn successful_records(conn: &mut PgConnection) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations WHERE success")
+        .fetch_one(conn)
+        .await
+        .unwrap()
+}
+
+async fn application_tables(conn: &mut PgConnection) -> Vec<String> {
+    sqlx::query_scalar("SELECT tablename::text FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY tablename")
+        .fetch_all(conn)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn first_startup_holds_the_access_tables() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    assert_eq!(successful_records(&mut conn).await, 3);
+    assert_eq!(
+        application_tables(&mut conn).await,
+        ["_sqlx_migrations", "sessions", "sidereal_metadata", "users"]
+    );
+}
+
+#[tokio::test]
+async fn concurrent_startup_applies_three_records_once() {
+    let db = TestDatabase::new();
+    let (first, second) = tokio::join!(init(&db), init(&db));
+    first.unwrap();
+    second.unwrap();
+    let mut conn = connection(&db).await;
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM public._sqlx_migrations")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!((total, successful_records(&mut conn).await), (3, 3));
+}
+
+#[tokio::test]
+async fn upgrade_adds_empty_access_tables() {
+    let db = TestDatabase::new();
+    initialize_with(
+        &db.options,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+        &prefix(2),
+        &baselines(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut conn = connection(&db).await;
+    let original: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    init(&db).await.unwrap();
+    let upgraded: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    assert_eq!(upgraded.as_array().unwrap()[..2], original.as_array().unwrap()[..]);
+    assert_eq!(successful_records(&mut conn).await, 3);
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions)",
+    )
+    .fetch_one(&mut conn)
+    .await
+    .unwrap();
+    assert_eq!(rows, 0);
 }
 
 #[tokio::test]
