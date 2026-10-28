@@ -145,6 +145,11 @@ impl Database {
         }
     }
 
+    /// The pool for application queries; readiness keeps its own.
+    pub(crate) fn pool(&self) -> &PgPool {
+        &self.operational
+    }
+
     pub async fn close(&self) {
         self.readiness.close().await;
         self.operational.close().await;

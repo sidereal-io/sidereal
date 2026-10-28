@@ -177,7 +177,10 @@ async fn upgrade_adds_empty_access_tables() {
     let original: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
     init(&db).await.unwrap();
     let upgraded: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
-    assert_eq!(upgraded.as_array().unwrap()[..2], original.as_array().unwrap()[..]);
+    assert_eq!(
+        upgraded.as_array().unwrap()[..2],
+        original.as_array().unwrap()[..]
+    );
     assert_eq!(successful_records(&mut conn).await, 3);
     let rows: i64 = sqlx::query_scalar(
         "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions)",

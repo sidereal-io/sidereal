@@ -4,7 +4,7 @@
 ## 1. Storage contract
 
 - [x] 1.1 [medium] A fresh database holds `users` and `sessions` after startup, with the partial unique index that allows one `admin`, as migration `3_users_and_sessions.sql` with a regenerated `schema/3.json`; the first-startup, concurrent-startup and upgrade scenarios count three records and the new tables (verify: `cargo test --manifest-path server/Cargo.toml -p sidereal-core database`) (✓ `cargo test -p sidereal-core database` passed, 34 tests)
-- [ ] 1.2 [medium] `Database::claim_open()` reads whether an administrator exists, and `Database::claim(username, password)` applies the length rules before any write, answers `Claimed` before hashing once an administrator exists, hashes with Argon2id on the blocking pool, and maps a unique violation from a concurrent first claim to `Claimed` (verify: `cargo test --manifest-path server/Cargo.toml -p sidereal-core access::claim`)
+- [x] 1.2 [medium] `Database::claim_open()` reads whether an administrator exists, and `Database::claim(username, password)` applies the length rules before any write, answers `Claimed` before hashing once an administrator exists, hashes with Argon2id on the blocking pool, and maps a unique violation from a concurrent first claim to `Claimed` (verify: `cargo test --manifest-path server/Cargo.toml -p sidereal-core access::claim`) (✓ `cargo test -p sidereal-core access::claim` passed, 9 tests)
 - [ ] 1.3 [medium] `Database::sign_in()` verifies a hash whether or not the username exists and creates a session row with the SHA-256 of a new 32-byte token; `Database::session(token)` returns the user for an unexpired row, deletes an expired row, and moves `last_used_at` and `expires_at` when the last use is over an hour old; `Database::sign_out(token)` deletes the row (verify: `cargo test --manifest-path server/Cargo.toml -p sidereal-core access::session`)
 
 ## 2. HTTP routes [depends-on: 1]
@@ -27,3 +27,5 @@
 ## Deviations Ledger
 
 <!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
+
+- 2026-10-27, 1.2: `claim()` checks for an administrator before the length rules, so a second claim with any credentials, valid or not, answers `Claimed`, as the "Second claim" scenario says. Core's errors are `ClaimError` and `Unavailable`; the server's `AccessError` maps them.
