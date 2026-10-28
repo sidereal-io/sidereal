@@ -6,6 +6,7 @@ use sidereal_core::database::Database;
 use std::path::Path;
 use tower_http::services::{ServeDir, ServeFile};
 
+pub mod access;
 pub mod config;
 
 /// Liveness is independent of database availability.
