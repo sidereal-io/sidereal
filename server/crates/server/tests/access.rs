@@ -522,3 +522,29 @@ mod lifetime {
         assert!(!captured.contains(&hash));
     }
 }
+
+mod warning {
+    use super::*;
+
+    fn warnings(output: &str) -> usize {
+        output
+            .lines()
+            .filter(|line| line.starts_with("instance unclaimed:"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn an_unclaimed_start_warns_once() {
+        let db = TestDatabase::new();
+        let output = spawned::Server::ready(&db).output();
+        assert_eq!(warnings(&output), 1, "{output}");
+    }
+
+    #[tokio::test]
+    async fn a_claimed_start_does_not_warn() {
+        let db = TestDatabase::new();
+        database(&db).await.claim("sam", PASSWORD).await.unwrap();
+        let output = spawned::Server::ready(&db).output();
+        assert_eq!(warnings(&output), 0, "{output}");
+    }
+}
