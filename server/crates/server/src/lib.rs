@@ -19,6 +19,7 @@ pub fn app_with_database(database: Database) -> Router {
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
+            .merge(access::routes())
             .with_state(database),
     )
 }
