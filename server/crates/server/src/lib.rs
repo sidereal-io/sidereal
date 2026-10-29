@@ -9,6 +9,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 pub mod access;
 pub mod config;
+pub mod sidectl;
 
 /// Liveness is independent of database availability.
 pub fn app() -> Router {
