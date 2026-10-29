@@ -5,7 +5,7 @@
 
 ## Review Summary
 
-ADR review completed for this change. Every decision in design.md was tested against the `lets-write-adrs` rule: a fork among viable approaches that an engineer could plausibly reverse from the code alone, at a real cost. None passes both parts. The binary's crate, the hand-rolled argument parser, the termios read and the connect-without-migrating constructor each live in a few lines of code and change at the cost of those lines. The behavior that must not be reversed by accident, that the command never migrates and that a reset ends every session in one transaction, is held by the `instance-access` requirements, which a test asserts. The decisions that give the command its place, claiming from the box and revocation as a row delete, are already recorded in ADR-007 and ADR-015.
+ADR review completed for this change. Every decision in design.md was tested against the `lets-write-adrs` rule: a fork among viable approaches that an engineer could plausibly reverse from the code alone, at a real cost. None passes both parts. The binary's crate, the hand-rolled argument parser, the termios read and the connect-without-migrating constructor each live in a few lines of code and change at the cost of those lines. Two behaviors must not be reversed by accident: the command never migrates, and a reset ends every session in one transaction. The `instance-access` requirements hold both, and a test asserts each. The decisions that give the command its place, claiming from the box and revocation as a row delete, are already recorded in ADR-007 and ADR-015.
 
 ## In-Force ADRs Reviewed
 
