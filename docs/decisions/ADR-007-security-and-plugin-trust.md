@@ -1,7 +1,7 @@
 ---
 id: adrs-adr007
 date: 2026-08-18
-amended: 2026-10-27
+amended: 2026-10-28
 status: accepted
 title: 'ADR007: Security and Plugin Trust Model'
 description: Architecture Decision Record (ADR) for the v2 trust boundary — built-in single-user authentication and explicit, per-install plugin capability grants.
@@ -25,13 +25,13 @@ Prior to any code interacting with an active filesystem, the core architecture m
 Relying on implicit trust within self-hosted environments is insufficient, as reverse proxies, shared local networks, cross-site request forgery (CSRF), and unintended container exposure represent standard operating risks.
 
 These requirements form the trust framework complementing the plugin specifications in
-n [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md).
+[ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md).
 
 ## Decision
 
 Adopt **built-in single-user authentication and explicit plugin grants.**
 
-**Authentication and access.** An unclaimed instance has no users. The first visitor claims it by creating the one administrator with a username and password, or the operator does the same from the box. The claim is the one unauthenticated mutation, and it is permitted only while no administrator exists. Every other mutation needs an authenticated session. Browser access uses secure, HTTP-only, same-site sessions, with a CSRF token on state-changing requests. CORS is deny-by-default with exact-match origins, never a credentialed wildcard. WebSocket auth derives from the session and rechecks expiry and revocation. A read-only public gallery, if added, is a separate surface that must be explicitly enabled and has no reach into the admin API.
+**Authentication and access.** An unclaimed instance has no users. The first visitor claims it by creating the one administrator with a username and password, or the operator does the same from the box. The claim is the one unauthenticated mutation, and it is permitted only while no administrator exists. Every other mutation needs an authenticated session. Browser access uses secure, HTTP-only, same-site sessions. A state-changing request must come from an allowed origin: the request's own host by default, or an origin on an explicit exact-match list; a request that names another origin is refused. The server sends no cross-origin (CORS) header, so no other origin can read the API. WebSocket auth derives from the session and rechecks expiry and revocation. A read-only public gallery, if added, is a separate surface that must be explicitly enabled and has no reach into the admin API.
 
 **Plugin trust.** Built-in Rust is trusted first-party code. Script bundles and external providers are untrusted by default. Installation displays and records their requested capabilities: byte access, facet writes, network destinations, secret names, and core-managed mutations. Grant changes require admin confirmation and invalidate active plugin sessions. Plugins have no ambient access to the environment, processes, network, database, or assets.
 
@@ -48,6 +48,10 @@ Adopt **built-in single-user authentication and explicit plugin grants.**
 ## Amendment, 2026-10-27
 
 The setup flow is chosen: a first-visitor claim, as Immich does it, instead of a credential minted or imported at setup. The exposure is the window between the first start and the first visit, which the server narrows by warning in its log on every start until the instance is claimed, and which the operator closes by claiming from the box. The prerequisites now gate per surface, so the claim and session routes could be built before the plugin grant vocabulary existed. Key custody moved out of the setup flow to the first feature that needs it.
+
+## Amendment, 2026-10-28
+
+The CSRF defence is an origin check, not a token. The original text asked for a CSRF token on state-changing requests. Immich relies on the `SameSite=Lax` cookie alone, and Frigate requires a custom header whose value it never checks. Modern browsers send `Origin` on every state-changing request, so comparing it with the request's own `Host`, with an optional exact list for a proxy that rewrites `Host`, gives the same protection with no client state and no setting for the common install. The `SameSite=Lax` cookie stays as the second layer. A request with neither `Origin` nor `Referer` is not from a browser and passes the check. "CORS is deny-by-default" now reads as it was always built: the server sends no cross-origin header at all.
 
 ## Alternatives Considered
 

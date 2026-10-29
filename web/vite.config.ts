@@ -14,10 +14,13 @@ export default defineConfig({
     // cannot read the server through the proxy.
     cors: false,
     // The browser asks the web shell's own origin; the dev server forwards
-    // to the server.
+    // to the server. A bare target string turns on `changeOrigin`, which
+    // rewrites `Host` to the server's, and the server's origin check then
+    // refuses every sign-in from the page. Keeping the browser's `Host`
+    // lets it match the browser's `Origin`.
     proxy: {
-      "/healthz": "http://localhost:5000",
-      "/api": "http://localhost:5000",
+      "/healthz": { target: "http://localhost:5000", changeOrigin: false },
+      "/api": { target: "http://localhost:5000", changeOrigin: false },
     },
   },
   // Unit tests run once in a simulated browser DOM, with no server.

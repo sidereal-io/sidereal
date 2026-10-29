@@ -7,7 +7,10 @@ use axum::{
     Router,
 };
 use sidereal_core::database::{initialize, Database};
-use sidereal_server::app_with_database;
+use sidereal_server::{
+    app_with_database,
+    config::{allowed_origins, AllowedOrigins},
+};
 use sqlx::{Connection, PgConnection};
 use std::time::Duration;
 use tower::ServiceExt;
@@ -15,6 +18,9 @@ use tower::ServiceExt;
 #[path = "../../core/src/database/test_support.rs"]
 mod test_support;
 use test_support::TestDatabase;
+
+mod common;
+use common::WebRoot;
 
 const PASSWORD: &str = "correct-horse-battery";
 
@@ -29,7 +35,7 @@ async fn database(db: &TestDatabase) -> Database {
 }
 
 async fn router(db: &TestDatabase) -> Router {
-    app_with_database(database(db).await)
+    app_with_database(database(db).await, AllowedOrigins::default())
 }
 
 fn credentials(username: &str, password: &str) -> String {
@@ -37,7 +43,20 @@ fn credentials(username: &str, password: &str) -> String {
 }
 
 async fn send(app: &Router, method: &str, uri: &str, body: Option<String>) -> Response {
+    send_with(app, method, uri, body, &[]).await
+}
+
+async fn send_with(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    body: Option<String>,
+    headers: &[(&str, &str)],
+) -> Response {
     let mut request = Request::builder().method(method).uri(uri);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
     if body.is_some() {
         request = request.header(header::CONTENT_TYPE, "application/json");
     }
@@ -108,7 +127,13 @@ async fn claim_state_is_unavailable_when_the_pool_is_closed() {
     let db = TestDatabase::new();
     let database = database(&db).await;
     database.close().await;
-    let response = send(&app_with_database(database), "GET", "/api/claim", None).await;
+    let response = send(
+        &app_with_database(database, AllowedOrigins::default()),
+        "GET",
+        "/api/claim",
+        None,
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body(response).await, r#"{"error":"unavailable"}"#);
 }
@@ -192,7 +217,12 @@ async fn claim_is_unavailable_when_the_pool_is_closed() {
     let db = TestDatabase::new();
     let database = database(&db).await;
     database.close().await;
-    let response = claim(&app_with_database(database), "sam", PASSWORD).await;
+    let response = claim(
+        &app_with_database(database, AllowedOrigins::default()),
+        "sam",
+        PASSWORD,
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body(response).await, r#"{"error":"unavailable"}"#);
     assert_eq!(users(&db).await, 0);
@@ -357,6 +387,370 @@ async fn session_sign_out_without_a_session_is_unauthenticated() {
     assert_eq!(body(response).await, r#"{"error":"unauthenticated"}"#);
 }
 
+const UNAUTHENTICATED: &str = r#"{"error":"unauthenticated"}"#;
+
+#[tokio::test]
+async fn guard_refuses_a_guarded_route_without_a_cookie() {
+    let db = TestDatabase::new();
+    let response = send(&claimed(&db).await, "DELETE", "/api/session", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(body(response).await, UNAUTHENTICATED);
+}
+
+#[tokio::test]
+async fn guard_refuses_an_unknown_api_path_without_a_cookie() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    for (method, uri) in [
+        ("GET", "/api/does-not-exist"),
+        ("POST", "/api/does-not-exist/deeper"),
+        ("GET", "/api/"),
+        ("GET", "/api"),
+    ] {
+        let response = send(&app, method, uri, None).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {uri}"
+        );
+        assert_eq!(body(response).await, UNAUTHENTICATED, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
+async fn guard_refuses_an_unsupported_method_on_a_public_path() {
+    let db = TestDatabase::new();
+    let response = send(&claimed(&db).await, "PUT", "/api/claim", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(body(response).await, UNAUTHENTICATED);
+}
+
+#[tokio::test]
+async fn guard_lets_the_public_routes_through_without_a_cookie() {
+    let db = TestDatabase::new();
+    let app = router(&db).await;
+    let statuses = [
+        send(&app, "GET", "/api/claim", None).await.status(),
+        send(&app, "HEAD", "/api/claim", None).await.status(),
+        claim(&app, "sam", PASSWORD).await.status(),
+        sign_in(&app, "sam", PASSWORD).await.status(),
+    ];
+    assert_eq!(
+        statuses,
+        [
+            StatusCode::OK,
+            StatusCode::OK,
+            StatusCode::CREATED,
+            StatusCode::OK
+        ]
+    );
+}
+
+#[tokio::test]
+async fn guard_leaves_the_probes_and_web_shell_public() {
+    let db = TestDatabase::new();
+    let root = WebRoot::new("guard");
+    let app = sidereal_server::with_web_root(router(&db).await, Some(&root.path));
+    for uri in ["/healthz", "/readyz", "/"] {
+        let response = send(&app, "GET", uri, None).await;
+        assert_eq!(response.status(), StatusCode::OK, "{uri}");
+    }
+}
+
+fn assert_cleared(response: &Response) {
+    let cleared = set_cookie(response).expect("a cleared cookie");
+    assert!(cleared.starts_with("sidereal_session=;"), "{cleared}");
+    assert!(
+        cleared.split("; ").any(|part| part == "Max-Age=0"),
+        "{cleared}"
+    );
+}
+
+async fn execute(db: &TestDatabase, sql: &'static str) {
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    sqlx::query(sql).execute(&mut conn).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_cookie_with_an_unknown_token_is_cleared() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let response = with_cookie(&app, "GET", "sidereal_session=not-a-token").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn stale_cookie_of_an_expired_session_is_cleared() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    execute(
+        &db,
+        "UPDATE public.sessions SET expires_at = now() - interval '1 minute'",
+    )
+    .await;
+    let response = with_cookie(&app, "GET", &cookie).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn stale_cookie_of_a_revoked_session_is_refused() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    execute(&db, "DELETE FROM public.sessions").await;
+    let response = with_cookie(&app, "GET", &cookie).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_cleared(&response);
+    assert_eq!(body(response).await, UNAUTHENTICATED);
+}
+
+#[tokio::test]
+async fn stale_cookie_clearing_needs_a_cookie() {
+    let db = TestDatabase::new();
+    let response = send(&claimed(&db).await, "GET", "/api/session", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+}
+
+#[tokio::test]
+async fn session_refreshes_the_cookie_on_any_guarded_route() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    let request = Request::builder()
+        .uri("/api/does-not-exist")
+        .header(header::COOKIE, &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let renewed = set_cookie(&response).expect("a refreshed cookie");
+    assert!(renewed.starts_with(&format!("{cookie};")), "{renewed}");
+    assert!(renewed.split("; ").any(|part| part == "Max-Age=2592000"));
+}
+
+#[tokio::test]
+async fn session_sign_out_sets_only_the_cleared_cookie() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    let response = with_cookie(&app, "DELETE", &cookie).await;
+    let cookies: Vec<_> = response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .collect();
+    assert_eq!(cookies.len(), 1, "{cookies:?}");
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn session_sign_out_that_finds_no_row_clears_the_cookie() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    // The row vanishes between the guard's lookup and the delete, as when
+    // two sign-outs race: the delete finds nothing to remove.
+    execute(
+        &db,
+        "CREATE FUNCTION public.keep() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NULL; END'",
+    )
+    .await;
+    execute(
+        &db,
+        "CREATE TRIGGER keep BEFORE DELETE ON public.sessions FOR EACH ROW EXECUTE FUNCTION public.keep()",
+    )
+    .await;
+    let response = with_cookie(&app, "DELETE", &cookie).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let cookies: Vec<_> = response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .collect();
+    assert_eq!(cookies.len(), 1, "{cookies:?}");
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn session_token_is_returned_only_to_its_own_browser() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let signed = sign_in(&app, "sam", PASSWORD).await;
+    let cookie = set_cookie(&signed).unwrap();
+    let pair = cookie.split(';').next().unwrap();
+    let used = with_cookie(&app, "GET", pair).await;
+    let reused = set_cookie(&used).unwrap();
+    assert_eq!(reused.split(';').next(), Some(pair));
+    let token = pair.trim_start_matches("sidereal_session=");
+    let stranger = send(&app, "GET", "/api/session", None).await;
+    assert!(stranger.headers().get(header::SET_COOKIE).is_none());
+    assert!(!body(stranger).await.contains(token));
+}
+
+mod origin {
+    use super::*;
+
+    const FORBIDDEN: &str = r#"{"error":"forbidden"}"#;
+
+    async fn sign_in_with(app: &Router, headers: &[(&str, &str)]) -> Response {
+        let body = Some(credentials("sam", PASSWORD));
+        send_with(app, "POST", "/api/session", body, headers).await
+    }
+
+    async fn sessions(db: &TestDatabase) -> i64 {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_scalar("SELECT count(*) FROM public.sessions")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    async fn listing(db: &TestDatabase, value: &str) -> Router {
+        let listed = allowed_origins(Some(std::ffi::OsStr::new(value))).unwrap();
+        let app = app_with_database(database(db).await, listed);
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        app
+    }
+
+    #[tokio::test]
+    async fn origin_of_a_same_site_sign_in_is_allowed() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://localhost:5000"),
+        ];
+        let response = sign_in_with(&claimed(&db).await, &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn origin_with_a_default_port_matches_a_host_without_one() {
+        let db = TestDatabase::new();
+        let app = claimed(&db).await;
+        for headers in [
+            [
+                ("host", "photos.example"),
+                ("origin", "https://photos.example:443"),
+            ],
+            [
+                ("host", "photos.example:443"),
+                ("origin", "https://photos.example"),
+            ],
+        ] {
+            let response = sign_in_with(&app, &headers).await;
+            assert_eq!(response.status(), StatusCode::OK, "{headers:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn origin_of_a_cross_site_sign_in_is_forbidden() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+        ];
+        let response = sign_in_with(&claimed(&db).await, &headers).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
+        assert_eq!(body(response).await, FORBIDDEN);
+        assert_eq!(sessions(&db).await, 0);
+    }
+
+    #[tokio::test]
+    async fn origin_of_a_cross_site_sign_out_is_forbidden() {
+        let db = TestDatabase::new();
+        let app = claimed(&db).await;
+        let cookie = signed_in(&app).await;
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+            ("cookie", cookie.as_str()),
+        ];
+        let response = send_with(&app, "DELETE", "/api/session", None, &headers).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(sessions(&db).await, 1);
+    }
+
+    #[tokio::test]
+    async fn origin_from_a_matching_referer_is_allowed() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("referer", "http://localhost:5000/sign-in?next=/"),
+        ];
+        let response = sign_in_with(&claimed(&db).await, &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn origin_from_a_mismatched_referer_is_forbidden() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("referer", "http://evil.example/"),
+        ];
+        let response = sign_in_with(&claimed(&db).await, &headers).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn origin_is_not_needed_without_either_header() {
+        let db = TestDatabase::new();
+        let headers = [("host", "localhost:5000")];
+        let response = sign_in_with(&claimed(&db).await, &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn origin_of_a_read_is_not_checked() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+        ];
+        let response = send_with(&router(&db).await, "GET", "/api/claim", None, &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response
+            .headers()
+            .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn origin_before_session_refuses_without_reading_the_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        database.close().await;
+        let app = app_with_database(database, AllowedOrigins::default());
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+            ("cookie", "sidereal_session=not-a-token"),
+        ];
+        let response = send_with(&app, "DELETE", "/api/session", None, &headers).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body(response).await, FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn origin_listed_in_the_environment_is_allowed_for_another_host() {
+        let db = TestDatabase::new();
+        let app = listing(&db, "https://photos.example, http://localhost:5173").await;
+        for origin in ["https://photos.example", "http://localhost:5173"] {
+            let headers = [("host", "app:5000"), ("origin", origin)];
+            let response = sign_in_with(&app, &headers).await;
+            assert_eq!(response.status(), StatusCode::OK, "{origin}");
+        }
+    }
+}
+
 /// A running server binary, killed when the test ends.
 mod spawned {
     use super::TestDatabase;
@@ -376,6 +770,12 @@ mod spawned {
     impl Server {
         /// Start the server and wait until `/readyz` answers ready.
         pub fn ready(db: &TestDatabase) -> Self {
+            Self::ready_with(db, &[])
+        }
+
+        /// Start the server with extra environment variables and wait until
+        /// `/readyz` answers ready.
+        pub fn ready_with(db: &TestDatabase, env: &[(&str, &str)]) -> Self {
             let port = std::net::TcpListener::bind("127.0.0.1:0")
                 .unwrap()
                 .local_addr()
@@ -387,6 +787,8 @@ mod spawned {
                 .env("DATABASE_STARTUP_TIMEOUT_SECONDS", "10")
                 .env_remove("WEB_ROOT")
                 .env_remove("STORAGE_ROOT")
+                .env_remove("SIDEREAL_ALLOWED_ORIGINS")
+                .envs(env.iter().copied())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -408,12 +810,29 @@ mod spawned {
 
         /// The whole HTTP response, head and body.
         pub fn request(&self, method: &str, path: &str, body: Option<&str>) -> Option<String> {
+            self.request_with(method, path, body, "localhost", &[])
+        }
+
+        /// The whole HTTP response to a request with this `Host` and these
+        /// extra headers.
+        pub fn request_with(
+            &self,
+            method: &str,
+            path: &str,
+            body: Option<&str>,
+            host: &str,
+            headers: &[(&str, &str)],
+        ) -> Option<String> {
             let mut stream = TcpStream::connect(("127.0.0.1", self.port)).ok()?;
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
             let body = body.unwrap_or("");
+            let extra: String = headers
+                .iter()
+                .map(|(name, value)| format!("{name}: {value}\r\n"))
+                .collect();
             write!(
                 stream,
-                "{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Connection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
             )
             .ok()?;
@@ -523,6 +942,69 @@ mod lifetime {
         let captured = answers + &server.output();
         assert!(!captured.contains(DISTINCTIVE));
         assert!(!captured.contains(&hash));
+    }
+}
+
+mod allowed_origins_at_start {
+    use super::*;
+    use sqlx::ConnectOptions;
+    use std::{
+        process::{Command, Stdio},
+        time::Instant,
+    };
+
+    #[tokio::test]
+    async fn a_malformed_item_stops_the_server_before_the_database() {
+        let db = TestDatabase::new();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
+            .env("DATABASE_URL", db.options.to_url_lossy().to_string())
+            .env("PORT", "0")
+            .env_remove("WEB_ROOT")
+            .env_remove("STORAGE_ROOT")
+            .env("SIDEREAL_ALLOWED_ORIGINS", "https://distinctive.example/")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() > deadline {
+                child.kill().unwrap();
+                panic!("the server kept running");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("SIDEREAL_ALLOWED_ORIGINS"), "{stderr}");
+        assert!(!stderr.contains("distinctive"), "{stderr}");
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let tables: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(tables, 0);
+    }
+
+    #[tokio::test]
+    async fn a_valid_list_admits_its_origins() {
+        let db = TestDatabase::new();
+        let server = spawned::Server::ready_with(
+            &db,
+            &[(
+                "SIDEREAL_ALLOWED_ORIGINS",
+                "https://photos.example, http://localhost:5173",
+            )],
+        );
+        let body = credentials("sam", PASSWORD);
+        let origin = [("Origin", "http://localhost:5173")];
+        let answer = server
+            .request_with("POST", "/api/claim", Some(&body), "app:5000", &origin)
+            .unwrap();
+        assert!(answer.starts_with("HTTP/1.1 201"), "{answer}");
     }
 }
 

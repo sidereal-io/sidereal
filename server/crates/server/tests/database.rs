@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use sidereal_core::database::initialize;
-use sidereal_server::{app_with_database, with_web_root};
+use sidereal_server::{app_with_database, config::AllowedOrigins, with_web_root};
 use sqlx::{Connection, Executor, PgConnection};
 use std::{process::Command, time::Duration};
 use tower::ServiceExt;
@@ -25,7 +25,7 @@ async fn health_routes_are_fixed_and_methods_do_not_mutate() {
     )
     .await
     .unwrap();
-    let app = app_with_database(database.clone());
+    let app = app_with_database(database.clone(), AllowedOrigins::default());
     let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
     let before: String = sqlx::query_scalar(
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY version)::text FROM public._sqlx_migrations m",
@@ -174,7 +174,10 @@ async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
     .unwrap();
     // The web root holds files named `healthz` and `readyz`.
     let root = WebRoot::new("probes");
-    let app = with_web_root(app_with_database(database.clone()), Some(&root.path));
+    let app = with_web_root(
+        app_with_database(database.clone(), AllowedOrigins::default()),
+        Some(&root.path),
+    );
     let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
     let rows = "SELECT (SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m)::text
         || (SELECT jsonb_agg(to_jsonb(s)) FROM public.sidereal_metadata s)::text";
@@ -191,7 +194,7 @@ async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), body);
     }
-    for route in ["/", "/healthz", "/readyz", "/api/assets"] {
+    for route in ["/", "/healthz", "/readyz"] {
         for method in ["POST", "PUT", "PATCH", "DELETE"] {
             let response = app
                 .clone()
@@ -206,6 +209,46 @@ async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
                 .unwrap();
             assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         }
+    }
+    let after: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
+    assert_eq!(before, after);
+    database.close().await;
+}
+
+#[tokio::test]
+async fn api_without_a_session_changes_nothing() {
+    let db = TestDatabase::new();
+    let database = initialize(
+        db.options.clone(),
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+    )
+    .await
+    .unwrap();
+    let root = WebRoot::new("api");
+    let app = with_web_root(
+        app_with_database(database.clone(), AllowedOrigins::default()),
+        Some(&root.path),
+    );
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    let rows = "SELECT (SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m)::text
+        || (SELECT jsonb_agg(to_jsonb(s)) FROM public.sidereal_metadata s)::text";
+    let before: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
+    for method in ["GET", "POST", "PUT", "PATCH", "DELETE"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/api/assets")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method}");
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        assert_ne!(body, common::INDEX, "{method}");
     }
     let after: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
     assert_eq!(before, after);
@@ -363,7 +406,7 @@ async fn verify_ca_with_trusted_certificate_starts_ready() {
     let database = initialize(options, Duration::from_secs(2), Duration::from_secs(2))
         .await
         .unwrap();
-    let response = app_with_database(database.clone())
+    let response = app_with_database(database.clone(), AllowedOrigins::default())
         .oneshot(
             Request::builder()
                 .uri("/readyz")

@@ -1,10 +1,12 @@
 //! The instance claim and the session routes.
+use crate::config::AllowedOrigins;
 use axum::{
     extract::{rejection::JsonRejection, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
+    middleware,
     response::{IntoResponse, Response},
-    routing::get,
-    Json, Router,
+    routing::{any, get},
+    Extension, Json, Router,
 };
 use serde_json::{json, Value};
 use sidereal_core::{
@@ -13,14 +15,32 @@ use sidereal_core::{
 };
 
 pub mod cookie;
+mod guard;
 
-pub fn routes() -> Router<Database> {
+/// Every path under `/api`, behind the origin check and then the session
+/// guard. The layer added last runs first. The catch-alls are
+/// routes, not a fallback, because `route_layer` guards only matched routes:
+/// an unknown path answers 401 before 404. `{*rest}` never matches an empty
+/// segment, so `/api` and `/api/` need their own.
+pub fn routes(database: Database, allowed_origins: AllowedOrigins) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
         .route(
             "/api/session",
             get(current_session).post(sign_in).delete(sign_out),
         )
+        .route("/api", any(not_found))
+        .route("/api/", any(not_found))
+        .route("/api/{*rest}", any(not_found))
+        .route_layer(middleware::from_fn_with_state(database, guard::session))
+        .route_layer(middleware::from_fn_with_state(
+            allowed_origins,
+            guard::origin,
+        ))
+}
+
+async fn not_found() -> StatusCode {
+    StatusCode::NOT_FOUND
 }
 
 /// Every refusal has a fixed body, so no driver error, password or hash can
@@ -31,6 +51,7 @@ pub enum AccessError {
     WrongCredentials,
     Claimed,
     Unauthenticated,
+    Forbidden,
     Unavailable,
 }
 
@@ -41,6 +62,7 @@ impl IntoResponse for AccessError {
             Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "invalid credentials"),
             Self::Claimed => (StatusCode::CONFLICT, "claimed"),
             Self::Unauthenticated => (StatusCode::UNAUTHORIZED, "unauthenticated"),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
         };
         (status, Json(json!({ "error": error }))).into_response()
@@ -122,28 +144,22 @@ async fn sign_in(
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
-async fn current_session(
-    State(database): State<Database>,
-    headers: HeaderMap,
-) -> Result<Response, AccessError> {
-    let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
-    let signed_in = database
-        .session(token)
-        .await?
-        .ok_or(AccessError::Unauthenticated)?;
-    // Keep the browser token alive as the database slides the session expiry.
-    let cookie = cookie::session(token, ARRIVED_OVER_HTTPS);
-    Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
+/// The guard has already looked the session up and refreshed the cookie.
+async fn current_session(Extension(signed_in): Extension<User>) -> Json<Value> {
+    user(&signed_in)
 }
 
+/// The guard has proven the token valid; it is still needed to delete the row.
 async fn sign_out(
     State(database): State<Database>,
     headers: HeaderMap,
 ) -> Result<Response, AccessError> {
     let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
+    let cleared = [(SET_COOKIE, cookie::cleared(ARRIVED_OVER_HTTPS))];
+    // The row can vanish after the guard's lookup, as when two sign-outs
+    // race. The token is dead either way, so the browser forgets it.
     if !database.sign_out(token).await? {
-        return Err(AccessError::Unauthenticated);
+        return Ok((cleared, AccessError::Unauthenticated).into_response());
     }
-    let cookie = cookie::cleared(ARRIVED_OVER_HTTPS);
-    Ok((StatusCode::NO_CONTENT, [(SET_COOKIE, cookie)]).into_response())
+    Ok((StatusCode::NO_CONTENT, cleared).into_response())
 }
