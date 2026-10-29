@@ -1,32 +1,31 @@
 ## Review Metadata
 
-- **Review round**: 1
-- **Prior round**: none
+- **Review round**: 2
+- **Prior round**: round 1 at commit `93c5470`, by gemini/gemini-3.8-flash, gave REVISE: a closed or empty stdin generated a password and reset the administrator in both input modes, plus an exit-code contradiction, a wrong message for a foreign database, `Database::open` outside `probe`'s transaction, an unchecked `tcsetattr` and long sentences. All eight were fixed before this round.
 - **Reviewer context**: fresh context, other family
-- **Independent**: yes. The author is this session's model (claude); the reviewer was gemini/gemini-3.8-flash through the `t3` resolver, read-only, effort high, in 411 seconds.
+- **Independent**: yes. The author is this session's model (claude); the reviewer was gemini/gemini-3.8-flash through the `t3` resolver, read-only, effort high, in 626 seconds.
 - **Tool restrictions**: read-only: view, grep, glob only
-- **Artifacts reviewed**: brainstorm.md, proposal.md, design.md, specs/, adr.md, relevant source files, at commit `93c5470`
+- **Artifacts reviewed**: brainstorm.md, proposal.md, design.md, specs/, adr.md, relevant source files, at commit `5df6836`
 
 ## Findings
 
 ### 🔴 Critical (blocking)
 
-1. **A closed or empty stdin without `--password-stdin` generates a password and resets.** With the terminal fallback of design decision 2, `docker compose exec -T app sidectl reset-admin-password` with nothing on stdin reads an empty string at `New password:`, which D5 turns into a generated password, a new hash and a purge of every session. Check: **CONFIRMED**. Nothing in the plan told an empty line apart from a closed stdin.
-2. **An empty line on `--password-stdin` generates a password.** A script whose secret source evaluates to empty would exit 0 with a random password and no sessions, where `docker login --password-stdin` fails. Check: **CONFIRMED** for the stdin case, which the ledger marked as the author's assumption; the user's decision in D5 was about the interactive prompt.
+1. **An empty piped line without `--password-stdin` still generates a password and purges every session.** `echo "$SECRET" | sidectl reset-admin-password` with an empty `$SECRET` sends one line feed; under the `ENOTTY` fallback that is an empty answer at `New password:`, which design decision 6 turned into a generated password. Round 1's fix covered only `--password-stdin` and a closed stdin. Check: **CONFIRMED**.
+2. **The prompt on stdout contradicts the scenario "A closed stdin without the flag".** Decision 2 flushed `New password:` to stdout before the read, so stdout could never hold only the state line. Check: **CONFIRMED**.
 
 ### 🟡 Moderate
 
-3. **Design decision 6 exits 1 where the spec exits 2.** The scenario "Script mode without a username on an unclaimed instance" needs exit 2, but the design said every failure after the state line exits 1. Check: **CONFIRMED**.
-4. **The schema requirement tells a foreign database to start the server.** `DatabaseError::Ownership` already says to use a dedicated database (`server/crates/core/src/database/mod.rs`, line 27), and the server would refuse the same database. Check: **CONFIRMED**.
-5. **`Database::open` ran `preflight` outside the read-only transaction and timeouts that `probe` uses.** `probe` wraps it in `REPEATABLE READ READ ONLY` with `statement_timeout` and `lock_timeout` cleared under its own deadline (`server/crates/core/src/database/startup.rs`, lines 100 to 115). Check: **CONFIRMED**. The design's risk section claimed the snapshot without the decision saying so.
-6. **An unchecked `tcsetattr` can leave echo on while the password is read.** Check: **CONFIRMED**.
+3. **Decision 5 checked the password before the repeat prompt; decision 6 checked it after.** A four-character password mistyped at the repeat would report a mismatch instead of the length rule. Check: **CONFIRMED**.
+4. **The `Pending` action text lacked the words the spec asserts.** `start the server once to apply migrations` does not contain `start the server first`. Check: **CONFIRMED**.
+5. **`--username ""` was a usage error in decision 3 but a credential-rule violation in the spec and in `claim.rs`** (line 125 lists the empty username as `Invalid`). Check: **CONFIRMED**.
 
 ### 📌 Suggestions
 
-7. **Decision 5 said `reset_admin_password` answers the HTTP layer.** There is no HTTP reset. Check: **CONFIRMED**, editorial.
-8. **Three sentences over 30 words**, one of 96, in design.md decisions 4 and 6 and the spec's generated-password requirement. Check: **CONFIRMED**.
+6. **No scenario for `--password-stdin` with a closed stdin**, although the requirement covers a missing first line. Check: **CONFIRMED**.
+7. **Six sentences over 30 words** in design.md decisions 1, 2, 4 and 9, the spec's credentials requirement, and adr.md's summary. Check: **CONFIRMED**.
 
-The reviewer also settled three questions from the code: the one-transaction reset is sound if the SQL keeps the `public.` qualifier; the race scenario is deterministic because the state line is flushed before any read; the compose-instance delta carries the whole requirement.
+The reviewer also confirmed from the code: the one-transaction reset is sound and the guard refuses a deleted session on the next request; `Database::open` inside `probe`'s transaction is safe beside a migrating server, and an empty or partial history maps to `Pending`; the race scenario is deterministic; the compose-instance delta carries the whole requirement.
 
 ## Embedded-Instruction / Injection Attempts
 
@@ -38,17 +37,16 @@ VERDICT: REVISE
 
 ## Required Changes (if APPROVE_WITH_CHANGES)
 
-Not applicable under REVISE. The fixes below go into the plan before round 2.
+Not applicable under REVISE. The fixes below went into the plan after this round. Two REVISE verdicts in a row: the user decides whether a third round runs.
 
 CHANGES_APPLIED: n/a
 
 ## Rebuttals
 
-1. **Fixed.** Design decision 2 now tells an empty line from a closed stdin: a closed stdin before any answer is a refusal with exit 1. The spec's "Credentials come from the terminal or from the flags" requirement says so and gains the scenario "A closed stdin without the flag".
-2. **Fixed.** Design decision 7 and ledger row D5 now refuse an empty or absent line on `--password-stdin`; only the terminal prompt generates a password. The spec's "An empty password is generated" requirement is restricted to the prompt, and "Credentials come from the terminal or from the flags" gains the scenario "Script mode with an empty line".
-3. **Fixed.** Design decision 6 now lists a missing `--username` under `--password-stdin` in the create state as a usage error: usage on stderr and exit 2, even though it is found after the state line.
-4. **Fixed.** The spec's schema requirement now says "start the server first" only for an empty or behind database, and that any other database fault prints the server's own line for it.
-5. **Fixed.** Design decision 4 now runs `preflight` inside the same read-only `REPEATABLE READ` transaction and timeout settings as `probe`, under the startup deadline.
-6. **Fixed.** Design decision 2 now treats a failed `tcsetattr` as a refusal with exit 1.
-7. **Fixed.** Decision 5 reworded; `reset_admin_password` answers `ResetError::Invalid`, and the SQL sketch names `public.users` and `public.sessions`.
-8. **Fixed.** The three sentences are split; decision 6 is now a numbered list.
+1. **Fixed.** A password is generated only when stdin is a terminal. Decision 2 gives the `Terminal` seam an "is interactive" question, decision 6 refuses an empty answer under the pipe fallback, and the spec's generated-password requirement says the same with a new scenario "Empty answer through a pipe". The terminal case is proven at the unit seam with the fake terminal, as the Test Seams section now says.
+2. **Fixed.** Prompts are written to stderr (decision 2); the spec's credentials requirement says so, and the scenario stands.
+3. **Fixed.** Decision 6 step 6 checks the first answer with `check_password` before `Repeat password:`.
+4. **Fixed.** The `Pending` action is now `start the server first; it applies the migrations`.
+5. **Fixed.** Decision 3 makes only a missing value a usage error; an empty string reaches the credential check.
+6. **Fixed.** The spec gains the scenario "Script mode with a closed stdin".
+7. **Fixed.** Each sentence is split.
