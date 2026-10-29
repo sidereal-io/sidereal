@@ -396,6 +396,57 @@ If paired storage cannot come back, choose one:
 
 Startup cannot tell a first start from losing both locations at once. When the database and storage are both empty, it starts fresh. Keep both locations safe together.
 
+## Recover access
+
+Use `sidectl reset-admin-password` when you need administrator access from the machine that runs Sidereal:
+
+- No administrator exists yet, and you want to create one without the web page.
+- You forgot the administrator's password.
+- You think someone else has signed in, and you want to sign out every browser.
+
+The instance must be running. The command reads the same database settings as the app, and it never changes the database's structure.
+
+### Run it at the terminal
+
+```sh
+docker compose exec app sidectl reset-admin-password
+```
+
+The command first says what it will do:
+
+| What it finds | It prints | It asks for |
+|---|---|---|
+| No administrator | `No administrator exists. Creating one.` | A username, then a password twice |
+| An administrator | `Administrator <name> exists. Setting a new password and ending every session.` | A password twice |
+
+The password must be 8 to 256 bytes. The command does not show it as you type.
+
+If you press Enter without typing a password, the command makes one up. It prints it once, on a line that starts with `Generated password:`. Copy it to your password manager. If other people can see your terminal or its history, sign in and set a password of your own.
+
+### Run it from a script
+
+Add `-T` to `docker compose exec`, and give the password on the command's input with `--password-stdin`. The command reads the first line and removes its line ending:
+
+```sh
+printf '%s\n' "$NEW_PASSWORD" | docker compose exec -T app sidectl reset-admin-password --username sam --password-stdin
+```
+
+- **No administrator yet:** `--username` is required.
+- **An administrator exists:** `--username` is optional. When you give it, it must be the administrator's username, or the command stops without a change.
+- **An empty line, or no input:** the command stops without a change. It never makes up a password in a script.
+
+### What a reset changes
+
+A reset sets the new password and signs out every browser and client at once. The command prints how many sessions it ended. Everyone signs in again with the new password.
+
+The command changes nothing when it stops early: for a wrong username, a password that breaks the rules, passwords that do not match, or input that ends before an answer. It prints the reason on one line and exits with status 1.
+
+### When it says the schema is not current
+
+`database schema is not current: start the server first; it applies the migrations`
+
+The database is empty, or an update has not finished. Start the instance with `docker compose up -d --wait`, wait until it is healthy, and run the command again.
+
 ## Things to know
 
 ### Changing the password later does not change the database's password

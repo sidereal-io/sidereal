@@ -15,7 +15,7 @@
 ## 3. Image and guide [depends-on: 2]
 
 - [x] 3.1 [easy] [parallel] The runtime image holds `sidectl` beside the server, and `instance-verify.sh` checks `docker compose exec -T app sidectl --help` exits 0 and names `reset-admin-password` (verify: just instance-verify) (✓ just instance-verify passed)
-- [ ] 3.2 [easy] [parallel] `docs/install.md` gains a `Recover access` section before `Things to know`, as design decision 9 lists, in plain language (verify: grep -q '^## Recover access' docs/install.md)
+- [x] 3.2 [easy] [parallel] `docs/install.md` gains a `Recover access` section before `Things to know`, as design decision 9 lists, in plain language (verify: grep -q '^## Recover access' docs/install.md) (✓ grep found `## Recover access` before `## Things to know`)
 
 ## 4. Integration [depends-on: 3]
 
