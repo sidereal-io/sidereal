@@ -387,6 +387,12 @@ mod spawned {
     impl Server {
         /// Start the server and wait until `/readyz` answers ready.
         pub fn ready(db: &TestDatabase) -> Self {
+            Self::ready_with(db, &[])
+        }
+
+        /// Start the server with extra environment variables and wait until
+        /// `/readyz` answers ready.
+        pub fn ready_with(db: &TestDatabase, env: &[(&str, &str)]) -> Self {
             let port = std::net::TcpListener::bind("127.0.0.1:0")
                 .unwrap()
                 .local_addr()
@@ -398,6 +404,8 @@ mod spawned {
                 .env("DATABASE_STARTUP_TIMEOUT_SECONDS", "10")
                 .env_remove("WEB_ROOT")
                 .env_remove("STORAGE_ROOT")
+                .env_remove("SIDEREAL_ALLOWED_ORIGINS")
+                .envs(env.iter().copied())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -534,6 +542,63 @@ mod lifetime {
         let captured = answers + &server.output();
         assert!(!captured.contains(DISTINCTIVE));
         assert!(!captured.contains(&hash));
+    }
+}
+
+mod allowed_origins_at_start {
+    use super::*;
+    use sqlx::ConnectOptions;
+    use std::{
+        process::{Command, Stdio},
+        time::Instant,
+    };
+
+    #[tokio::test]
+    async fn a_malformed_item_stops_the_server_before_the_database() {
+        let db = TestDatabase::new();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
+            .env("DATABASE_URL", db.options.to_url_lossy().to_string())
+            .env("PORT", "0")
+            .env_remove("WEB_ROOT")
+            .env_remove("STORAGE_ROOT")
+            .env("SIDEREAL_ALLOWED_ORIGINS", "https://distinctive.example/")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() > deadline {
+                child.kill().unwrap();
+                panic!("the server kept running");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("SIDEREAL_ALLOWED_ORIGINS"), "{stderr}");
+        assert!(!stderr.contains("distinctive"), "{stderr}");
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let tables: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(tables, 0);
+    }
+
+    #[tokio::test]
+    async fn a_valid_list_becomes_ready() {
+        let db = TestDatabase::new();
+        spawned::Server::ready_with(
+            &db,
+            &[(
+                "SIDEREAL_ALLOWED_ORIGINS",
+                "https://photos.example, http://localhost:5173",
+            )],
+        );
     }
 }
 
