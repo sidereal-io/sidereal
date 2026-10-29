@@ -35,4 +35,4 @@ A session is an opaque random token of 32 bytes. The browser holds the token in 
 ### Alternative 2: Server-side sessions in process memory
 - **Pros**: no table and the fastest lookup.
 - **Cons**: every restart signs everyone out; a second process cannot share them; recovery from the box cannot see them.
-- **Why not**: a session must survive a restart and be visible to `sidectl`, which runs as a separate process.
+- **Why not**: a session must survive a restart and be visible to `siderealctl`, which runs as a separate process.
