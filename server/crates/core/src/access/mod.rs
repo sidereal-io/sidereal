@@ -6,7 +6,7 @@ mod claim;
 mod password;
 mod session;
 
-pub use claim::ClaimError;
+pub use claim::{check_password, check_username, ClaimError, CredentialRule};
 pub use session::{Token, SESSION_LIFETIME};
 
 /// What a user may do. This release has one role.
