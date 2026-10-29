@@ -17,3 +17,5 @@ Shared vocabulary for Sidereal. A spec folder under `openspec/specs/` may hold i
   sets a new password and ends every session.
 - **Trusted proxy** — a reverse proxy whose forwarded headers the server believes, named
   in configuration.
+- **Allowed origin** — an origin whose state-changing requests the server accepts: the
+  request's own host and port, plus any listed in `SIDEREAL_ALLOWED_ORIGINS`.
