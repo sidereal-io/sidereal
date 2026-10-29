@@ -42,7 +42,7 @@ When the session check refuses a request that carried a `sidereal_session` cooki
 
 ### Requirement: A guarded request is a use of the session
 
-A request that passes the session check SHALL count as a use of that session. The expiry moves as the requirement "A session lasts 30 days from its last use" says. The response SHALL set the `sidereal_session` cookie again with the same value and attributes, whatever the route answers.
+A request that passes the session check SHALL count as a use of that session. The expiry moves as the requirement "A session lasts 30 days from its last use" says. The response SHALL set the `sidereal_session` cookie again with the same value and attributes, whatever the route answers, unless the route sets that cookie itself. Sign-out does: its cleared cookie is the only `sidereal_session` cookie in its response.
 
 #### Scenario: A guarded route refreshes the cookie
 - **WHEN** Sam sends `GET /api/does-not-exist` with the cookie from sign-in

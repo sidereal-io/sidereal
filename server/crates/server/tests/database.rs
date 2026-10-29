@@ -247,6 +247,8 @@ async fn api_without_a_session_changes_nothing() {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method}");
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        assert_ne!(body, common::INDEX, "{method}");
     }
     let after: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
     assert_eq!(before, after);
