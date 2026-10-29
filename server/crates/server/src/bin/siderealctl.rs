@@ -1,7 +1,7 @@
-//! `sidectl`: run on the box, with the server's database settings.
+//! `siderealctl`: run on the box, with the server's database settings.
 use sidereal_server::{
     config::DatabaseConfig,
-    sidectl::{run, terminal::Console},
+    siderealctl::{run, terminal::Console},
 };
 use std::{io, process::ExitCode};
 

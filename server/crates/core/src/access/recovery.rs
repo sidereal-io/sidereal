@@ -1,5 +1,5 @@
 //! Access recovery from the box: the administrator lookup and the password
-//! reset that `sidectl` runs.
+//! reset that `siderealctl` runs.
 use super::{check_password, password, Unavailable};
 use crate::database::Database;
 use rand::{distr::Alphanumeric, RngExt};

@@ -1,4 +1,4 @@
-//! `sidectl` against a fresh database per test. Its effects are checked
+//! `siderealctl` against a fresh database per test. Its effects are checked
 //! through the in-process router, which reads the database on every request.
 use axum::{
     body::Body,
@@ -114,7 +114,7 @@ async fn claim_state(app: &Router) -> String {
 
 mod in_process {
     use super::*;
-    use sidereal_server::{config::DatabaseConfig, sidectl::Terminal};
+    use sidereal_server::{config::DatabaseConfig, siderealctl::Terminal};
     use std::{collections::VecDeque, io};
 
     /// A terminal a person types into, answering from a script. An exhausted
@@ -169,10 +169,10 @@ mod in_process {
         err: String,
     }
 
-    async fn sidectl(db: &TestDatabase, args: &[&str], terminal: &mut Scripted) -> Outcome {
+    async fn siderealctl(db: &TestDatabase, args: &[&str], terminal: &mut Scripted) -> Outcome {
         let (mut out, mut err) = (Vec::new(), Vec::new());
         let options = db.options.clone();
-        let status = sidereal_server::sidectl::run(
+        let status = sidereal_server::siderealctl::run(
             args.iter().map(|arg| arg.to_string()),
             move || {
                 Ok(DatabaseConfig {
@@ -194,7 +194,7 @@ mod in_process {
     }
 
     async fn reset(db: &TestDatabase, answers: &[&'static str]) -> Outcome {
-        sidectl(db, &["reset-admin-password"], &mut Scripted::new(answers)).await
+        siderealctl(db, &["reset-admin-password"], &mut Scripted::new(answers)).await
     }
 
     #[tokio::test]
@@ -255,7 +255,7 @@ mod in_process {
         let app = router(&db).await;
         claim(&app, "sam", PASSWORD).await;
         let mut terminal = Scripted::new(&[NEW_PASSWORD, NEW_PASSWORD]);
-        let outcome = sidectl(
+        let outcome = siderealctl(
             &db,
             &["reset-admin-password", "--username", "alex"],
             &mut terminal,
@@ -324,7 +324,7 @@ mod in_process {
                 .unwrap();
             }),
         ));
-        let outcome = sidectl(&db, &["reset-admin-password"], &mut terminal).await;
+        let outcome = siderealctl(&db, &["reset-admin-password"], &mut terminal).await;
         assert_eq!(outcome.status, 1);
         assert_eq!(outcome.out, "No administrator exists. Creating one.\n");
         assert_eq!(
@@ -348,7 +348,7 @@ mod spawned {
         err: String,
     }
 
-    /// The URL `sidectl` reads: the test role's URL, naming this test's database.
+    /// The URL `siderealctl` reads: the test role's URL, naming this test's database.
     fn url(db: &TestDatabase) -> String {
         let mut url = url::Url::parse(&std::env::var("TEST_DATABASE_URL").unwrap()).unwrap();
         url.set_path(db.options.get_database().unwrap());
@@ -356,7 +356,7 @@ mod spawned {
     }
 
     fn start(url: Option<&str>, args: &[&str], stdin: Stdio) -> Child {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_sidectl"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_siderealctl"));
         command
             .env_clear()
             .args(args)
@@ -378,8 +378,8 @@ mod spawned {
         }
     }
 
-    /// Run `sidectl` with `input` on stdin, or with stdin closed and empty.
-    fn sidectl(url: Option<&str>, args: &[&str], input: Option<&str>) -> Run {
+    /// Run `siderealctl` with `input` on stdin, or with stdin closed and empty.
+    fn siderealctl(url: Option<&str>, args: &[&str], input: Option<&str>) -> Run {
         let Some(input) = input else {
             return finish(start(url, args, Stdio::null()));
         };
@@ -392,7 +392,7 @@ mod spawned {
     const RESET: &[&str] = &["reset-admin-password", "--password-stdin"];
 
     fn reset(db: &TestDatabase, input: Option<&str>) -> Run {
-        sidectl(Some(&url(db)), RESET, input)
+        siderealctl(Some(&url(db)), RESET, input)
     }
 
     async fn connection(db: &TestDatabase) -> PgConnection {
@@ -430,7 +430,7 @@ mod spawned {
     async fn spawned_create_state_creates_the_administrator() {
         let db = TestDatabase::new();
         let app = router(&db).await;
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &[
                 "reset-admin-password",
@@ -515,7 +515,7 @@ mod spawned {
         let db = TestDatabase::new();
         claimed(&db).await;
         let before = snapshot(&db).await;
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &[
                 "reset-admin-password",
@@ -534,7 +534,7 @@ mod spawned {
     async fn spawned_the_administrators_username_is_accepted() {
         let db = TestDatabase::new();
         claimed(&db).await;
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &[
                 "reset-admin-password",
@@ -562,7 +562,7 @@ mod spawned {
     async fn spawned_a_padded_username_creates_nothing() {
         let db = TestDatabase::new();
         database(&db).await;
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &[
                 "reset-admin-password",
@@ -595,7 +595,7 @@ mod spawned {
         let db = TestDatabase::new();
         claimed(&db).await;
         let before = snapshot(&db).await;
-        let run = sidectl(Some(&url(&db)), &["reset-admin-password"], None);
+        let run = siderealctl(Some(&url(&db)), &["reset-admin-password"], None);
         assert_eq!(run.status, 1);
         assert_eq!(
             run.out,
@@ -614,7 +614,7 @@ mod spawned {
         let db = TestDatabase::new();
         claimed(&db).await;
         let before = snapshot(&db).await;
-        let run = sidectl(Some(&url(&db)), &["reset-admin-password"], Some("\n"));
+        let run = siderealctl(Some(&url(&db)), &["reset-admin-password"], Some("\n"));
         assert_eq!(run.status, 1);
         assert!(run.err.ends_with("a password is required\n"), "{}", run.err);
         assert!(!run.out.contains("Generated password"));
@@ -626,7 +626,7 @@ mod spawned {
         let db = TestDatabase::new();
         claimed(&db).await;
         let before = snapshot(&db).await;
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &["reset-admin-password"],
             Some("correct-horse-battery\ncorrect-horse-batery\n"),
@@ -640,7 +640,7 @@ mod spawned {
     async fn spawned_prompts_go_to_stderr() {
         let db = TestDatabase::new();
         database(&db).await;
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &["reset-admin-password"],
             Some("sam\ncorrect-horse-battery\ncorrect-horse-battery\n"),
@@ -701,7 +701,7 @@ mod spawned {
     #[tokio::test]
     async fn spawned_an_empty_database_is_left_without_migrations() {
         let db = TestDatabase::new();
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &[
                 "reset-admin-password",
@@ -733,7 +733,7 @@ mod spawned {
             .fetch_one(&mut conn)
             .await
             .unwrap();
-        let run = sidectl(
+        let run = siderealctl(
             Some(&url(&db)),
             &[
                 "reset-admin-password",
@@ -759,7 +759,7 @@ mod spawned {
 
     #[test]
     fn spawned_a_missing_database_url_is_refused() {
-        let run = sidectl(None, RESET, Some("correct-horse-battery\n"));
+        let run = siderealctl(None, RESET, Some("correct-horse-battery\n"));
         assert_eq!(run.status, 1);
         assert!(
             run.err.starts_with("missing database configuration"),
@@ -779,7 +779,7 @@ mod spawned {
             .password()
             .unwrap()
             .to_owned();
-        let run = sidectl(Some(&url), RESET, Some(&format!("{DISTINCTIVE}\n")));
+        let run = siderealctl(Some(&url), RESET, Some(&format!("{DISTINCTIVE}\n")));
         assert_eq!(run.status, 0, "{}", run.err);
         let output = format!("{}{}", run.out, run.err);
         for secret in [DISTINCTIVE, &database_password, &url, "$argon2", "postgres"] {
@@ -792,7 +792,7 @@ mod spawned {
         const DISTINCTIVE: &str = "Distinctive-Db-Secret-4471";
         let mut url = url::Url::parse(&std::env::var("TEST_DATABASE_URL").unwrap()).unwrap();
         url.set_password(Some(DISTINCTIVE)).unwrap();
-        let run = sidectl(Some(url.as_str()), RESET, Some("correct-horse-battery\n"));
+        let run = siderealctl(Some(url.as_str()), RESET, Some("correct-horse-battery\n"));
         assert_eq!(run.status, 1);
         assert!(
             run.err.starts_with("database login rejected"),
@@ -806,7 +806,7 @@ mod spawned {
     #[test]
     fn spawned_help_names_the_command_and_its_flags_without_a_database() {
         for args in [&["--help"][..], &["reset-admin-password", "--help"][..]] {
-            let run = sidectl(None, args, None);
+            let run = siderealctl(None, args, None);
             assert_eq!(run.status, 0, "{args:?}");
             for name in ["reset-admin-password", "--username", "--password-stdin"] {
                 assert!(run.out.contains(name), "{args:?} {name}");
@@ -816,9 +816,9 @@ mod spawned {
 
     #[test]
     fn spawned_an_unknown_command_prints_the_usage() {
-        let run = sidectl(None, &["rotate-keys"], None);
+        let run = siderealctl(None, &["rotate-keys"], None);
         assert_eq!(run.status, 2);
-        assert!(run.err.contains("Usage: sidectl"), "{}", run.err);
+        assert!(run.err.contains("Usage: siderealctl"), "{}", run.err);
         assert!(run.out.is_empty());
     }
 }

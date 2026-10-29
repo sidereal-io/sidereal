@@ -398,7 +398,7 @@ Startup cannot tell a first start from losing both locations at once. When the d
 
 ## Recover access
 
-Use `sidectl reset-admin-password` when you need administrator access from the machine that runs Sidereal:
+Use `siderealctl reset-admin-password` when you need administrator access from the machine that runs Sidereal:
 
 - No administrator exists yet, and you want to create one without the web page.
 - You forgot the administrator's password.
@@ -409,7 +409,7 @@ The instance must be running. The command reads the same database settings as th
 ### Run it at the terminal
 
 ```sh
-docker compose exec app sidectl reset-admin-password
+docker compose exec app siderealctl reset-admin-password
 ```
 
 The command first says what it will do:
@@ -428,7 +428,7 @@ If you press Enter without typing a password, the command makes one up. It print
 Add `-T` to `docker compose exec`, and give the password on the command's input with `--password-stdin`. The command reads the first line and removes its line ending:
 
 ```sh
-printf '%s\n' "$NEW_PASSWORD" | docker compose exec -T app sidectl reset-admin-password --username sam --password-stdin
+printf '%s\n' "$NEW_PASSWORD" | docker compose exec -T app siderealctl reset-admin-password --username sam --password-stdin
 ```
 
 - **No administrator yet:** `--username` is required.
