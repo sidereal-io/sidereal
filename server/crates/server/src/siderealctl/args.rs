@@ -1,7 +1,7 @@
 //! The command line, parsed by hand: one command and two flags.
 
 pub const USAGE: &str = "\
-Usage: sidectl <command> [options]
+Usage: siderealctl <command> [options]
 
 Commands:
   reset-admin-password  Create the administrator, or set a new password
@@ -27,7 +27,7 @@ pub struct Options {
     pub password_stdin: bool,
 }
 
-/// A command line `sidectl` does not accept, with what is wrong with it.
+/// A command line `siderealctl` does not accept, with what is wrong with it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Usage(pub String);
 

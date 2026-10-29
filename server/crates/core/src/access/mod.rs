@@ -1,5 +1,5 @@
 //! Users, their passwords and their sessions. HTTP lives in the server crate;
-//! this module is reachable without it, so `sidectl` can share it.
+//! this module is reachable without it, so `siderealctl` can share it.
 use std::fmt;
 
 mod claim;

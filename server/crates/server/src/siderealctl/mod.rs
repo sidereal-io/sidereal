@@ -1,4 +1,4 @@
-//! `sidectl`, the operator's command line on the box. Every database effect
+//! `siderealctl`, the operator's command line on the box. Every database effect
 //! is a `core` method the HTTP routes could also call.
 use crate::config::DatabaseConfig;
 use args::{Options, Parsed, Usage, USAGE};
@@ -121,7 +121,7 @@ async fn reset_admin_password(
 const UNAVAILABLE: &str = "database unavailable: check that PostgreSQL is running, then try again";
 
 fn usage(err: &mut impl Write, message: &str) -> u8 {
-    let _ = write!(err, "sidectl: {message}\n\n{USAGE}");
+    let _ = write!(err, "siderealctl: {message}\n\n{USAGE}");
     2
 }
 

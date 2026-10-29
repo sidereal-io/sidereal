@@ -3,7 +3,7 @@ name = "sidereal-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-# `sidectl` is a second binary; `cargo run` still means the server.
+# `siderealctl` is a second binary; `cargo run` still means the server.
 default-run = "sidereal-server"
 
 [[bin]]
@@ -11,8 +11,8 @@ name = "sidereal-server"
 path = "src/main.rs"
 
 [[bin]]
-name = "sidectl"
-path = "src/bin/sidectl.rs"
+name = "siderealctl"
+path = "src/bin/siderealctl.rs"
 
 [dependencies]
 sidereal-core = { workspace = true }
