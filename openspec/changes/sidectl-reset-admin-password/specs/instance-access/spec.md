@@ -14,7 +14,7 @@
 
 ### Requirement: The create state creates the one administrator
 
-In the create state the command SHALL create a user with the given username, an argon2 hash of the given password and the role `admin`, print `Created administrator <username>.` on stdout and exit 0. The claim SHALL be closed afterwards, and the administrator SHALL be able to sign in with those credentials. When an administrator appears between the state check and the write, the command SHALL write nothing, print one line on stderr saying that an administrator now exists and to run the command again, and exit 1.
+In the create state the command SHALL create a user with the given username, an argon2 hash of the given password and the role `admin`. It SHALL print `Created administrator <username>.` on stdout and exit 0. The claim SHALL be closed afterwards, and the administrator SHALL be able to sign in with those credentials. When an administrator appears between the state check and the write, the command SHALL write nothing and exit 1. Its one line on stderr SHALL say that an administrator now exists and to run the command again.
 
 #### Scenario: Create from the box
 - **WHEN** no administrator exists and Sam runs `sidectl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` on stdin
@@ -26,7 +26,7 @@ In the create state the command SHALL create a user with the given username, an 
 
 ### Requirement: The reset state sets a new password and ends every session
 
-In the reset state the command SHALL replace the administrator's password hash with an argon2 hash of the given password and delete every row in the `sessions` table, both in one transaction, so no outcome has one without the other. It SHALL print `Reset the password of administrator <username> and ended <n> sessions.` on stdout, with `<n>` the number of rows deleted, and exit 0. A request that carries the cookie of a deleted session SHALL be refused as the requirement "Every API route needs an administrator session" says, whether the server was running during the reset or not.
+In the reset state the command SHALL replace the administrator's password hash with an argon2 hash of the given password, and delete every row in the `sessions` table. Both SHALL happen in one transaction, so no outcome has one without the other. It SHALL print `Reset the password of administrator <username> and ended <n> sessions.` on stdout, with `<n>` the number of rows deleted, and exit 0. A request that carries the cookie of a deleted session SHALL be refused as the requirement "Every API route needs an administrator session" says. This holds whether or not the server was running during the reset.
 
 #### Scenario: Reset while signed in
 - **WHEN** Sam is signed in twice and runs `sidectl reset-admin-password --password-stdin` with `new-horse-battery` on stdin
@@ -38,7 +38,7 @@ In the reset state the command SHALL replace the administrator's password hash w
 
 ### Requirement: Credentials come from the terminal or from the flags
 
-Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. Prompts SHALL be written to stderr, so stdout holds only the state line, a generated password and the result. With `--password-stdin` the command SHALL never prompt. It SHALL read the first line of stdin as the password, without its line ending. In the create state the username SHALL then come from `--username`; without it, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required and exit 1. In either mode, a stdin that closes before an answer SHALL be refused the same way. No refusal in this requirement changes the database.
+Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. Prompts SHALL be written to stderr, so stdout holds only the state line, a generated password and the result. With `--password-stdin` the command SHALL never prompt. It SHALL read the first line of stdin as the password, without its line ending. In the create state the username SHALL then come from `--username`; without it, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required, and exit 1. Without the flag, a stdin that closes before an answer to a prompt SHALL be refused: one line on stderr saying stdin closed before an answer, and exit 1. No refusal in this requirement changes the database.
 
 #### Scenario: Script mode creates the administrator
 - **WHEN** no administrator exists and a script runs `sidectl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` and a line feed on stdin
@@ -66,7 +66,7 @@ Without `--password-stdin` the command SHALL prompt on the terminal. In the crea
 
 ### Requirement: A given username must name the administrator in the reset state
 
-In the reset state, a `--username` that is not the administrator's username SHALL be refused before any change: the command SHALL print one line on stderr naming the administrator and exit 1. A `--username` equal to the administrator's username SHALL be accepted.
+In the reset state, a `--username` that is not the administrator's username SHALL be refused before any change. The command SHALL print one line on stderr naming the administrator and exit 1. A `--username` equal to the administrator's username SHALL be accepted.
 
 #### Scenario: The wrong username
 - **WHEN** the administrator is `sam` and a script runs `sidectl reset-admin-password --username alex --password-stdin` with a valid password
@@ -106,7 +106,7 @@ The command SHALL apply the rules of the requirement "Claimed credentials meet t
 
 ### Requirement: The recovery command uses the server's database settings and never changes the schema
 
-The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings as the server does, with the same errors for a missing or invalid value. It SHALL check that the database holds the current Sidereal schema before it reads the `users` table, and SHALL apply no migration and create no table. When the database is empty or behind, the command SHALL print one line on stderr that names the cause and says to start the server first, and exit 1. For any other database fault, such as a database that is not Sidereal's or a rejected login, it SHALL print the same line the server prints for that fault, and exit 1.
+The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings as the server does, with the same errors for a missing or invalid value. It SHALL check that the database holds the current Sidereal schema before it reads the `users` table. It SHALL apply no migration and create no table. When the database is empty or behind, the command SHALL print one line on stderr that names the cause and says to start the server first, and exit 1. For any other database fault, such as a database that is not Sidereal's or a rejected login, it SHALL print the same line the server prints for that fault, and exit 1.
 
 #### Scenario: An empty database
 - **WHEN** `DATABASE_URL` names an empty database that no server has started against, and a script runs the command with valid credentials

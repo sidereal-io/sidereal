@@ -5,7 +5,7 @@
 - `sidereal-server` has one `[[bin]]`, `main.rs`, which reads the environment through `config.rs` (`DatabaseConfig::from_env`, timeouts, TLS mode, certificate files) and never retains a URL in an error.
 - `DatabaseError` is a `Copy` enum with a fixed label and a fixed action per variant; the install guide's troubleshoot table lists the labels the server can print.
 - The `Dockerfile` builds with `cargo build --release -p sidereal-server`, which compiles every binary target of the package, and copies one binary into `/usr/local/bin`. The container runs as `app` with every capability dropped.
-- Integration tests in `crates/server/tests/` take a fresh database per test from `TestDatabase`, drive the router with `oneshot`, and spawn binaries through `CARGO_BIN_EXE_<name>`, which Cargo sets for every binary of the package.
+- Integration tests in `crates/server/tests/` take a fresh database per test from `TestDatabase` and drive the router with `oneshot`. They spawn binaries through `CARGO_BIN_EXE_<name>`, which Cargo sets for every binary of the package.
 - `libc` is already a workspace dependency, used by `core`. The server crate has no terminal or argument-parsing dependency.
 - Constraints: `core` stays domain-agnostic; `packs/astro` is untouched; `just check` stays green; the guide follows plain language.
 
@@ -27,13 +27,13 @@
 
 ## Test Seams
 
-- **Primary test seam:** the spawned `sidectl` binary, through `CARGO_BIN_EXE_sidectl`, with stdin, stdout and stderr piped, against a `TestDatabase`, in a new `crates/server/tests/sidectl.rs`. The same test checks the effect through the in-process router (`app_with_database` with `oneshot`), which reads the database on every request: the claim state, sign-in with the old and the new password, and a cookie whose session the reset deleted. Both states, every refusal, help and usage errors run here. The generated password needs a terminal, so its scenarios run at the unit seam below with the fake terminal; the pipe seam proves that an empty answer through a pipe is refused. The race runs here too: the binary prints its state line and waits at the username prompt while the test claims through the router, then the test answers the prompts.
-- **Existing seams reused:** `core`'s own `#[tokio::test]` modules against `TestDatabase` for the new `Database` methods and for opening a database without migrating; unit tests in the server crate's `sidectl` module with an in-memory terminal for the prompt sequence and the argument parser; `scripts/instance-verify.sh` for the image scenario.
+- **Primary test seam:** a new `crates/server/tests/sidectl.rs`, against a `TestDatabase`, with two ways in. The first spawns the `sidectl` binary through `CARGO_BIN_EXE_sidectl` with stdin, stdout and stderr piped. Both states, every refusal, help and usage errors run this way. The race runs this way too: the binary prints its state line and waits at the username prompt while the test claims through the router, then the test answers the prompts. The second calls `sidereal_server::sidectl::run` in-process with a fake `Terminal` that says it is interactive, for the scenarios that need a terminal: the generated password and the hidden prompts. Both ways check the effect through the in-process router, `app_with_database` with `oneshot`, which reads the database on every request. It checks the claim state, sign-in with the old and the new password, and a cookie whose session the reset deleted.
+- **Existing seams reused:** `core`'s own `#[tokio::test]` modules against `TestDatabase`, for the new `Database` methods and for opening a database without migrating. Unit tests in the server crate's `sidectl` module, with the same fake terminal and no database, for the prompt sequence and the argument parser. `scripts/instance-verify.sh` for the image scenario.
 
 ## Scrutiny Tier & Blast Radius
 
 - **Tier:** high
-- **Blast radius:** `core::access` gains a password reset that deletes every session and a public credential-rule check; `core::database` gains a second way to construct `Database` and one `DatabaseError` variant; the server crate gains a binary and a module; the `Dockerfile` copies a second binary into the image; `docs/install.md` gains a section; `instance-verify.sh` gains a check. The command creates the administrator and revokes every session, so it is a trust boundary of its own.
+- **Blast radius:** `core::access` gains a password reset that deletes every session, and a public credential-rule check. `core::database` gains a second way to construct `Database` and one `DatabaseError` variant. The server crate gains a binary and a module. The `Dockerfile` copies a second binary into the image. `docs/install.md` gains a section and `instance-verify.sh` a check. The command creates the administrator and revokes every session, so it is a trust boundary of its own.
 
 ## Decisions
 
@@ -47,7 +47,7 @@
 
 5. **`core::access` gains three things: the administrator lookup, the reset, and public credential checks.**
    - `Database::administrator() -> Result<Option<String>, Unavailable>` returns the administrator's username. It is the state check (D6) and the username check (D4). `claim_open` stays as it is for the HTTP route.
-   - `Database::reset_admin_password(password) -> Result<Reset, ResetError>` hashes first, on the blocking pool, then runs one transaction: `UPDATE public.users SET password_hash = $1 WHERE role = 'admin' RETURNING username`, then `DELETE FROM public.sessions`, then commit. `Reset` carries the username and the number of sessions deleted. An update that touches no row rolls back and answers `ResetError::NoAdministrator`; a password that breaks the rule answers `ResetError::Invalid` before hashing; a driver error answers `ResetError::Unavailable`. The transaction is what makes D8 true: the new hash and the empty table appear together or not at all.
+   - `Database::reset_admin_password(password) -> Result<Reset, ResetError>` hashes first, on the blocking pool. Then it runs one transaction: `UPDATE public.users SET password_hash = $1 WHERE role = 'admin' RETURNING username`, then `DELETE FROM public.sessions`, then commit. `Reset` carries the username and the number of sessions deleted. An update that touches no row rolls back and answers `ResetError::NoAdministrator`. A password that breaks the rule answers `ResetError::Invalid` before hashing. A driver error answers `ResetError::Unavailable`. The transaction is what makes D8 true: the new hash and the empty table appear together or not at all.
    - `follows_length_rules` splits into `check_username(&str) -> Result<(), CredentialRule>` and `check_password(&str) -> Result<(), CredentialRule>`, public, where `CredentialRule` names the rule broken (`UsernameLength`, `UsernameWhitespace`, `PasswordLength`) and implements `Display` with the rule's text. `claim` keeps calling them and still answers `ClaimError::Invalid` to the HTTP layer. `reset_admin_password` calls `check_password`. `sidectl` calls both before it repeats a password prompt, so its stderr can name the rule, as the spec asks.
    - `generate_password()` returns 24 characters chosen uniformly from the 62 ASCII letters and digits with `rand`'s secure generator, which `core` already uses for tokens. It lives in `core` because `rand` is a `core` dependency and the server crate has none.
 
@@ -57,12 +57,12 @@
    3. Call `administrator()` and print the state line.
    4. Resolve the username. In the create state it is `--username`, or the `Username:` prompt. Under `--password-stdin` with no `--username`, the create state is a usage error: usage on stderr and exit 2, even though it is found after the state line. In the reset state a `--username` that differs from the administrator is refused with exit 1.
    5. Check the username with `check_username`.
-   6. Read the password: the first stdin line under `--password-stdin`, or the `New password:` prompt. On stdin, an empty or missing line is refused. At the prompt, an empty answer becomes a generated password and skips the repeat, but only when stdin is a terminal; through a pipe an empty answer is refused like an empty stdin line.
+   6. Read the password: the first stdin line under `--password-stdin`, or the `New password:` prompt. On stdin, an empty or missing line is refused. At the prompt on a terminal, an empty answer becomes a generated password and skips the repeat. Through a pipe, an empty answer is refused like an empty stdin line.
    7. Check the password with `check_password`. At the prompt this happens before `Repeat password:`, so a short password is named as such and never reaches the repeat. Then the `Repeat password:` prompt follows and a mismatch is refused.
-   8. Print `Generated password: <password>` when one was generated.
-   9. Make one `core` call, `claim` or `reset_admin_password`, then print the success line.
+   8. Make one `core` call, `claim` or `reset_admin_password`.
+   9. When the call succeeded and a password was generated, print `Generated password: <password>`. Then print the success line. A generated password that was never stored is never printed, so a refusal in step 8 leaves nothing to mislead Sam.
 
-   `ClaimError::Claimed` from `claim` is the race (D9) and prints `an administrator now exists; run the command again to set its password`. Apart from the usage error in step 4, every failure after the state line is one stderr line and exit 1. Nothing in the module formats a password, a hash or a URL, and the `DatabaseError` and `Unavailable` values it prints carry none.
+   `ClaimError::Claimed` from `claim` is the race (D9). It prints `an administrator now exists; run the command again to set its password`. Apart from the usage error in step 4, every failure after the state line is one stderr line and exit 1. Nothing in the module formats a password, a hash or a URL, and the `DatabaseError` and `Unavailable` values it prints carry none.
 
 7. **`--password-stdin` reads the first line only and strips one line ending.** `\n` or `\r\n` is removed once; nothing else is trimmed, so a password with a leading space stays as typed. An absent line, from an empty stdin, and an empty line are both refused with `a password is required on stdin` and exit 1. A script must be explicit; only the terminal prompt generates a password. Alternative: read the whole of stdin. Rejected: `docker login` reads one line, and a file with a trailing newline is the common case. Alternative: generate on an empty line, as the prompt does. Rejected: a secret source that evaluates to empty would silently set a random password and end every session.
 
@@ -74,13 +74,13 @@
 
 ## Risks / Trade-offs
 
-- [Echo stays off after a crash between `tcsetattr` and the guard's drop] → the guard is created in the same statement that clears echo, and the read happens inside its scope; a test checks that the guard restores the saved attributes on drop.
-- [A stdin that is a terminal but `tcgetattr` fails for another reason reads the password in the clear] → the fallback is used only when `tcgetattr` reports `ENOTTY`; any other error is a refusal with exit 1.
-- [The reset leaves a browser with a cookie the server has forgotten] → the guard clears a cookie that matches no row on the next request, as the `A refused session clears the stale cookie` requirement says; the guide says every browser is signed out.
-- [`Database::open` races a server that is migrating] → the server holds the startup lock while migrating, and `open` takes none; it reads a consistent snapshot in a read-only transaction, as `probe` does, and reports `Pending` until the migration commits. The guide says to start the server first.
-- [A second `DatabaseError` variant is read by the server's `match` arms] → the variant is matched explicitly where `DatabaseError` is matched exhaustively; `clippy -D warnings` catches a missed arm.
-- [The generated password is printed on a terminal that is being recorded or scrolled back] → it is what the user chose over Immich's behavior (D5); the guide says to change it afterwards if the terminal is shared.
-- [The integration test drives interactive prompts through a pipe, which is not a terminal] → the fallback in decision 2 is the designed behavior for a pipe, not a test-only path, and the unit tests cover the sequence with a fake terminal in both modes.
+- [Echo stays off after a crash between `tcsetattr` and the guard's drop] → the guard is created in the same statement that clears echo, and the read happens inside its scope. A test checks that the guard restores the saved attributes on drop.
+- [A stdin that is a terminal but `tcgetattr` fails for another reason reads the password in the clear] → the fallback is used only when `tcgetattr` reports `ENOTTY`. Any other error is a refusal with exit 1.
+- [The reset leaves a browser with a cookie the server has forgotten] → the guard clears a cookie that matches no row on the next request, as the `A refused session clears the stale cookie` requirement says. The guide says every browser is signed out.
+- [`Database::open` races a server that is migrating] → the server holds the startup lock while migrating, and `open` takes none. It reads a consistent snapshot in a read-only transaction, as `probe` does, and reports `Pending` until the migration commits. The guide says to start the server first.
+- [A second `DatabaseError` variant is read by the server's `match` arms] → the variant is matched explicitly where `DatabaseError` is matched exhaustively. `clippy -D warnings` catches a missed arm.
+- [The generated password is printed on a terminal that is being recorded or scrolled back] → it is what the user chose, following Immich (D5). The guide says to change it afterwards if the terminal is shared.
+- [The integration test drives interactive prompts through a pipe, which is not a terminal] → the fallback in decision 2 is the designed behavior for a pipe, not a test-only path. The in-process tests cover the terminal case with a fake terminal.
 - [A script runs the command without `--password-stdin` and with a closed stdin] → a closed stdin before an answer is a refusal (decision 2), so the run prints the state line and changes nothing.
 
 ## Migration & Rollback
