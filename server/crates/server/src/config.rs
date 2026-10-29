@@ -185,6 +185,30 @@ pub struct Origin {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AllowedOrigins(Arc<[Origin]>);
 
+impl AllowedOrigins {
+    /// Whether `origin`, an `Origin` value or a whole `Referer`, is allowed
+    /// for a request whose `Host` header is `host`. The scheme is not
+    /// compared against `host`, which carries none. A value that does not
+    /// parse, `null` included, is not allowed.
+    pub fn admit(&self, origin: &str, host: Option<&str>) -> bool {
+        let Some(origin) = url::Url::parse(origin)
+            .ok()
+            .and_then(|url| Origin::from_url(&url))
+        else {
+            return false;
+        };
+        let own = host.and_then(host_origin);
+        own.is_some_and(|own| own.host == origin.host && own.port == origin.port)
+            || self.0.contains(&origin)
+    }
+}
+
+fn host_origin(host: &str) -> Option<Origin> {
+    let url = url::Url::parse(&format!("http://{host}")).ok()?;
+    let bare = url.username().is_empty() && url.password().is_none() && url.path() == "/";
+    bare.then(|| Origin::from_url(&url)).flatten()
+}
+
 impl From<Vec<Origin>> for AllowedOrigins {
     fn from(origins: Vec<Origin>) -> Self {
         Self(origins.into())
@@ -526,6 +550,76 @@ mod tests {
             assert!(!message.contains("photos.example"), "{item}: {message}");
             assert!(!message.contains("distinctive"), "{item}: {message}");
         }
+    }
+
+    fn listed(value: &str) -> AllowedOrigins {
+        allowed_origins(Some(OsStr::new(value))).unwrap()
+    }
+
+    #[test]
+    fn origin_matches_the_host_header() {
+        let none = AllowedOrigins::default();
+        assert!(none.admit("http://localhost:5000", Some("localhost:5000")));
+        assert!(!none.admit("http://localhost:5001", Some("localhost:5000")));
+        assert!(!none.admit("http://evil.example", Some("localhost:5000")));
+    }
+
+    #[test]
+    fn origin_matches_ignoring_case_and_default_ports() {
+        let none = AllowedOrigins::default();
+        for (origin, host) in [
+            ("https://photos.example:443", "photos.example"),
+            ("https://photos.example", "photos.example:443"),
+            ("https://Photos.Example", "photos.example"),
+            ("https://photos.example", "PHOTOS.example"),
+            ("http://photos.example:80", "photos.example"),
+        ] {
+            assert!(none.admit(origin, Some(host)), "{origin} {host}");
+        }
+    }
+
+    #[test]
+    fn origin_matches_any_scheme_against_the_host_header() {
+        let none = AllowedOrigins::default();
+        assert!(none.admit("http://photos.example", Some("photos.example")));
+        assert!(none.admit("https://photos.example", Some("photos.example")));
+    }
+
+    #[test]
+    fn origin_matches_the_origin_part_of_a_referer() {
+        let none = AllowedOrigins::default();
+        assert!(none.admit(
+            "http://localhost:5000/sign-in?next=/",
+            Some("localhost:5000")
+        ));
+        assert!(!none.admit("http://evil.example/", Some("localhost:5000")));
+    }
+
+    #[test]
+    fn origin_matches_a_listed_origin_on_scheme_host_and_port() {
+        let list = listed("https://photos.example, http://localhost:5173");
+        assert!(list.admit("https://photos.example", Some("app:5000")));
+        assert!(list.admit("https://photos.example:443", None));
+        assert!(list.admit("http://localhost:5173", Some("app:5000")));
+        assert!(!list.admit("http://photos.example", Some("app:5000")));
+        assert!(!list.admit("https://photos.example:8443", Some("app:5000")));
+        assert!(!list.admit("http://localhost:5174", Some("app:5000")));
+    }
+
+    #[test]
+    fn origin_matches_nothing_when_unparsable() {
+        let list = listed("https://photos.example");
+        for origin in [
+            "null",
+            "",
+            "photos.example",
+            "not a url",
+            "file:///etc/passwd",
+        ] {
+            assert!(!list.admit(origin, Some("photos.example")), "{origin}");
+        }
+        assert!(!list.admit("http://localhost:5000", None));
+        assert!(!list.admit("http://localhost:5000", Some("local host")));
     }
 
     #[test]
