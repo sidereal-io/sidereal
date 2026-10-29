@@ -1,6 +1,6 @@
 ## 1. Core contracts
 
-- [ ] 1.1 [medium] `Database::open` returns a handle when the schema is current, answers `DatabaseError::Pending` for an empty or behind database, passes other preflight errors through, and creates no table (verify: cargo test -p sidereal-core --manifest-path server/Cargo.toml open_)
+- [x] 1.1 [medium] `Database::open` returns a handle when the schema is current, answers `DatabaseError::Pending` for an empty or behind database, passes other preflight errors through, and creates no table (verify: cargo test -p sidereal-core --manifest-path server/Cargo.toml open_) (✓ cargo test -p sidereal-core open_ passed)
 - [ ] 1.2 [easy] [parallel] `check_username` and `check_password` name the rule broken, and `claim` still answers `Invalid` through them (verify: cargo test -p sidereal-core --manifest-path server/Cargo.toml credential_rule)
 - [ ] 1.3 [medium] `Database::administrator` names the administrator, and `reset_admin_password` replaces the hash and deletes every session in one transaction, answering `NoAdministrator`, `Invalid` and `Unavailable` as designed (verify: cargo test -p sidereal-core --manifest-path server/Cargo.toml reset_admin_password)
 - [ ] 1.4 [easy] [parallel] `generate_password` returns 24 ASCII letters and digits and differs between calls (verify: cargo test -p sidereal-core --manifest-path server/Cargo.toml generate_password)
