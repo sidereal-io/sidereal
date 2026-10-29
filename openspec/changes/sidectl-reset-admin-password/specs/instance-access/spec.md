@@ -2,14 +2,14 @@
 
 ### Requirement: The recovery command follows the database's state
 
-`sidectl reset-admin-password` SHALL read from PostgreSQL whether an administrator exists, never from memory or a setting. When none exists the command SHALL be in the create state; otherwise in the reset state. Before it asks for anything, it SHALL print one line on stdout: `No administrator exists. Creating one.` in the create state, or `Administrator <username> exists. Setting a new password and ending every session.` in the reset state, naming the administrator.
+`siderealctl reset-admin-password` SHALL read from PostgreSQL whether an administrator exists, never from memory or a setting. When none exists the command SHALL be in the create state; otherwise in the reset state. Before it asks for anything, it SHALL print one line on stdout: `No administrator exists. Creating one.` in the create state, or `Administrator <username> exists. Setting a new password and ending every session.` in the reset state, naming the administrator.
 
 #### Scenario: Unclaimed instance
-- **WHEN** no administrator exists and Sam runs `sidectl reset-admin-password`
+- **WHEN** no administrator exists and Sam runs `siderealctl reset-admin-password`
 - **THEN** the first line on stdout is `No administrator exists. Creating one.`
 
 #### Scenario: Claimed instance
-- **WHEN** an administrator named `sam` exists and Sam runs `sidectl reset-admin-password`
+- **WHEN** an administrator named `sam` exists and Sam runs `siderealctl reset-admin-password`
 - **THEN** the first line on stdout is `Administrator sam exists. Setting a new password and ending every session.`
 
 ### Requirement: The create state creates the one administrator
@@ -17,7 +17,7 @@
 In the create state the command SHALL create a user with the given username, an argon2 hash of the given password and the role `admin`. It SHALL print `Created administrator <username>.` on stdout and exit 0. The claim SHALL be closed afterwards, and the administrator SHALL be able to sign in with those credentials. When an administrator appears between the state check and the write, the command SHALL write nothing and exit 1. Its one line on stderr SHALL say that an administrator now exists and to run the command again.
 
 #### Scenario: Create from the box
-- **WHEN** no administrator exists and Sam runs `sidectl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` on stdin
+- **WHEN** no administrator exists and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` on stdin
 - **THEN** the exit status is 0, stdout holds `Created administrator sam.`, `GET /api/claim` answers `{"open":false}`, and `POST /api/session` with username `sam` and that password answers 200
 
 #### Scenario: The claim closes between the check and the write
@@ -29,7 +29,7 @@ In the create state the command SHALL create a user with the given username, an 
 In the reset state the command SHALL replace the administrator's password hash with an argon2 hash of the given password, and delete every row in the `sessions` table. Both SHALL happen in one transaction, so no outcome has one without the other. It SHALL print `Reset the password of administrator <username> and ended <n> sessions.` on stdout, with `<n>` the number of rows deleted, and exit 0. A request that carries the cookie of a deleted session SHALL be refused as the requirement "Every API route needs an administrator session" says. This holds whether or not the server was running during the reset.
 
 #### Scenario: Reset while signed in
-- **WHEN** Sam is signed in twice and runs `sidectl reset-admin-password --password-stdin` with `new-horse-battery` on stdin
+- **WHEN** Sam is signed in twice and runs `siderealctl reset-admin-password --password-stdin` with `new-horse-battery` on stdin
 - **THEN** the exit status is 0, stdout holds `Reset the password of administrator sam and ended 2 sessions.`, the `sessions` table is empty, `GET /api/session` with either old cookie answers 401, `POST /api/session` with the old password answers 401, and `POST /api/session` with `new-horse-battery` answers 200
 
 #### Scenario: Reset with no session
@@ -41,23 +41,23 @@ In the reset state the command SHALL replace the administrator's password hash w
 Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. Prompts SHALL be written to stderr, so stdout holds only the state line, a generated password and the result. With `--password-stdin` the command SHALL never prompt. It SHALL read the first line of stdin as the password, without its line ending. In the create state the username SHALL then come from `--username`; without it, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required, and exit 1. Without the flag, a stdin that closes before an answer to a prompt SHALL be refused: one line on stderr saying stdin closed before an answer, and exit 1. No refusal in this requirement changes the database.
 
 #### Scenario: Script mode creates the administrator
-- **WHEN** no administrator exists and a script runs `sidectl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` and a line feed on stdin
+- **WHEN** no administrator exists and a script runs `siderealctl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` and a line feed on stdin
 - **THEN** the exit status is 0 and the stored hash matches `correct-horse-battery`, not `correct-horse-battery` followed by a line feed
 
 #### Scenario: Script mode without a username on an unclaimed instance
-- **WHEN** no administrator exists and a script runs `sidectl reset-admin-password --password-stdin`
+- **WHEN** no administrator exists and a script runs `siderealctl reset-admin-password --password-stdin`
 - **THEN** the exit status is 2, stderr names `--username`, and the `users` table is empty
 
 #### Scenario: Script mode with an empty line
-- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password --password-stdin` with a single line feed on stdin
+- **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password --password-stdin` with a single line feed on stdin
 - **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: Script mode with a closed stdin
-- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password --password-stdin` with stdin closed and nothing on it
+- **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password --password-stdin` with stdin closed and nothing on it
 - **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: A closed stdin without the flag
-- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password` with stdin closed, as `docker compose exec -T` with no input does
+- **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password` with stdin closed, as `docker compose exec -T` with no input does
 - **THEN** the exit status is 1, stdout holds only the state line, stderr says stdin closed, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: The repeated password differs
@@ -69,11 +69,11 @@ Without `--password-stdin` the command SHALL prompt on the terminal. In the crea
 In the reset state, a `--username` that is not the administrator's username SHALL be refused before any change. The command SHALL print one line on stderr naming the administrator and exit 1. A `--username` equal to the administrator's username SHALL be accepted.
 
 #### Scenario: The wrong username
-- **WHEN** the administrator is `sam` and a script runs `sidectl reset-admin-password --username alex --password-stdin` with a valid password
+- **WHEN** the administrator is `sam` and a script runs `siderealctl reset-admin-password --username alex --password-stdin` with a valid password
 - **THEN** the exit status is 1, stderr names `sam`, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: The right username
-- **WHEN** the administrator is `sam` and a script runs `sidectl reset-admin-password --username sam --password-stdin` with a valid password
+- **WHEN** the administrator is `sam` and a script runs `siderealctl reset-admin-password --username sam --password-stdin` with a valid password
 - **THEN** the exit status is 0
 
 ### Requirement: An empty answer at the password prompt is generated
@@ -85,7 +85,7 @@ When the answer to `New password:` is an empty line, the command SHALL generate 
 - **THEN** the command does not ask `Repeat password:`, the exit status is 0, stdout holds one line `Generated password: <p>` where `<p>` is 24 ASCII letters and digits, that password appears once in stdout and never in stderr, and `POST /api/session` with `<p>` answers 200
 
 #### Scenario: Empty answer through a pipe
-- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password` without `--password-stdin`, with a single line feed piped to stdin
+- **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password` without `--password-stdin`, with a single line feed piped to stdin
 - **THEN** the exit status is 1, stderr says a password is required, no `Generated password:` line is printed, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: Empty answer in the create state
@@ -130,12 +130,12 @@ No stdout or stderr line of the command SHALL hold a password it was given, a pa
 
 ### Requirement: The command line is checked before anything runs
 
-`sidectl --help` and `sidectl reset-admin-password --help` SHALL print the usage on stdout and exit 0 without touching the database. No command, an unknown command, an unknown flag or a flag without its value SHALL print the usage on stderr and exit 2 without touching the database.
+`siderealctl --help` and `siderealctl reset-admin-password --help` SHALL print the usage on stdout and exit 0 without touching the database. No command, an unknown command, an unknown flag or a flag without its value SHALL print the usage on stderr and exit 2 without touching the database.
 
 #### Scenario: Help
-- **WHEN** a script runs `sidectl --help` with `DATABASE_URL` unset
+- **WHEN** a script runs `siderealctl --help` with `DATABASE_URL` unset
 - **THEN** the exit status is 0 and stdout names `reset-admin-password`, `--username` and `--password-stdin`
 
 #### Scenario: Unknown command
-- **WHEN** a script runs `sidectl rotate-keys`
+- **WHEN** a script runs `siderealctl rotate-keys`
 - **THEN** the exit status is 2 and stderr holds the usage

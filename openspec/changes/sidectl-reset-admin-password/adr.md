@@ -23,7 +23,7 @@ ADR review completed for this change. Every decision in design.md was tested aga
 - [ADR-012: Embedded Scripting Engine](../../../docs/decisions/ADR-012-embedded-scripting-engine.md), proposed. Not in force and not relied on.
 - [ADR-013: Development Environment](../../../docs/decisions/ADR-013-development-environment.md), accepted. No new crate, so the Nix shell is unchanged.
 - [ADR-014: Managed Storage Identity](../../../docs/decisions/ADR-014-managed-storage-identity.md), accepted. The command never pairs or checks storage.
-- [ADR-015: Opaque Database-Backed Sessions](../../../docs/decisions/ADR-015-opaque-database-sessions.md), accepted. Its Consequences name administrator recovery as a row delete that `sidectl`, a separate process, can perform. The reset is that delete.
+- [ADR-015: Opaque Database-Backed Sessions](../../../docs/decisions/ADR-015-opaque-database-sessions.md), accepted. Its Consequences name administrator recovery as a row delete that `siderealctl`, a separate process, can perform. The reset is that delete.
 
 ## New Durable ADRs Created
 
