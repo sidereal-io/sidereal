@@ -19,7 +19,7 @@
 
 ## 4. Integration [depends-on: 3]
 
-- [ ] 4.1 [complex] The spawned binary against a fresh database covers every remaining scenario of the instance-access delta: both states through `--password-stdin`, sessions gone, the line ending stripped, the wrong and the right `--username`, a short password and a padded username, an empty and a closed stdin in both modes, the race, an empty database, a foreign database, a missing `DATABASE_URL`, secrets absent from output, help and an unknown command (verify: cargo test -p sidereal-server --manifest-path server/Cargo.toml --test sidectl)
+- [x] 4.1 [complex] The spawned binary against a fresh database covers every remaining scenario of the instance-access delta: both states through `--password-stdin`, sessions gone, the line ending stripped, the wrong and the right `--username`, a short password and a padded username, an empty and a closed stdin in both modes, the race, an empty database, a foreign database, a missing `DATABASE_URL`, secrets absent from output, help and an unknown command (verify: cargo test -p sidereal-server --manifest-path server/Cargo.toml --test sidectl) (✓ cargo test -p sidereal-server --test sidectl passed, 34 tests)
 - [ ] 4.2 [easy] The whole gate is green, including the arch lint and the web checks (verify: just check)
 
 ## Deviations Ledger

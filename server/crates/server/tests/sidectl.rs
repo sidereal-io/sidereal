@@ -333,3 +333,492 @@ mod in_process {
         );
     }
 }
+
+mod spawned {
+    use super::*;
+    use sqlx::{Connection, Executor, PgConnection};
+    use std::{
+        io::{BufRead, BufReader, Read, Write},
+        process::{Child, Command, Stdio},
+    };
+
+    struct Run {
+        status: i32,
+        out: String,
+        err: String,
+    }
+
+    /// The URL `sidectl` reads: the test role's URL, naming this test's database.
+    fn url(db: &TestDatabase) -> String {
+        let mut url = url::Url::parse(&std::env::var("TEST_DATABASE_URL").unwrap()).unwrap();
+        url.set_path(db.options.get_database().unwrap());
+        url.to_string()
+    }
+
+    fn start(url: Option<&str>, args: &[&str], stdin: Stdio) -> Child {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_sidectl"));
+        command
+            .env_clear()
+            .args(args)
+            .stdin(stdin)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Some(url) = url {
+            command.env("DATABASE_URL", url);
+        }
+        command.spawn().unwrap()
+    }
+
+    fn finish(child: Child) -> Run {
+        let output = child.wait_with_output().unwrap();
+        Run {
+            status: output.status.code().unwrap(),
+            out: String::from_utf8(output.stdout).unwrap(),
+            err: String::from_utf8(output.stderr).unwrap(),
+        }
+    }
+
+    /// Run `sidectl` with `input` on stdin, or with stdin closed and empty.
+    fn sidectl(url: Option<&str>, args: &[&str], input: Option<&str>) -> Run {
+        let Some(input) = input else {
+            return finish(start(url, args, Stdio::null()));
+        };
+        let mut child = start(url, args, Stdio::piped());
+        // The command may refuse before it reads; a closed pipe is fine then.
+        let _ = child.stdin.take().unwrap().write_all(input.as_bytes());
+        finish(child)
+    }
+
+    const RESET: &[&str] = &["reset-admin-password", "--password-stdin"];
+
+    fn reset(db: &TestDatabase, input: Option<&str>) -> Run {
+        sidectl(Some(&url(db)), RESET, input)
+    }
+
+    async fn connection(db: &TestDatabase) -> PgConnection {
+        PgConnection::connect_with(&db.options).await.unwrap()
+    }
+
+    /// Every user and every session, to show a refusal changed nothing.
+    async fn snapshot(db: &TestDatabase) -> String {
+        sqlx::query_scalar(
+            "SELECT (SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY id), '[]') FROM public.users u)::text \
+             || (SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY token_hash), '[]') FROM public.sessions s)::text",
+        )
+        .fetch_one(&mut connection(db).await)
+        .await
+        .unwrap()
+    }
+
+    async fn count(db: &TestDatabase, table: &str) -> i64 {
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT count(*) FROM public.{table}"
+        )))
+        .fetch_one(&mut connection(db).await)
+        .await
+        .unwrap()
+    }
+
+    /// A claimed instance whose administrator `sam` is signed in once.
+    async fn claimed(db: &TestDatabase) {
+        let app = router(db).await;
+        claim(&app, "sam", PASSWORD).await;
+        signed_in(&app).await;
+    }
+
+    #[tokio::test]
+    async fn spawned_create_state_creates_the_administrator() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        let run = sidectl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                "sam",
+                "--password-stdin",
+            ],
+            Some("correct-horse-battery"),
+        );
+        assert_eq!(run.status, 0, "{}", run.err);
+        assert_eq!(
+            run.out,
+            "No administrator exists. Creating one.\nCreated administrator sam.\n"
+        );
+        assert_eq!(claim_state(&app).await, r#"{"open":false}"#);
+        assert_eq!(sign_in(&app, "sam", PASSWORD).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn spawned_reset_state_sets_the_password_and_ends_every_session() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        let cookies = [signed_in(&app).await, signed_in(&app).await];
+        let run = reset(&db, Some("new-horse-battery\n"));
+        assert_eq!(run.status, 0, "{}", run.err);
+        assert_eq!(
+            run.out,
+            "Administrator sam exists. Setting a new password and ending every session.\n\
+             Reset the password of administrator sam and ended 2 sessions.\n"
+        );
+        assert_eq!(count(&db, "sessions").await, 0);
+        for cookie in &cookies {
+            let response = send_with(&app, "GET", "/api/session", None, Some(cookie)).await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+        assert_eq!(
+            sign_in(&app, "sam", PASSWORD).await,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(sign_in(&app, "sam", NEW_PASSWORD).await, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn spawned_reset_with_no_session_ends_none() {
+        let db = TestDatabase::new();
+        claim(&router(&db).await, "sam", PASSWORD).await;
+        let run = reset(&db, Some("new-horse-battery\n"));
+        assert_eq!(run.status, 0, "{}", run.err);
+        assert!(run.out.ends_with("ended 0 sessions.\n"), "{}", run.out);
+    }
+
+    #[tokio::test]
+    async fn spawned_password_stdin_strips_one_line_ending() {
+        for input in ["new-horse-battery\n", "new-horse-battery\r\n"] {
+            let db = TestDatabase::new();
+            let app = router(&db).await;
+            claim(&app, "sam", PASSWORD).await;
+            assert_eq!(reset(&db, Some(input)).status, 0);
+            assert_eq!(
+                sign_in(&app, "sam", NEW_PASSWORD).await,
+                StatusCode::OK,
+                "{input:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn spawned_password_stdin_keeps_surrounding_spaces() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        assert_eq!(reset(&db, Some(" new-horse-battery \n")).status, 0);
+        assert_eq!(
+            sign_in(&app, "sam", " new-horse-battery ").await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn spawned_a_username_that_is_not_the_administrator_changes_nothing() {
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let before = snapshot(&db).await;
+        let run = sidectl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                "alex",
+                "--password-stdin",
+            ],
+            Some("new-horse-battery\n"),
+        );
+        assert_eq!(run.status, 1);
+        assert!(run.err.contains("sam"), "{}", run.err);
+        assert_eq!(snapshot(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn spawned_the_administrators_username_is_accepted() {
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let run = sidectl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                "sam",
+                "--password-stdin",
+            ],
+            Some("new-horse-battery\n"),
+        );
+        assert_eq!(run.status, 0, "{}", run.err);
+    }
+
+    #[tokio::test]
+    async fn spawned_a_short_password_changes_nothing() {
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let before = snapshot(&db).await;
+        let run = reset(&db, Some("short\n"));
+        assert_eq!(run.status, 1);
+        assert_eq!(run.err, "password must be 8 to 256 bytes\n");
+        assert_eq!(snapshot(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn spawned_a_padded_username_creates_nothing() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let run = sidectl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                " sam",
+                "--password-stdin",
+            ],
+            Some("correct-horse-battery\n"),
+        );
+        assert_eq!(run.status, 1);
+        assert!(run.err.starts_with("username "), "{}", run.err);
+        assert_eq!(count(&db, "users").await, 0);
+    }
+
+    #[tokio::test]
+    async fn spawned_password_stdin_refuses_an_empty_line_or_no_input() {
+        for input in [Some("\n"), Some(""), None] {
+            let db = TestDatabase::new();
+            claimed(&db).await;
+            let before = snapshot(&db).await;
+            let run = reset(&db, input);
+            assert_eq!(run.status, 1, "{input:?}");
+            assert_eq!(run.err, "a password is required on stdin\n", "{input:?}");
+            assert_eq!(snapshot(&db).await, before, "{input:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn spawned_a_closed_stdin_at_a_prompt_changes_nothing() {
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let before = snapshot(&db).await;
+        let run = sidectl(Some(&url(&db)), &["reset-admin-password"], None);
+        assert_eq!(run.status, 1);
+        assert_eq!(
+            run.out,
+            "Administrator sam exists. Setting a new password and ending every session.\n"
+        );
+        assert!(
+            run.err.ends_with("stdin closed before an answer\n"),
+            "{}",
+            run.err
+        );
+        assert_eq!(snapshot(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn spawned_an_empty_answer_through_a_pipe_is_refused() {
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let before = snapshot(&db).await;
+        let run = sidectl(Some(&url(&db)), &["reset-admin-password"], Some("\n"));
+        assert_eq!(run.status, 1);
+        assert!(run.err.ends_with("a password is required\n"), "{}", run.err);
+        assert!(!run.out.contains("Generated password"));
+        assert_eq!(snapshot(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn spawned_a_repeat_that_differs_changes_nothing() {
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let before = snapshot(&db).await;
+        let run = sidectl(
+            Some(&url(&db)),
+            &["reset-admin-password"],
+            Some("correct-horse-battery\ncorrect-horse-batery\n"),
+        );
+        assert_eq!(run.status, 1);
+        assert!(run.err.ends_with("passwords do not match\n"), "{}", run.err);
+        assert_eq!(snapshot(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn spawned_prompts_go_to_stderr() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let run = sidectl(
+            Some(&url(&db)),
+            &["reset-admin-password"],
+            Some("sam\ncorrect-horse-battery\ncorrect-horse-battery\n"),
+        );
+        assert_eq!(run.status, 0, "{}", run.err);
+        assert_eq!(
+            run.out,
+            "No administrator exists. Creating one.\nCreated administrator sam.\n"
+        );
+        assert_eq!(run.err, "Username: New password: Repeat password: ");
+    }
+
+    #[tokio::test]
+    async fn spawned_password_stdin_before_the_claim_needs_a_username() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let run = reset(&db, Some("correct-horse-battery\n"));
+        assert_eq!(run.status, 2);
+        assert!(run.err.contains("--username"), "{}", run.err);
+        assert_eq!(count(&db, "users").await, 0);
+    }
+
+    #[tokio::test]
+    async fn spawned_a_claim_between_the_check_and_the_write_wins() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        let mut child = start(Some(&url(&db)), &["reset-admin-password"], Stdio::piped());
+        let mut out = BufReader::new(child.stdout.take().unwrap());
+        let mut state = String::new();
+        out.read_line(&mut state).unwrap();
+        assert_eq!(state, "No administrator exists. Creating one.\n");
+        // The command now waits at the username prompt.
+        claim(&app, "alex", PASSWORD).await;
+        let mut stdin = child.stdin.take().unwrap();
+        stdin
+            .write_all(b"sam\ncorrect-horse-battery\ncorrect-horse-battery\n")
+            .unwrap();
+        drop(stdin);
+        let mut rest = String::new();
+        out.read_to_string(&mut rest).unwrap();
+        let run = finish(child);
+        assert_eq!(run.status, 1);
+        assert_eq!(rest, "");
+        assert!(
+            run.err.ends_with(
+                "an administrator now exists; run the command again to set its password\n"
+            ),
+            "{}",
+            run.err
+        );
+        let users: Vec<String> = sqlx::query_scalar("SELECT username FROM public.users")
+            .fetch_all(&mut connection(&db).await)
+            .await
+            .unwrap();
+        assert_eq!(users, ["alex"]);
+    }
+
+    #[tokio::test]
+    async fn spawned_an_empty_database_is_left_without_migrations() {
+        let db = TestDatabase::new();
+        let run = sidectl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                "sam",
+                "--password-stdin",
+            ],
+            Some("correct-horse-battery\n"),
+        );
+        assert_eq!(run.status, 1);
+        assert!(run.err.contains("start the server first"), "{}", run.err);
+        let migrated: bool =
+            sqlx::query_scalar("SELECT to_regclass('public._sqlx_migrations') IS NOT NULL")
+                .fetch_one(&mut connection(&db).await)
+                .await
+                .unwrap();
+        assert!(!migrated);
+    }
+
+    #[tokio::test]
+    async fn spawned_a_foreign_database_is_refused_unchanged() {
+        let db = TestDatabase::new();
+        let mut conn = connection(&db).await;
+        conn.execute("CREATE TABLE public.foreign_data (value text); INSERT INTO public.foreign_data VALUES ('keep')")
+            .await
+            .unwrap();
+        let tables = "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname = 'public'";
+        let before: String = sqlx::query_scalar(tables)
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
+        let run = sidectl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                "sam",
+                "--password-stdin",
+            ],
+            Some("correct-horse-battery\n"),
+        );
+        assert_eq!(run.status, 1);
+        assert!(
+            run.err
+                .starts_with("database is not an empty or owned Sidereal database"),
+            "{}",
+            run.err
+        );
+        let after: String = sqlx::query_scalar(tables)
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn spawned_a_missing_database_url_is_refused() {
+        let run = sidectl(None, RESET, Some("correct-horse-battery\n"));
+        assert_eq!(run.status, 1);
+        assert!(
+            run.err.starts_with("missing database configuration"),
+            "{}",
+            run.err
+        );
+    }
+
+    #[tokio::test]
+    async fn spawned_output_holds_no_password_hash_or_url() {
+        const DISTINCTIVE: &str = "Zebra-Quartz-9931-distinctive";
+        let db = TestDatabase::new();
+        claimed(&db).await;
+        let url = url(&db);
+        let database_password = url::Url::parse(&url)
+            .unwrap()
+            .password()
+            .unwrap()
+            .to_owned();
+        let run = sidectl(Some(&url), RESET, Some(&format!("{DISTINCTIVE}\n")));
+        assert_eq!(run.status, 0, "{}", run.err);
+        let output = format!("{}{}", run.out, run.err);
+        for secret in [DISTINCTIVE, &database_password, &url, "$argon2", "postgres"] {
+            assert!(!output.contains(secret), "{secret:?} in {output}");
+        }
+    }
+
+    #[test]
+    fn spawned_a_rejected_login_keeps_the_database_password_out_of_stderr() {
+        const DISTINCTIVE: &str = "Distinctive-Db-Secret-4471";
+        let mut url = url::Url::parse(&std::env::var("TEST_DATABASE_URL").unwrap()).unwrap();
+        url.set_password(Some(DISTINCTIVE)).unwrap();
+        let run = sidectl(Some(url.as_str()), RESET, Some("correct-horse-battery\n"));
+        assert_eq!(run.status, 1);
+        assert!(
+            run.err.starts_with("database login rejected"),
+            "{}",
+            run.err
+        );
+        assert!(!run.err.contains(DISTINCTIVE));
+        assert!(!run.out.contains(DISTINCTIVE));
+    }
+
+    #[test]
+    fn spawned_help_names_the_command_and_its_flags_without_a_database() {
+        for args in [&["--help"][..], &["reset-admin-password", "--help"][..]] {
+            let run = sidectl(None, args, None);
+            assert_eq!(run.status, 0, "{args:?}");
+            for name in ["reset-admin-password", "--username", "--password-stdin"] {
+                assert!(run.out.contains(name), "{args:?} {name}");
+            }
+        }
+    }
+
+    #[test]
+    fn spawned_an_unknown_command_prints_the_usage() {
+        let run = sidectl(None, &["rotate-keys"], None);
+        assert_eq!(run.status, 2);
+        assert!(run.err.contains("Usage: sidectl"), "{}", run.err);
+        assert!(run.out.is_empty());
+    }
+}
