@@ -696,6 +696,22 @@ mod origin {
     }
 
     #[tokio::test]
+    async fn origin_before_session_refuses_without_reading_the_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        database.close().await;
+        let app = app_with_database(database, AllowedOrigins::default());
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+            ("cookie", "sidereal_session=not-a-token"),
+        ];
+        let response = send_with(&app, "DELETE", "/api/session", None, &headers).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(body(response).await, FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn origin_listed_in_the_environment_is_allowed_for_another_host() {
         let db = TestDatabase::new();
         let app = listing(&db, "https://photos.example, http://localhost:5173").await;
