@@ -38,7 +38,7 @@ In the reset state the command SHALL replace the administrator's password hash w
 
 ### Requirement: Credentials come from the terminal or from the flags
 
-Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. With `--password-stdin` the command SHALL never prompt: it SHALL read the first line of stdin as the password, without its line ending, and in the create state the username SHALL come from `--username`. Without `--username` in the create state, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required and exit 1. In either mode, a stdin that closes before an answer SHALL be refused the same way. No refusal in this requirement changes the database.
+Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. Prompts SHALL be written to stderr, so stdout holds only the state line, a generated password and the result. With `--password-stdin` the command SHALL never prompt. It SHALL read the first line of stdin as the password, without its line ending. In the create state the username SHALL then come from `--username`; without it, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required and exit 1. In either mode, a stdin that closes before an answer SHALL be refused the same way. No refusal in this requirement changes the database.
 
 #### Scenario: Script mode creates the administrator
 - **WHEN** no administrator exists and a script runs `sidectl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` and a line feed on stdin
@@ -50,6 +50,10 @@ Without `--password-stdin` the command SHALL prompt on the terminal. In the crea
 
 #### Scenario: Script mode with an empty line
 - **WHEN** an administrator exists and a script runs `sidectl reset-admin-password --password-stdin` with a single line feed on stdin
+- **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
+
+#### Scenario: Script mode with a closed stdin
+- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password --password-stdin` with stdin closed and nothing on it
 - **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: A closed stdin without the flag
@@ -74,11 +78,15 @@ In the reset state, a `--username` that is not the administrator's username SHAL
 
 ### Requirement: An empty answer at the password prompt is generated
 
-When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password. Only the prompt generates a password; `--password-stdin` never does.
+When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password. Only the prompt on a terminal generates a password. When stdin is not a terminal, an empty answer to `New password:` SHALL be refused like an empty line under `--password-stdin`, and `--password-stdin` never generates one.
 
 #### Scenario: Empty answer at the prompt
 - **WHEN** an administrator exists and Sam answers `New password:` with an empty line
 - **THEN** the command does not ask `Repeat password:`, the exit status is 0, stdout holds one line `Generated password: <p>` where `<p>` is 24 ASCII letters and digits, that password appears once in stdout and never in stderr, and `POST /api/session` with `<p>` answers 200
+
+#### Scenario: Empty answer through a pipe
+- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password` without `--password-stdin`, with a single line feed piped to stdin
+- **THEN** the exit status is 1, stderr says a password is required, no `Generated password:` line is printed, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: Empty answer in the create state
 - **WHEN** no administrator exists and Sam answers `Username:` with `sam` and `New password:` with an empty line
