@@ -155,9 +155,11 @@ async fn sign_out(
     headers: HeaderMap,
 ) -> Result<Response, AccessError> {
     let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
+    let cleared = [(SET_COOKIE, cookie::cleared(ARRIVED_OVER_HTTPS))];
+    // The row can vanish after the guard's lookup, as when two sign-outs
+    // race. The token is dead either way, so the browser forgets it.
     if !database.sign_out(token).await? {
-        return Err(AccessError::Unauthenticated);
+        return Ok((cleared, AccessError::Unauthenticated).into_response());
     }
-    let cookie = cookie::cleared(ARRIVED_OVER_HTTPS);
-    Ok((StatusCode::NO_CONTENT, [(SET_COOKIE, cookie)]).into_response())
+    Ok((StatusCode::NO_CONTENT, cleared).into_response())
 }

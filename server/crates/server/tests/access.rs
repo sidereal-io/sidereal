@@ -548,6 +548,34 @@ async fn session_sign_out_sets_only_the_cleared_cookie() {
 }
 
 #[tokio::test]
+async fn session_sign_out_that_finds_no_row_clears_the_cookie() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    // The row vanishes between the guard's lookup and the delete, as when
+    // two sign-outs race: the delete finds nothing to remove.
+    execute(
+        &db,
+        "CREATE FUNCTION public.keep() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NULL; END'",
+    )
+    .await;
+    execute(
+        &db,
+        "CREATE TRIGGER keep BEFORE DELETE ON public.sessions FOR EACH ROW EXECUTE FUNCTION public.keep()",
+    )
+    .await;
+    let response = with_cookie(&app, "DELETE", &cookie).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let cookies: Vec<_> = response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .collect();
+    assert_eq!(cookies.len(), 1, "{cookies:?}");
+    assert_cleared(&response);
+}
+
+#[tokio::test]
 async fn session_token_is_returned_only_to_its_own_browser() {
     let db = TestDatabase::new();
     let app = claimed(&db).await;
