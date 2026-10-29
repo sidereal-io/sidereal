@@ -18,11 +18,11 @@ pub fn app() -> Router {
 /// Production routes are constructed only after database initialization.
 /// `allowed_origins` are the origins beyond the request's own whose
 /// state-changing `/api` requests are accepted.
-pub fn app_with_database(database: Database, _allowed_origins: AllowedOrigins) -> Router {
+pub fn app_with_database(database: Database, allowed_origins: AllowedOrigins) -> Router {
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
-            .merge(access::routes(database.clone()))
+            .merge(access::routes(database.clone(), allowed_origins))
             .with_state(database),
     )
 }

@@ -1,4 +1,5 @@
 //! The instance claim and the session routes.
+use crate::config::AllowedOrigins;
 use axum::{
     extract::{rejection::JsonRejection, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
@@ -16,11 +17,12 @@ use sidereal_core::{
 pub mod cookie;
 mod guard;
 
-/// Every path under `/api`, behind the session guard. The catch-alls are
+/// Every path under `/api`, behind the origin check and then the session
+/// guard. The layer added last runs first. The catch-alls are
 /// routes, not a fallback, because `route_layer` guards only matched routes:
 /// an unknown path answers 401 before 404. `{*rest}` never matches an empty
 /// segment, so `/api` and `/api/` need their own.
-pub fn routes(database: Database) -> Router<Database> {
+pub fn routes(database: Database, allowed_origins: AllowedOrigins) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
         .route(
@@ -31,6 +33,10 @@ pub fn routes(database: Database) -> Router<Database> {
         .route("/api/", any(not_found))
         .route("/api/{*rest}", any(not_found))
         .route_layer(middleware::from_fn_with_state(database, guard::session))
+        .route_layer(middleware::from_fn_with_state(
+            allowed_origins,
+            guard::origin,
+        ))
 }
 
 async fn not_found() -> StatusCode {
@@ -45,6 +51,7 @@ pub enum AccessError {
     WrongCredentials,
     Claimed,
     Unauthenticated,
+    Forbidden,
     Unavailable,
 }
 
@@ -55,6 +62,7 @@ impl IntoResponse for AccessError {
             Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "invalid credentials"),
             Self::Claimed => (StatusCode::CONFLICT, "claimed"),
             Self::Unauthenticated => (StatusCode::UNAUTHORIZED, "unauthenticated"),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
         };
         (status, Json(json!({ "error": error }))).into_response()

@@ -1,9 +1,13 @@
-//! The session guard: one place decides who may call `/api`, so a new route
-//! is protected without code of its own.
+//! The origin check and the session guard: one place decides who may call
+//! `/api`, so a new route is protected without code of its own.
 use super::{cookie, AccessError, ARRIVED_OVER_HTTPS};
+use crate::config::AllowedOrigins;
 use axum::{
     extract::{Request, State},
-    http::{header::SET_COOKIE, Method},
+    http::{
+        header::{HOST, ORIGIN, REFERER, SET_COOKIE},
+        Method,
+    },
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -18,6 +22,41 @@ const PUBLIC: [(Method, &str); 4] = [
     (Method::POST, "/api/claim"),
     (Method::POST, "/api/session"),
 ];
+
+/// Refuse a state-changing request that names an origin which is not
+/// allowed. A request with neither `Origin` nor `Referer` passes: browsers
+/// send one of them on a cross-site request, and other callers carry no
+/// ambient cookie to abuse. This reads no database.
+pub async fn origin(
+    State(allowed): State<AllowedOrigins>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if [Method::GET, Method::HEAD, Method::OPTIONS].contains(request.method()) {
+        return next.run(request).await;
+    }
+    let headers = request.headers();
+    let Some(origin) = headers.get(ORIGIN).or_else(|| headers.get(REFERER)) else {
+        return next.run(request).await;
+    };
+    // An HTTP/2 request carries its host in the URI, not in a `Host` header.
+    let host = headers
+        .get(HOST)
+        .and_then(|host| host.to_str().ok())
+        .or_else(|| {
+            request
+                .uri()
+                .authority()
+                .map(|authority| authority.as_str())
+        });
+    let admitted = origin
+        .to_str()
+        .is_ok_and(|origin| allowed.admit(origin, host));
+    if !admitted {
+        return AccessError::Forbidden.into_response();
+    }
+    next.run(request).await
+}
 
 /// Admit a request with an administrator session, hand its `User` to the
 /// handler, and set the cookie again so the browser's copy lives as long as
