@@ -1,11 +1,11 @@
 ## Why
 
-The instance claim is open to the first visitor, so Sam can lose control of an instance to a stranger who arrives first, and there is no mail to recover a forgotten password. A command on the box is the only recovery path, and it is also the zero-exposure way to claim before anyone else can.
+The instance claim is open to the first visitor, so a stranger who arrives first can take Sam's instance. There is no mail to recover a forgotten password. A command on the box is the only recovery path. It is also the zero-exposure way to claim before anyone else can.
 
 ## What Changes
 
 - A second binary, `sidectl`, in the server crate, copied into the app image beside `sidereal-server` and run with `docker compose exec app sidectl …` (D12).
-- One command, `sidectl reset-admin-password`, with two states decided by the database: when no administrator exists it creates one, which closes the claim; otherwise it sets a new password for the administrator and ends every session, in one transaction (D8). It announces its state before prompting (D6) and prints one line saying what it did and for whom (D10).
+- One command, `sidectl reset-admin-password`, with two states decided by the database. When no administrator exists it creates one, which closes the claim. Otherwise it sets a new password for the administrator and ends every session, in one transaction (D8). It announces its state before prompting (D6) and prints one line saying what it did and for whom (D10).
 - Interactive prompts with hidden input, the password asked twice (D3), and a script mode selected by `--password-stdin`, with `--username` for the create state (D2). An empty password generates one and prints it once (D5). A `--username` that does not name the existing administrator is refused (D4).
 - The claim's credential rules apply (D7). The command never migrates: it checks the schema is current and refuses otherwise (D1). It connects with the server's database settings (D11).
 - A `Recover access` section in `docs/install.md` (D14).
