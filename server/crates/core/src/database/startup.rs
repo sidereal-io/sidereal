@@ -145,6 +145,11 @@ impl Database {
         }
     }
 
+    /// The pool for application queries; readiness keeps its own.
+    pub(crate) fn pool(&self) -> &PgPool {
+        &self.operational
+    }
+
     pub async fn close(&self) {
         self.readiness.close().await;
         self.operational.close().await;
@@ -203,6 +208,7 @@ fn baselines() -> Vec<Value> {
         include_str!("../../schema/0.json"),
         include_str!("../../schema/1.json"),
         include_str!("../../schema/2.json"),
+        include_str!("../../schema/3.json"),
     ]
     .into_iter()
     .map(|value| serde_json::from_str(value).expect("generated schema JSON must be valid"))

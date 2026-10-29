@@ -25,5 +25,6 @@ mod tests {
 #[path = "database/test_support.rs"]
 mod test_support;
 
+pub mod access;
 pub mod database;
 pub mod storage;

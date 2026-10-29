@@ -6,6 +6,7 @@ use sidereal_core::database::Database;
 use std::path::Path;
 use tower_http::services::{ServeDir, ServeFile};
 
+pub mod access;
 pub mod config;
 
 /// Liveness is independent of database availability.
@@ -18,6 +19,7 @@ pub fn app_with_database(database: Database) -> Router {
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
+            .merge(access::routes())
             .with_state(database),
     )
 }

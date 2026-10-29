@@ -76,8 +76,16 @@ impl Server {
         server
     }
 
+    /// Every stderr line but the unclaimed-start warning, which belongs to
+    /// the access tests.
     fn logs(&self) -> Vec<String> {
-        self.lines.lock().unwrap().clone()
+        self.lines
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| !line.starts_with("instance unclaimed:"))
+            .cloned()
+            .collect()
     }
 
     async fn expect_logs(&self, expected: &[&str]) {

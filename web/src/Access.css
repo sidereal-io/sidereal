@@ -1,0 +1,46 @@
+/*
+ * The access forms. Primitives are used directly until semantic tokens exist,
+ * as DESIGN.md allows.
+ */
+
+.access-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sr-spacing-12);
+}
+
+.access-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sr-spacing-4);
+  font-size: var(--sr-font-size-14);
+}
+
+.access-field input {
+  padding: var(--sr-spacing-8);
+  border: var(--sr-border-width-1) solid var(--sr-obsidian-800);
+  border-radius: var(--sr-radius-4);
+  background-color: var(--sr-obsidian-900);
+  color: var(--sr-obsidian-100);
+  font-family: var(--sr-font-family-sans);
+  font-size: var(--sr-font-size-14);
+}
+
+.access-button {
+  padding: var(--sr-spacing-8) var(--sr-spacing-12);
+  border: none;
+  border-radius: var(--sr-radius-4);
+  background-color: var(--sr-violet-600);
+  color: var(--sr-white);
+  font-family: var(--sr-font-family-sans);
+  font-size: var(--sr-font-size-14);
+  cursor: pointer;
+}
+
+/* Body text, not a status color: DESIGN.md shows a status only in a badge. */
+.access-message {
+  margin: 0;
+  color: var(--sr-obsidian-400);
+  font-size: var(--sr-font-size-14);
+}
