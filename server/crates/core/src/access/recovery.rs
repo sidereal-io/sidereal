@@ -2,6 +2,7 @@
 //! reset that `sidectl` runs.
 use super::{check_password, password, Unavailable};
 use crate::database::Database;
+use rand::{distr::Alphanumeric, RngExt};
 
 /// What a reset changed.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,6 +69,16 @@ impl Database {
     }
 }
 
+/// A password for an operator who left the prompt empty: 24 characters drawn
+/// uniformly from the ASCII letters and digits.
+pub fn generate_password() -> String {
+    rand::rng()
+        .sample_iter(Alphanumeric)
+        .take(24)
+        .map(char::from)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +125,23 @@ mod tests {
             .fetch_one(&mut connection(db).await)
             .await
             .unwrap()
+    }
+
+    #[test]
+    fn generate_password_is_24_ascii_letters_and_digits() {
+        let password = generate_password();
+        assert_eq!(password.len(), 24);
+        assert!(password.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn generate_password_differs_between_calls() {
+        assert_ne!(generate_password(), generate_password());
+    }
+
+    #[test]
+    fn generate_password_meets_the_password_rule() {
+        assert_eq!(check_password(&generate_password()), Ok(()));
     }
 
     #[tokio::test]
