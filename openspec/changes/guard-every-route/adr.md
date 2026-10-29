@@ -5,7 +5,7 @@
 
 ## Review Summary
 
-ADR review completed for this change. Design decisions 4 and 7 change the CSRF defence that ADR-007 names, from a token to an origin check with a same-origin default. That is an authentication strategy an engineer could reverse by reading the old ADR text, so ADR-007 is amended in place, as the brainstorm decided (D1). No new record is needed: the trust model and the session shape stand, in ADR-007 and ADR-015. The other decisions are recoverable from code: the `/api` router with `route_layer`, `from_fn_with_state`, the `Extension<User>` hand-off, the `AllowedOrigins` config type and the port normalization are all read from the code and cheap to change.
+ADR review completed for this change. Design decisions 4 and 7 change the CSRF defence that ADR-007 names, from a token to an origin check with a same-origin default. That is an authentication strategy an engineer could reverse by reading the old ADR text, so ADR-007 is amended in place, as the brainstorm decided (D1). No new record is needed: the trust model and the session shape stand, in ADR-007 and ADR-015. The other decisions are recoverable from code and cheap to change. They are the `/api` router with `route_layer`, `from_fn_with_state`, the `Extension<User>` hand-off, the `AllowedOrigins` config type and the port normalization.
 
 ## In-Force ADRs Reviewed
 

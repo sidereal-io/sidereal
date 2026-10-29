@@ -42,7 +42,7 @@ When the session check refuses a request that carried a `sidereal_session` cooki
 
 ### Requirement: A guarded request is a use of the session
 
-A request that passes the session check SHALL count as a use of that session: the expiry moves as the requirement "A session lasts 30 days from its last use" says, and the response SHALL set the `sidereal_session` cookie again with the same value and attributes, whatever the route answers.
+A request that passes the session check SHALL count as a use of that session. The expiry moves as the requirement "A session lasts 30 days from its last use" says. The response SHALL set the `sidereal_session` cookie again with the same value and attributes, whatever the route answers.
 
 #### Scenario: A guarded route refreshes the cookie
 - **WHEN** Sam sends `GET /api/does-not-exist` with the cookie from sign-in
@@ -90,7 +90,7 @@ This applies to every request under `/api` whose method is not `GET`, `HEAD` or 
 
 ### Requirement: Extra allowed origins come from the environment
 
-`SIDEREAL_ALLOWED_ORIGINS` is optional. When set, it SHALL hold a comma-separated list of origins, each `scheme://host` or `scheme://host:port` with a scheme of `http` or `https`, spaces around an item ignored. Unset or empty SHALL mean no extra origin. An item with a path, a trailing slash, a wildcard, another scheme, or no host SHALL stop the server at start, before it touches the database, with a message that names `SIDEREAL_ALLOWED_ORIGINS` and not the item's value.
+`SIDEREAL_ALLOWED_ORIGINS` is optional. When set, it SHALL hold a comma-separated list of origins, each `scheme://host` or `scheme://host:port` with a scheme of `http` or `https`, spaces around an item ignored. Unset or empty SHALL mean no extra origin. An item with a path, a trailing slash, a wildcard, another scheme, or no host SHALL stop the server at start, before it touches the database. The message SHALL name `SIDEREAL_ALLOWED_ORIGINS` and not the item's value. A listed port of 80 or 443 SHALL match an `Origin` that omits it.
 
 #### Scenario: Unset
 - **WHEN** the server starts with `SIDEREAL_ALLOWED_ORIGINS` unset

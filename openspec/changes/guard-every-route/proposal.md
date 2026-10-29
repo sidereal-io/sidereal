@@ -27,6 +27,7 @@ None.
 - `server/crates/server/src/lib.rs`: the router gains the guard and origin layers around `/api`.
 - `server/crates/server/src/access/`: the session check moves out of `current_session` into a shared extractor or layer; `AccessError` gains a `Forbidden` variant.
 - `server/crates/server/src/config.rs`: `SIDEREAL_ALLOWED_ORIGINS` parsing, with the same secret-free error style as `WEB_ROOT`.
+- `server/crates/server/tests/database.rs` and `server/crates/server/src/main.rs`: the three callers of `app_with_database` pass the new argument.
 - `server/crates/server/tests/access.rs`: integration tests for each refusal, the allowlist, the origin check and a session revoked mid-use (D19 keeps the existing tests green).
 - `docs/decisions/ADR-007-security-and-plugin-trust.md`: amendment.
 - `openspec/glossary.md`: **Allowed origin**, already committed on this branch.

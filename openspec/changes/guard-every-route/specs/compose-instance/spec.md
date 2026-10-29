@@ -8,7 +8,7 @@ Without an administrator session, the app SHALL answer only these requests with 
 - a `GET` or `HEAD` for `/healthz` or `/readyz`;
 - the claim and sign-in routes: `GET /api/claim`, `POST /api/claim` while the instance is unclaimed, and `POST /api/session`.
 
-Every other request under `/api` SHALL answer 401 without a session, or 403 when it is a state-changing request from an origin that is not allowed. A `POST`, `PUT`, `PATCH` or `DELETE` to a web shell file or a health probe SHALL answer 405. No request without a session SHALL change the storage volume, and the only database change open to it is the claim.
+Every route under `/api` other than the claim and sign-in routes SHALL answer 401 without a session, or 403 when it is a state-changing request from an origin that is not allowed. A `POST`, `PUT`, `PATCH` or `DELETE` to a web shell file or a health probe SHALL answer 405. No request without a session SHALL change the storage volume, and the only database change open to it is the claim.
 
 #### Scenario: A caller sends a mutating request
 
