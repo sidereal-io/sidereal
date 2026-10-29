@@ -19,7 +19,14 @@ const PUBLIC: [(Method, &str); 4] = [
     (Method::POST, "/api/session"),
 ];
 
-pub async fn session(State(database): State<Database>, request: Request, next: Next) -> Response {
+/// Admit a request with an administrator session, hand its `User` to the
+/// handler, and set the cookie again so the browser's copy lives as long as
+/// the sliding expiry.
+pub async fn session(
+    State(database): State<Database>,
+    mut request: Request,
+    next: Next,
+) -> Response {
     let path = request.uri().path();
     if PUBLIC
         .iter()
@@ -30,7 +37,8 @@ pub async fn session(State(database): State<Database>, request: Request, next: N
     let Some(token) = cookie::token(request.headers()) else {
         return AccessError::Unauthenticated.into_response();
     };
-    let user = match database.session(token).await {
+    let token = token.to_owned();
+    let user = match database.session(&token).await {
         Ok(Some(user)) => user,
         // The browser holds a token no row backs: make it forget it.
         Ok(None) => {
@@ -43,5 +51,23 @@ pub async fn session(State(database): State<Database>, request: Request, next: N
     match user.role {
         Role::Admin => {}
     }
-    next.run(request).await
+    request.extensions_mut().insert(user);
+    let mut response = next.run(request).await;
+    // Sign-out clears the cookie, and that must win.
+    if !sets_session_cookie(&response) {
+        let refreshed = cookie::session(&token, ARRIVED_OVER_HTTPS);
+        if let Ok(refreshed) = refreshed.parse() {
+            response.headers_mut().append(SET_COOKIE, refreshed);
+        }
+    }
+    response
+}
+
+fn sets_session_cookie(response: &Response) -> bool {
+    response
+        .headers()
+        .get_all(SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .any(|value| value.starts_with(&format!("{}=", cookie::NAME)))
 }

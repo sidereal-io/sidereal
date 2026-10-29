@@ -5,7 +5,7 @@ use axum::{
     middleware,
     response::{IntoResponse, Response},
     routing::{any, get},
-    Json, Router,
+    Extension, Json, Router,
 };
 use serde_json::{json, Value};
 use sidereal_core::{
@@ -136,20 +136,12 @@ async fn sign_in(
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
-async fn current_session(
-    State(database): State<Database>,
-    headers: HeaderMap,
-) -> Result<Response, AccessError> {
-    let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
-    let signed_in = database
-        .session(token)
-        .await?
-        .ok_or(AccessError::Unauthenticated)?;
-    // Keep the browser token alive as the database slides the session expiry.
-    let cookie = cookie::session(token, ARRIVED_OVER_HTTPS);
-    Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
+/// The guard has already looked the session up and refreshed the cookie.
+async fn current_session(Extension(signed_in): Extension<User>) -> Json<Value> {
+    user(&signed_in)
 }
 
+/// The guard has proven the token valid; it is still needed to delete the row.
 async fn sign_out(
     State(database): State<Database>,
     headers: HeaderMap,

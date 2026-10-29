@@ -499,6 +499,54 @@ async fn stale_cookie_clearing_needs_a_cookie() {
     assert!(response.headers().get(header::SET_COOKIE).is_none());
 }
 
+#[tokio::test]
+async fn session_refreshes_the_cookie_on_any_guarded_route() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    let request = Request::builder()
+        .uri("/api/does-not-exist")
+        .header(header::COOKIE, &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    let renewed = set_cookie(&response).expect("a refreshed cookie");
+    assert!(renewed.starts_with(&format!("{cookie};")), "{renewed}");
+    assert!(renewed.split("; ").any(|part| part == "Max-Age=2592000"));
+}
+
+#[tokio::test]
+async fn session_sign_out_sets_only_the_cleared_cookie() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    let response = with_cookie(&app, "DELETE", &cookie).await;
+    let cookies: Vec<_> = response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .collect();
+    assert_eq!(cookies.len(), 1, "{cookies:?}");
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn session_token_is_returned_only_to_its_own_browser() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let signed = sign_in(&app, "sam", PASSWORD).await;
+    let cookie = set_cookie(&signed).unwrap();
+    let pair = cookie.split(';').next().unwrap();
+    let used = with_cookie(&app, "GET", pair).await;
+    let reused = set_cookie(&used).unwrap();
+    assert_eq!(reused.split(';').next(), Some(pair));
+    let token = pair.trim_start_matches("sidereal_session=");
+    let stranger = send(&app, "GET", "/api/session", None).await;
+    assert!(stranger.headers().get(header::SET_COOKIE).is_none());
+    assert!(!body(stranger).await.contains(token));
+}
+
 /// A running server binary, killed when the test ends.
 mod spawned {
     use super::TestDatabase;
