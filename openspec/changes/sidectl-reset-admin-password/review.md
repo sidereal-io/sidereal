@@ -35,7 +35,7 @@ VERDICT: APPROVE_WITH_CHANGES
 
 ## Required Changes (if APPROVE_WITH_CHANGES)
 
-1. design.md, Test Seams: the generated-password scenarios run in `crates/server/tests/sidectl.rs` by calling `sidereal_server::sidectl::run` in-process with a fake `Terminal` that says it is interactive, against `TestDatabase`, and check `POST /api/session` through `app_with_database`.
+1. design.md, Test Seams: the generated-password scenarios run in `crates/server/tests/siderealctl.rs` by calling `sidereal_server::siderealctl::run` in-process with a fake `Terminal` that says it is interactive, against `TestDatabase`, and check `POST /api/session` through `app_with_database`.
 2. design.md, decision 6: print `Generated password: <password>` only after `claim` or `reset_admin_password` succeeds, before the success line.
 3. specs/instance-access/spec.md, "Credentials come from the terminal or from the flags": separate the two closed-stdin refusals so the text matches its scenarios.
 4. brainstorm.md, D15: the generated password is tested through the in-process fake-terminal seam, not through spawned `--password-stdin` runs.
@@ -45,7 +45,7 @@ CHANGES_APPLIED: yes
 
 ## Rebuttals
 
-1. **Fixed.** Test Seams now names two ways into `tests/sidectl.rs`: the spawned binary, and `sidereal_server::sidectl::run` in-process with a fake interactive terminal; both verify through the router. The unit seam keeps only the prompt sequence and the parser.
+1. **Fixed.** Test Seams now names two ways into `tests/siderealctl.rs`: the spawned binary, and `sidereal_server::siderealctl::run` in-process with a fake interactive terminal; both verify through the router. The unit seam keeps only the prompt sequence and the parser.
 2. **Fixed.** Decision 6 steps 8 and 9 are reordered: the `core` call first, then the generated password, then the success line.
 3. **Fixed.** The requirement now names each refusal: "a password is required" under `--password-stdin`, "stdin closed before an answer" at a prompt.
 4. **Fixed.** D15 reworded, with its source marked as revised after round 3.
