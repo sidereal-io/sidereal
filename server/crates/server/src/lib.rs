@@ -22,7 +22,7 @@ pub fn app_with_database(database: Database, _allowed_origins: AllowedOrigins) -
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
-            .merge(access::routes())
+            .merge(access::routes(database.clone()))
             .with_state(database),
     )
 }

@@ -16,6 +16,9 @@ use tower::ServiceExt;
 mod test_support;
 use test_support::TestDatabase;
 
+mod common;
+use common::WebRoot;
+
 const PASSWORD: &str = "correct-horse-battery";
 
 async fn database(db: &TestDatabase) -> Database {
@@ -366,6 +369,76 @@ async fn session_sign_out_without_a_session_is_unauthenticated() {
     let response = send(&claimed(&db).await, "DELETE", "/api/session", None).await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(body(response).await, r#"{"error":"unauthenticated"}"#);
+}
+
+const UNAUTHENTICATED: &str = r#"{"error":"unauthenticated"}"#;
+
+#[tokio::test]
+async fn guard_refuses_a_guarded_route_without_a_cookie() {
+    let db = TestDatabase::new();
+    let response = send(&claimed(&db).await, "DELETE", "/api/session", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(body(response).await, UNAUTHENTICATED);
+}
+
+#[tokio::test]
+async fn guard_refuses_an_unknown_api_path_without_a_cookie() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    for (method, uri) in [
+        ("GET", "/api/does-not-exist"),
+        ("POST", "/api/does-not-exist/deeper"),
+        ("GET", "/api/"),
+        ("GET", "/api"),
+    ] {
+        let response = send(&app, method, uri, None).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {uri}"
+        );
+        assert_eq!(body(response).await, UNAUTHENTICATED, "{method} {uri}");
+    }
+}
+
+#[tokio::test]
+async fn guard_refuses_an_unsupported_method_on_a_public_path() {
+    let db = TestDatabase::new();
+    let response = send(&claimed(&db).await, "PUT", "/api/claim", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(body(response).await, UNAUTHENTICATED);
+}
+
+#[tokio::test]
+async fn guard_lets_the_public_routes_through_without_a_cookie() {
+    let db = TestDatabase::new();
+    let app = router(&db).await;
+    let statuses = [
+        send(&app, "GET", "/api/claim", None).await.status(),
+        send(&app, "HEAD", "/api/claim", None).await.status(),
+        claim(&app, "sam", PASSWORD).await.status(),
+        sign_in(&app, "sam", PASSWORD).await.status(),
+    ];
+    assert_eq!(
+        statuses,
+        [
+            StatusCode::OK,
+            StatusCode::OK,
+            StatusCode::CREATED,
+            StatusCode::OK
+        ]
+    );
+}
+
+#[tokio::test]
+async fn guard_leaves_the_probes_and_web_shell_public() {
+    let db = TestDatabase::new();
+    let root = WebRoot::new("guard");
+    let app = sidereal_server::with_web_root(router(&db).await, Some(&root.path));
+    for uri in ["/healthz", "/readyz", "/"] {
+        let response = send(&app, "GET", uri, None).await;
+        assert_eq!(response.status(), StatusCode::OK, "{uri}");
+    }
 }
 
 /// A running server binary, killed when the test ends.

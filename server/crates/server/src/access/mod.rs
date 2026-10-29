@@ -2,8 +2,9 @@
 use axum::{
     extract::{rejection::JsonRejection, State},
     http::{header::SET_COOKIE, HeaderMap, StatusCode},
+    middleware,
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{any, get},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -13,14 +14,27 @@ use sidereal_core::{
 };
 
 pub mod cookie;
+mod guard;
 
-pub fn routes() -> Router<Database> {
+/// Every path under `/api`, behind the session guard. The catch-alls are
+/// routes, not a fallback, because `route_layer` guards only matched routes:
+/// an unknown path answers 401 before 404. `{*rest}` never matches an empty
+/// segment, so `/api` and `/api/` need their own.
+pub fn routes(database: Database) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
         .route(
             "/api/session",
             get(current_session).post(sign_in).delete(sign_out),
         )
+        .route("/api", any(not_found))
+        .route("/api/", any(not_found))
+        .route("/api/{*rest}", any(not_found))
+        .route_layer(middleware::from_fn_with_state(database, guard::session))
+}
+
+async fn not_found() -> StatusCode {
+    StatusCode::NOT_FOUND
 }
 
 /// Every refusal has a fixed body, so no driver error, password or hash can

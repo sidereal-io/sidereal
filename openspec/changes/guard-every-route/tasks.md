@@ -6,7 +6,7 @@
 
 ## 2. Session guard [depends-on: 1]
 
-- [ ] 2.1 [medium] A dedicated `/api` router with `any`-bound catch-alls for `/api`, `/api/` and `/api/{*rest}` behind a `route_layer` session guard: without a cookie, `GET /api/does-not-exist`, `GET /api/`, `GET /api`, `PUT /api/claim` and `DELETE /api/session` answer 401 `{"error":"unauthenticated"}`, while `GET /api/claim`, `HEAD /api/claim`, `POST /api/claim`, `POST /api/session`, `/healthz`, `/readyz` and `/` with a web root do not (verify: cd server && cargo test -p sidereal-server --test access guard_)
+- [x] 2.1 [medium] A dedicated `/api` router with `any`-bound catch-alls for `/api`, `/api/` and `/api/{*rest}` behind a `route_layer` session guard: without a cookie, `GET /api/does-not-exist`, `GET /api/`, `GET /api`, `PUT /api/claim` and `DELETE /api/session` answer 401 `{"error":"unauthenticated"}`, while `GET /api/claim`, `HEAD /api/claim`, `POST /api/claim`, `POST /api/session`, `/healthz`, `/readyz` and `/` with a web root do not (verify: cd server && cargo test -p sidereal-server --test access guard_) (✓ cd server && cargo test -p sidereal-server --test access guard_ passed)
 - [ ] 2.2 [medium] A cookie that matches no row, an expired row, or a row deleted after sign-in answers 401 with `sidereal_session` set empty and `Max-Age=0`, and a 401 to a request with no cookie sets no cookie (verify: cd server && cargo test -p sidereal-server --test access stale_cookie)
 - [ ] 2.3 [medium] The guard hands the `User` to handlers through request extensions and appends the refreshed `sidereal_session` cookie to every guarded response, so `GET /api/does-not-exist` with a valid cookie answers 404 with the same token and `Max-Age=2592000`, sign-out's cleared cookie still wins, and `current_session` and `sign_out` no longer look the session up themselves while the existing session tests stay green (verify: cd server && cargo test -p sidereal-server --test access session_)
 
@@ -22,3 +22,4 @@
 
 ## Deviations Ledger
 
+- 2.1: `web_root_leaves_the_probes_fixed_and_refuses_mutation` in `tests/database.rs` expected 405 for `/api/assets`. The compose-instance delta now requires 401 there, so that path left the 405 loop and a new test, `api_without_a_session_changes_nothing`, asserts 401 for each method with the rows unchanged. This is an edit beyond the constructor argument that the design's goals allowed.

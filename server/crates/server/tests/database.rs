@@ -194,7 +194,7 @@ async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), body);
     }
-    for route in ["/", "/healthz", "/readyz", "/api/assets"] {
+    for route in ["/", "/healthz", "/readyz"] {
         for method in ["POST", "PUT", "PATCH", "DELETE"] {
             let response = app
                 .clone()
@@ -209,6 +209,44 @@ async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
                 .unwrap();
             assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
         }
+    }
+    let after: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
+    assert_eq!(before, after);
+    database.close().await;
+}
+
+#[tokio::test]
+async fn api_without_a_session_changes_nothing() {
+    let db = TestDatabase::new();
+    let database = initialize(
+        db.options.clone(),
+        Duration::from_secs(2),
+        Duration::from_secs(2),
+    )
+    .await
+    .unwrap();
+    let root = WebRoot::new("api");
+    let app = with_web_root(
+        app_with_database(database.clone(), AllowedOrigins::default()),
+        Some(&root.path),
+    );
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    let rows = "SELECT (SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m)::text
+        || (SELECT jsonb_agg(to_jsonb(s)) FROM public.sidereal_metadata s)::text";
+    let before: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
+    for method in ["GET", "POST", "PUT", "PATCH", "DELETE"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri("/api/assets")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{method}");
     }
     let after: String = sqlx::query_scalar(rows).fetch_one(&mut conn).await.unwrap();
     assert_eq!(before, after);
