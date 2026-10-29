@@ -25,7 +25,7 @@ Prior to any code interacting with an active filesystem, the core architecture m
 Relying on implicit trust within self-hosted environments is insufficient, as reverse proxies, shared local networks, cross-site request forgery (CSRF), and unintended container exposure represent standard operating risks.
 
 These requirements form the trust framework complementing the plugin specifications in
-n [ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md).
+[ADR-001 — Plugin contract & execution profiles](ADR-001-plugin-boundary.md).
 
 ## Decision
 

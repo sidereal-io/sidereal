@@ -2,15 +2,15 @@
 
 ### Requirement: Every API route needs an administrator session
 
-Every request to a path under `/api` SHALL need a `sidereal_session` cookie whose token hash matches an unexpired session row for a user with the `admin` role, except `GET /api/claim`, `POST /api/claim` and `POST /api/session`. Without such a session the server SHALL answer 401 with the body `{"error":"unauthenticated"}`, before any route-specific handling, so an unknown `/api` path without a session also answers 401. A session whose row has been deleted SHALL be refused on its next request. `/healthz`, `/readyz`, `/` and the web shell's files SHALL need no session.
+Every request to `/api`, `/api/` or a path under `/api` SHALL need a `sidereal_session` cookie whose token hash matches an unexpired session row for a user with the `admin` role. The exceptions are `GET /api/claim`, `HEAD /api/claim`, `POST /api/claim` and `POST /api/session`. Without such a session the server SHALL answer 401 with the body `{"error":"unauthenticated"}` before any route-specific handling. An unknown `/api` path, or an unsupported method on a known one, therefore answers 401 without a session. A session whose row has been deleted SHALL be refused on its next request. `/healthz`, `/readyz`, `/` and the web shell's files SHALL need no session.
 
 #### Scenario: A guarded route without a cookie
 - **WHEN** a caller sends `DELETE /api/session` with no cookie
 - **THEN** the status is 401 and the body is `{"error":"unauthenticated"}`
 
 #### Scenario: An unknown API path without a cookie
-- **WHEN** a caller sends `GET /api/does-not-exist` with no cookie
-- **THEN** the status is 401 and the body is `{"error":"unauthenticated"}`
+- **WHEN** a caller sends `GET /api/does-not-exist`, `GET /api/`, `GET /api` and `PUT /api/claim`, each with no cookie
+- **THEN** every status is 401 and every body is `{"error":"unauthenticated"}`
 
 #### Scenario: An unknown API path with a session
 - **WHEN** Sam sends `GET /api/does-not-exist` with the cookie from sign-in
@@ -30,7 +30,7 @@ Every request to a path under `/api` SHALL need a `sidereal_session` cookie whos
 
 ### Requirement: A refused session clears the stale cookie
 
-When a request under `/api` carries a `sidereal_session` cookie that names no unexpired session and the server answers 401, the response SHALL set `sidereal_session` to an empty value with `Max-Age=0`. A 401 to a request that carried no `sidereal_session` cookie SHALL set no cookie.
+When the session check refuses a request that carried a `sidereal_session` cookie, the 401 response SHALL set `sidereal_session` to an empty value with `Max-Age=0`. When the refused request carried no `sidereal_session` cookie, the 401 response SHALL set no cookie. This covers only the session check's 401; a public route's own 401, such as a sign-in with wrong credentials, is unchanged.
 
 #### Scenario: An unknown token is cleared
 - **WHEN** a caller sends `GET /api/session` with a `sidereal_session` cookie that matches no row
@@ -50,15 +50,15 @@ A request that passes the session check SHALL count as a use of that session: th
 
 ### Requirement: A state-changing request comes from an allowed origin
 
-For every request under `/api` whose method is not `GET`, `HEAD` or `OPTIONS`, public routes included, the server SHALL read the `Origin` header, or when there is none the origin part of the `Referer` header. When one is present and it is not an allowed origin, the server SHALL answer 403 with the body `{"error":"forbidden"}`, before the session check and without reading the database. When neither header is present the request SHALL pass this check. An origin is allowed when its host and port equal the request's `Host` header, or when it is listed in `SIDEREAL_ALLOWED_ORIGINS`. Hosts compare case-insensitively, a default port (80 for `http`, 443 for `https`) counts as no port, and the scheme is not compared against `Host`. The server SHALL send no `Access-Control-Allow-Origin` header.
+This applies to every request under `/api` whose method is not `GET`, `HEAD` or `OPTIONS`, public routes included. The server SHALL read the `Origin` header, or when there is none the origin part of the `Referer` header. When one is present and it is not an allowed origin, the server SHALL answer 403 with the body `{"error":"forbidden"}`. It SHALL do so before the session check and without reading the database. When neither header is present the request SHALL pass this check. An origin is allowed when its host and port equal the request's `Host` header, or when it is listed in `SIDEREAL_ALLOWED_ORIGINS`. Hosts compare case-insensitively. A port of 80 or 443 counts as no port, on both sides. The scheme is not compared against `Host`. The server SHALL send no `Access-Control-Allow-Origin` header.
 
 #### Scenario: Same-origin sign-in
 - **WHEN** a caller sends `POST /api/session` with correct credentials, `Host: localhost:5000` and `Origin: http://localhost:5000`
 - **THEN** the status is 200
 
 #### Scenario: Same host, default port
-- **WHEN** a caller sends `POST /api/session` with correct credentials, `Host: photos.example` and `Origin: https://photos.example:443`
-- **THEN** the status is 200
+- **WHEN** a caller sends `POST /api/session` with correct credentials, once with `Host: photos.example` and `Origin: https://photos.example:443`, and once with `Host: photos.example:443` and `Origin: https://photos.example`
+- **THEN** both statuses are 200
 
 #### Scenario: Cross-site sign-in
 - **WHEN** a caller sends `POST /api/session` with correct credentials, `Host: localhost:5000` and `Origin: http://evil.example`
@@ -103,3 +103,17 @@ For every request under `/api` whose method is not `GET`, `HEAD` or `OPTIONS`, p
 #### Scenario: A malformed item
 - **WHEN** the server starts with `SIDEREAL_ALLOWED_ORIGINS=https://photos.example/`
 - **THEN** it exits with a non-zero status before serving, and stderr names `SIDEREAL_ALLOWED_ORIGINS`
+
+## MODIFIED Requirements
+
+### Requirement: Credentials and tokens never leave the server
+
+No response body, log line or error SHALL contain a password, a password hash or a session token hash. The session token itself SHALL appear only in a `Set-Cookie` header, and only in a response to the browser that created it at sign-in or presented it in its request.
+
+#### Scenario: Claim and sign-in with a distinctive password
+- **WHEN** Sam claims and signs in with a distinctive password
+- **THEN** no response body and no captured stdout or stderr contains that password or the stored hash
+
+#### Scenario: A token is returned only to its own browser
+- **WHEN** Sam signs in and then sends `GET /api/session` with the cookie, and a second caller sends `GET /api/session` with no cookie
+- **THEN** Sam's two responses set `sidereal_session` to the same token, and the second caller's response has no `Set-Cookie` header and no token in its body

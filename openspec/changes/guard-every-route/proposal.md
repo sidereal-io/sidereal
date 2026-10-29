@@ -1,6 +1,6 @@
 ## Why
 
-The walking skeleton (#447) protects one route by hand: `GET /api/session` checks its own cookie. Every route that later stories add would have to remember to do the same. This change makes protection the default for the whole `/api` surface, so a forgotten check cannot expose a route, and it settles the CSRF and origin behaviour that ADR-007 lists as a prerequisite for each protected surface.
+The walking skeleton (#447) protects one route by hand: `GET /api/session` checks its own cookie. Every route that later stories add would have to remember to do the same. This change makes protection the default for the whole `/api` surface, so a forgotten check cannot expose a route. It also settles the CSRF and origin behaviour that ADR-007 lists as a prerequisite for each protected surface.
 
 ## What Changes
 
@@ -19,7 +19,7 @@ None.
 
 ### Modified Capabilities
 
-- `instance-access`: adds the requirements that every `/api` route needs an administrator session, that a refused session answers 401 and clears the cookie, that a guarded request refreshes the session, that state-changing requests pass the origin check, and that `SIDEREAL_ALLOWED_ORIGINS` is parsed at start.
+- `instance-access`: adds five requirements. Every `/api` route needs an administrator session. A refused session answers 401 and clears the cookie. A guarded request refreshes the session. State-changing requests pass the origin check. `SIDEREAL_ALLOWED_ORIGINS` is parsed at start. It also modifies "Credentials and tokens never leave the server", so a token may be set again in a response to the browser that presented it.
 - `compose-instance`: rewrites "The app exposes only static files and health probes", which still says "until authentication exists" (D18). The app answers below 400 to static files, health probes, the claim and sign-in routes, and otherwise only to an administrator session.
 
 ## Impact
