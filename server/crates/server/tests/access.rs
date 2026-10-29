@@ -441,6 +441,64 @@ async fn guard_leaves_the_probes_and_web_shell_public() {
     }
 }
 
+fn assert_cleared(response: &Response) {
+    let cleared = set_cookie(response).expect("a cleared cookie");
+    assert!(cleared.starts_with("sidereal_session=;"), "{cleared}");
+    assert!(
+        cleared.split("; ").any(|part| part == "Max-Age=0"),
+        "{cleared}"
+    );
+}
+
+async fn execute(db: &TestDatabase, sql: &'static str) {
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    sqlx::query(sql).execute(&mut conn).await.unwrap();
+}
+
+#[tokio::test]
+async fn stale_cookie_with_an_unknown_token_is_cleared() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let response = with_cookie(&app, "GET", "sidereal_session=not-a-token").await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn stale_cookie_of_an_expired_session_is_cleared() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    execute(
+        &db,
+        "UPDATE public.sessions SET expires_at = now() - interval '1 minute'",
+    )
+    .await;
+    let response = with_cookie(&app, "GET", &cookie).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_cleared(&response);
+}
+
+#[tokio::test]
+async fn stale_cookie_of_a_revoked_session_is_refused() {
+    let db = TestDatabase::new();
+    let app = claimed(&db).await;
+    let cookie = signed_in(&app).await;
+    execute(&db, "DELETE FROM public.sessions").await;
+    let response = with_cookie(&app, "GET", &cookie).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert_cleared(&response);
+    assert_eq!(body(response).await, UNAUTHENTICATED);
+}
+
+#[tokio::test]
+async fn stale_cookie_clearing_needs_a_cookie() {
+    let db = TestDatabase::new();
+    let response = send(&claimed(&db).await, "GET", "/api/session", None).await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    assert!(response.headers().get(header::SET_COOKIE).is_none());
+}
+
 /// A running server binary, killed when the test ends.
 mod spawned {
     use super::TestDatabase;

@@ -1,9 +1,9 @@
 //! The session guard: one place decides who may call `/api`, so a new route
 //! is protected without code of its own.
-use super::{cookie, AccessError};
+use super::{cookie, AccessError, ARRIVED_OVER_HTTPS};
 use axum::{
     extract::{Request, State},
-    http::Method,
+    http::{header::SET_COOKIE, Method},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -32,7 +32,11 @@ pub async fn session(State(database): State<Database>, request: Request, next: N
     };
     let user = match database.session(token).await {
         Ok(Some(user)) => user,
-        Ok(None) => return AccessError::Unauthenticated.into_response(),
+        // The browser holds a token no row backs: make it forget it.
+        Ok(None) => {
+            let cleared = cookie::cleared(ARRIVED_OVER_HTTPS);
+            return ([(SET_COOKIE, cleared)], AccessError::Unauthenticated).into_response();
+        }
         Err(unavailable) => return AccessError::from(unavailable).into_response(),
     };
     // Every role must be decided here before it can reach a handler.
