@@ -14,6 +14,7 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
     time::Duration,
 };
 
@@ -169,6 +170,101 @@ pub fn storage_root(value: Option<&OsStr>) -> Result<Option<StorageRoot>, Storag
     value
         .map(|value| StorageRoot::new(Path::new(value)))
         .transpose()
+}
+
+/// An origin reduced to what the origin check compares: the scheme, the
+/// lowercase host, and the port, with 80 and 443 stored as none.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Origin {
+    scheme: String,
+    host: String,
+    port: Option<u16>,
+}
+
+/// The origins named in `SIDEREAL_ALLOWED_ORIGINS`, beyond the request's own.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AllowedOrigins(Arc<[Origin]>);
+
+impl From<Vec<Origin>> for AllowedOrigins {
+    fn from(origins: Vec<Origin>) -> Self {
+        Self(origins.into())
+    }
+}
+
+impl Origin {
+    fn from_url(url: &url::Url) -> Option<Self> {
+        let port = url
+            .port_or_known_default()
+            .filter(|port| ![80, 443].contains(port));
+        Some(Self {
+            scheme: url.scheme().to_owned(),
+            host: url.host_str()?.to_ascii_lowercase(),
+            port,
+        })
+    }
+}
+
+/// Why `SIDEREAL_ALLOWED_ORIGINS` cannot be used. The text never holds the
+/// item, which may be a private host name.
+#[derive(Debug, PartialEq, Eq)]
+pub enum AllowedOriginsError {
+    NotUnicode,
+    Malformed,
+}
+
+impl fmt::Display for AllowedOriginsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NotUnicode => "SIDEREAL_ALLOWED_ORIGINS must be text",
+            Self::Malformed => {
+                "SIDEREAL_ALLOWED_ORIGINS must be a comma-separated list of http or https \
+                 origins, each a scheme and host with an optional port, and no path, \
+                 trailing slash, wildcard or user name"
+            }
+        })
+    }
+}
+
+impl std::error::Error for AllowedOriginsError {}
+
+/// The extra allowed origins, when `SIDEREAL_ALLOWED_ORIGINS` is set.
+pub fn allowed_origins_from_env() -> Result<AllowedOrigins, AllowedOriginsError> {
+    allowed_origins(std::env::var_os("SIDEREAL_ALLOWED_ORIGINS").as_deref())
+}
+
+/// An unset or empty value adds no origin.
+pub fn allowed_origins(value: Option<&OsStr>) -> Result<AllowedOrigins, AllowedOriginsError> {
+    let Some(value) = value else {
+        return Ok(AllowedOrigins::default());
+    };
+    let value = value
+        .to_str()
+        .ok_or(AllowedOriginsError::NotUnicode)?
+        .trim();
+    if value.is_empty() {
+        return Ok(AllowedOrigins::default());
+    }
+    value
+        .split(',')
+        .map(|item| listed_origin(item.trim()).ok_or(AllowedOriginsError::Malformed))
+        .collect::<Result<Vec<_>, _>>()
+        .map(AllowedOrigins::from)
+}
+
+fn listed_origin(item: &str) -> Option<Origin> {
+    // The parser accepts `*` in a host and reads `scheme://host/` as the
+    // root path, so both are refused on the raw text.
+    if item.contains('*') || item.ends_with('/') {
+        return None;
+    }
+    let url = url::Url::parse(item).ok()?;
+    let bare = matches!(url.scheme(), "http" | "https")
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none();
+    bare.then(|| Origin::from_url(&url)).flatten()
 }
 
 fn local(host: &str) -> bool {
@@ -372,6 +468,66 @@ mod tests {
         assert_eq!(web_root(Some(root.as_os_str())), Ok(Some(root.clone())));
         std::fs::remove_dir_all(&root).unwrap();
     }
+    fn origin(scheme: &str, host: &str, port: Option<u16>) -> Origin {
+        Origin {
+            scheme: scheme.into(),
+            host: host.into(),
+            port,
+        }
+    }
+
+    #[test]
+    fn allowed_origins_unset_or_empty_adds_none() {
+        for value in [None, Some(OsStr::new("")), Some(OsStr::new("  "))] {
+            assert_eq!(allowed_origins(value).unwrap(), AllowedOrigins::default());
+        }
+    }
+
+    #[test]
+    fn allowed_origins_list_is_normalized() {
+        let parsed = allowed_origins(Some(OsStr::new(
+            " https://Photos.Example:443 , http://localhost:5173,http://lan.example:80,https://alt.example:8443",
+        )))
+        .unwrap();
+        assert_eq!(
+            parsed,
+            AllowedOrigins::from(vec![
+                origin("https", "photos.example", None),
+                origin("http", "localhost", Some(5173)),
+                origin("http", "lan.example", None),
+                origin("https", "alt.example", Some(8443)),
+            ])
+        );
+    }
+
+    #[test]
+    fn allowed_origins_refuses_a_malformed_item_without_naming_it() {
+        for item in [
+            "https://photos.example/",
+            "https://photos.example/gallery",
+            "https://photos.example?x=1",
+            "https://photos.example#top",
+            "https://*.example",
+            "*",
+            "ftp://photos.example",
+            "https://user:distinctive@photos.example",
+            "https://distinctive@photos.example",
+            "photos.example",
+            "https://",
+            "file:///srv",
+            "https://photos.example,",
+        ] {
+            let error = allowed_origins(Some(OsStr::new(item))).unwrap_err();
+            let message = error.to_string();
+            assert!(
+                message.contains("SIDEREAL_ALLOWED_ORIGINS"),
+                "{item}: {message}"
+            );
+            assert!(!message.contains("photos.example"), "{item}: {message}");
+            assert!(!message.contains("distinctive"), "{item}: {message}");
+        }
+    }
+
     #[test]
     fn storage_root_is_optional_but_never_blank() {
         use sidereal_core::storage::Problem;
