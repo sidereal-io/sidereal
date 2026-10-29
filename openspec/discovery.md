@@ -149,13 +149,13 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    existing PostgreSQL service through a Compose override — supported. Watched folders
    are a gap owned by [#358](https://github.com/sidereal-io/sidereal/issues/358).
 3. **Claim administrator** — the first visitor to an unclaimed instance creates the
-   sole administrator, or the operator does it from the box with `sidectl` — gap: the
+   sole administrator, or the operator does it from the box with `siderealctl` — gap: the
    server has no users and serves no claim screen ([#447](https://github.com/sidereal-io/sidereal/issues/447), [#449](https://github.com/sidereal-io/sidereal/issues/449)).
 4. **Sign in and out** — a session in a secure cookie, revoked on sign-out or expiry;
    every other caller is refused — gap: no sessions, no middleware, no cookie
    ([#447](https://github.com/sidereal-io/sidereal/issues/447), [#448](https://github.com/sidereal-io/sidereal/issues/448), [#450](https://github.com/sidereal-io/sidereal/issues/450), [#451](https://github.com/sidereal-io/sidereal/issues/451), [#452](https://github.com/sidereal-io/sidereal/issues/452)).
 5. **Recover access** — reset a lost administrator password from the box, signing out
-   every session — gap: the app image has no `sidectl` ([#449](https://github.com/sidereal-io/sidereal/issues/449), [#453](https://github.com/sidereal-io/sidereal/issues/453)).
+   every session — gap: the app image has no `siderealctl` ([#449](https://github.com/sidereal-io/sidereal/issues/449), [#453](https://github.com/sidereal-io/sidereal/issues/453)).
 6. **Protect originals** — ingest copies and never moves, renames, or deletes files in
    the watched folder — gap ([#356](https://github.com/sidereal-io/sidereal/issues/356)).
 7. **Detect & repair** — a corrupted stored file is found, and the user can adopt,
