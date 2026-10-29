@@ -18,9 +18,10 @@
 
 ## 4. Integration [depends-on: 3]
 
-- [ ] 4.1 [easy] The whole gate passes, and the spec scenarios in the delta each map to a test by name (verify: just check)
+- [x] 4.1 [easy] The whole gate passes, and the spec scenarios in the delta each map to a test by name (verify: just check) (✓ just check passed; every delta scenario maps to a named test)
 
 ## Deviations Ledger
 
 - 2.1: `web_root_leaves_the_probes_fixed_and_refuses_mutation` in `tests/database.rs` expected 405 for `/api/assets`. The compose-instance delta now requires 401 there, so that path left the 405 loop and a new test, `api_without_a_session_changes_nothing`, asserts 401 for each method with the rows unchanged. This is an edit beyond the constructor argument that the design's goals allowed.
 - 3.2: when a request has no `Host` header, the origin check uses the host from the request URI. An HTTP/2 request carries its host there, as `:authority`, so without this every HTTP/2 mutation that names an origin would be refused. HTTP/1.1 requests are unchanged.
+- 4.1: the delta's "A list" scenario needed the started server to admit a listed origin, and no test proved that `main.rs` passes the list to the router. `a_valid_list_becomes_ready` became `a_valid_list_admits_its_origins`, which sends a claim through the spawned binary with `Host: app:5000` and `Origin: http://localhost:5173`.

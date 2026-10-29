@@ -782,12 +782,29 @@ mod spawned {
 
         /// The whole HTTP response, head and body.
         pub fn request(&self, method: &str, path: &str, body: Option<&str>) -> Option<String> {
+            self.request_with(method, path, body, "localhost", &[])
+        }
+
+        /// The whole HTTP response to a request with this `Host` and these
+        /// extra headers.
+        pub fn request_with(
+            &self,
+            method: &str,
+            path: &str,
+            body: Option<&str>,
+            host: &str,
+            headers: &[(&str, &str)],
+        ) -> Option<String> {
             let mut stream = TcpStream::connect(("127.0.0.1", self.port)).ok()?;
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
             let body = body.unwrap_or("");
+            let extra: String = headers
+                .iter()
+                .map(|(name, value)| format!("{name}: {value}\r\n"))
+                .collect();
             write!(
                 stream,
-                "{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{extra}Connection: close\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
             )
             .ok()?;
@@ -945,15 +962,21 @@ mod allowed_origins_at_start {
     }
 
     #[tokio::test]
-    async fn a_valid_list_becomes_ready() {
+    async fn a_valid_list_admits_its_origins() {
         let db = TestDatabase::new();
-        spawned::Server::ready_with(
+        let server = spawned::Server::ready_with(
             &db,
             &[(
                 "SIDEREAL_ALLOWED_ORIGINS",
                 "https://photos.example, http://localhost:5173",
             )],
         );
+        let body = credentials("sam", PASSWORD);
+        let origin = [("Origin", "http://localhost:5173")];
+        let answer = server
+            .request_with("POST", "/api/claim", Some(&body), "app:5000", &origin)
+            .unwrap();
+        assert!(answer.starts_with("HTTP/1.1 201"), "{answer}");
     }
 }
 
