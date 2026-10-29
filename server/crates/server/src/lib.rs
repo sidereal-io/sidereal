@@ -1,6 +1,7 @@
 //! The HTTP shell exposes fixed liveness and readiness responses, and the
 //! built web shell when the operator names its folder.
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use config::AllowedOrigins;
 use serde_json::{json, Value};
 use sidereal_core::database::Database;
 use std::path::Path;
@@ -15,7 +16,9 @@ pub fn app() -> Router {
 }
 
 /// Production routes are constructed only after database initialization.
-pub fn app_with_database(database: Database) -> Router {
+/// `allowed_origins` are the origins beyond the request's own whose
+/// state-changing `/api` requests are accepted.
+pub fn app_with_database(database: Database, _allowed_origins: AllowedOrigins) -> Router {
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))

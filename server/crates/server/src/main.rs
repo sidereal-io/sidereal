@@ -3,7 +3,7 @@
 use sidereal_core::database::{initialize, initialize_with_storage};
 use sidereal_server::{
     app_with_database,
-    config::{storage_root_from_env, web_root_from_env, DatabaseConfig},
+    config::{allowed_origins_from_env, storage_root_from_env, web_root_from_env, DatabaseConfig},
     with_web_root,
 };
 use std::net::SocketAddr;
@@ -21,6 +21,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // must not change the database first.
     let web_root = web_root_from_env()?;
     let storage = storage_root_from_env()?;
+    let allowed_origins = allowed_origins_from_env()?;
     let config = DatabaseConfig::from_env()?;
     let (options, startup, migration) = (
         config.options,
@@ -53,7 +54,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         sidereal_core::abi_version(),
         sidereal_pack_astro::abi_version()
     );
-    let app = with_web_root(app_with_database(database.clone()), web_root.as_deref());
+    let app = with_web_root(
+        app_with_database(database.clone(), allowed_origins),
+        web_root.as_deref(),
+    );
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
         .await;

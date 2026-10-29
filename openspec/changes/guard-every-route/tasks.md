@@ -1,7 +1,7 @@
 ## 1. Shared contracts
 
 - [x] 1.1 [medium] `config::allowed_origins` turns an unset or empty `SIDEREAL_ALLOWED_ORIGINS` into no extra origin, a comma-separated list into normalized origins (lowercase host, a port of 80 or 443 stored as none, spaces trimmed), and refuses an item with a path, trailing slash, wildcard, other scheme, credentials or no host with an error whose text names the variable and not the item (verify: cd server && cargo test -p sidereal-server allowed_origins) (✓ cd server && cargo test -p sidereal-server allowed_origins passed)
-- [ ] 1.2 [easy] `app_with_database(database, allowed_origins)` takes the parsed list, `main.rs` reads it before the database, and every caller in `main.rs`, `tests/access.rs` and `tests/database.rs` passes it (verify: cd server && cargo test -p sidereal-server --no-run)
+- [x] 1.2 [easy] `app_with_database(database, allowed_origins)` takes the parsed list, `main.rs` reads it before the database, and every caller in `main.rs`, `tests/access.rs` and `tests/database.rs` passes it (verify: cd server && cargo test -p sidereal-server --no-run) (✓ cd server && cargo test -p sidereal-server --no-run passed)
 - [ ] 1.3 [medium] The spawned binary exits non-zero before readiness with `SIDEREAL_ALLOWED_ORIGINS` naming a malformed item, with stderr naming the variable and not the item, and becomes ready with a valid list (verify: cd server && cargo test -p sidereal-server --test access allowed_origins_at_start)
 
 ## 2. Session guard [depends-on: 1]

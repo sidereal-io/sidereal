@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 use sidereal_core::database::{initialize, Database};
-use sidereal_server::app_with_database;
+use sidereal_server::{app_with_database, config::AllowedOrigins};
 use sqlx::{Connection, PgConnection};
 use std::time::Duration;
 use tower::ServiceExt;
@@ -29,7 +29,7 @@ async fn database(db: &TestDatabase) -> Database {
 }
 
 async fn router(db: &TestDatabase) -> Router {
-    app_with_database(database(db).await)
+    app_with_database(database(db).await, AllowedOrigins::default())
 }
 
 fn credentials(username: &str, password: &str) -> String {
@@ -108,7 +108,13 @@ async fn claim_state_is_unavailable_when_the_pool_is_closed() {
     let db = TestDatabase::new();
     let database = database(&db).await;
     database.close().await;
-    let response = send(&app_with_database(database), "GET", "/api/claim", None).await;
+    let response = send(
+        &app_with_database(database, AllowedOrigins::default()),
+        "GET",
+        "/api/claim",
+        None,
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body(response).await, r#"{"error":"unavailable"}"#);
 }
@@ -192,7 +198,12 @@ async fn claim_is_unavailable_when_the_pool_is_closed() {
     let db = TestDatabase::new();
     let database = database(&db).await;
     database.close().await;
-    let response = claim(&app_with_database(database), "sam", PASSWORD).await;
+    let response = claim(
+        &app_with_database(database, AllowedOrigins::default()),
+        "sam",
+        PASSWORD,
+    )
+    .await;
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body(response).await, r#"{"error":"unavailable"}"#);
     assert_eq!(users(&db).await, 0);

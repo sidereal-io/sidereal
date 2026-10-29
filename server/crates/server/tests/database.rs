@@ -3,7 +3,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use sidereal_core::database::initialize;
-use sidereal_server::{app_with_database, with_web_root};
+use sidereal_server::{app_with_database, config::AllowedOrigins, with_web_root};
 use sqlx::{Connection, Executor, PgConnection};
 use std::{process::Command, time::Duration};
 use tower::ServiceExt;
@@ -25,7 +25,7 @@ async fn health_routes_are_fixed_and_methods_do_not_mutate() {
     )
     .await
     .unwrap();
-    let app = app_with_database(database.clone());
+    let app = app_with_database(database.clone(), AllowedOrigins::default());
     let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
     let before: String = sqlx::query_scalar(
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY version)::text FROM public._sqlx_migrations m",
@@ -174,7 +174,10 @@ async fn web_root_leaves_the_probes_fixed_and_refuses_mutation() {
     .unwrap();
     // The web root holds files named `healthz` and `readyz`.
     let root = WebRoot::new("probes");
-    let app = with_web_root(app_with_database(database.clone()), Some(&root.path));
+    let app = with_web_root(
+        app_with_database(database.clone(), AllowedOrigins::default()),
+        Some(&root.path),
+    );
     let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
     let rows = "SELECT (SELECT jsonb_agg(to_jsonb(m) ORDER BY version) FROM public._sqlx_migrations m)::text
         || (SELECT jsonb_agg(to_jsonb(s)) FROM public.sidereal_metadata s)::text";
@@ -363,7 +366,7 @@ async fn verify_ca_with_trusted_certificate_starts_ready() {
     let database = initialize(options, Duration::from_secs(2), Duration::from_secs(2))
         .await
         .unwrap();
-    let response = app_with_database(database.clone())
+    let response = app_with_database(database.clone(), AllowedOrigins::default())
         .oneshot(
             Request::builder()
                 .uri("/readyz")
