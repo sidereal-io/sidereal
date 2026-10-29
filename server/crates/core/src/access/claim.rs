@@ -2,6 +2,7 @@
 //! administrator exists.
 use super::{password, Role, Unavailable, User};
 use crate::database::Database;
+use std::fmt;
 
 const UNIQUE_VIOLATION: &str = "23505";
 
@@ -40,7 +41,7 @@ impl Database {
         if !self.claim_open().await? {
             return Err(ClaimError::Claimed);
         }
-        if !follows_length_rules(username, password) {
+        if check_username(username).is_err() || check_password(password).is_err() {
             return Err(ClaimError::Invalid);
         }
         let hash = password::hash(password).await?;
@@ -67,14 +68,44 @@ impl Database {
     }
 }
 
-/// A username is 1 to 64 characters with no surrounding whitespace; a
-/// password is 8 to 256 bytes.
-fn follows_length_rules(username: &str, password: &str) -> bool {
-    (1..=64).contains(&username.chars().count())
-        && username.trim() == username
-        && (8..=256).contains(&password.len())
+/// The credential rule a username or password breaks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CredentialRule {
+    UsernameLength,
+    UsernameWhitespace,
+    PasswordLength,
 }
 
+impl fmt::Display for CredentialRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::UsernameLength => "username must be 1 to 64 characters",
+            Self::UsernameWhitespace => "username must not start or end with whitespace",
+            Self::PasswordLength => "password must be 8 to 256 bytes",
+        })
+    }
+}
+
+impl std::error::Error for CredentialRule {}
+
+/// A username is 1 to 64 characters with no surrounding whitespace.
+pub fn check_username(username: &str) -> Result<(), CredentialRule> {
+    if !(1..=64).contains(&username.chars().count()) {
+        return Err(CredentialRule::UsernameLength);
+    }
+    if username.trim() != username {
+        return Err(CredentialRule::UsernameWhitespace);
+    }
+    Ok(())
+}
+
+/// A password is 8 to 256 bytes.
+pub fn check_password(password: &str) -> Result<(), CredentialRule> {
+    if !(8..=256).contains(&password.len()) {
+        return Err(CredentialRule::PasswordLength);
+    }
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +131,54 @@ mod tests {
             .fetch_all(&mut conn)
             .await
             .unwrap()
+    }
+
+    #[test]
+    fn credential_rule_names_the_rule_a_username_breaks() {
+        for (username, rule) in [
+            ("", CredentialRule::UsernameLength),
+            (&"s".repeat(65), CredentialRule::UsernameLength),
+            (" sam", CredentialRule::UsernameWhitespace),
+            ("sam\t", CredentialRule::UsernameWhitespace),
+        ] {
+            assert_eq!(check_username(username), Err(rule), "{username:?}");
+        }
+    }
+
+    #[test]
+    fn credential_rule_names_the_password_length() {
+        for password in ["short".to_owned(), "p".repeat(257)] {
+            assert_eq!(
+                check_password(&password),
+                Err(CredentialRule::PasswordLength)
+            );
+        }
+    }
+
+    #[test]
+    fn credential_rule_accepts_credentials_at_the_limits() {
+        for username in ["s".repeat(64), "é".repeat(64), "s".into()] {
+            assert_eq!(check_username(&username), Ok(()));
+        }
+        for password in ["p".repeat(8), "p".repeat(256)] {
+            assert_eq!(check_password(&password), Ok(()));
+        }
+    }
+
+    #[test]
+    fn credential_rule_text_names_the_subject_and_its_limit() {
+        assert_eq!(
+            CredentialRule::UsernameLength.to_string(),
+            "username must be 1 to 64 characters"
+        );
+        assert_eq!(
+            CredentialRule::UsernameWhitespace.to_string(),
+            "username must not start or end with whitespace"
+        );
+        assert_eq!(
+            CredentialRule::PasswordLength.to_string(),
+            "password must be 8 to 256 bytes"
+        );
     }
 
     #[tokio::test]

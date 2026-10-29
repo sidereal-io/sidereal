@@ -19,6 +19,7 @@ pub enum DatabaseError {
     Schema,
     StartupDeadline,
     Migration,
+    Pending,
 }
 impl fmt::Display for DatabaseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -38,6 +39,7 @@ impl fmt::Display for DatabaseError {
             Self::Schema => "restore the expected dedicated Sidereal schema",
             Self::StartupDeadline => "check connectivity and competing startup locks or increase DATABASE_STARTUP_TIMEOUT_SECONDS",
             Self::Migration => "check permissions and database locks or increase DATABASE_MIGRATION_TIMEOUT_SECONDS; restart after correcting the cause",
+            Self::Pending => "start the server first; it applies the migrations",
         };
         write!(f, "{}: {action}", self.label())
     }
@@ -62,6 +64,7 @@ impl DatabaseError {
             Self::Schema => "incompatible database schema",
             Self::StartupDeadline => "database startup deadline exceeded",
             Self::Migration => "database migration failed",
+            Self::Pending => "database schema is not current",
         }
     }
 }
@@ -145,6 +148,14 @@ mod tests {
             assert!(message.starts_with(&format!("{phrase}: ")));
             assert!(!message.split_once(": ").unwrap().1.is_empty());
         }
+    }
+
+    #[test]
+    fn a_pending_schema_says_to_start_the_server_first() {
+        assert_eq!(
+            DatabaseError::Pending.to_string(),
+            "database schema is not current: start the server first; it applies the migrations"
+        );
     }
 
     #[test]

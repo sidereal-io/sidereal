@@ -3,11 +3,22 @@ name = "sidereal-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# `siderealctl` is a second binary; `cargo run` still means the server.
+default-run = "sidereal-server"
+
+[[bin]]
+name = "sidereal-server"
+path = "src/main.rs"
+
+[[bin]]
+name = "siderealctl"
+path = "src/bin/siderealctl.rs"
 
 [dependencies]
 sidereal-core = { workspace = true }
 sidereal-pack-astro = { workspace = true }
 axum = { workspace = true }
+libc = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }

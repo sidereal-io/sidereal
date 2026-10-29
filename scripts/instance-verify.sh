@@ -374,6 +374,11 @@ instance() {
     [ "$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$db")" = '{}' ] \
         || fail 'the db container publishes a host port'
 
+    say "checking the recovery command ($1)"
+    help=$(compose exec -T app siderealctl --help) || fail 'siderealctl --help did not exit 0 in the app container'
+    printf '%s\n' "$help" | grep -q 'reset-admin-password' \
+        || fail 'siderealctl --help does not name reset-admin-password'
+
     say "checking storage initialization ($1)"
     [ "$(sql 'SELECT count(*) FROM _sqlx_migrations WHERE success')" = 3 ] \
         || fail 'the database does not hold three successful migrations'

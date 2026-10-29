@@ -1208,6 +1208,7 @@ name = "sidereal-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "libc",
  "serde_json",
  "sidereal-core",
  "sidereal-pack-astro",

@@ -12,7 +12,7 @@ RUN pnpm --version && pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build
 
-# ---- server stage: compile the server binary in release mode ----
+# ---- server stage: compile the server binaries in release mode ----
 FROM rust:1-slim-bookworm AS server
 WORKDIR /build
 # `rustup toolchain install` installs the toolchain that rust-toolchain.toml
@@ -21,7 +21,7 @@ WORKDIR /build
 COPY server/ ./
 RUN rustup toolchain install && cargo build --release -p sidereal-server
 
-# ---- runtime stage: slim image with the binary and the web shell ----
+# ---- runtime stage: slim image with the binaries and the web shell ----
 FROM debian:bookworm-slim AS runtime
 # curl backs the HEALTHCHECK; ca-certificates for future outbound TLS.
 RUN apt-get update \
@@ -32,6 +32,8 @@ RUN apt-get update \
 RUN useradd --uid 10001 --user-group --no-create-home app \
     && install -d -o app -g app /var/lib/sidereal/storage
 COPY --from=server /build/target/release/sidereal-server /usr/local/bin/sidereal-server
+# The operator's recovery command runs beside the server with its settings.
+COPY --from=server /build/target/release/siderealctl /usr/local/bin/siderealctl
 # Root owns the web shell, so the app user cannot change what the server serves.
 COPY --from=web /build/web/dist /usr/share/sidereal/web
 USER app
