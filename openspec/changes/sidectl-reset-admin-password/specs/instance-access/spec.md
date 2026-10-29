@@ -38,7 +38,7 @@ In the reset state the command SHALL replace the administrator's password hash w
 
 ### Requirement: Credentials come from the terminal or from the flags
 
-Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. With `--password-stdin` the command SHALL never prompt: it SHALL read the first line of stdin as the password, without its line ending, and in the create state the username SHALL come from `--username`. Without `--username` in the create state, `--password-stdin` is a usage error.
+Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. With `--password-stdin` the command SHALL never prompt: it SHALL read the first line of stdin as the password, without its line ending, and in the create state the username SHALL come from `--username`. Without `--username` in the create state, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required and exit 1. In either mode, a stdin that closes before an answer SHALL be refused the same way. No refusal in this requirement changes the database.
 
 #### Scenario: Script mode creates the administrator
 - **WHEN** no administrator exists and a script runs `sidectl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` and a line feed on stdin
@@ -47,6 +47,14 @@ Without `--password-stdin` the command SHALL prompt on the terminal. In the crea
 #### Scenario: Script mode without a username on an unclaimed instance
 - **WHEN** no administrator exists and a script runs `sidectl reset-admin-password --password-stdin`
 - **THEN** the exit status is 2, stderr names `--username`, and the `users` table is empty
+
+#### Scenario: Script mode with an empty line
+- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password --password-stdin` with a single line feed on stdin
+- **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
+
+#### Scenario: A closed stdin without the flag
+- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password` with stdin closed, as `docker compose exec -T` with no input does
+- **THEN** the exit status is 1, stdout holds only the state line, stderr says stdin closed, the password hash is unchanged and the `sessions` table is unchanged
 
 #### Scenario: The repeated password differs
 - **WHEN** Sam answers the prompts `New password:` with `correct-horse-battery` and `Repeat password:` with `correct-horse-batery`
@@ -64,17 +72,17 @@ In the reset state, a `--username` that is not the administrator's username SHAL
 - **WHEN** the administrator is `sam` and a script runs `sidectl reset-admin-password --username sam --password-stdin` with a valid password
 - **THEN** the exit status is 0
 
-### Requirement: An empty password is generated
+### Requirement: An empty answer at the password prompt is generated
 
-When the password the command reads is empty, from an empty answer to `New password:` or an empty first line on stdin, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits, skip `Repeat password:`, print `Generated password: <password>` on stdout before the line that says what it did, and use that password. This is the only output that ever holds a password.
-
-#### Scenario: Empty password on stdin
-- **WHEN** an administrator exists and a script runs `sidectl reset-admin-password --password-stdin` with an empty line on stdin
-- **THEN** the exit status is 0, stdout holds one line `Generated password: <p>` where `<p>` is 24 ASCII letters and digits, that password appears once in stdout and never in stderr, and `POST /api/session` with `<p>` answers 200
+When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password. Only the prompt generates a password; `--password-stdin` never does.
 
 #### Scenario: Empty answer at the prompt
-- **WHEN** Sam answers `New password:` with an empty line
-- **THEN** the command does not ask `Repeat password:`, and stdout holds a `Generated password:` line
+- **WHEN** an administrator exists and Sam answers `New password:` with an empty line
+- **THEN** the command does not ask `Repeat password:`, the exit status is 0, stdout holds one line `Generated password: <p>` where `<p>` is 24 ASCII letters and digits, that password appears once in stdout and never in stderr, and `POST /api/session` with `<p>` answers 200
+
+#### Scenario: Empty answer in the create state
+- **WHEN** no administrator exists and Sam answers `Username:` with `sam` and `New password:` with an empty line
+- **THEN** the exit status is 0, stdout holds a `Generated password:` line and `Created administrator sam.`, and `POST /api/session` with `sam` and the generated password answers 200
 
 ### Requirement: The recovery command applies the claim's credential rules
 
@@ -90,11 +98,15 @@ The command SHALL apply the rules of the requirement "Claimed credentials meet t
 
 ### Requirement: The recovery command uses the server's database settings and never changes the schema
 
-The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings as the server does, with the same errors for a missing or invalid value. It SHALL check that the database holds the current Sidereal schema before it reads the `users` table, and SHALL apply no migration and create no table. When the database is empty, behind, or not a Sidereal database, the command SHALL print one line on stderr that names the cause and says to start the server first, and exit 1.
+The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings as the server does, with the same errors for a missing or invalid value. It SHALL check that the database holds the current Sidereal schema before it reads the `users` table, and SHALL apply no migration and create no table. When the database is empty or behind, the command SHALL print one line on stderr that names the cause and says to start the server first, and exit 1. For any other database fault, such as a database that is not Sidereal's or a rejected login, it SHALL print the same line the server prints for that fault, and exit 1.
 
 #### Scenario: An empty database
 - **WHEN** `DATABASE_URL` names an empty database that no server has started against, and a script runs the command with valid credentials
 - **THEN** the exit status is 1, stderr says to start the server first, and the database still holds no `_sqlx_migrations` table
+
+#### Scenario: A database that is not Sidereal's
+- **WHEN** `DATABASE_URL` names a database that holds another application's tables, and a script runs the command with valid credentials
+- **THEN** the exit status is 1, stderr starts with `database is not an empty or owned Sidereal database`, and the database is unchanged
 
 #### Scenario: Missing configuration
 - **WHEN** a script runs the command with `DATABASE_URL` unset
