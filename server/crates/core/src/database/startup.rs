@@ -105,22 +105,11 @@ impl Database {
             // Detach immediately: cancellation always closes the socket instead of
             // returning a connection with outstanding work to the readiness pool.
             let mut conn = conn.detach();
-            let result = async {
-                conn.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-                    .await?;
-                // The outer deadline owns cancellation and closes this detached
-                // connection. Server-side timers must not race it into a schema
-                // or history diagnostic, including inherited role lock timeouts.
-                conn.execute("SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = 0")
-                    .await?;
-                let prefix = preflight(&mut conn, &MIGRATOR, &baselines(), None).await?;
-                if prefix != Some(MIGRATOR.iter().count()) {
-                    return Err(DatabaseError::History);
-                }
-                conn.execute("COMMIT").await?;
-                Ok::<_, DatabaseError>(())
-            }
-            .await;
+            let result = match applied(&mut conn).await {
+                Ok(Some(count)) if count == MIGRATOR.iter().count() => Ok(()),
+                Ok(_) => Err(DatabaseError::History),
+                Err(error) => Err(error),
+            };
             drop(conn);
             result
         })
@@ -187,6 +176,28 @@ pub async fn initialize_with_storage(
 }
 
 impl Database {
+    /// Connect to a database whose schema is already current, without taking
+    /// the startup lock or migrating. Only the server changes the schema.
+    pub async fn open(options: PgConnectOptions, startup: Duration) -> Result<Self, DatabaseError> {
+        // A connect that hangs is the same fault the server reports as
+        // unreachable, so the operator reads one line for it in both places.
+        let mut conn = timeout(startup, PgConnection::connect_with(&options))
+            .await
+            .map_err(|_| DatabaseError::Unreachable)??;
+        timeout(startup, async {
+            let prefix = applied(&mut conn).await?;
+            // An empty database reads as no prefix, a partial history as a short one.
+            if prefix != Some(MIGRATOR.iter().count()) {
+                return Err(DatabaseError::Pending);
+            }
+            conn.close().await?;
+            Ok(())
+        })
+        .await
+        .map_err(|_| DatabaseError::StartupDeadline)??;
+        Ok(Self::new(options, startup))
+    }
+
     fn new(options: PgConnectOptions, startup: Duration) -> Self {
         Self {
             operational: PgPoolOptions::new()
@@ -201,6 +212,21 @@ impl Database {
             last: Arc::new(Mutex::new(None)),
         }
     }
+}
+
+/// How many migrations the live schema has applied, read in one consistent
+/// snapshot without writing.
+async fn applied(conn: &mut PgConnection) -> Result<Option<usize>, DatabaseError> {
+    conn.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        .await?;
+    // The caller's deadline owns cancellation and closes the connection.
+    // Server-side timers must not race it into a schema or history
+    // diagnostic, including inherited role lock timeouts.
+    conn.execute("SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = 0")
+        .await?;
+    let prefix = preflight(conn, &MIGRATOR, &baselines(), None).await?;
+    conn.execute("COMMIT").await?;
+    Ok(prefix)
 }
 
 fn baselines() -> Vec<Value> {

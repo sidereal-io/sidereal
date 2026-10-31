@@ -676,3 +676,73 @@ async fn silent_relay_reports_unreachable_within_startup_deadline() {
     assert!(error.to_string().starts_with("database unreachable"));
     assert!(start.elapsed() < Duration::from_millis(1250));
 }
+
+#[tokio::test]
+async fn open_reports_a_silent_host_as_unreachable_like_the_server() {
+    use crate::test_support::{Relay, RelayMode};
+    let relay = Relay::new("127.0.0.1:9".parse().unwrap()).await;
+    relay.set_mode(RelayMode::Silent);
+    let options = PgConnectOptions::new()
+        .host("127.0.0.1")
+        .port(relay.port)
+        .ssl_mode(sqlx::postgres::PgSslMode::Disable);
+    let start = Instant::now();
+    let error = Database::open(options, Duration::from_secs(1))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error, DatabaseError::Unreachable);
+    assert!(start.elapsed() < Duration::from_millis(1250));
+}
+
+async fn open(db: &TestDatabase) -> Result<Database, DatabaseError> {
+    Database::open(db.options.clone(), Duration::from_secs(3)).await
+}
+
+#[tokio::test]
+async fn open_returns_a_handle_for_a_current_schema() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let database = open(&db).await.unwrap();
+    assert!(database.ready().await);
+}
+
+#[tokio::test]
+async fn open_answers_pending_for_an_empty_database_without_creating_a_table() {
+    let db = TestDatabase::new();
+    assert_eq!(open(&db).await.err(), Some(DatabaseError::Pending));
+    assert!(application_tables(&mut connection(&db).await)
+        .await
+        .is_empty());
+}
+
+#[tokio::test]
+async fn open_answers_pending_for_a_database_behind_without_migrating() {
+    let db = TestDatabase::new();
+    initialize_with(
+        &db.options,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+        &prefix(2),
+        &baselines(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut conn = connection(&db).await;
+    let before = records(&mut conn).await;
+    assert_eq!(open(&db).await.err(), Some(DatabaseError::Pending));
+    assert_eq!(before, records(&mut conn).await);
+}
+
+#[tokio::test]
+async fn open_passes_other_preflight_errors_through() {
+    let db = TestDatabase::new();
+    let mut conn = connection(&db).await;
+    conn.execute("CREATE TABLE public.foreign_data (value text)")
+        .await
+        .unwrap();
+    let before = schema(&mut conn).await.unwrap();
+    assert_eq!(open(&db).await.err(), Some(DatabaseError::Ownership));
+    assert_eq!(before, schema(&mut conn).await.unwrap());
+}
