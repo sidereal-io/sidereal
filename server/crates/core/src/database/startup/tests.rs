@@ -677,6 +677,24 @@ async fn silent_relay_reports_unreachable_within_startup_deadline() {
     assert!(start.elapsed() < Duration::from_millis(1250));
 }
 
+#[tokio::test]
+async fn open_reports_a_silent_host_as_unreachable_like_the_server() {
+    use crate::test_support::{Relay, RelayMode};
+    let relay = Relay::new("127.0.0.1:9".parse().unwrap()).await;
+    relay.set_mode(RelayMode::Silent);
+    let options = PgConnectOptions::new()
+        .host("127.0.0.1")
+        .port(relay.port)
+        .ssl_mode(sqlx::postgres::PgSslMode::Disable);
+    let start = Instant::now();
+    let error = Database::open(options, Duration::from_secs(1))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error, DatabaseError::Unreachable);
+    assert!(start.elapsed() < Duration::from_millis(1250));
+}
+
 async fn open(db: &TestDatabase) -> Result<Database, DatabaseError> {
     Database::open(db.options.clone(), Duration::from_secs(3)).await
 }

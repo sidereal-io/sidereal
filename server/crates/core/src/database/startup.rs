@@ -179,8 +179,12 @@ impl Database {
     /// Connect to a database whose schema is already current, without taking
     /// the startup lock or migrating. Only the server changes the schema.
     pub async fn open(options: PgConnectOptions, startup: Duration) -> Result<Self, DatabaseError> {
+        // A connect that hangs is the same fault the server reports as
+        // unreachable, so the operator reads one line for it in both places.
+        let mut conn = timeout(startup, PgConnection::connect_with(&options))
+            .await
+            .map_err(|_| DatabaseError::Unreachable)??;
         timeout(startup, async {
-            let mut conn = PgConnection::connect_with(&options).await?;
             let prefix = applied(&mut conn).await?;
             // An empty database reads as no prefix, a partial history as a short one.
             if prefix != Some(MIGRATOR.iter().count()) {
