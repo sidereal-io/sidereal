@@ -197,6 +197,58 @@ mod in_process {
         siderealctl(db, &["reset-admin-password"], &mut Scripted::new(answers)).await
     }
 
+    /// A stdout whose reader went away, as under `| head -1` or on a full
+    /// disk: every write after the first line fails.
+    struct ClosedAfterFirstLine(Vec<u8>);
+
+    impl io::Write for ClosedAfterFirstLine {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if self.0.contains(&b'\n') {
+                return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+            }
+            self.0.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn in_process_a_generated_password_that_cannot_be_shown_fails_the_command() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        let options = db.options.clone();
+        let mut out = ClosedAfterFirstLine(Vec::new());
+        let mut err = Vec::new();
+        let status = sidereal_server::siderealctl::run(
+            ["reset-admin-password".to_string()].into_iter(),
+            move || {
+                Ok(DatabaseConfig {
+                    options,
+                    startup_timeout: Duration::from_secs(10),
+                    migration_timeout: Duration::from_secs(10),
+                })
+            },
+            &mut Scripted::new(&[""]),
+            &mut out,
+            &mut err,
+        )
+        .await;
+        let err = String::from_utf8(err).unwrap();
+        assert_eq!(status, 1, "{err}");
+        assert_eq!(
+            err,
+            "the generated password could not be shown; run the command again to set a new one\n"
+        );
+        // The reset itself stood: the old password no longer signs in.
+        assert_eq!(
+            sign_in(&app, "sam", PASSWORD).await,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
     #[tokio::test]
     async fn in_process_the_state_line_comes_first() {
         let db = TestDatabase::new();

@@ -111,8 +111,15 @@ async fn reset_admin_password(
         },
     };
     // Printed only now, so a password that was never stored is never shown.
-    if credentials.generated {
-        let _ = writeln!(out, "Generated password: {}", credentials.password);
+    // A password that was stored but not shown locks Sam out, so that write
+    // is the one whose failure the exit status must carry.
+    if credentials.generated
+        && writeln!(out, "Generated password: {}", credentials.password).is_err()
+    {
+        return refuse(
+            err,
+            "the generated password could not be shown; run the command again to set a new one",
+        );
     }
     let _ = writeln!(out, "{done}");
     0
