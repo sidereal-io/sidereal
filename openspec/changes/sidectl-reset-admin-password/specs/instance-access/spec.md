@@ -78,7 +78,7 @@ In the reset state, a `--username` that is not the administrator's username SHAL
 
 ### Requirement: An empty answer at the password prompt is generated
 
-When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password. Only the prompt on a terminal generates a password. When stdin is not a terminal, an empty answer to `New password:` SHALL be refused like an empty line under `--password-stdin`, and `--password-stdin` never generates one.
+When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password. When that line cannot be written, the command SHALL exit 1 with one line on stderr that says the generated password could not be shown and to run the command again, because the password is already stored. Only the prompt on a terminal generates a password. When stdin is not a terminal, an empty answer to `New password:` SHALL be refused like an empty line under `--password-stdin`, and `--password-stdin` never generates one.
 
 #### Scenario: Empty answer at the prompt
 - **WHEN** an administrator exists and Sam answers `New password:` with an empty line
@@ -91,6 +91,10 @@ When the answer to `New password:` is an empty line, the command SHALL generate 
 #### Scenario: Empty answer in the create state
 - **WHEN** no administrator exists and Sam answers `Username:` with `sam` and `New password:` with an empty line
 - **THEN** the exit status is 0, stdout holds a `Generated password:` line and `Created administrator sam.`, and `POST /api/session` with `sam` and the generated password answers 200
+
+#### Scenario: The generated password cannot be shown
+- **WHEN** an administrator exists, Sam answers `New password:` with an empty line, and stdout stops accepting writes after the state line, as under `| head -1`
+- **THEN** the exit status is 1, stderr says the generated password could not be shown and to run the command again, and `POST /api/session` with the old password answers 401
 
 ### Requirement: The recovery command applies the claim's credential rules
 
@@ -119,6 +123,10 @@ The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings
 #### Scenario: Missing configuration
 - **WHEN** a script runs the command with `DATABASE_URL` unset
 - **THEN** the exit status is 1 and stderr starts with `missing database configuration`
+
+#### Scenario: A host that accepts the connection and never answers
+- **WHEN** `DATABASE_URL` names a host that accepts the TCP connection and sends nothing, and a script runs the command
+- **THEN** within the startup timeout the exit status is 1 and stderr starts with `database unreachable`, the line the server prints for the same host
 
 ### Requirement: The recovery command keeps secrets out of its output
 

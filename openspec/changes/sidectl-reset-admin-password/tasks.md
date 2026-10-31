@@ -27,3 +27,5 @@
 <!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
 
 - 2026-10-29, task 2.1: `--username` given twice is a usage error, exit 2. The plan did not say which value wins; refusing avoids guessing whose account a script meant.
+- 2026-10-31, code review: `Database::open` put one timeout around the connect and the preflight read, so a silent host printed the startup-deadline line where the server prints `database unreachable`. The connect now has its own timeout, mapped as the server maps it. Spec: scenario "A host that accepts the connection and never answers".
+- 2026-10-31, code review: a failed write of the `Generated password:` line still exited 0, leaving a stored password nobody saw. That write's failure now exits 1 with a line on stderr saying to run the command again. Spec: scenario "The generated password cannot be shown".
