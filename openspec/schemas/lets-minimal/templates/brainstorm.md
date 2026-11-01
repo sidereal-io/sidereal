@@ -7,7 +7,7 @@
 ## Decisions
 
 <!-- One row per resolved question, in the order they were settled.
-Source: User (the user decided) | Evidence: <where> (code or a document settled it) | Assumption (neither did) -->
+Source: User (the user decided) | Evidence: <where> (code or a document settled it) | Evidence: #<n> comment (<author>, <date>) (a comment the user confirmed) | Assumption (neither did) -->
 
 | # | Question | Answer | Source |
 |---|---|---|---|
