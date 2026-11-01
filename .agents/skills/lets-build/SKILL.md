@@ -140,6 +140,17 @@ If a line is missing, or still holds a placeholder in angle brackets,
 name it, say to run the `lets-shape` skill on #<i>, and stop. Never write
 or fix the packet yourself.
 
+Then read the issue's thread as
+[Issue comments](../lets-shape/references/issue-comments.md) says. Read
+a comment's first line only, to find read markers. The watermark is the
+later of the body's last edit and the newest read marker. When neither
+exists, every comment is after it. A comment created or edited after the
+watermark stops the run, whoever wrote it. A read marker never does. To
+stop, say how many comments shaping has not read. Give each one's author
+as the reference shows it, and the date that put it past the watermark:
+its edit date, else its creation date. Show nothing of what a comment
+says. Say to run the `lets-shape` skill on #<i>, and stop.
+
 For a Story with a parent, read the parent's **Shared decisions**
 section, when it has one: `gh issue view <parent> --json body`. The
 route needs it.

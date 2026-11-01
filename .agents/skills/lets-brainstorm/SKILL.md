@@ -59,6 +59,14 @@ both an API and a frontend. A shared spec is context unless its requirements
 change. One story can affect several domains. When the affected area is clear,
 continue without asking the user to select or confirm a domain.
 
+### Read the thread
+
+Fetch the issue's thread as [Issue comments](../lets-shape/references/issue-comments.md)
+says, and show the user the list it describes. A comment labelled `read` needs no
+question. Raise any other comment that bears on the story's scope, behavior
+or acceptance as a question, like any other. Write nothing on the issue: no
+reply, no marker and no body edit.
+
 ### Settle the story
 
 - Ask one question at a time, with your recommended answer and why it matters: the decision it settles.
@@ -75,9 +83,12 @@ One row per resolved question, in the order settled. Each row names its source.
 |---|---|
 | `User` | The user decided. |
 | `Evidence: <where>` | Code or a document settled it. Name the file. |
+| `Evidence: #<n> comment (<author>, <date>)` | The user said yes to the comment's answer. Use the author as the list shows it and the day it was posted, as `YYYY-MM-DD`. |
 | `Assumption` | Neither did. |
 
 Silence is not agreement: a recommendation the user did not accept is an `Assumption`. Keep each row to one line; the design explains the why and the how.
+
+A comment the user has not said yes to stays out of every row, `Assumption` included: settle the question from the packet and the code alone. When the user delegated the brainstorm, still stop and ask them each question a comment raises, whether the comment is `candidate` or `outside`.
 
 ## Splitting the story
 
@@ -89,4 +100,6 @@ A story is the right size when it would take about five to twelve tasks to build
 
 ## Confirming
 
-Show the user the ledger and the changes from the story, and ask them to confirm. Only an explicit yes counts. Until then the brainstorm is not finished, whatever the file says.
+First fetch the thread again, even if it was empty. Show each comment that is new or edited since the first fetch, and raise it like the others. The reference says how to find them.
+
+Then show the user the ledger and the changes from the story, and ask them to confirm. Only an explicit yes counts. Until then the brainstorm is not finished, whatever the file says.
