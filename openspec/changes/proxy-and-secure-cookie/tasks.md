@@ -16,7 +16,7 @@
 
 ## 4. Integration [depends-on: 2, 3]
 
-- [ ] 4.1 [easy] The whole gate is green (verify: `just check`)
+- [x] 4.1 [easy] The whole gate is green (verify: `just check`) (✓ `just check` passed: compose check, fmt, clippy -D warnings, cargo test, arch lint, web gate)
 
 ## Deviations Ledger
 
