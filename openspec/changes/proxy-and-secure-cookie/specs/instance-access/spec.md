@@ -40,7 +40,15 @@ The `sidereal_session` cookie SHALL carry the attributes `HttpOnly`, `SameSite=L
 
 ### Requirement: The scheme and the client address come from a trusted proxy
 
-For every request, the server SHALL resolve a scheme and a client address. When the peer is not a trusted proxy, the scheme is HTTP and the client address is the peer's address. When the peer is a trusted proxy, the scheme is HTTPS when the `X-Forwarded-Proto` header is exactly `https`, compared without regard to case, and HTTP for any other value, a list of values, or no header. The client address is found by reading `X-Forwarded-For` from its last entry to its first: the first entry that is not a trusted proxy is the client address; when every entry is a trusted proxy, or the header is absent, the client address is the peer's address. An entry that is not an address SHALL be treated as not a trusted proxy and taken as the client address. The `Forwarded` header SHALL NOT be read. The server SHALL NOT read `X-Forwarded-Host`: the origin check compares against `Host` alone.
+For every request, the server SHALL resolve a scheme and a client address.
+
+When the peer is not a trusted proxy, the scheme SHALL be HTTP and the client address SHALL be the peer's address.
+
+When the peer is a trusted proxy, the scheme SHALL be HTTPS when `X-Forwarded-Proto` is exactly `https`, compared without regard to case. Any other value, a list of values, or no header SHALL mean HTTP.
+
+When the peer is a trusted proxy, the server SHALL read `X-Forwarded-For` from its last entry to its first. The first entry that is not a trusted proxy SHALL be the client address. An entry that is not an address SHALL count as not trusted, and so SHALL be the client address. When every entry is a trusted proxy, or the header is absent, the client address SHALL be the peer's address.
+
+The server SHALL NOT read the `Forwarded` header. The server SHALL NOT read `X-Forwarded-Host`: the origin check compares against `Host` alone.
 
 #### Scenario: No proxy
 - **WHEN** a request arrives from `192.168.1.20`, which is not a trusted proxy, with no forwarded headers

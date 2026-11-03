@@ -41,7 +41,10 @@ The guide SHALL cover these points:
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
 - the one command that builds and starts the instance, including first-start storage initialization;
 - that Sam claims the instance right after the first start, by opening the web page or by running `siderealctl reset-admin-password` first, because the claim is open to the first visitor until then;
-- how to put the instance behind a reverse proxy that terminates TLS, with a Caddy example; that the proxy's address, as the app sees it, must be listed in `SIDEREAL_TRUSTED_PROXIES`, and how to find that address for a proxy on the same machine and for one elsewhere; that requests carrying forwarded headers from an unlisted address are refused; and that `SIDEREAL_BIND_ADDRESS=127.0.0.1` keeps the plain-HTTP port off the network when the proxy runs on the same machine;
+- how to put the instance behind a reverse proxy that terminates TLS, with a Caddy example;
+- that the proxy's address, as the app sees it, must be listed in `SIDEREAL_TRUSTED_PROXIES`, and how to find that one address for a proxy on the same machine and for one elsewhere;
+- that requests carrying forwarded headers from an unlisted address are refused;
+- that `SIDEREAL_BIND_ADDRESS=127.0.0.1` keeps the plain-HTTP port off the network when the proxy runs on the same machine;
 - that `SIDEREAL_ALLOWED_ORIGINS` is optional and needed only when a proxy rewrites the `Host` header;
 - the commands that stop and recreate the instance;
 - that `down --volumes` with one bind override deletes only the named-volume data location;
@@ -106,6 +109,6 @@ The `app` service SHALL pass `SIDEREAL_TRUSTED_PROXIES` and `SIDEREAL_ALLOWED_OR
 
 #### Scenario: A value passes through
 
-- **GIVEN** a `.env` file that sets `SIDEREAL_TRUSTED_PROXIES=172.18.0.1`
+- **GIVEN** a `.env` file that sets `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and `SIDEREAL_ALLOWED_ORIGINS=https://photos.example`
 - **WHEN** a tester runs `docker compose config`
-- **THEN** the `app` service's `environment` holds `SIDEREAL_TRUSTED_PROXIES: 172.18.0.1`
+- **THEN** the `app` service's `environment` holds `SIDEREAL_TRUSTED_PROXIES: 172.18.0.1` and `SIDEREAL_ALLOWED_ORIGINS: https://photos.example`
