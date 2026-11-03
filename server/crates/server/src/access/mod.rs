@@ -15,6 +15,7 @@ use sidereal_core::{
 };
 
 pub mod cookie;
+pub mod forwarded;
 mod guard;
 
 /// Every path under `/api`, behind the origin check and then the session

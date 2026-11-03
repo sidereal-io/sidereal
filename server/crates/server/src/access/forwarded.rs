@@ -1,0 +1,215 @@
+//! The scheme and the client address of a request, believed from forwarded
+//! headers only when the peer is a trusted proxy.
+use crate::config::TrustedProxies;
+use axum::http::HeaderMap;
+use std::net::IpAddr;
+
+pub const FORWARDED_FOR: &str = "x-forwarded-for";
+pub const FORWARDED_PROTO: &str = "x-forwarded-proto";
+
+/// What the server resolved about a request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Forwarded {
+    /// Whether the request reached the trusted proxy over HTTPS.
+    pub https: bool,
+    /// The client address. `None` when the nearest untrusted
+    /// `X-Forwarded-For` entry is not an address.
+    pub client: Option<IpAddr>,
+}
+
+pub fn resolve(peer: IpAddr, headers: &HeaderMap, trusted: &TrustedProxies) -> Forwarded {
+    let peer = peer.to_canonical();
+    if !trusted.contains(peer) {
+        return Forwarded {
+            https: false,
+            client: Some(peer),
+        };
+    }
+    Forwarded {
+        https: https(headers),
+        client: client(peer, headers, trusted),
+    }
+}
+
+/// One header holding exactly `https`. A list, from one header or several,
+/// is not believed.
+fn https(headers: &HeaderMap) -> bool {
+    let mut values = headers.get_all(FORWARDED_PROTO).iter();
+    match (values.next(), values.next()) {
+        (Some(value), None) => value
+            .to_str()
+            .is_ok_and(|value| value.trim().eq_ignore_ascii_case("https")),
+        _ => false,
+    }
+}
+
+/// The nearest `X-Forwarded-For` entry that is not a trusted proxy, read from
+/// the last. Each proxy appends, so only the entries to the right of an
+/// untrusted one were written by proxies the server trusts.
+fn client(peer: IpAddr, headers: &HeaderMap, trusted: &TrustedProxies) -> Option<IpAddr> {
+    for value in headers.get_all(FORWARDED_FOR).iter().rev() {
+        let Ok(value) = value.to_str() else {
+            return None;
+        };
+        for entry in value.rsplit(',') {
+            match entry.trim().parse::<IpAddr>() {
+                Ok(address) if trusted.contains(address) => continue,
+                Ok(address) => return Some(address.to_canonical()),
+                Err(_) => return None,
+            }
+        }
+    }
+    Some(peer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::trusted_proxies;
+    use std::ffi::OsStr;
+
+    fn ip(value: &str) -> IpAddr {
+        value.parse().unwrap()
+    }
+
+    fn trusting(value: &str) -> TrustedProxies {
+        trusted_proxies(Some(OsStr::new(value))).unwrap()
+    }
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        for (name, value) in pairs {
+            headers.append(*name, value.parse().unwrap());
+        }
+        headers
+    }
+
+    fn from(peer: &str, trusted: &str, pairs: &[(&'static str, &str)]) -> Forwarded {
+        resolve(ip(peer), &headers(pairs), &trusting(trusted))
+    }
+
+    #[test]
+    fn an_untrusted_peer_is_plain_http_from_itself() {
+        let resolved = from(
+            "192.168.1.20",
+            "172.18.0.1",
+            &[(FORWARDED_PROTO, "https"), (FORWARDED_FOR, "203.0.113.9")],
+        );
+        assert_eq!(
+            resolved,
+            Forwarded {
+                https: false,
+                client: Some(ip("192.168.1.20")),
+            }
+        );
+    }
+
+    #[test]
+    fn a_trusted_proxy_forwards_the_scheme_and_the_client() {
+        let resolved = from(
+            "172.18.0.1",
+            "172.18.0.1",
+            &[(FORWARDED_PROTO, "https"), (FORWARDED_FOR, "203.0.113.9")],
+        );
+        assert_eq!(
+            resolved,
+            Forwarded {
+                https: true,
+                client: Some(ip("203.0.113.9")),
+            }
+        );
+    }
+
+    #[test]
+    fn the_proto_is_https_ignoring_case() {
+        for value in ["HTTPS", "Https", " https "] {
+            let resolved = from("172.18.0.1", "172.18.0.1", &[(FORWARDED_PROTO, value)]);
+            assert!(resolved.https, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn any_other_proto_is_plain_http() {
+        for pairs in [
+            &[(FORWARDED_PROTO, "http")][..],
+            &[(FORWARDED_PROTO, "https, http")],
+            &[(FORWARDED_PROTO, "https,https")],
+            &[(FORWARDED_PROTO, "https"), (FORWARDED_PROTO, "https")],
+            &[(FORWARDED_PROTO, "")],
+            &[],
+        ] {
+            assert!(!from("172.18.0.1", "172.18.0.1", pairs).https, "{pairs:?}");
+        }
+    }
+
+    #[test]
+    fn a_spoofed_entry_behind_the_proxy_is_not_the_client() {
+        let resolved = from(
+            "172.18.0.1",
+            "172.18.0.1",
+            &[(FORWARDED_FOR, "10.0.0.1, 203.0.113.9")],
+        );
+        assert_eq!(resolved.client, Some(ip("203.0.113.9")));
+    }
+
+    #[test]
+    fn a_chain_of_trusted_proxies_is_skipped() {
+        let resolved = from(
+            "172.18.0.1",
+            "172.18.0.0/16",
+            &[(FORWARDED_FOR, "203.0.113.9, 172.18.0.5")],
+        );
+        assert_eq!(resolved.client, Some(ip("203.0.113.9")));
+    }
+
+    #[test]
+    fn repeated_headers_are_read_as_one_list() {
+        let resolved = from(
+            "172.18.0.1",
+            "172.18.0.0/16",
+            &[
+                (FORWARDED_FOR, "203.0.113.9"),
+                (FORWARDED_FOR, "172.18.0.5"),
+            ],
+        );
+        assert_eq!(resolved.client, Some(ip("203.0.113.9")));
+    }
+
+    #[test]
+    fn every_entry_trusted_leaves_the_peer_as_the_client() {
+        let resolved = from(
+            "172.18.0.1",
+            "172.18.0.0/16",
+            &[(FORWARDED_FOR, "172.18.0.5")],
+        );
+        assert_eq!(resolved.client, Some(ip("172.18.0.1")));
+    }
+
+    #[test]
+    fn no_forwarded_for_leaves_the_peer_as_the_client() {
+        let resolved = from("172.18.0.1", "172.18.0.1", &[(FORWARDED_PROTO, "https")]);
+        assert_eq!(resolved.client, Some(ip("172.18.0.1")));
+    }
+
+    #[test]
+    fn an_unparsable_entry_is_the_client() {
+        for value in [
+            "203.0.113.9, garbage",
+            "203.0.113.9, 203.0.113.10:4000",
+            "203.0.113.9, ",
+        ] {
+            let resolved = from("172.18.0.1", "172.18.0.1", &[(FORWARDED_FOR, value)]);
+            assert_eq!(resolved.client, None, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn mapped_addresses_are_canonical() {
+        let resolved = from(
+            "::ffff:172.18.0.1",
+            "172.18.0.1",
+            &[(FORWARDED_FOR, "::ffff:203.0.113.9, ::ffff:172.18.0.1")],
+        );
+        assert_eq!(resolved.client, Some(ip("203.0.113.9")));
+    }
+}
