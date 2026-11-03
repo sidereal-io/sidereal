@@ -1,6 +1,6 @@
 ## 1. The trusted-proxy setting and the resolver
 
-- [ ] 1.1 [medium] `config::trusted_proxies` parses `SIDEREAL_TRUSTED_PROXIES` into `TrustedProxies`: a comma-separated list of IPv4 and IPv6 addresses and CIDR ranges, canonicalised, spaces trimmed; unset or empty trusts nobody; a malformed item is `TrustedProxiesError` whose message names the variable and not the item; `contains(IpAddr)` matches only within a family and does not overflow at prefix 0, 32 or 128 (verify: `cd server && cargo test -p sidereal-server config::tests::trusted_proxies`)
+- [x] 1.1 [medium] `config::trusted_proxies` parses `SIDEREAL_TRUSTED_PROXIES` into `TrustedProxies`: a comma-separated list of IPv4 and IPv6 addresses and CIDR ranges, canonicalised, spaces trimmed; unset or empty trusts nobody; a malformed item is `TrustedProxiesError` whose message names the variable and not the item; `contains(IpAddr)` matches only within a family and does not overflow at prefix 0, 32 or 128 (verify: `cd server && cargo test -p sidereal-server config::tests::trusted_proxies`) (✓ `cargo test -p sidereal-server config::tests::trusted_proxies` passed, 7 tests)
 - [ ] 1.2 [medium] `access::forwarded::resolve(peer, headers, &trusted) -> Forwarded { https, client }` follows the spec: an untrusted peer is HTTP with the peer as client; a trusted peer is HTTPS only for `X-Forwarded-Proto: https` ignoring case; the client is the rightmost `X-Forwarded-For` entry that is not trusted, an unparsable entry counting as untrusted, and the peer when every entry is trusted or the header is absent (verify: `cd server && cargo test -p sidereal-server forwarded::tests`)
 
 ## 2. The layer and the cookie [depends-on: 1]
@@ -20,3 +20,4 @@
 
 ## Deviations Ledger
 
+- 1.1: `TrustedProxies` holds an `Arc<[(IpAddr, u8)]>`, not a `Vec`, so it clones cheaply as layer state, like `AllowedOrigins`. A listed IPv4-mapped range of prefix 96 or more is stored as the IPv4 range it covers, so it matches canonicalised peers.
