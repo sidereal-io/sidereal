@@ -1026,6 +1026,7 @@ mod spawned {
                 .env_remove("WEB_ROOT")
                 .env_remove("STORAGE_ROOT")
                 .env_remove("SIDEREAL_ALLOWED_ORIGINS")
+                .env_remove("SIDEREAL_TRUSTED_PROXIES")
                 .envs(env.iter().copied())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1243,6 +1244,85 @@ mod allowed_origins_at_start {
             .request_with("POST", "/api/claim", Some(&body), "app:5000", &origin)
             .unwrap();
         assert!(answer.starts_with("HTTP/1.1 201"), "{answer}");
+    }
+}
+
+mod spawned_trusted_proxy {
+    use super::*;
+    use sqlx::ConnectOptions;
+    use std::{
+        process::{Command, Stdio},
+        time::Instant,
+    };
+
+    #[tokio::test]
+    async fn spawned_trusted_proxy_malformed_item_stops_the_server_before_the_database() {
+        let db = TestDatabase::new();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
+            .env("DATABASE_URL", db.options.to_url_lossy().to_string())
+            .env("PORT", "0")
+            .env_remove("WEB_ROOT")
+            .env_remove("STORAGE_ROOT")
+            .env_remove("SIDEREAL_ALLOWED_ORIGINS")
+            .env("SIDEREAL_TRUSTED_PROXIES", "proxy.example")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() > deadline {
+                child.kill().unwrap();
+                panic!("the server kept running");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("SIDEREAL_TRUSTED_PROXIES"), "{stderr}");
+        assert!(!stderr.contains("proxy.example"), "{stderr}");
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let tables: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(tables, 0);
+    }
+
+    #[tokio::test]
+    async fn spawned_trusted_proxy_over_https_gets_a_secure_cookie() {
+        let db = TestDatabase::new();
+        let server = spawned::Server::ready_with(&db, &[("SIDEREAL_TRUSTED_PROXIES", "127.0.0.1")]);
+        let body = credentials("sam", PASSWORD);
+        let claimed = server.request("POST", "/api/claim", Some(&body)).unwrap();
+        assert!(claimed.starts_with("HTTP/1.1 201"), "{claimed}");
+        let https = [("X-Forwarded-Proto", "https")];
+        let answer = server
+            .request_with("POST", "/api/session", Some(&body), "localhost", &https)
+            .unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+        let cookie = answer
+            .lines()
+            .find(|line| line.to_ascii_lowercase().starts_with("set-cookie:"))
+            .expect("a session cookie");
+        assert!(
+            cookie.trim_end().split("; ").any(|part| part == "Secure"),
+            "{cookie}"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawned_trusted_proxy_unset_refuses_forwarded_headers() {
+        let db = TestDatabase::new();
+        let server = spawned::Server::ready(&db);
+        let https = [("X-Forwarded-Proto", "https")];
+        let answer = server
+            .request_with("GET", "/healthz", None, "localhost", &https)
+            .unwrap();
+        assert!(answer.starts_with("HTTP/1.1 400"), "{answer}");
     }
 }
 

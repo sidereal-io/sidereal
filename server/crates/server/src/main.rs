@@ -3,8 +3,11 @@
 use sidereal_core::database::{initialize, initialize_with_storage};
 use sidereal_server::{
     app_with_database,
-    config::{allowed_origins_from_env, storage_root_from_env, web_root_from_env, DatabaseConfig},
-    with_web_root,
+    config::{
+        allowed_origins_from_env, storage_root_from_env, trusted_proxies_from_env,
+        web_root_from_env, DatabaseConfig,
+    },
+    with_trusted_proxies, with_web_root,
 };
 use std::net::SocketAddr;
 
@@ -22,6 +25,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let web_root = web_root_from_env()?;
     let storage = storage_root_from_env()?;
     let allowed_origins = allowed_origins_from_env()?;
+    let trusted_proxies = trusted_proxies_from_env()?;
     let config = DatabaseConfig::from_env()?;
     let (options, startup, migration) = (
         config.options,
@@ -54,13 +58,20 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         sidereal_core::abi_version(),
         sidereal_pack_astro::abi_version()
     );
-    let app = with_web_root(
-        app_with_database(database.clone(), allowed_origins),
-        web_root.as_deref(),
+    let app = with_trusted_proxies(
+        with_web_root(
+            app_with_database(database.clone(), allowed_origins),
+            web_root.as_deref(),
+        ),
+        trusted_proxies,
     );
-    let result = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown())
-        .await;
+    // The peer's address decides whether its forwarded headers are believed.
+    let result = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await;
     database.close().await;
     result?;
     Ok(())
