@@ -5,8 +5,11 @@ services:
     build: .
     environment:
       STORAGE_ROOT: /var/lib/sidereal/storage
+      # No value: passed from .env or the shell only when set there.
+      SIDEREAL_TRUSTED_PROXIES:
+      SIDEREAL_ALLOWED_ORIGINS:
     ports:
-      - "${SIDEREAL_PORT:-5000}:5000"
+      - "${SIDEREAL_BIND_ADDRESS:-0.0.0.0}:${SIDEREAL_PORT:-5000}:5000"
     volumes:
       - storage:/var/lib/sidereal/storage
     cap_drop:

@@ -53,6 +53,23 @@ for value in missing empty; do
     [ "$value" != empty ] || printf 'DATABASE_URL=\n' >>"$envfile"
     refuse DATABASE_URL -f compose.external-db.yml
 done
+# The app port binds every interface unless SIDEREAL_BIND_ADDRESS narrows it,
+# and the access settings pass through only when set.
+jq -e '
+    [.services.app.ports[] | {host_ip, published, target}] ==
+        [{"host_ip": "0.0.0.0", "published": "5000", "target": 5000}] and
+    ([.services.app.environment | (.SIDEREAL_TRUSTED_PROXIES, .SIDEREAL_ALLOWED_ORIGINS)] |
+        all(. == null))
+' "$work/bundled.json" >/dev/null || fail 'default port binding or unset access settings changed'
+settings
+printf '%s\n' 'SIDEREAL_BIND_ADDRESS=127.0.0.1' 'SIDEREAL_TRUSTED_PROXIES=172.18.0.1' \
+    'SIDEREAL_ALLOWED_ORIGINS=https://photos.example' >>"$envfile"
+compose -f compose.yml >"$work/access.json"
+jq -e '
+    [.services.app.ports[] | {host_ip, published}] == [{"host_ip": "127.0.0.1", "published": "5000"}] and
+    .services.app.environment.SIDEREAL_TRUSTED_PROXIES == "172.18.0.1" and
+    .services.app.environment.SIDEREAL_ALLOWED_ORIGINS == "https://photos.example"
+' "$work/access.json" >/dev/null || fail 'bind address or access settings do not pass through'
 settings
 refuse 'neither an image nor a build' -f compose.external-db.yml -f compose.database-bind.yml
 compose -f compose.external-db.yml -f compose.database-tls.yml >"$work/tls.json"
