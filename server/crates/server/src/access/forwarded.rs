@@ -1,8 +1,14 @@
 //! The scheme and the client address of a request, believed from forwarded
 //! headers only when the peer is a trusted proxy.
+use super::AccessError;
 use crate::config::TrustedProxies;
-use axum::http::HeaderMap;
-use std::net::IpAddr;
+use axum::{
+    extract::{ConnectInfo, Request, State},
+    http::HeaderMap,
+    middleware::Next,
+    response::{IntoResponse, Response},
+};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 pub const FORWARDED_FOR: &str = "x-forwarded-for";
 pub const FORWARDED_PROTO: &str = "x-forwarded-proto";
@@ -15,6 +21,38 @@ pub struct Forwarded {
     /// The client address. `None` when the nearest untrusted
     /// `X-Forwarded-For` entry is not an address.
     pub client: Option<IpAddr>,
+}
+
+/// Hand every request its `Forwarded`, or refuse forwarded headers from a
+/// peer that is not a trusted proxy. The refusal logs nothing and holds
+/// nothing from the request, because its source is not trusted.
+pub async fn layer(
+    State(trusted): State<TrustedProxies>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    // No `ConnectInfo` means a wiring mistake or an in-process test. Such a
+    // peer is never trusted, even by a list that covers `0.0.0.0`.
+    let peer = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(peer)| peer.ip());
+    let trusted_peer = peer.is_some_and(|peer| trusted.contains(peer));
+    let headers = request.headers();
+    if !trusted_peer
+        && (headers.contains_key(FORWARDED_FOR) || headers.contains_key(FORWARDED_PROTO))
+    {
+        return AccessError::UntrustedProxy.into_response();
+    }
+    let forwarded = match peer {
+        Some(peer) => resolve(peer, headers, &trusted),
+        None => Forwarded {
+            https: false,
+            client: Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+        },
+    };
+    request.extensions_mut().insert(forwarded);
+    next.run(request).await
 }
 
 pub fn resolve(peer: IpAddr, headers: &HeaderMap, trusted: &TrustedProxies) -> Forwarded {

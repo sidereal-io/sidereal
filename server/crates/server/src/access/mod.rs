@@ -54,6 +54,7 @@ pub enum AccessError {
     Unauthenticated,
     Forbidden,
     Unavailable,
+    UntrustedProxy,
 }
 
 impl IntoResponse for AccessError {
@@ -65,6 +66,10 @@ impl IntoResponse for AccessError {
             Self::Unauthenticated => (StatusCode::UNAUTHORIZED, "unauthenticated"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+            Self::UntrustedProxy => (
+                StatusCode::BAD_REQUEST,
+                "untrusted proxy: set SIDEREAL_TRUSTED_PROXIES",
+            ),
         };
         (status, Json(json!({ "error": error }))).into_response()
     }

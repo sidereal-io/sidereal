@@ -2,6 +2,7 @@
 //! database per test.
 use axum::{
     body::{to_bytes, Body},
+    extract::ConnectInfo,
     http::{header, Request, StatusCode},
     response::Response,
     Router,
@@ -9,10 +10,11 @@ use axum::{
 use sidereal_core::database::{initialize, Database};
 use sidereal_server::{
     app_with_database,
-    config::{allowed_origins, AllowedOrigins},
+    config::{allowed_origins, trusted_proxies, AllowedOrigins, TrustedProxies},
+    with_trusted_proxies,
 };
 use sqlx::{Connection, PgConnection};
-use std::time::Duration;
+use std::{net::SocketAddr, time::Duration};
 use tower::ServiceExt;
 
 #[path = "../../core/src/database/test_support.rs"]
@@ -34,9 +36,24 @@ async fn database(db: &TestDatabase) -> Database {
     .unwrap()
 }
 
+/// The production stack with no trusted proxies.
 async fn router(db: &TestDatabase) -> Router {
-    app_with_database(database(db).await, AllowedOrigins::default())
+    trusting(db, TrustedProxies::default()).await
 }
+
+async fn trusting(db: &TestDatabase, trusted: TrustedProxies) -> Router {
+    with_trusted_proxies(
+        app_with_database(database(db).await, AllowedOrigins::default()),
+        trusted,
+    )
+}
+
+fn proxies(value: &str) -> TrustedProxies {
+    trusted_proxies(Some(std::ffi::OsStr::new(value))).unwrap()
+}
+
+/// A LAN client that is not a trusted proxy.
+const PEER: &str = "192.168.1.20:40000";
 
 fn credentials(username: &str, password: &str) -> String {
     serde_json::json!({ "username": username, "password": password }).to_string()
@@ -53,7 +70,24 @@ async fn send_with(
     body: Option<String>,
     headers: &[(&str, &str)],
 ) -> Response {
-    let mut request = Request::builder().method(method).uri(uri);
+    send_from(app, PEER, method, uri, body, headers).await
+}
+
+/// A request from the TCP peer `peer`, as `into_make_service_with_connect_info`
+/// reports it.
+async fn send_from(
+    app: &Router,
+    peer: &str,
+    method: &str,
+    uri: &str,
+    body: Option<String>,
+    headers: &[(&str, &str)],
+) -> Response {
+    let peer: SocketAddr = peer.parse().unwrap();
+    let mut request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .extension(ConnectInfo(peer));
     for (name, value) in headers {
         request = request.header(*name, *value);
     }
@@ -748,6 +782,125 @@ mod origin {
             let response = sign_in_with(&app, &headers).await;
             assert_eq!(response.status(), StatusCode::OK, "{origin}");
         }
+    }
+}
+
+mod untrusted_proxy {
+    use super::*;
+
+    const REFUSED: &str = r#"{"error":"untrusted proxy: set SIDEREAL_TRUSTED_PROXIES"}"#;
+
+    async fn sessions(db: &TestDatabase) -> i64 {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_scalar("SELECT count(*) FROM public.sessions")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    async fn assert_refused(response: Response) {
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
+        assert_eq!(body(response).await, REFUSED);
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_sign_in_is_refused_without_a_session() {
+        let db = TestDatabase::new();
+        let app = claimed(&db).await;
+        let body = Some(credentials("sam", PASSWORD));
+        let headers = [("x-forwarded-proto", "https")];
+        let response = send_with(&app, "POST", "/api/session", body, &headers).await;
+        assert_refused(response).await;
+        assert_eq!(sessions(&db).await, 0);
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_outside_the_list_is_refused_on_the_probe() {
+        let db = TestDatabase::new();
+        let app = trusting(&db, proxies("172.18.0.1")).await;
+        let headers = [("x-forwarded-for", "203.0.113.9")];
+        assert_refused(send_with(&app, "GET", "/healthz", None, &headers).await).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_is_refused_on_the_web_shell() {
+        let db = TestDatabase::new();
+        let root = WebRoot::new("untrusted-proxy");
+        let app = sidereal_server::with_web_root(
+            app_with_database(database(&db).await, AllowedOrigins::default()),
+            Some(&root.path),
+        );
+        let app = with_trusted_proxies(app, TrustedProxies::default());
+        let headers = [("x-forwarded-for", "203.0.113.9")];
+        for uri in ["/", "/assets/app.js", "/missing"] {
+            assert_refused(send_with(&app, "GET", uri, None, &headers).await).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_is_refused_on_an_unknown_path() {
+        let db = TestDatabase::new();
+        let headers = [("x-forwarded-proto", "https")];
+        let response = send_with(&router(&db).await, "GET", "/missing", None, &headers).await;
+        assert_refused(response).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_refusal_wins_over_the_origin_check() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+            ("x-forwarded-proto", "https"),
+        ];
+        let body = Some(credentials("sam", PASSWORD));
+        let response = send_with(&claimed(&db).await, "POST", "/api/session", body, &headers).await;
+        assert_refused(response).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_refusal_reads_no_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        database.close().await;
+        let app = with_trusted_proxies(
+            app_with_database(database, AllowedOrigins::default()),
+            TrustedProxies::default(),
+        );
+        let headers = [
+            ("x-forwarded-proto", "https"),
+            ("cookie", "sidereal_session=not-a-token"),
+        ];
+        assert_refused(send_with(&app, "GET", "/api/session", None, &headers).await).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_without_a_peer_is_refused_whatever_the_list() {
+        let db = TestDatabase::new();
+        let app = trusting(&db, proxies("0.0.0.0/0, ::/0")).await;
+        let request = Request::builder()
+            .uri("/healthz")
+            .header("x-forwarded-for", "203.0.113.9")
+            .body(Body::empty())
+            .unwrap();
+        assert_refused(app.oneshot(request).await.unwrap()).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_check_passes_a_request_without_forwarded_headers() {
+        let db = TestDatabase::new();
+        let response = send(&router(&db).await, "GET", "/healthz", None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_check_passes_a_listed_proxy() {
+        let db = TestDatabase::new();
+        let app = trusting(&db, proxies("172.18.0.1")).await;
+        let headers = [("x-forwarded-for", "203.0.113.9")];
+        let response = send_from(&app, "172.18.0.1:50000", "GET", "/healthz", None, &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }
 
