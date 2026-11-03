@@ -1,6 +1,6 @@
 //! The origin check and the session guard: one place decides who may call
 //! `/api`, so a new route is protected without code of its own.
-use super::{cookie, AccessError, ARRIVED_OVER_HTTPS};
+use super::{cookie, forwarded::Forwarded, AccessError};
 use crate::config::AllowedOrigins;
 use axum::{
     extract::{Request, State},
@@ -66,6 +66,11 @@ pub async fn session(
     mut request: Request,
     next: Next,
 ) -> Response {
+    // Read now: the request is gone by the time the refresh is set.
+    let https = request
+        .extensions()
+        .get::<Forwarded>()
+        .is_some_and(|forwarded| forwarded.https);
     let path = request.uri().path();
     if PUBLIC
         .iter()
@@ -81,7 +86,7 @@ pub async fn session(
         Ok(Some(user)) => user,
         // The browser holds a token no row backs: make it forget it.
         Ok(None) => {
-            let cleared = cookie::cleared(ARRIVED_OVER_HTTPS);
+            let cleared = cookie::cleared(https);
             return ([(SET_COOKIE, cleared)], AccessError::Unauthenticated).into_response();
         }
         Err(unavailable) => return AccessError::from(unavailable).into_response(),
@@ -94,7 +99,7 @@ pub async fn session(
     let mut response = next.run(request).await;
     // Sign-out clears the cookie, and that must win.
     if !sets_session_cookie(&response) {
-        let refreshed = cookie::session(&token, ARRIVED_OVER_HTTPS);
+        let refreshed = cookie::session(&token, https);
         if let Ok(refreshed) = refreshed.parse() {
             response.headers_mut().append(SET_COOKIE, refreshed);
         }

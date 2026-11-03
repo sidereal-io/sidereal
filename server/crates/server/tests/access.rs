@@ -904,6 +904,91 @@ mod untrusted_proxy {
     }
 }
 
+mod secure_cookie {
+    use super::*;
+
+    const PROXY: &str = "172.18.0.1:50000";
+
+    async fn behind_proxy(db: &TestDatabase) -> Router {
+        let app = trusting(db, proxies("172.18.0.1")).await;
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        app
+    }
+
+    async fn proxied(
+        app: &Router,
+        method: &str,
+        proto: &str,
+        body: Option<String>,
+        cookie: Option<&str>,
+    ) -> Response {
+        let mut headers = vec![("x-forwarded-proto", proto)];
+        headers.extend(cookie.map(|cookie| ("cookie", cookie)));
+        send_from(app, PROXY, method, "/api/session", body, &headers).await
+    }
+
+    fn is_secure(response: &Response) -> bool {
+        let cookie = set_cookie(response).expect("a session cookie");
+        cookie.split("; ").any(|part| part == "Secure")
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_after_sign_in_over_https() {
+        let db = TestDatabase::new();
+        let body = Some(credentials("sam", PASSWORD));
+        let response = proxied(&behind_proxy(&db).await, "POST", "https", body, None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = set_cookie(&response).unwrap();
+        for attribute in ["HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=2592000"] {
+            assert!(cookie.split("; ").any(|part| part == attribute), "{cookie}");
+        }
+        assert!(is_secure(&response), "{cookie}");
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_is_not_set_over_plain_http() {
+        let db = TestDatabase::new();
+        let body = Some(credentials("sam", PASSWORD));
+        let response = proxied(&behind_proxy(&db).await, "POST", "http", body, None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!is_secure(&response));
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_on_the_refresh_of_a_guarded_request() {
+        let db = TestDatabase::new();
+        let app = behind_proxy(&db).await;
+        let cookie = signed_in(&app).await;
+        let response = proxied(&app, "GET", "https", None, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(is_secure(&response));
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_on_a_cleared_stale_cookie() {
+        let db = TestDatabase::new();
+        let app = behind_proxy(&db).await;
+        let stale = "sidereal_session=not-a-token";
+        let response = proxied(&app, "GET", "https", None, Some(stale)).await;
+        assert_cleared(&response);
+        assert!(is_secure(&response));
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_on_sign_out() {
+        let db = TestDatabase::new();
+        let app = behind_proxy(&db).await;
+        let cookie = signed_in(&app).await;
+        let response = proxied(&app, "DELETE", "https", None, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_cleared(&response);
+        assert!(is_secure(&response));
+    }
+}
+
 /// A running server binary, killed when the test ends.
 mod spawned {
     use super::TestDatabase;
