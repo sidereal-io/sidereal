@@ -15,7 +15,10 @@ use sidereal_core::{
 };
 
 pub mod cookie;
+pub mod forwarded;
 mod guard;
+
+use forwarded::Forwarded;
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -53,6 +56,7 @@ pub enum AccessError {
     Unauthenticated,
     Forbidden,
     Unavailable,
+    UntrustedProxy,
 }
 
 impl IntoResponse for AccessError {
@@ -64,6 +68,10 @@ impl IntoResponse for AccessError {
             Self::Unauthenticated => (StatusCode::UNAUTHORIZED, "unauthenticated"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+            Self::UntrustedProxy => (
+                StatusCode::BAD_REQUEST,
+                "untrusted proxy: set SIDEREAL_TRUSTED_PROXIES",
+            ),
         };
         (status, Json(json!({ "error": error }))).into_response()
     }
@@ -127,12 +135,15 @@ async fn claim(
     Ok((StatusCode::CREATED, user(&created)))
 }
 
-// The server listens on plain TCP only, so no request arrives over HTTPS
-// yet. The trusted-proxy story (#450) sets this from the request.
-const ARRIVED_OVER_HTTPS: bool = false;
+/// Whether the request arrived over HTTPS. Without the trusted-proxy layer
+/// there is no `Forwarded`, and the request is plain HTTP.
+fn over_https(forwarded: Option<Extension<Forwarded>>) -> bool {
+    forwarded.is_some_and(|Extension(forwarded)| forwarded.https)
+}
 
 async fn sign_in(
     State(database): State<Database>,
+    forwarded: Option<Extension<Forwarded>>,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
     let credentials = Credentials::try_from(body)?;
@@ -140,7 +151,7 @@ async fn sign_in(
         .sign_in(&credentials.username, &credentials.password)
         .await?
         .ok_or(AccessError::WrongCredentials)?;
-    let cookie = cookie::session(token.as_str(), ARRIVED_OVER_HTTPS);
+    let cookie = cookie::session(token.as_str(), over_https(forwarded));
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
@@ -152,10 +163,11 @@ async fn current_session(Extension(signed_in): Extension<User>) -> Json<Value> {
 /// The guard has proven the token valid; it is still needed to delete the row.
 async fn sign_out(
     State(database): State<Database>,
+    forwarded: Option<Extension<Forwarded>>,
     headers: HeaderMap,
 ) -> Result<Response, AccessError> {
     let token = cookie::token(&headers).ok_or(AccessError::Unauthenticated)?;
-    let cleared = [(SET_COOKIE, cookie::cleared(ARRIVED_OVER_HTTPS))];
+    let cleared = [(SET_COOKIE, cookie::cleared(over_https(forwarded)))];
     // The row can vanish after the guard's lookup, as when two sign-outs
     // race. The token is dead either way, so the browser forgets it.
     if !database.sign_out(token).await? {

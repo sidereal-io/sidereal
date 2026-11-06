@@ -1,7 +1,7 @@
 ---
 id: adrs-adr007
 date: 2026-08-18
-amended: 2026-10-28
+amended: 2026-11-02
 status: accepted
 title: 'ADR007: Security and Plugin Trust Model'
 description: Architecture Decision Record (ADR) for the v2 trust boundary — built-in single-user authentication and explicit, per-install plugin capability grants.
@@ -52,6 +52,12 @@ The setup flow is chosen: a first-visitor claim, as Immich does it, instead of a
 ## Amendment, 2026-10-28
 
 The CSRF defence is an origin check, not a token. The original text asked for a CSRF token on state-changing requests. Immich relies on the `SameSite=Lax` cookie alone, and Frigate requires a custom header whose value it never checks. Modern browsers send `Origin` on every state-changing request, so comparing it with the request's own `Host`, with an optional exact list for a proxy that rewrites `Host`, gives the same protection with no client state and no setting for the common install. The `SameSite=Lax` cookie stays as the second layer. A request with neither `Origin` nor `Referer` is not from a browser and passes the check. "CORS is deny-by-default" now reads as it was always built: the server sends no cross-origin header at all.
+
+## Amendment, 2026-11-02
+
+A reverse proxy is believed only when it is named. The server trusts `X-Forwarded-Proto` and `X-Forwarded-For` from the addresses and ranges in `SIDEREAL_TRUSTED_PROXIES`, and from nobody else. Unset trusts nobody. A request that carries either header from an unlisted peer is refused with a fixed 400 that names the setting, on every route, and is not logged. The session cookie is `Secure` when the resolved scheme is HTTPS, and the client address behind a trusted proxy is the nearest `X-Forwarded-For` entry that is not itself trusted, so later rate limiting and audit see the real caller.
+
+Immich's default, trusting private ranges without a setting, was weighed and dropped: it makes the LAN the boundary again, which this record exists to avoid. Ignoring the headers silently, as ASP.NET does with no known proxies, was dropped because a misconfigured proxy would run quietly weaker, with no `Secure` cookie and one shared client address, and nothing would tell the operator. Refusing, as Home Assistant does, fails at setup instead. The cost is one required line in `.env` behind a proxy, and that a LAN client behind a forwarding proxy such as Squid is refused.
 
 ## Alternatives Considered
 

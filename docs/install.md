@@ -16,13 +16,21 @@ You need:
 
 Run every command in this guide from the repository root.
 
-## The app has no sign-in yet
+## Claim your instance
 
-Anyone who can reach the app's port can open it. The app listens on every network interface of your machine.
+A new instance has no administrator. The first person to open its web page can claim it, and becomes the administrator. The app listens on every network interface of your machine, so anyone on your network can reach that page.
 
-Until sign-in exists, the app serves only its web pages and two health checks. It holds none of your images and accepts no changes.
+Claim it yourself before anyone else can. Choose one:
 
-Do not publish the port to the internet.
+- Open the web page right after the first start. It shows `healthy` and a form to claim the instance. Choose a username and a password.
+- Create the administrator at the terminal while only this machine can reach the instance:
+
+  1. When you [create your settings file](#create-your-settings-file), add `SIDEREAL_BIND_ADDRESS=127.0.0.1` to `.env`. The app then listens only on this machine.
+  2. If a reverse proxy will serve the instance, keep its route to Sidereal off for now. Binding to `127.0.0.1` does not stop a proxy on this machine from passing visitors on.
+  3. [Start the instance](#start-the-instance), then run `docker compose exec app siderealctl reset-admin-password`. See [Recover access](#recover-access).
+  4. Open access. Remove `SIDEREAL_BIND_ADDRESS` from `.env`, or keep it if a proxy on this machine will serve the instance. Run `docker compose up -d --wait`, then turn the proxy route on.
+
+Do not publish the port to the internet. To reach the instance from outside your network, [put it behind a reverse proxy](#put-sidereal-behind-a-reverse-proxy).
 
 ## Create your settings file
 
@@ -48,6 +56,9 @@ Git ignores `.env`. Keep it private: it holds your password.
 |---|---|---|
 | `POSTGRES_PASSWORD` | None | Required only by bundled mode; the database password |
 | `SIDEREAL_PORT` | `5000` | The port on your machine that the app listens on |
+| `SIDEREAL_BIND_ADDRESS` | `0.0.0.0` | The address on your machine that the app listens on. `127.0.0.1` keeps it off the network |
+| `SIDEREAL_TRUSTED_PROXIES` | Not set | Required behind a reverse proxy: the proxy's address as the app sees it |
+| `SIDEREAL_ALLOWED_ORIGINS` | Not set | Only for a proxy that rewrites the `Host` header: the public origin |
 | `COMPOSE_FILE` | `compose.yml` | Installation entry and optional overrides |
 | `COMPOSE_PROJECT_NAME` | The folder name | Instance name; also separates named volumes |
 | `DATABASE_URL` | None | Required only by the external entry file |
@@ -75,6 +86,70 @@ Open `http://localhost:5000/`. The page shows `healthy`.
 Compose stops with an error that names `POSTGRES_PASSWORD` when `.env` is missing or the password is empty.
 
 The first start also prepares storage. The app writes one small file, `.sidereal-storage.json`, into the empty storage location. It records the same identity in the database. This pairing lets later starts tell the right storage from an empty substitute. See [Startup checks your storage](#startup-checks-your-storage).
+
+## Put Sidereal behind a reverse proxy
+
+A reverse proxy gives the instance an HTTPS address, such as `https://photos.example.com`. It takes care of certificates and passes each request on to the app. The app then marks its sign-in cookie `Secure`, so browsers send it only over HTTPS.
+
+These steps use [Caddy](https://caddyserver.com/), which gets certificates by itself. Any proxy that sends `X-Forwarded-Proto` and `X-Forwarded-For` works the same way.
+
+1. Point Caddy at the app. For Caddy on the same machine, this Caddyfile is enough:
+
+   ```caddyfile
+   photos.example.com {
+       reverse_proxy 127.0.0.1:5000
+   }
+   ```
+
+   For Caddy on another machine, replace `127.0.0.1` with the address of the machine that runs Sidereal.
+
+2. Find the address the app sees the proxy connect from.
+
+   - **Caddy on the same machine:** the app sees the gateway of its Compose network. Print it, replacing `sidereal` with your project name, which is the folder name unless you set `COMPOSE_PROJECT_NAME`:
+
+     ```sh
+     docker network inspect sidereal_default --format '{{(index .IPAM.Config 0).Gateway}}'
+     ```
+
+   - **Caddy on another machine:** use that machine's address on your network, such as `192.168.1.10`.
+
+   List that one address. Do not list a whole private range such as `172.16.0.0/12`: it would trust every container on the machine.
+
+3. Add the address to `.env`. This step is required:
+
+   ```dotenv
+   SIDEREAL_TRUSTED_PROXIES=172.18.0.1
+   ```
+
+   The setting takes a comma-separated list of IPv4 and IPv6 addresses and CIDR ranges. The app refuses to start when an item is not one of those.
+
+4. When Caddy runs on the same machine, keep plain HTTP off your network:
+
+   ```dotenv
+   SIDEREAL_BIND_ADDRESS=127.0.0.1
+   ```
+
+   The app then listens only on the machine itself, and the proxy is the only way in from outside.
+
+5. Apply the settings:
+
+   ```sh
+   docker compose up -d --wait
+   ```
+
+The app believes forwarded headers only from an address in `SIDEREAL_TRUSTED_PROXIES`. A request that carries `X-Forwarded-For` or `X-Forwarded-Proto` from any other address is refused with status 400 and this answer:
+
+```json
+{"error":"untrusted proxy: set SIDEREAL_TRUSTED_PROXIES"}
+```
+
+If every page answers that, the address in step 3 is wrong or missing. The app writes nothing to its log for these requests. Check the address again with step 2. A device on your network that adds forwarded headers itself, such as a forwarding proxy, is refused the same way.
+
+Caddy keeps the browser's `Host` header, so the app accepts sign-in from the proxy's address without more settings. A proxy that rewrites `Host` also needs the public origin:
+
+```dotenv
+SIDEREAL_ALLOWED_ORIGINS=https://photos.example.com
+```
 
 ## Use an existing PostgreSQL service
 

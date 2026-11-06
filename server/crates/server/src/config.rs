@@ -291,6 +291,111 @@ fn listed_origin(item: &str) -> Option<Origin> {
     bare.then(|| Origin::from_url(&url)).flatten()
 }
 
+/// The peers named in `SIDEREAL_TRUSTED_PROXIES`, whose forwarded headers
+/// the server believes. Each entry is a canonical address and its prefix
+/// length; a bare address has the full length.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TrustedProxies(Arc<[(IpAddr, u8)]>);
+
+impl TrustedProxies {
+    /// Whether `peer` equals a listed address or lies in a listed range.
+    pub fn contains(&self, peer: IpAddr) -> bool {
+        let peer = peer.to_canonical();
+        self.0
+            .iter()
+            .any(|&(network, prefix)| match (network, peer) {
+                (IpAddr::V4(network), IpAddr::V4(peer)) => {
+                    // A shift by the full width is `None`, which is prefix 0.
+                    let mask = u32::MAX.checked_shl(32 - u32::from(prefix)).unwrap_or(0);
+                    u32::from(network) & mask == u32::from(peer) & mask
+                }
+                (IpAddr::V6(network), IpAddr::V6(peer)) => {
+                    let mask = u128::MAX.checked_shl(128 - u32::from(prefix)).unwrap_or(0);
+                    u128::from(network) & mask == u128::from(peer) & mask
+                }
+                _ => false,
+            })
+    }
+}
+
+impl From<Vec<(IpAddr, u8)>> for TrustedProxies {
+    fn from(entries: Vec<(IpAddr, u8)>) -> Self {
+        Self(entries.into())
+    }
+}
+
+/// Why `SIDEREAL_TRUSTED_PROXIES` cannot be used. The text never holds the
+/// item, which may be a private address.
+#[derive(Debug, PartialEq, Eq)]
+pub enum TrustedProxiesError {
+    NotUnicode,
+    Malformed,
+}
+
+impl fmt::Display for TrustedProxiesError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::NotUnicode => "SIDEREAL_TRUSTED_PROXIES must be text",
+            Self::Malformed => {
+                "SIDEREAL_TRUSTED_PROXIES must be a comma-separated list of IPv4 or IPv6 \
+                 addresses and CIDR ranges"
+            }
+        })
+    }
+}
+
+impl std::error::Error for TrustedProxiesError {}
+
+/// The trusted proxies, when `SIDEREAL_TRUSTED_PROXIES` is set.
+pub fn trusted_proxies_from_env() -> Result<TrustedProxies, TrustedProxiesError> {
+    trusted_proxies(std::env::var_os("SIDEREAL_TRUSTED_PROXIES").as_deref())
+}
+
+/// An unset or empty value trusts nobody.
+pub fn trusted_proxies(value: Option<&OsStr>) -> Result<TrustedProxies, TrustedProxiesError> {
+    let Some(value) = value else {
+        return Ok(TrustedProxies::default());
+    };
+    let value = value
+        .to_str()
+        .ok_or(TrustedProxiesError::NotUnicode)?
+        .trim();
+    if value.is_empty() {
+        return Ok(TrustedProxies::default());
+    }
+    value
+        .split(',')
+        .map(|item| listed_proxy(item.trim()).ok_or(TrustedProxiesError::Malformed))
+        .collect::<Result<Vec<_>, _>>()
+        .map(TrustedProxies::from)
+}
+
+/// An address or a CIDR range, canonical: an IPv4-mapped IPv6 range of
+/// prefix 96 or more becomes the IPv4 range it covers.
+fn listed_proxy(item: &str) -> Option<(IpAddr, u8)> {
+    let (address, prefix) = match item.split_once('/') {
+        Some((address, prefix)) => (address.parse::<IpAddr>().ok()?, Some(prefix)),
+        None => (item.parse::<IpAddr>().ok()?, None),
+    };
+    let width = if address.is_ipv4() { 32 } else { 128 };
+    let prefix = match prefix {
+        // `u8::from_str` takes a leading `+`, which is not CIDR.
+        Some(prefix) if prefix.bytes().all(|byte| byte.is_ascii_digit()) => prefix
+            .parse::<u8>()
+            .ok()
+            .filter(|&prefix| prefix <= width)?,
+        Some(_) => return None,
+        None => width,
+    };
+    match address {
+        IpAddr::V6(v6) if prefix >= 96 => match v6.to_ipv4_mapped() {
+            Some(v4) => Some((IpAddr::V4(v4), prefix - 96)),
+            None => Some((address, prefix)),
+        },
+        _ => Some((address, prefix)),
+    }
+}
+
 fn local(host: &str) -> bool {
     host == "localhost"
         || host.starts_with('/')
@@ -620,6 +725,106 @@ mod tests {
         }
         assert!(!list.admit("http://localhost:5000", None));
         assert!(!list.admit("http://localhost:5000", Some("local host")));
+    }
+
+    fn trusting(value: &str) -> TrustedProxies {
+        trusted_proxies(Some(OsStr::new(value))).unwrap()
+    }
+
+    fn ip(value: &str) -> IpAddr {
+        value.parse().unwrap()
+    }
+
+    #[test]
+    fn trusted_proxies_unset_or_empty_trusts_nobody() {
+        for value in [None, Some(OsStr::new("")), Some(OsStr::new("  "))] {
+            let trusted = trusted_proxies(value).unwrap();
+            for peer in ["127.0.0.1", "::1", "0.0.0.0"] {
+                assert!(!trusted.contains(ip(peer)), "{value:?} {peer}");
+            }
+        }
+    }
+
+    #[test]
+    fn trusted_proxies_list_trusts_only_its_addresses_and_ranges() {
+        let trusted = trusting("127.0.0.1, 172.16.0.0/12, ::1, fd00::/8");
+        for peer in ["127.0.0.1", "172.18.0.1", "::1", "fd12::5"] {
+            assert!(trusted.contains(ip(peer)), "{peer}");
+        }
+        for peer in ["192.168.1.20", "127.0.0.2", "172.32.0.1", "::2", "fe00::1"] {
+            assert!(!trusted.contains(ip(peer)), "{peer}");
+        }
+    }
+
+    #[test]
+    fn trusted_proxies_refuses_a_malformed_item_without_naming_it() {
+        for item in [
+            "proxy.example",
+            "10.0.0.1/33",
+            "::1/129",
+            "10.0.0.1/",
+            "10.0.0.1/x",
+            "10.0.0.256",
+            "10.0.0.1,",
+            "10.0.0.1,,10.0.0.2",
+            "[::1]",
+            "10.0.0.1:80",
+        ] {
+            let error = trusted_proxies(Some(OsStr::new(item))).unwrap_err();
+            let message = error.to_string();
+            assert!(
+                message.contains("SIDEREAL_TRUSTED_PROXIES"),
+                "{item}: {message}"
+            );
+            assert!(!message.contains(item), "{item}: {message}");
+            assert!(!message.contains("proxy.example"), "{item}: {message}");
+        }
+    }
+
+    #[test]
+    fn trusted_proxies_match_only_within_a_family() {
+        assert!(!trusting("::/0").contains(ip("10.0.0.1")));
+        assert!(!trusting("0.0.0.0/0").contains(ip("fd00::1")));
+    }
+
+    #[test]
+    fn trusted_proxies_match_ipv4_mapped_addresses_as_ipv4() {
+        assert!(trusting("172.18.0.1").contains(ip("::ffff:172.18.0.1")));
+        assert!(trusting("::ffff:172.18.0.1").contains(ip("172.18.0.1")));
+        assert!(trusting("::ffff:172.16.0.0/108").contains(ip("172.18.0.1")));
+        assert!(!trusting("::ffff:172.16.0.0/108").contains(ip("172.32.0.1")));
+    }
+
+    #[test]
+    fn trusted_proxies_mask_ipv4_at_boundary_prefixes() {
+        for (range, inside, outside) in [
+            ("0.0.0.0/0", "255.255.255.255", None),
+            ("128.0.0.0/1", "255.0.0.1", Some("127.255.255.255")),
+            ("10.0.0.0/31", "10.0.0.1", Some("10.0.0.2")),
+            ("10.0.0.1/32", "10.0.0.1", Some("10.0.0.0")),
+        ] {
+            let trusted = trusting(range);
+            assert!(trusted.contains(ip(inside)), "{range} {inside}");
+            if let Some(outside) = outside {
+                assert!(!trusted.contains(ip(outside)), "{range} {outside}");
+            }
+        }
+    }
+
+    #[test]
+    fn trusted_proxies_mask_ipv6_at_boundary_prefixes() {
+        for (range, inside, outside) in [
+            ("::/0", "ffff::1", None),
+            ("8000::/1", "ffff::1", Some("7fff::1")),
+            ("fd00::/127", "fd00::1", Some("fd00::2")),
+            ("fd00::1/128", "fd00::1", Some("fd00::")),
+        ] {
+            let trusted = trusting(range);
+            assert!(trusted.contains(ip(inside)), "{range} {inside}");
+            if let Some(outside) = outside {
+                assert!(!trusted.contains(ip(outside)), "{range} {outside}");
+            }
+        }
     }
 
     #[test]

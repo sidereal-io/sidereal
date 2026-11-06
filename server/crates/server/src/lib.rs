@@ -1,7 +1,7 @@
 //! The HTTP shell exposes fixed liveness and readiness responses, and the
 //! built web shell when the operator names its folder.
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
-use config::AllowedOrigins;
+use config::{AllowedOrigins, TrustedProxies};
 use serde_json::{json, Value};
 use sidereal_core::database::Database;
 use std::path::Path;
@@ -43,6 +43,16 @@ pub fn with_web_root(router: Router, web_root: Option<&Path>) -> Router {
     router
         .route_service("/", ServeFile::new(web_root.join("index.html")))
         .fallback_service(files)
+}
+
+/// Resolve every request's scheme and client address, refusing forwarded
+/// headers from a peer that is not a trusted proxy. Apply it last, so it
+/// wraps every route and the file fallback.
+pub fn with_trusted_proxies(router: Router, trusted: TrustedProxies) -> Router {
+    router.layer(axum::middleware::from_fn_with_state(
+        trusted,
+        access::forwarded::layer,
+    ))
 }
 
 async fn healthz() -> Json<Value> {

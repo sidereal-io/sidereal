@@ -2,6 +2,7 @@
 //! database per test.
 use axum::{
     body::{to_bytes, Body},
+    extract::ConnectInfo,
     http::{header, Request, StatusCode},
     response::Response,
     Router,
@@ -9,10 +10,11 @@ use axum::{
 use sidereal_core::database::{initialize, Database};
 use sidereal_server::{
     app_with_database,
-    config::{allowed_origins, AllowedOrigins},
+    config::{allowed_origins, trusted_proxies, AllowedOrigins, TrustedProxies},
+    with_trusted_proxies,
 };
 use sqlx::{Connection, PgConnection};
-use std::time::Duration;
+use std::{net::SocketAddr, time::Duration};
 use tower::ServiceExt;
 
 #[path = "../../core/src/database/test_support.rs"]
@@ -34,9 +36,24 @@ async fn database(db: &TestDatabase) -> Database {
     .unwrap()
 }
 
+/// The production stack with no trusted proxies.
 async fn router(db: &TestDatabase) -> Router {
-    app_with_database(database(db).await, AllowedOrigins::default())
+    trusting(db, TrustedProxies::default()).await
 }
+
+async fn trusting(db: &TestDatabase, trusted: TrustedProxies) -> Router {
+    with_trusted_proxies(
+        app_with_database(database(db).await, AllowedOrigins::default()),
+        trusted,
+    )
+}
+
+fn proxies(value: &str) -> TrustedProxies {
+    trusted_proxies(Some(std::ffi::OsStr::new(value))).unwrap()
+}
+
+/// A LAN client that is not a trusted proxy.
+const PEER: &str = "192.168.1.20:40000";
 
 fn credentials(username: &str, password: &str) -> String {
     serde_json::json!({ "username": username, "password": password }).to_string()
@@ -53,7 +70,24 @@ async fn send_with(
     body: Option<String>,
     headers: &[(&str, &str)],
 ) -> Response {
-    let mut request = Request::builder().method(method).uri(uri);
+    send_from(app, PEER, method, uri, body, headers).await
+}
+
+/// A request from the TCP peer `peer`, as `into_make_service_with_connect_info`
+/// reports it.
+async fn send_from(
+    app: &Router,
+    peer: &str,
+    method: &str,
+    uri: &str,
+    body: Option<String>,
+    headers: &[(&str, &str)],
+) -> Response {
+    let peer: SocketAddr = peer.parse().unwrap();
+    let mut request = Request::builder()
+        .method(method)
+        .uri(uri)
+        .extension(ConnectInfo(peer));
     for (name, value) in headers {
         request = request.header(*name, *value);
     }
@@ -751,6 +785,210 @@ mod origin {
     }
 }
 
+mod untrusted_proxy {
+    use super::*;
+
+    const REFUSED: &str = r#"{"error":"untrusted proxy: set SIDEREAL_TRUSTED_PROXIES"}"#;
+
+    async fn sessions(db: &TestDatabase) -> i64 {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_scalar("SELECT count(*) FROM public.sessions")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    async fn assert_refused(response: Response) {
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(response.headers().get(header::SET_COOKIE).is_none());
+        assert_eq!(body(response).await, REFUSED);
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_sign_in_is_refused_without_a_session() {
+        let db = TestDatabase::new();
+        let app = claimed(&db).await;
+        let body = Some(credentials("sam", PASSWORD));
+        let headers = [("x-forwarded-proto", "https")];
+        let response = send_with(&app, "POST", "/api/session", body, &headers).await;
+        assert_refused(response).await;
+        assert_eq!(sessions(&db).await, 0);
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_outside_the_list_is_refused_on_the_probe() {
+        let db = TestDatabase::new();
+        let app = trusting(&db, proxies("172.18.0.1")).await;
+        let headers = [("x-forwarded-for", "203.0.113.9")];
+        assert_refused(send_with(&app, "GET", "/healthz", None, &headers).await).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_is_refused_on_the_web_shell() {
+        let db = TestDatabase::new();
+        let root = WebRoot::new("untrusted-proxy");
+        let app = sidereal_server::with_web_root(
+            app_with_database(database(&db).await, AllowedOrigins::default()),
+            Some(&root.path),
+        );
+        let app = with_trusted_proxies(app, TrustedProxies::default());
+        let headers = [("x-forwarded-for", "203.0.113.9")];
+        for uri in ["/", "/assets/app.js", "/missing"] {
+            assert_refused(send_with(&app, "GET", uri, None, &headers).await).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_is_refused_on_an_unknown_path() {
+        let db = TestDatabase::new();
+        let headers = [("x-forwarded-proto", "https")];
+        let response = send_with(&router(&db).await, "GET", "/missing", None, &headers).await;
+        assert_refused(response).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_refusal_wins_over_the_origin_check() {
+        let db = TestDatabase::new();
+        let headers = [
+            ("host", "localhost:5000"),
+            ("origin", "http://evil.example"),
+            ("x-forwarded-proto", "https"),
+        ];
+        let body = Some(credentials("sam", PASSWORD));
+        let response = send_with(&claimed(&db).await, "POST", "/api/session", body, &headers).await;
+        assert_refused(response).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_refusal_reads_no_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        database.close().await;
+        let app = with_trusted_proxies(
+            app_with_database(database, AllowedOrigins::default()),
+            TrustedProxies::default(),
+        );
+        let headers = [
+            ("x-forwarded-proto", "https"),
+            ("cookie", "sidereal_session=not-a-token"),
+        ];
+        assert_refused(send_with(&app, "GET", "/api/session", None, &headers).await).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_without_a_peer_is_refused_whatever_the_list() {
+        let db = TestDatabase::new();
+        let app = trusting(&db, proxies("0.0.0.0/0, ::/0")).await;
+        let request = Request::builder()
+            .uri("/healthz")
+            .header("x-forwarded-for", "203.0.113.9")
+            .body(Body::empty())
+            .unwrap();
+        assert_refused(app.oneshot(request).await.unwrap()).await;
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_check_passes_a_request_without_forwarded_headers() {
+        let db = TestDatabase::new();
+        let response = send(&router(&db).await, "GET", "/healthz", None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn untrusted_proxy_check_passes_a_listed_proxy() {
+        let db = TestDatabase::new();
+        let app = trusting(&db, proxies("172.18.0.1")).await;
+        let headers = [("x-forwarded-for", "203.0.113.9")];
+        let response = send_from(&app, "172.18.0.1:50000", "GET", "/healthz", None, &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}
+
+mod secure_cookie {
+    use super::*;
+
+    const PROXY: &str = "172.18.0.1:50000";
+
+    async fn behind_proxy(db: &TestDatabase) -> Router {
+        let app = trusting(db, proxies("172.18.0.1")).await;
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        app
+    }
+
+    async fn proxied(
+        app: &Router,
+        method: &str,
+        proto: &str,
+        body: Option<String>,
+        cookie: Option<&str>,
+    ) -> Response {
+        let mut headers = vec![("x-forwarded-proto", proto)];
+        headers.extend(cookie.map(|cookie| ("cookie", cookie)));
+        send_from(app, PROXY, method, "/api/session", body, &headers).await
+    }
+
+    fn is_secure(response: &Response) -> bool {
+        let cookie = set_cookie(response).expect("a session cookie");
+        cookie.split("; ").any(|part| part == "Secure")
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_after_sign_in_over_https() {
+        let db = TestDatabase::new();
+        let body = Some(credentials("sam", PASSWORD));
+        let response = proxied(&behind_proxy(&db).await, "POST", "https", body, None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = set_cookie(&response).unwrap();
+        for attribute in ["HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=2592000"] {
+            assert!(cookie.split("; ").any(|part| part == attribute), "{cookie}");
+        }
+        assert!(is_secure(&response), "{cookie}");
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_is_not_set_over_plain_http() {
+        let db = TestDatabase::new();
+        let body = Some(credentials("sam", PASSWORD));
+        let response = proxied(&behind_proxy(&db).await, "POST", "http", body, None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!is_secure(&response));
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_on_the_refresh_of_a_guarded_request() {
+        let db = TestDatabase::new();
+        let app = behind_proxy(&db).await;
+        let cookie = signed_in(&app).await;
+        let response = proxied(&app, "GET", "https", None, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(is_secure(&response));
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_on_a_cleared_stale_cookie() {
+        let db = TestDatabase::new();
+        let app = behind_proxy(&db).await;
+        let stale = "sidereal_session=not-a-token";
+        let response = proxied(&app, "GET", "https", None, Some(stale)).await;
+        assert_cleared(&response);
+        assert!(is_secure(&response));
+    }
+
+    #[tokio::test]
+    async fn secure_cookie_on_sign_out() {
+        let db = TestDatabase::new();
+        let app = behind_proxy(&db).await;
+        let cookie = signed_in(&app).await;
+        let response = proxied(&app, "DELETE", "https", None, Some(&cookie)).await;
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_cleared(&response);
+        assert!(is_secure(&response));
+    }
+}
+
 /// A running server binary, killed when the test ends.
 mod spawned {
     use super::TestDatabase;
@@ -788,6 +1026,7 @@ mod spawned {
                 .env_remove("WEB_ROOT")
                 .env_remove("STORAGE_ROOT")
                 .env_remove("SIDEREAL_ALLOWED_ORIGINS")
+                .env_remove("SIDEREAL_TRUSTED_PROXIES")
                 .envs(env.iter().copied())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1005,6 +1244,85 @@ mod allowed_origins_at_start {
             .request_with("POST", "/api/claim", Some(&body), "app:5000", &origin)
             .unwrap();
         assert!(answer.starts_with("HTTP/1.1 201"), "{answer}");
+    }
+}
+
+mod spawned_trusted_proxy {
+    use super::*;
+    use sqlx::ConnectOptions;
+    use std::{
+        process::{Command, Stdio},
+        time::Instant,
+    };
+
+    #[tokio::test]
+    async fn spawned_trusted_proxy_malformed_item_stops_the_server_before_the_database() {
+        let db = TestDatabase::new();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_sidereal-server"))
+            .env("DATABASE_URL", db.options.to_url_lossy().to_string())
+            .env("PORT", "0")
+            .env_remove("WEB_ROOT")
+            .env_remove("STORAGE_ROOT")
+            .env_remove("SIDEREAL_ALLOWED_ORIGINS")
+            .env("SIDEREAL_TRUSTED_PROXIES", "proxy.example")
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while child.try_wait().unwrap().is_none() {
+            if Instant::now() > deadline {
+                child.kill().unwrap();
+                panic!("the server kept running");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let output = child.wait_with_output().unwrap();
+        assert!(!output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("SIDEREAL_TRUSTED_PROXIES"), "{stderr}");
+        assert!(!stderr.contains("proxy.example"), "{stderr}");
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let tables: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(tables, 0);
+    }
+
+    #[tokio::test]
+    async fn spawned_trusted_proxy_over_https_gets_a_secure_cookie() {
+        let db = TestDatabase::new();
+        let server = spawned::Server::ready_with(&db, &[("SIDEREAL_TRUSTED_PROXIES", "127.0.0.1")]);
+        let body = credentials("sam", PASSWORD);
+        let claimed = server.request("POST", "/api/claim", Some(&body)).unwrap();
+        assert!(claimed.starts_with("HTTP/1.1 201"), "{claimed}");
+        let https = [("X-Forwarded-Proto", "https")];
+        let answer = server
+            .request_with("POST", "/api/session", Some(&body), "localhost", &https)
+            .unwrap();
+        assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+        let cookie = answer
+            .lines()
+            .find(|line| line.to_ascii_lowercase().starts_with("set-cookie:"))
+            .expect("a session cookie");
+        assert!(
+            cookie.trim_end().split("; ").any(|part| part == "Secure"),
+            "{cookie}"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawned_trusted_proxy_unset_refuses_forwarded_headers() {
+        let db = TestDatabase::new();
+        let server = spawned::Server::ready(&db);
+        let https = [("X-Forwarded-Proto", "https")];
+        let answer = server
+            .request_with("GET", "/healthz", None, "localhost", &https)
+            .unwrap();
+        assert!(answer.starts_with("HTTP/1.1 400"), "{answer}");
     }
 }
 
