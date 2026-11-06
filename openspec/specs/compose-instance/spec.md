@@ -237,9 +237,8 @@ Every route under `/api` other than the claim and sign-in routes SHALL answer 40
 
 ### Requirement: Only the app port is published
 
-The `app` service SHALL publish container port 5000 on host port 5000, on the host address `SIDEREAL_BIND_ADDRESS`, which defaults to `0.0.0.0`, every host interface.
+The `app` service SHALL publish container port 5000 on host port 5000, on every host interface.
 `SIDEREAL_PORT` SHALL change the host port.
-`SIDEREAL_BIND_ADDRESS` SHALL change the host address, so that `127.0.0.1` publishes the port to the host alone.
 The `db` service SHALL publish no host port. Only the `app` service SHALL reach the database, over the Compose network.
 
 #### Scenario: The database has no host port
@@ -250,7 +249,7 @@ The `db` service SHALL publish no host port. Only the `app` service SHALL reach 
 
 #### Scenario: The app listens on the default port
 
-- **GIVEN** a running instance with `SIDEREAL_PORT` and `SIDEREAL_BIND_ADDRESS` unset
+- **GIVEN** a running instance with `SIDEREAL_PORT` unset
 - **WHEN** a tester runs `docker compose port app 5000`
 - **THEN** the output is `0.0.0.0:5000`
 
@@ -260,12 +259,6 @@ The `db` service SHALL publish no host port. Only the `app` service SHALL reach 
 - **WHEN** Sam starts the instance and runs `curl -s http://localhost:5080/healthz`
 - **THEN** the output is `{"status":"ok"}`
 - **AND** nothing that the instance started listens on host port 5000
-
-#### Scenario: The operator binds to the host alone
-
-- **GIVEN** a `.env` file that sets `SIDEREAL_BIND_ADDRESS=127.0.0.1`
-- **WHEN** a tester runs `docker compose config` and reads the `app` service's `ports`
-- **THEN** the one published port has `host_ip` `127.0.0.1` and `published` `5000`
 
 ### Requirement: The app runs without root privileges
 
@@ -350,17 +343,12 @@ The guide SHALL cover these points:
 - the prerequisites: Docker Engine or Docker Desktop, with Compose 2.20 or newer;
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
 - the one command that builds and starts the instance, including first-start storage initialization;
-- that Sam claims the instance right after the first start, by opening the web page or by running `siderealctl reset-admin-password` first, because the claim is open to the first visitor until then;
-- how to put the instance behind a reverse proxy that terminates TLS, with a Caddy example;
-- that the proxy's address, as the app sees it, must be listed in `SIDEREAL_TRUSTED_PROXIES`, and how to find that one address for a proxy on the same machine and for one elsewhere;
-- that requests carrying forwarded headers from an unlisted address are refused;
-- that `SIDEREAL_BIND_ADDRESS=127.0.0.1` keeps the plain-HTTP port off the network when the proxy runs on the same machine;
-- that `SIDEREAL_ALLOWED_ORIGINS` is optional and needed only when a proxy rewrites the `Host` header;
 - the commands that stop and recreate the instance;
 - that `down --volumes` with one bind override deletes only the named-volume data location;
 - that retained database pairing with deleted storage refuses startup;
 - that an unpaired database adopts retained marker-only storage, but refuses storage containing other files;
 - that permanent paired-store loss requires restoring both locations together, or deliberately removing both locations to start fresh;
+- that the app has no sign-in yet, so anyone who can reach its port can open it;
 - that a server run outside the image needs a `WEB_ROOT` folder that only trusted users can write;
 - that changing `POSTGRES_PASSWORD` after the first start does not change the database's password;
 - how to retain mount selection and host paths in `.env`;
@@ -383,12 +371,7 @@ The guide SHALL cover these points:
 #### Scenario: The guide warns about open access
 
 - **WHEN** a reviewer reads `docs/install.md`
-- **THEN** it has a section whose heading contains `Claim your instance`, and no section whose heading contains `no sign-in`
-
-#### Scenario: The guide shows a reverse proxy
-
-- **WHEN** a reviewer reads `docs/install.md`
-- **THEN** it has a section whose heading contains `reverse proxy`, which holds a Caddyfile example and names `SIDEREAL_TRUSTED_PROXIES` and `SIDEREAL_BIND_ADDRESS`
+- **THEN** it has a section whose heading contains `no sign-in`
 
 #### Scenario: The guide names the Compose release
 
@@ -529,18 +512,3 @@ It SHALL confirm that the successful migration records and the storage pairing a
 - **WHEN** the verification recipe runs
 - **THEN** it exits successfully only when the app turned `unhealthy`, then `healthy`, with an unchanged `RestartCount`
 - **AND** the saved migration records and pairing identity match their values from before the outage
-
-### Requirement: Compose passes the access settings to the app
-
-The `app` service SHALL pass `SIDEREAL_TRUSTED_PROXIES` and `SIDEREAL_ALLOWED_ORIGINS` from the Compose environment to the container, each unset in the container when it is unset in `.env` and the shell. Compose SHALL set no default for either. `.env.example` SHALL show both, commented out, with `SIDEREAL_BIND_ADDRESS`.
-
-#### Scenario: Unset stays unset
-
-- **WHEN** a tester runs `docker compose config` with neither variable set
-- **THEN** the `app` service's `environment` holds neither `SIDEREAL_TRUSTED_PROXIES` nor `SIDEREAL_ALLOWED_ORIGINS` with a value
-
-#### Scenario: A value passes through
-
-- **GIVEN** a `.env` file that sets `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and `SIDEREAL_ALLOWED_ORIGINS=https://photos.example`
-- **WHEN** a tester runs `docker compose config`
-- **THEN** the `app` service's `environment` holds `SIDEREAL_TRUSTED_PROXIES: 172.18.0.1` and `SIDEREAL_ALLOWED_ORIGINS: https://photos.example`
