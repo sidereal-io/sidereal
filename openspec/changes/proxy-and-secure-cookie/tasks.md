@@ -21,6 +21,6 @@
 ## Deviations Ledger
 
 - 1.1: `TrustedProxies` holds an `Arc<[(IpAddr, u8)]>`, not a `Vec`, so it clones cheaply as layer state, like `AllowedOrigins`. A listed IPv4-mapped range of prefix 96 or more is stored as the IPv4 range it covers, so it matches canonicalised peers.
-- 1.2: `Forwarded.client` is `Option<IpAddr>`, not `IpAddr`. The spec makes an unparsable `X-Forwarded-For` entry the client address, and an `IpAddr` cannot hold one, so `None` stands for it. Nothing reads the client address yet; #452 and #453 decide how to key on `None`. A non-text header value counts as an unparsable entry, and several `X-Forwarded-Proto` headers count as a list.
+- 1.2: `Forwarded.client` is `Option<IpAddr>`, not `IpAddr`. The spec makes an unparsable `X-Forwarded-For` entry the client address, and an `IpAddr` cannot hold one, so `None` stands for it. Nothing reads the client address yet; #452 and #453 decide how to key on `None`. An entry that is not text counts as an unparsable entry; the walk reads the raw bytes, so such an entry further left never hides the client address. Several `X-Forwarded-Proto` headers count as a list.
 - 2.1: the test helper `router()` applies `with_trusted_proxies` with no trusted proxies, `send_with` injects an untrusted LAN peer, and the new `send_from` chooses the peer. Tests that build `app_with_database` alone still run without the layer.
 - 3.2: the guide names the Compose network `sidereal_default` and tells Sam to replace `sidereal` with their project name, which answers the design's open question.
