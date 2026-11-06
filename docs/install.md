@@ -23,7 +23,12 @@ A new instance has no administrator. The first person to open its web page can c
 Claim it yourself before anyone else can. Choose one:
 
 - Open the web page right after the first start. It shows `healthy` and a form to claim the instance. Choose a username and a password.
-- Before you open the port to anyone, create the administrator at the terminal with `siderealctl reset-admin-password`. See [Recover access](#recover-access).
+- Create the administrator at the terminal while only this machine can reach the instance:
+
+  1. When you [create your settings file](#create-your-settings-file), add `SIDEREAL_BIND_ADDRESS=127.0.0.1` to `.env`. The app then listens only on this machine.
+  2. If a reverse proxy will serve the instance, keep its route to Sidereal off for now. Binding to `127.0.0.1` does not stop a proxy on this machine from passing visitors on.
+  3. [Start the instance](#start-the-instance), then run `docker compose exec app siderealctl reset-admin-password`. See [Recover access](#recover-access).
+  4. Open access. Remove `SIDEREAL_BIND_ADDRESS` from `.env`, or keep it if a proxy on this machine will serve the instance. Run `docker compose up -d --wait`, then turn the proxy route on.
 
 Do not publish the port to the internet. To reach the instance from outside your network, [put it behind a reverse proxy](#put-sidereal-behind-a-reverse-proxy).
 

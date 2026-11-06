@@ -40,7 +40,7 @@ The guide SHALL cover these points:
 - the prerequisites: Docker Engine or Docker Desktop, with Compose 2.20 or newer;
 - how to create `.env` from `.env.example`, with a command that generates a hex password;
 - the one command that builds and starts the instance, including first-start storage initialization;
-- that Sam claims the instance right after the first start, by opening the web page or by running `siderealctl reset-admin-password` first, because the claim is open to the first visitor until then;
+- that Sam claims the instance right after the first start, by opening the web page or by running `siderealctl reset-admin-password` first, because the claim is open to the first visitor until then, and how to keep the first start private for the terminal route: set `SIDEREAL_BIND_ADDRESS=127.0.0.1` and keep any reverse-proxy route off until the administrator exists;
 - how to put the instance behind a reverse proxy that terminates TLS, with a Caddy example;
 - that the proxy's address, as the app sees it, must be listed in `SIDEREAL_TRUSTED_PROXIES`, and how to find that one address for a proxy on the same machine and for one elsewhere;
 - that requests carrying forwarded headers from an unlisted address are refused;
