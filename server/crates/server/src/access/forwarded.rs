@@ -86,10 +86,12 @@ fn https(headers: &HeaderMap) -> bool {
 /// untrusted one were written by proxies the server trusts.
 fn client(peer: IpAddr, headers: &HeaderMap, trusted: &TrustedProxies) -> Option<IpAddr> {
     for value in headers.get_all(FORWARDED_FOR).iter().rev() {
-        let Ok(value) = value.to_str() else {
-            return None;
-        };
-        for entry in value.rsplit(',') {
+        // Split the raw bytes: text the walk never reaches may hold bytes
+        // that `to_str` refuses, and must not hide the client.
+        for entry in value.as_bytes().rsplit(|&byte| byte == b',') {
+            let Ok(entry) = std::str::from_utf8(entry) else {
+                return None;
+            };
             match entry.trim().parse::<IpAddr>() {
                 Ok(address) if trusted.contains(address) => continue,
                 Ok(address) => return Some(address.to_canonical()),
@@ -104,6 +106,7 @@ fn client(peer: IpAddr, headers: &HeaderMap, trusted: &TrustedProxies) -> Option
 mod tests {
     use super::*;
     use crate::config::trusted_proxies;
+    use axum::http::HeaderValue;
     use std::ffi::OsStr;
 
     fn ip(value: &str) -> IpAddr {
@@ -239,6 +242,26 @@ mod tests {
             let resolved = from("172.18.0.1", "172.18.0.1", &[(FORWARDED_FOR, value)]);
             assert_eq!(resolved.client, None, "{value:?}");
         }
+    }
+
+    /// A request from a trusted proxy whose `X-Forwarded-For` is these raw
+    /// bytes, which need not be text.
+    fn forwarded_for_bytes(value: &[u8]) -> Forwarded {
+        let mut headers = HeaderMap::new();
+        headers.insert(FORWARDED_FOR, HeaderValue::from_bytes(value).unwrap());
+        resolve(ip("172.18.0.1"), &headers, &trusting("172.18.0.1"))
+    }
+
+    #[test]
+    fn bytes_left_of_the_client_do_not_hide_it() {
+        let resolved = forwarded_for_bytes(b"\xff, 203.0.113.9");
+        assert_eq!(resolved.client, Some(ip("203.0.113.9")));
+    }
+
+    #[test]
+    fn a_nearest_entry_that_is_not_text_is_the_client() {
+        let resolved = forwarded_for_bytes(b"203.0.113.9, \xff");
+        assert_eq!(resolved.client, None);
     }
 
     #[test]
