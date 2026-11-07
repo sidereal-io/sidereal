@@ -65,19 +65,21 @@ impl TestDatabase {
                 let _ = cleanup_rx.recv();
             }
             let _cleanup = CLEANUP.lock().unwrap_or_else(|error| error.into_inner());
+            let mut last_error = String::new();
             drop_database(&name, |statement| {
                 runtime
                     .block_on(sqlx::query(AssertSqlSafe(statement.to_owned())).execute(&mut conn))
                     .map(|_| ())
                     .map_err(|error| {
+                        last_error = error.to_string();
                         error
                             .as_database_error()
                             .and_then(|e| e.code())
                             .map_or_else(|| error.to_string(), |code| code.into_owned())
                     })
             })
-            .unwrap_or_else(|error| {
-                panic!("test database cleanup failed ({error}); use fixture-only orphan cleanup")
+            .unwrap_or_else(|code| {
+                panic!("test database cleanup failed ({code}: {last_error}); use fixture-only orphan cleanup")
             });
             runtime.block_on(conn.close()).unwrap();
         });
