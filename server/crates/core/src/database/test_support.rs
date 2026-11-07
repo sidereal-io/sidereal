@@ -65,13 +65,21 @@ impl TestDatabase {
                 let _ = cleanup_rx.recv();
             }
             let _cleanup = CLEANUP.lock().unwrap_or_else(|error| error.into_inner());
-            runtime.block_on(async {
-                sqlx::query(AssertSqlSafe(format!("DROP DATABASE {name} WITH (FORCE)")))
-                    .execute(&mut conn)
-                    .await
-                    .expect("test database cleanup failed; use fixture-only orphan cleanup");
-                conn.close().await.unwrap();
+            drop_database(&name, |statement| {
+                runtime
+                    .block_on(sqlx::query(AssertSqlSafe(statement.to_owned())).execute(&mut conn))
+                    .map(|_| ())
+                    .map_err(|error| {
+                        error
+                            .as_database_error()
+                            .and_then(|e| e.code())
+                            .map_or_else(|| error.to_string(), |code| code.into_owned())
+                    })
+            })
+            .unwrap_or_else(|error| {
+                panic!("test database cleanup failed ({error}); use fixture-only orphan cleanup")
             });
+            runtime.block_on(conn.close()).unwrap();
         });
         assert!(ready_rx.recv().unwrap_or(false), "test database unavailable; run just db-up and export TEST_DATABASE_URL=$(just db-test-url); the test role needs CREATEDB");
         Self {
