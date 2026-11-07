@@ -101,9 +101,15 @@ pub(super) fn drop_database(
 ) -> Result<(), String> {
     // FORCE cannot terminate autovacuum workers without pg_signal_backend; a plain
     // drop stops them itself.
-    match run(&format!("DROP DATABASE {name} WITH (FORCE)")) {
-        Err(code) if code == "42501" => run(&format!("DROP DATABASE {name}")),
-        result => result,
+    loop {
+        let result = match run(&format!("DROP DATABASE {name} WITH (FORCE)")) {
+            Err(code) if code == "42501" => run(&format!("DROP DATABASE {name}")),
+            result => result,
+        };
+        match result {
+            Err(code) if code == "55006" => continue,
+            result => return result,
+        }
     }
 }
 
@@ -144,6 +150,21 @@ mod drop_policy {
                 vec![
                     "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
                     "DROP DATABASE sidereal_test_x".to_owned(),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn plain_drop_blocked_by_a_session_starts_another_round() {
+        assert_eq!(
+            drop_with(&[Err("42501"), Err("55006"), Ok(())]),
+            (
+                Ok(()),
+                vec![
+                    "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
+                    "DROP DATABASE sidereal_test_x".to_owned(),
+                    "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
                 ]
             )
         );
