@@ -101,16 +101,19 @@ pub(super) fn drop_database(
 ) -> Result<(), String> {
     // FORCE cannot terminate autovacuum workers without pg_signal_backend; a plain
     // drop stops them itself.
-    loop {
-        let result = match run(&format!("DROP DATABASE {name} WITH (FORCE)")) {
+    const ROUNDS: usize = 3;
+    let mut result = Ok(());
+    for _ in 0..ROUNDS {
+        result = match run(&format!("DROP DATABASE {name} WITH (FORCE)")) {
             Err(code) if code == "42501" => run(&format!("DROP DATABASE {name}")),
             result => result,
         };
-        match result {
-            Err(code) if code == "55006" => continue,
-            result => return result,
+        match &result {
+            Err(code) if code == "42501" || code == "55006" => continue,
+            _ => return result,
         }
     }
+    result
 }
 
 #[cfg(test)]
@@ -168,6 +171,19 @@ mod drop_policy {
                 ]
             )
         );
+    }
+
+    #[test]
+    fn three_refused_rounds_return_the_last_error() {
+        let (result, statements) = drop_with(&[
+            Err("42501"),
+            Err("42501"),
+            Err("42501"),
+            Err("55006"),
+            Err("42501"),
+            Err("42501"),
+        ]);
+        assert_eq!((result, statements.len()), (Err("42501".to_owned()), 6));
     }
 }
 
