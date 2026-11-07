@@ -65,13 +65,23 @@ impl TestDatabase {
                 let _ = cleanup_rx.recv();
             }
             let _cleanup = CLEANUP.lock().unwrap_or_else(|error| error.into_inner());
-            runtime.block_on(async {
-                sqlx::query(AssertSqlSafe(format!("DROP DATABASE {name} WITH (FORCE)")))
-                    .execute(&mut conn)
-                    .await
-                    .expect("test database cleanup failed; use fixture-only orphan cleanup");
-                conn.close().await.unwrap();
+            let mut last_error = String::new();
+            drop_database(&name, |statement| {
+                runtime
+                    .block_on(sqlx::query(AssertSqlSafe(statement.to_owned())).execute(&mut conn))
+                    .map(|_| ())
+                    .map_err(|error| {
+                        last_error = error.to_string();
+                        error
+                            .as_database_error()
+                            .and_then(|e| e.code())
+                            .map_or_else(|| error.to_string(), |code| code.into_owned())
+                    })
+            })
+            .unwrap_or_else(|code| {
+                panic!("test database cleanup failed ({code}: {last_error}); use fixture-only orphan cleanup")
             });
+            runtime.block_on(conn.close()).unwrap();
         });
         assert!(ready_rx.recv().unwrap_or(false), "test database unavailable; run just db-up and export TEST_DATABASE_URL=$(just db-test-url); the test role needs CREATEDB");
         Self {
@@ -91,6 +101,111 @@ impl Drop for TestDatabase {
                 result.expect("database supervisor failed");
             }
         }
+    }
+}
+
+/// Drops a test database. `run` executes one statement and returns its SQLSTATE on failure.
+pub(super) fn drop_database(
+    name: &str,
+    mut run: impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    // FORCE cannot terminate autovacuum workers without pg_signal_backend; a plain
+    // drop stops them itself.
+    const ROUNDS: usize = 3;
+    let mut result = Ok(());
+    for _ in 0..ROUNDS {
+        result = match run(&format!("DROP DATABASE {name} WITH (FORCE)")) {
+            Err(code) if code == "42501" => run(&format!("DROP DATABASE {name}")),
+            result => result,
+        };
+        match &result {
+            Err(code) if code == "42501" || code == "55006" => continue,
+            _ => return result,
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod drop_policy {
+    use super::drop_database;
+
+    fn drop_with(replies: &[Result<(), &str>]) -> (Result<(), String>, Vec<String>) {
+        let mut replies = replies.iter();
+        let mut statements = Vec::new();
+        let result = drop_database("sidereal_test_x", |statement| {
+            statements.push(statement.to_owned());
+            replies
+                .next()
+                .expect("unexpected statement")
+                .map_err(str::to_owned)
+        });
+        (result, statements)
+    }
+
+    #[test]
+    fn forced_drop_success_ends_the_policy() {
+        assert_eq!(
+            drop_with(&[Ok(())]),
+            (
+                Ok(()),
+                vec!["DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned()]
+            )
+        );
+    }
+
+    #[test]
+    fn forced_drop_refused_for_privilege_falls_back_to_plain_drop() {
+        assert_eq!(
+            drop_with(&[Err("42501"), Ok(())]),
+            (
+                Ok(()),
+                vec![
+                    "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
+                    "DROP DATABASE sidereal_test_x".to_owned(),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn plain_drop_blocked_by_a_session_starts_another_round() {
+        assert_eq!(
+            drop_with(&[Err("42501"), Err("55006"), Ok(())]),
+            (
+                Ok(()),
+                vec![
+                    "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
+                    "DROP DATABASE sidereal_test_x".to_owned(),
+                    "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn three_refused_rounds_return_the_last_error() {
+        let (result, statements) = drop_with(&[
+            Err("42501"),
+            Err("42501"),
+            Err("42501"),
+            Err("55006"),
+            Err("42501"),
+            Err("42501"),
+        ]);
+        assert_eq!((result, statements.len()), (Err("42501".to_owned()), 6));
+    }
+
+    #[test]
+    fn other_forced_drop_error_returns_at_once() {
+        let (result, statements) = drop_with(&[Err("3D000")]);
+        assert_eq!((result, statements.len()), (Err("3D000".to_owned()), 1));
+    }
+
+    #[test]
+    fn other_plain_drop_error_returns_at_once() {
+        let (result, statements) = drop_with(&[Err("42501"), Err("3D000")]);
+        assert_eq!((result, statements.len()), (Err("3D000".to_owned()), 2));
     }
 }
 
