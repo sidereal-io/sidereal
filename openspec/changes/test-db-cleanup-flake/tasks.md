@@ -1,0 +1,12 @@
+## 1. Test database cleanup survives autovacuum
+
+The drop policy lives in `server/crates/core/src/database/test_support.rs`, the one file both `sidereal-core` and the server's integration tests compile. It takes the database name and a statement runner: a closure that runs one SQL statement and returns its SQLSTATE on failure. Its unit tests sit in a `drop_policy` test module in the same file and use a fake runner, so they need no database. Tasks 1.6 to 1.8 need the fixture: run `just db-up` first.
+
+- [ ] 1.1 [easy] When `DROP DATABASE <name> WITH (FORCE)` succeeds, the drop policy succeeds and runs no other statement (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
+- [ ] 1.2 [medium] When the forced drop fails with SQLSTATE `42501`, the drop policy runs a plain `DROP DATABASE <name>` next, and succeeds when that succeeds (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
+- [ ] 1.3 [easy] When the plain drop fails with SQLSTATE `55006`, the drop policy starts another round with the forced drop (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
+- [ ] 1.4 [easy] After 3 rounds that each end in `42501` or `55006`, the drop policy stops and returns the last error (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
+- [ ] 1.5 [easy] Any other error from either drop is returned at once, with no further statement (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
+- [ ] 1.6 [medium] The `TestDatabase` supervisor drops its database through the drop policy with a runner over its own connection, and still panics with the message that names fixture-only orphan cleanup when the policy fails; the existing supervisor tests still pass against the fixture (verify: sh -c 'export TEST_DATABASE_URL=$(just db-test-url) && cargo test --manifest-path server/Cargo.toml -p sidereal-core supervisor_cleans_up_during_unwind')
+- [ ] 1.7 [easy] The server gate passes with the shared file compiled into both crates: format, clippy with warnings denied, all tests and the arch lint (verify: sh -c 'export TEST_DATABASE_URL=$(just db-test-url) && just check-server')
+- [ ] 1.8 [medium] Five consecutive `just check` runs pass against the fixture (verify: sh -c 'export TEST_DATABASE_URL=$(just db-test-url) && for i in 1 2 3 4 5; do just check || exit 1; done')
