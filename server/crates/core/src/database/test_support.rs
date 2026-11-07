@@ -99,7 +99,12 @@ pub(super) fn drop_database(
     name: &str,
     mut run: impl FnMut(&str) -> Result<(), String>,
 ) -> Result<(), String> {
-    run(&format!("DROP DATABASE {name} WITH (FORCE)"))
+    // FORCE cannot terminate autovacuum workers without pg_signal_backend; a plain
+    // drop stops them itself.
+    match run(&format!("DROP DATABASE {name} WITH (FORCE)")) {
+        Err(code) if code == "42501" => run(&format!("DROP DATABASE {name}")),
+        result => result,
+    }
 }
 
 #[cfg(test)]
@@ -126,6 +131,20 @@ mod drop_policy {
             (
                 Ok(()),
                 vec!["DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned()]
+            )
+        );
+    }
+
+    #[test]
+    fn forced_drop_refused_for_privilege_falls_back_to_plain_drop() {
+        assert_eq!(
+            drop_with(&[Err("42501"), Ok(())]),
+            (
+                Ok(()),
+                vec![
+                    "DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned(),
+                    "DROP DATABASE sidereal_test_x".to_owned(),
+                ]
             )
         );
     }
