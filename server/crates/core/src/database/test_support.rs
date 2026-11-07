@@ -94,6 +94,43 @@ impl Drop for TestDatabase {
     }
 }
 
+/// Drops a test database. `run` executes one statement and returns its SQLSTATE on failure.
+pub(super) fn drop_database(
+    name: &str,
+    mut run: impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    run(&format!("DROP DATABASE {name} WITH (FORCE)"))
+}
+
+#[cfg(test)]
+mod drop_policy {
+    use super::drop_database;
+
+    fn drop_with(replies: &[Result<(), &str>]) -> (Result<(), String>, Vec<String>) {
+        let mut replies = replies.iter();
+        let mut statements = Vec::new();
+        let result = drop_database("sidereal_test_x", |statement| {
+            statements.push(statement.to_owned());
+            replies
+                .next()
+                .expect("unexpected statement")
+                .map_err(str::to_owned)
+        });
+        (result, statements)
+    }
+
+    #[test]
+    fn forced_drop_success_ends_the_policy() {
+        assert_eq!(
+            drop_with(&[Ok(())]),
+            (
+                Ok(()),
+                vec!["DROP DATABASE sidereal_test_x WITH (FORCE)".to_owned()]
+            )
+        );
+    }
+}
+
 #[test]
 fn supervisor_cleans_up_during_unwind() {
     let name = std::sync::Mutex::new(String::new());

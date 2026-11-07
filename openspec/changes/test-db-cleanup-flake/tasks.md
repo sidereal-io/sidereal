@@ -2,7 +2,7 @@
 
 The drop policy lives in `server/crates/core/src/database/test_support.rs`, the one file both `sidereal-core` and the server's integration tests compile. It takes the database name and a statement runner: a closure that runs one SQL statement and returns its SQLSTATE on failure. Its unit tests sit in a `drop_policy` test module in the same file and use a fake runner, so they need no database. Tasks 1.6 to 1.8 need the fixture: run `just db-up` first.
 
-- [ ] 1.1 [easy] When `DROP DATABASE <name> WITH (FORCE)` succeeds, the drop policy succeeds and runs no other statement (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
+- [x] 1.1 [easy] When `DROP DATABASE <name> WITH (FORCE)` succeeds, the drop policy succeeds and runs no other statement (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy) (✓ cargo test -p sidereal-core drop_policy passed)
 - [ ] 1.2 [medium] When the forced drop fails with SQLSTATE `42501`, the drop policy runs a plain `DROP DATABASE <name>` next, and succeeds when that succeeds (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
 - [ ] 1.3 [easy] When the plain drop fails with SQLSTATE `55006`, the drop policy starts another round with the forced drop (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
 - [ ] 1.4 [easy] After 3 rounds that each end in `42501` or `55006`, the drop policy stops and returns the last error (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core drop_policy)
