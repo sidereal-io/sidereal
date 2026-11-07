@@ -185,6 +185,18 @@ mod drop_policy {
         ]);
         assert_eq!((result, statements.len()), (Err("42501".to_owned()), 6));
     }
+
+    #[test]
+    fn other_forced_drop_error_returns_at_once() {
+        let (result, statements) = drop_with(&[Err("3D000")]);
+        assert_eq!((result, statements.len()), (Err("3D000".to_owned()), 1));
+    }
+
+    #[test]
+    fn other_plain_drop_error_returns_at_once() {
+        let (result, statements) = drop_with(&[Err("42501"), Err("3D000")]);
+        assert_eq!((result, statements.len()), (Err("3D000".to_owned()), 2));
+    }
 }
 
 #[test]
