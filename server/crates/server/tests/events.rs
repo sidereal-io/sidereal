@@ -440,3 +440,15 @@ async fn closing_by_the_client_gets_the_server_reply() {
         Some(Message::Close(_))
     ));
 }
+
+#[tokio::test]
+async fn oversized_client_message_ends_the_connection() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    socket
+        .send(Message::text("x".repeat(64 * 1024)))
+        .await
+        .unwrap();
+    assert!(ends_within(&mut socket, PROMPTLY).await);
+}

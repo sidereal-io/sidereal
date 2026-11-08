@@ -16,6 +16,8 @@ use tokio::time::{interval_at, sleep, timeout, Instant, MissedTickBehavior};
 const HEARTBEAT: &str = r#"{"type":"heartbeat"}"#;
 /// How long the server waits for the client to answer its close frame.
 const CLOSING_GRACE: Duration = Duration::from_secs(5);
+/// The server ignores what a client sends, so it reads no more than this.
+const MAX_CLIENT_MESSAGE: usize = 4 * 1024;
 
 /// How often the socket beats, and how long the client may stay silent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,7 +42,10 @@ pub async fn open(
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let token = cookie::token(&headers).unwrap_or_default().to_owned();
-    upgrade.on_upgrade(move |socket| watch(socket, database, token, timing))
+    upgrade
+        .max_message_size(MAX_CLIENT_MESSAGE)
+        .max_frame_size(MAX_CLIENT_MESSAGE)
+        .on_upgrade(move |socket| watch(socket, database, token, timing))
 }
 
 /// One task per socket. The session is checked again before each heartbeat
