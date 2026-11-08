@@ -161,6 +161,37 @@ async fn upgrade_with_a_session_opens_the_socket() {
 }
 
 #[tokio::test]
+async fn upgrade_from_the_same_origin_opens_the_socket() {
+    let db = TestDatabase::new();
+    let served = served(&db, FAST).await;
+    let mut request = format!("ws://{}/api/events", served.addr)
+        .into_client_request()
+        .unwrap();
+    let headers = request.headers_mut();
+    headers.insert(header::HOST, "localhost:5000".parse().unwrap());
+    headers.insert(header::ORIGIN, "http://localhost:5000".parse().unwrap());
+    headers.insert(header::COOKIE, served.cookie.parse().unwrap());
+    let (_, response) = connect_async(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+}
+
+#[tokio::test]
+async fn upgrade_from_another_origin_is_forbidden() {
+    let db = TestDatabase::new();
+    let served = served(&db, FAST).await;
+    let mut request = format!("ws://{}/api/events", served.addr)
+        .into_client_request()
+        .unwrap();
+    let headers = request.headers_mut();
+    headers.insert(header::HOST, "localhost:5000".parse().unwrap());
+    headers.insert(header::ORIGIN, "http://evil.example".parse().unwrap());
+    headers.insert(header::COOKIE, served.cookie.parse().unwrap());
+    let (status, body) = refusal(connect_async(request).await.map(|(socket, _)| socket));
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body, r#"{"error":"forbidden"}"#);
+}
+
+#[tokio::test]
 async fn upgrade_without_a_cookie_is_unauthenticated() {
     let db = TestDatabase::new();
     let served = served(&db, FAST).await;
