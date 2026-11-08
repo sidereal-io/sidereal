@@ -322,6 +322,27 @@ describe("Access", () => {
       expect(sockets).toHaveLength(1);
     });
 
+    it("keeps showing sam while the database is down after a 1011 close", async () => {
+      const answers = { ...signedIn };
+      const fetch = await showingSam(answers);
+      answers["GET /api/session"] = [503, { error: "unavailable" }];
+      act(() => {
+        theSocket().serverClose(1011);
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sessionAsks(fetch)).toBe(2);
+      screen.getByText("sam");
+      expect(sockets).toHaveLength(1);
+      answers["GET /api/session"] = [200, { username: "sam", role: "admin" }];
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(() => {
+        expect(sockets).toHaveLength(2);
+      });
+      expect(sessionAsks(fetch)).toBe(3);
+      screen.getByText("sam");
+      expect(button("Sign in")).toBeNull();
+    });
+
     it("treats a socket silent for 60 s as closed", async () => {
       const fetch = await showingSam({ ...signedIn });
       const socket = theSocket();
