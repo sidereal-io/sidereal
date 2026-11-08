@@ -6,7 +6,7 @@ use axum::{
     Router,
 };
 use futures_util::{SinkExt, StreamExt};
-use sidereal_core::database::initialize;
+use sidereal_core::database::{initialize, Database};
 use sidereal_server::{
     app_with_event_timing, config::AllowedOrigins, with_trusted_proxies, EventTiming,
 };
@@ -15,7 +15,10 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{client::IntoClientRequest, handshake::client::Response, Error, Message},
+    tungstenite::{
+        client::IntoClientRequest, handshake::client::Response, protocol::frame::coding::CloseCode,
+        Error, Message,
+    },
     MaybeTlsStream, WebSocketStream,
 };
 use tower::ServiceExt;
@@ -34,11 +37,19 @@ const FAST: EventTiming = EventTiming {
     silence: Duration::from_millis(600),
 };
 
-/// A claimed instance served on `127.0.0.1:0`, and the cookie Sam got by
-/// signing in.
+/// Long enough that a close within a second came from a client message,
+/// not from a tick.
+const SLOW: EventTiming = EventTiming {
+    heartbeat: Duration::from_secs(10),
+    silence: Duration::from_secs(20),
+};
+
+/// A claimed instance served on `127.0.0.1:0`, the cookie Sam got by
+/// signing in, and the server's own database handle.
 struct Served {
     addr: SocketAddr,
     cookie: String,
+    database: Database,
 }
 
 async fn served(db: &TestDatabase, timing: EventTiming) -> Served {
@@ -50,7 +61,7 @@ async fn served(db: &TestDatabase, timing: EventTiming) -> Served {
     .await
     .unwrap();
     let app = with_trusted_proxies(
-        app_with_event_timing(database, AllowedOrigins::default(), timing),
+        app_with_event_timing(database.clone(), AllowedOrigins::default(), timing),
         Default::default(),
     );
     let credentials = serde_json::json!({ "username": "sam", "password": PASSWORD }).to_string();
@@ -74,7 +85,11 @@ async fn served(db: &TestDatabase, timing: EventTiming) -> Served {
         )
         .await
     });
-    Served { addr, cookie }
+    Served {
+        addr,
+        cookie,
+        database,
+    }
 }
 
 async fn post(app: &Router, uri: &str, body: &str) -> axum::response::Response {
@@ -216,4 +231,107 @@ async fn heartbeat_is_the_only_answer_to_a_client_message() {
         next(&mut socket, FAST.heartbeat * 2).await,
         Some(heartbeat())
     );
+}
+
+/// Read until the server's close frame, which must come within `within`,
+/// and answer its code. The client's reply is sent on the next read, which
+/// also sees the connection end.
+async fn close_code(socket: &mut Socket, within: Duration) -> CloseCode {
+    let code = tokio::time::timeout(within, async {
+        loop {
+            match socket.next().await.and_then(Result::ok) {
+                Some(Message::Close(Some(frame))) => return frame.code,
+                Some(Message::Close(None)) => panic!("a close frame with no code"),
+                Some(_) => {}
+                None => panic!("the connection ended without a close frame"),
+            }
+        }
+    })
+    .await
+    .expect("no close frame arrived in time");
+    assert_eq!(next(socket, Duration::from_secs(1)).await, None);
+    code
+}
+
+const PROMPTLY: Duration = Duration::from_secs(1);
+
+#[tokio::test]
+async fn recheck_on_a_message_after_revocation_closes_with_1008() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    execute(&db, "DELETE FROM public.sessions").await;
+    socket.send(Message::text("anything")).await.unwrap();
+    assert_eq!(close_code(&mut socket, PROMPTLY).await, CloseCode::Policy);
+}
+
+#[tokio::test]
+async fn recheck_on_a_binary_message_after_revocation_closes_with_1008() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    execute(&db, "DELETE FROM public.sessions").await;
+    socket.send(Message::binary(vec![1, 2, 3])).await.unwrap();
+    assert_eq!(close_code(&mut socket, PROMPTLY).await, CloseCode::Policy);
+}
+
+#[tokio::test]
+async fn recheck_on_a_tick_after_revocation_closes_a_silent_client_with_1008() {
+    let db = TestDatabase::new();
+    let served = served(&db, FAST).await;
+    let mut socket = served.open().await.unwrap();
+    execute(&db, "DELETE FROM public.sessions").await;
+    assert_eq!(
+        close_code(&mut socket, FAST.heartbeat * 2).await,
+        CloseCode::Policy
+    );
+}
+
+#[tokio::test]
+async fn recheck_after_expiry_closes_with_1008() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    execute(
+        &db,
+        "UPDATE public.sessions SET expires_at = now() - interval '1 minute'",
+    )
+    .await;
+    socket.send(Message::text("anything")).await.unwrap();
+    assert_eq!(close_code(&mut socket, PROMPTLY).await, CloseCode::Policy);
+}
+
+#[tokio::test]
+async fn recheck_after_access_recovery_closes_with_1008() {
+    let db = TestDatabase::new();
+    let served = served(&db, FAST).await;
+    let mut socket = served.open().await.unwrap();
+    served
+        .database
+        .reset_admin_password("another-horse-battery")
+        .await
+        .unwrap();
+    assert_eq!(
+        close_code(&mut socket, FAST.heartbeat * 2).await,
+        CloseCode::Policy
+    );
+}
+
+#[tokio::test]
+async fn recheck_without_the_database_closes_with_1011() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    served.database.close().await;
+    socket.send(Message::text("anything")).await.unwrap();
+    assert_eq!(close_code(&mut socket, PROMPTLY).await, CloseCode::Error);
+}
+
+#[tokio::test]
+async fn recheck_of_a_live_session_keeps_the_socket() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    socket.send(Message::text("anything")).await.unwrap();
+    assert!(tokio::time::timeout(PROMPTLY, socket.next()).await.is_err());
 }

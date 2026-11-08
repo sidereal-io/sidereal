@@ -3,7 +3,7 @@ use super::cookie;
 use axum::{
     body::Bytes,
     extract::{
-        ws::{Message, WebSocket},
+        ws::{close_code, CloseCode, CloseFrame, Message, WebSocket},
         State, WebSocketUpgrade,
     },
     http::HeaderMap,
@@ -11,9 +11,11 @@ use axum::{
 };
 use sidereal_core::database::Database;
 use std::time::Duration;
-use tokio::time::{interval_at, Instant, MissedTickBehavior};
+use tokio::time::{interval_at, timeout, Instant, MissedTickBehavior};
 
 const HEARTBEAT: &str = r#"{"type":"heartbeat"}"#;
+/// How long the server waits for the client to answer its close frame.
+const CLOSING_GRACE: Duration = Duration::from_secs(5);
 
 /// How often the socket beats, and how long the client may stay silent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,13 +43,17 @@ pub async fn open(
     upgrade.on_upgrade(move |socket| watch(socket, database, token, timing))
 }
 
-/// One task per socket. A client's message is read and ignored.
-async fn watch(mut socket: WebSocket, _database: Database, _token: String, timing: EventTiming) {
+/// One task per socket. The session is checked again before each heartbeat
+/// and on each client message, whose content is ignored.
+async fn watch(mut socket: WebSocket, database: Database, token: String, timing: EventTiming) {
     let mut beat = interval_at(Instant::now() + timing.heartbeat, timing.heartbeat);
     beat.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             _ = beat.tick() => {
+                if let Some(code) = recheck(&database, &token).await {
+                    return close(socket, code).await;
+                }
                 if socket.send(Message::text(HEARTBEAT)).await.is_err()
                     || socket.send(Message::Ping(Bytes::new())).await.is_err()
                 {
@@ -55,9 +61,45 @@ async fn watch(mut socket: WebSocket, _database: Database, _token: String, timin
                 }
             }
             frame = socket.recv() => match frame {
+                Some(Ok(Message::Text(_) | Message::Binary(_))) => {
+                    if let Some(code) = recheck(&database, &token).await {
+                        return close(socket, code).await;
+                    }
+                }
+                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                 Some(Ok(Message::Close(_)) | Err(_)) | None => return,
-                Some(Ok(_)) => {}
             },
         }
     }
+}
+
+/// The close code for a session that can no longer hold the socket, or
+/// `None` while it can.
+async fn recheck(database: &Database, token: &str) -> Option<CloseCode> {
+    match database.session_alive(token).await {
+        Ok(true) => None,
+        Ok(false) => Some(close_code::POLICY),
+        Err(_) => Some(close_code::ERROR),
+    }
+}
+
+/// Send the close frame, then wait for the client's. Dropping the connection
+/// with its reply unread would send a TCP reset, and the browser could then
+/// report 1006 in place of `code`.
+async fn close(mut socket: WebSocket, code: CloseCode) {
+    let frame = CloseFrame {
+        code,
+        reason: "".into(),
+    };
+    if socket.send(Message::Close(Some(frame))).await.is_err() {
+        return;
+    }
+    let _ = timeout(CLOSING_GRACE, async {
+        while let Some(Ok(frame)) = socket.recv().await {
+            if matches!(frame, Message::Close(_)) {
+                return;
+            }
+        }
+    })
+    .await;
 }
