@@ -14,7 +14,7 @@
 ## 3. The web shell's socket
 
 - [x] 3.1 [medium] `watchSession` opens a WebSocket to `/api/events` on the page's origin (`ws:` or `wss:` from the page). On a 1008 close it calls `onSignedOut` and opens nothing more. Its stop function closes the socket, clears every timer and aborts any in-flight request, and nothing fires after it (verify: cd web && pnpm test -- eventsSocket) (✓ pnpm test -- eventsSocket passed, 5 tests)
-- [ ] 3.2 [medium] On any other close, a failed open, or 60 s with no message, `watchSession` waits 5 s and sends `GET /api/session`: 401 calls `onSignedOut`, 200 opens a new socket, and anything else or a network error waits 5 s and asks again (verify: cd web && pnpm test -- eventsSocket)
+- [x] 3.2 [medium] On any other close, a failed open, or 60 s with no message, `watchSession` waits 5 s and sends `GET /api/session`: 401 calls `onSignedOut`, 200 opens a new socket, and anything else or a network error waits 5 s and asks again (verify: cd web && pnpm test -- eventsSocket) (✓ pnpm test -- eventsSocket passed, 12 tests)
 - [ ] 3.3 [medium] The access section holds the socket only in the signed-in view: a sign-in opens it, a sign-out closes it, a signed-out page opens none, and `onSignedOut` shows the sign-in form with no message. Signing out during the 5 s wait sends no `GET /api/session` and opens no socket (verify: cd web && pnpm test -- Access)
 
 ## 4. Integration [depends-on: 2, 3]
@@ -25,3 +25,7 @@
 ## Deviations Ledger
 
 <!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
+
+- 2026-11-08, task 3.1: the stop function's checks that it clears the wait and aborts an in-flight `GET /api/session` landed with task 3.2, which adds that request. Task 3.1 covers closing the socket on stop.
+- 2026-11-08, task 1.1: no test for a session whose user is not an `admin`. The `users.role` CHECK constraint allows only `admin`, so such a row cannot be made. The lookup still filters on the role.
+- 2026-11-08, task 2.4: the socket tests use a 10 s silence window except the two silence tests. A test that hashes a password stops reading for long enough that a 600 ms window dropped it.
