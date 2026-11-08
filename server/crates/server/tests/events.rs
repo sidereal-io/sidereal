@@ -335,3 +335,29 @@ async fn recheck_of_a_live_session_keeps_the_socket() {
     socket.send(Message::text("anything")).await.unwrap();
     assert!(tokio::time::timeout(PROMPTLY, socket.next()).await.is_err());
 }
+
+#[tokio::test]
+async fn recheck_is_not_a_use_of_the_session() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    execute(
+        &db,
+        "UPDATE public.sessions SET last_used_at = now() - interval '2 days', \
+         expires_at = now() - interval '2 days' + interval '30 days'",
+    )
+    .await;
+    let expiry = "SELECT expires_at::text FROM public.sessions";
+    let before = scalar(&db, expiry).await;
+    socket.send(Message::text("anything")).await.unwrap();
+    assert!(tokio::time::timeout(PROMPTLY, socket.next()).await.is_err());
+    assert_eq!(scalar(&db, expiry).await, before);
+}
+
+async fn scalar(db: &TestDatabase, sql: &'static str) -> String {
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    sqlx::query_scalar(AssertSqlSafe(sql))
+        .fetch_one(&mut conn)
+        .await
+        .unwrap()
+}
