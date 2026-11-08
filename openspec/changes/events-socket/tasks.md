@@ -13,7 +13,7 @@
 
 ## 3. The web shell's socket
 
-- [ ] 3.1 [medium] `watchSession` opens a WebSocket to `/api/events` on the page's origin (`ws:` or `wss:` from the page). On a 1008 close it calls `onSignedOut` and opens nothing more. Its stop function closes the socket, clears every timer and aborts any in-flight request, and nothing fires after it (verify: cd web && pnpm test -- eventsSocket)
+- [x] 3.1 [medium] `watchSession` opens a WebSocket to `/api/events` on the page's origin (`ws:` or `wss:` from the page). On a 1008 close it calls `onSignedOut` and opens nothing more. Its stop function closes the socket, clears every timer and aborts any in-flight request, and nothing fires after it (verify: cd web && pnpm test -- eventsSocket) (✓ pnpm test -- eventsSocket passed, 5 tests)
 - [ ] 3.2 [medium] On any other close, a failed open, or 60 s with no message, `watchSession` waits 5 s and sends `GET /api/session`: 401 calls `onSignedOut`, 200 opens a new socket, and anything else or a network error waits 5 s and asks again (verify: cd web && pnpm test -- eventsSocket)
 - [ ] 3.3 [medium] The access section holds the socket only in the signed-in view: a sign-in opens it, a sign-out closes it, a signed-out page opens none, and `onSignedOut` shows the sign-in form with no message. Signing out during the 5 s wait sends no `GET /api/session` and opens no socket (verify: cd web && pnpm test -- Access)
 
