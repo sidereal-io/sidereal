@@ -21,7 +21,7 @@ None.
 ### Modified Capabilities
 
 - `instance-access`: adds the `/api/events` socket's requirements: upgrade, recheck, close codes and heartbeat. Extends "A state-changing request comes from an allowed origin" to cover the WebSocket upgrade.
-- `web-shell`: "The home screen shows the access state" adds opening the socket and reacting to its close. "The web shell reaches the server through its own origin" adds forwarding WebSocket upgrades. "The access section has unit tests" adds the socket's states.
+- `web-shell`: adds requirements for holding the socket in the signed-in view and reacting to its close or silence. "The web shell reaches the server through its own origin" adds forwarding WebSocket upgrades. "The access section has unit tests" adds the socket's states.
 
 ## Impact
 
