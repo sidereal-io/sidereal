@@ -17,10 +17,15 @@ export default defineConfig({
     // to the server. A bare target string turns on `changeOrigin`, which
     // rewrites `Host` to the server's, and the server's origin check then
     // refuses every sign-in from the page. Keeping the browser's `Host`
-    // lets it match the browser's `Origin`.
+    // lets it match the browser's `Origin`. `ws` forwards the WebSocket
+    // upgrade of `/api/events` too.
     proxy: {
       "/healthz": { target: "http://localhost:5000", changeOrigin: false },
-      "/api": { target: "http://localhost:5000", changeOrigin: false },
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: false,
+        ws: true,
+      },
     },
   },
   // Unit tests run once in a simulated browser DOM, with no server.

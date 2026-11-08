@@ -93,6 +93,8 @@ A reverse proxy gives the instance an HTTPS address, such as `https://photos.exa
 
 These steps use [Caddy](https://caddyserver.com/), which gets certificates by itself. Any proxy that sends `X-Forwarded-Proto` and `X-Forwarded-For` works the same way.
 
+A signed-in page also holds a WebSocket open to `/api/events`. Caddy passes WebSocket upgrades by itself. Another proxy, such as nginx, must be set to pass them for `/api/events`. Without them, the page stays signed in but asks the server again every 5 seconds.
+
 1. Point Caddy at the app. For Caddy on the same machine, this Caddyfile is enough:
 
    ```caddyfile
