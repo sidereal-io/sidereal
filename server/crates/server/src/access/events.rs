@@ -74,7 +74,13 @@ async fn watch(mut socket: WebSocket, database: Database, token: String, timing:
                 Some(Ok(Message::Ping(_) | Message::Pong(_))) => {
                     silence.as_mut().reset(Instant::now() + timing.silence);
                 }
-                Some(Ok(Message::Close(_)) | Err(_)) | None => return,
+                // The reply to the client's close frame is queued, and goes
+                // out on the next read. Without it a browser reports 1006.
+                Some(Ok(Message::Close(_))) => {
+                    let _ = timeout(CLOSING_GRACE, socket.recv()).await;
+                    return;
+                }
+                Some(Err(_)) | None => return,
             },
         }
     }

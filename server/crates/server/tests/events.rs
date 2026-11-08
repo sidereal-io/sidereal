@@ -397,3 +397,15 @@ async fn silent_client_that_answers_pings_stays_open() {
     let mut socket = served.open().await.unwrap();
     assert!(!ends_within(&mut socket, QUIET.silence * 3).await);
 }
+
+#[tokio::test]
+async fn closing_by_the_client_gets_the_server_reply() {
+    let db = TestDatabase::new();
+    let served = served(&db, SLOW).await;
+    let mut socket = served.open().await.unwrap();
+    socket.close(None).await.unwrap();
+    assert!(matches!(
+        next(&mut socket, PROMPTLY).await,
+        Some(Message::Close(_))
+    ));
+}
