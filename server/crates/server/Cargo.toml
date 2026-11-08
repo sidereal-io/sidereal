@@ -26,4 +26,5 @@ tower-http = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+tokio-tungstenite = { workspace = true }
 tower = { workspace = true }

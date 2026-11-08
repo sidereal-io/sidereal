@@ -2,7 +2,7 @@
 
 - [x] 1.1 [easy] `Database::session_alive` answers true for an unexpired session of an `admin` user, and false for a missing or expired row, and it updates and deletes no row (verify: cd server && cargo test -p sidereal-core session_alive) (✓ cargo test -p sidereal-core session_alive passed, 4 tests)
 - [x] 1.2 [medium] The origin check treats a request whose `Upgrade` header names `websocket` as state-changing: a disallowed `Origin` or `Referer` gets 403 before the session check, while a same-origin upgrade and an upgrade with neither header pass (verify: cd server && cargo test -p sidereal-server --test access origin) (✓ cargo test -p sidereal-server --test access origin passed, 17 tests)
-- [ ] 1.3 [medium] `GET /api/events` behind both guards: a WebSocket upgrade with a session answers 101, one without a cookie or with a revoked session answers 401, and a plain `GET` with a session answers a 4xx. Adds axum's `ws` feature, `EventTiming`, `app_with_event_timing`, and `tests/events.rs` serving on `127.0.0.1:0` with `tokio-tungstenite` as a dev dependency (verify: cd server && cargo test -p sidereal-server --test events upgrade)
+- [x] 1.3 [medium] `GET /api/events` behind both guards: a WebSocket upgrade with a session answers 101, one without a cookie or with a revoked session answers 401, and a plain `GET` with a session answers a 4xx. Adds axum's `ws` feature, `EventTiming`, `app_with_event_timing`, and `tests/events.rs` serving on `127.0.0.1:0` with `tokio-tungstenite` as a dev dependency (verify: cd server && cargo test -p sidereal-server --test events upgrade) (✓ cargo test -p sidereal-server --test events upgrade passed, 4 tests)
 
 ## 2. The socket loop [depends-on: 1]
 
