@@ -14,6 +14,11 @@ While the access section shows a signed-in user, the web shell SHALL hold one We
 - **WHEN** the page shows `sam` with the socket open, and the user presses `Sign out` and `DELETE /api/session` answers 204
 - **THEN** the page closes the socket and opens no other
 
+#### Scenario: Signing out while waiting to ask
+
+- **WHEN** the page shows `sam`, the socket closes with code 1006, and within 5 seconds the user presses `Sign out` and `DELETE /api/session` answers 204
+- **THEN** the page shows the sign-in form, sends no `GET /api/session`, and opens no new WebSocket
+
 #### Scenario: No socket while signed out
 
 - **WHEN** `GET /api/claim` answers `{"open":false}`, `GET /api/session` answers 401, and a user opens the home page
@@ -97,7 +102,7 @@ In development, the web shell SHALL request the server's health at `/healthz` an
 
 ### Requirement: The access section has unit tests
 
-The access section SHALL have unit tests that run with no server, with `fetch` and `WebSocket` replaced by stubs, covering the unclaimed, signed-out, signed-in and unavailable states and the claim, failed sign-in and sign-out transitions. They SHALL also cover opening the socket on sign-in, closing it on sign-out, a 1008 close, a close that is not 1008 followed by a 401 and by a 200, and a silent socket. `pnpm test` in `web/` SHALL run them.
+The access section SHALL have unit tests that run with no server, with `fetch` and `WebSocket` replaced by stubs, covering the unclaimed, signed-out, signed-in and unavailable states and the claim, failed sign-in and sign-out transitions. They SHALL also cover the socket: opening it on sign-in, closing it on sign-out, and a silent socket. They SHALL cover a 1008 close, and a close that is not 1008 followed by a 401 and by a 200. `pnpm test` in `web/` SHALL run them.
 
 #### Scenario: The tests run with no server
 

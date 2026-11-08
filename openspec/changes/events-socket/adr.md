@@ -5,7 +5,7 @@
 
 ## Review Summary
 
-ADR review completed for this change. The change builds on two in-force records: ADR-007 requires WebSocket access that derives from the session and rechecks expiry and revocation, and ADR-015 makes a session a PostgreSQL row looked up by token hash. No design decision in this change is a fork that is costly to reverse.
+ADR review completed for this change. The change builds on two in-force records. ADR-007 requires WebSocket access that derives from the session and rechecks expiry and revocation. ADR-015 makes a session a PostgreSQL row looked up by token hash. No design decision in this change is a fork that is costly to reverse.
 
 - Decisions 2 and 3 (the origin check on the upgrade, and the read-only recheck) are behavior. The `instance-access` spec owns them.
 - Decisions 1 and 4 to 9 (route placement, the socket loop, injectable timing, the test client, the web shell module, the dev proxy and the guide note) can each be read from the code and changed in one place.
