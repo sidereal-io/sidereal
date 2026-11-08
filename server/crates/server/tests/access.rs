@@ -1058,7 +1058,7 @@ mod spawned {
     use std::{
         io::{Read, Write},
         net::TcpStream,
-        process::{Child, Command, Stdio},
+        process::{Child, Command, ExitStatus, Stdio},
         time::{Duration, Instant},
     };
 
@@ -1140,6 +1140,25 @@ mod spawned {
             let mut response = String::new();
             stream.read_to_string(&mut response).ok()?;
             Some(response)
+        }
+
+        /// Send SIGTERM, as a container runtime does, and wait up to `within`
+        /// for the server to exit. `None` means it was still running.
+        pub fn terminate(&mut self, within: Duration) -> Option<ExitStatus> {
+            let pid = libc::pid_t::try_from(self.child.id()).unwrap();
+            // SAFETY: `kill` only sends a signal to the child this harness
+            // spawned and has not yet waited on, so the pid is still its own.
+            assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);
+            let deadline = Instant::now() + within;
+            loop {
+                if let Some(status) = self.child.try_wait().unwrap() {
+                    return Some(status);
+                }
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
 
         /// Stop the server and return everything it wrote to stdout and stderr.
@@ -1411,5 +1430,46 @@ mod warning {
         database(&db).await.claim("sam", PASSWORD).await.unwrap();
         let output = spawned::Server::ready(&db).output();
         assert_eq!(warnings(&output), 0, "{output}");
+    }
+}
+
+mod spawned_events {
+    use super::*;
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, http::header::COOKIE};
+
+    /// The `name=value` cookie from signing in to a claimed spawned server.
+    fn signed_in(server: &spawned::Server) -> String {
+        let body = credentials("sam", PASSWORD);
+        let claimed = server.request("POST", "/api/claim", Some(&body)).unwrap();
+        assert!(claimed.starts_with("HTTP/1.1 201"), "{claimed}");
+        let answer = server.request("POST", "/api/session", Some(&body)).unwrap();
+        let cookie = answer
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("set-cookie").then_some(value)
+            })
+            .expect("a session cookie");
+        cookie.trim().split(';').next().unwrap().to_owned()
+    }
+
+    #[tokio::test]
+    async fn spawned_server_upgrades_and_exits_on_sigterm_with_a_socket_open() {
+        let db = TestDatabase::new();
+        let mut server = spawned::Server::ready(&db);
+        let mut request = format!("ws://127.0.0.1:{}/api/events", server.port)
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert(COOKIE, signed_in(&server).parse().unwrap());
+        let (socket, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SWITCHING_PROTOCOLS);
+        let status = server.terminate(Duration::from_secs(10));
+        drop(socket);
+        assert!(
+            status.is_some_and(|status| status.success()),
+            "the server did not exit cleanly within 10 s: {status:?}"
+        );
     }
 }

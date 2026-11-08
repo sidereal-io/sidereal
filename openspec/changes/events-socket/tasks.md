@@ -19,7 +19,7 @@
 
 ## 4. Integration [depends-on: 2, 3]
 
-- [ ] 4.1 [medium] The real binary upgrades `/api/events` and exits on SIGTERM while a socket is open. The child-process harness in `tests/access.rs` gains a method that sends SIGTERM with `libc::kill` (verify: cd server && cargo test -p sidereal-server --test access spawned)
+- [x] 4.1 [medium] The real binary upgrades `/api/events` and exits on SIGTERM while a socket is open. The child-process harness in `tests/access.rs` gains a method that sends SIGTERM with `libc::kill` (verify: cd server && cargo test -p sidereal-server --test access spawned) (✓ cargo test -p sidereal-server --test access spawned passed, 4 tests; the server exits 0 on SIGTERM with a socket open)
 - [ ] 4.2 [easy] The dev proxy sets `ws: true` on `/api`, and `docs/install.md` says that Caddy passes WebSocket upgrades by itself and that another proxy must pass them for `/api/events`. Then check by hand with `just dev`: sign in, and see the socket open and a heartbeat arrive in the browser's network panel (verify: just check)
 
 ## Deviations Ledger
