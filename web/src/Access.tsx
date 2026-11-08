@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import "./Access.css";
+import { watchSession } from "./eventsSocket.ts";
 
 type View =
   "loading" | "unclaimed" | "signed-out" | "failed" | { username: string };
@@ -121,6 +122,16 @@ function Access() {
       stopped = true;
     };
   }, []);
+
+  // Keyed on the username, so a re-render of the same user keeps its socket.
+  const signedIn = typeof view === "object" ? view.username : null;
+  useEffect(() => {
+    if (signedIn === null) return;
+    return watchSession(() => {
+      setMessage(null);
+      setView("signed-out");
+    });
+  }, [signedIn]);
 
   function show(next: View) {
     setMessage(null);
