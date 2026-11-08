@@ -43,3 +43,4 @@ rand = "0.10"
 sha2 = "0.11"
 # Test client for the events socket; the same library axum's `ws` feature uses.
 tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }

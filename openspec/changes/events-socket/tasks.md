@@ -6,7 +6,7 @@
 
 ## 2. The socket loop [depends-on: 1]
 
-- [ ] 2.1 [medium] Every heartbeat period after the upgrade, the server sends the text `{"type":"heartbeat"}` and a ping. A client text message gets no reply and leaves the socket open (verify: cd server && cargo test -p sidereal-server --test events heartbeat)
+- [x] 2.1 [medium] Every heartbeat period after the upgrade, the server sends the text `{"type":"heartbeat"}` and a ping. A client text message gets no reply and leaves the socket open (verify: cd server && cargo test -p sidereal-server --test events heartbeat) (✓ cargo test -p sidereal-server --test events heartbeat passed, 2 tests)
 - [ ] 2.2 [complex] A recheck, on each tick and on each client text or binary message, closes with 1008 when the session row is gone or expired, and with 1011 when PostgreSQL cannot be read. The server waits for the client's close frame, up to 5 s, before it drops the connection. Tests cover revocation with a message, revocation with a silent client, expiry, access recovery, and closed database connections (verify: cd server && cargo test -p sidereal-server --test events recheck)
 - [ ] 2.3 [easy] A recheck does not move the session's expiry: after the row is aged to 2 days old and the client sends a message, the socket stays open and `expires_at` is unchanged (verify: cd server && cargo test -p sidereal-server --test events not_a_use)
 - [ ] 2.4 [medium] A client that sends nothing and answers no ping is dropped once the silence window passes, and a client that answers every ping stays open past it (verify: cd server && cargo test -p sidereal-server --test events silent)

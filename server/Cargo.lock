@@ -1284,6 +1284,7 @@ name = "sidereal-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "futures-util",
  "libc",
  "serde_json",
  "sidereal-core",

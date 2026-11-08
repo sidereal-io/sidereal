@@ -5,6 +5,7 @@ use axum::{
     http::{header, Request, StatusCode},
     Router,
 };
+use futures_util::{SinkExt, StreamExt};
 use sidereal_core::database::initialize;
 use sidereal_server::{
     app_with_event_timing, config::AllowedOrigins, with_trusted_proxies, EventTiming,
@@ -14,7 +15,7 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{client::IntoClientRequest, handshake::client::Response, Error},
+    tungstenite::{client::IntoClientRequest, handshake::client::Response, Error, Message},
     MaybeTlsStream, WebSocketStream,
 };
 use tower::ServiceExt;
@@ -173,4 +174,46 @@ async fn upgrade_missing_from_a_plain_get_is_a_client_error() {
         .unwrap();
     let status: u16 = response.split(' ').nth(1).unwrap().parse().unwrap();
     assert!((400..500).contains(&status), "{response}");
+}
+
+/// The next frame, or `None` when the connection ends first. Fails the test
+/// if nothing arrives within `within`.
+async fn next(socket: &mut Socket, within: Duration) -> Option<Message> {
+    tokio::time::timeout(within, socket.next())
+        .await
+        .expect("no frame arrived in time")
+        .and_then(Result::ok)
+}
+
+fn heartbeat() -> Message {
+    Message::text(r#"{"type":"heartbeat"}"#)
+}
+
+#[tokio::test]
+async fn heartbeat_text_and_a_ping_arrive_each_period() {
+    let db = TestDatabase::new();
+    let served = served(&db, FAST).await;
+    let mut socket = served.open().await.unwrap();
+    for _ in 0..2 {
+        assert_eq!(
+            next(&mut socket, FAST.heartbeat * 2).await,
+            Some(heartbeat())
+        );
+        assert!(matches!(
+            next(&mut socket, FAST.heartbeat).await,
+            Some(Message::Ping(_))
+        ));
+    }
+}
+
+#[tokio::test]
+async fn heartbeat_is_the_only_answer_to_a_client_message() {
+    let db = TestDatabase::new();
+    let served = served(&db, FAST).await;
+    let mut socket = served.open().await.unwrap();
+    socket.send(Message::text("hello")).await.unwrap();
+    assert_eq!(
+        next(&mut socket, FAST.heartbeat * 2).await,
+        Some(heartbeat())
+    );
 }
