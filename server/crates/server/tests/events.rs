@@ -31,8 +31,16 @@ const PASSWORD: &str = "correct-horse-battery";
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-/// Short enough that a test waits well under a second for a tick.
+/// Short enough that a test waits well under a second for a tick. The
+/// silence window is long, so a test that stops reading for a while, as
+/// while a password is hashed, is not dropped for it.
 const FAST: EventTiming = EventTiming {
+    heartbeat: Duration::from_millis(200),
+    silence: Duration::from_secs(10),
+};
+
+/// A silence window a test can wait out.
+const QUIET: EventTiming = EventTiming {
     heartbeat: Duration::from_millis(200),
     silence: Duration::from_millis(600),
 };
@@ -360,4 +368,32 @@ async fn scalar(db: &TestDatabase, sql: &'static str) -> String {
         .fetch_one(&mut conn)
         .await
         .unwrap()
+}
+
+/// Whether the connection ends within `within`, reading every frame on the
+/// way. Reading answers the server's pings.
+async fn ends_within(socket: &mut Socket, within: Duration) -> bool {
+    tokio::time::timeout(within, async {
+        while let Some(Ok(_)) = socket.next().await {}
+    })
+    .await
+    .is_ok()
+}
+
+#[tokio::test]
+async fn silent_client_is_dropped_after_the_silence_window() {
+    let db = TestDatabase::new();
+    let served = served(&db, QUIET).await;
+    let mut socket = served.open().await.unwrap();
+    // Not reading means the client answers no ping.
+    tokio::time::sleep(QUIET.silence + QUIET.heartbeat).await;
+    assert!(ends_within(&mut socket, QUIET.silence).await);
+}
+
+#[tokio::test]
+async fn silent_client_that_answers_pings_stays_open() {
+    let db = TestDatabase::new();
+    let served = served(&db, QUIET).await;
+    let mut socket = served.open().await.unwrap();
+    assert!(!ends_within(&mut socket, QUIET.silence * 3).await);
 }

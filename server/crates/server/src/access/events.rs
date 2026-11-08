@@ -11,7 +11,7 @@ use axum::{
 };
 use sidereal_core::database::Database;
 use std::time::Duration;
-use tokio::time::{interval_at, timeout, Instant, MissedTickBehavior};
+use tokio::time::{interval_at, sleep, timeout, Instant, MissedTickBehavior};
 
 const HEARTBEAT: &str = r#"{"type":"heartbeat"}"#;
 /// How long the server waits for the client to answer its close frame.
@@ -44,12 +44,16 @@ pub async fn open(
 }
 
 /// One task per socket. The session is checked again before each heartbeat
-/// and on each client message, whose content is ignored.
+/// and on each client message, whose content is ignored. A client that sends
+/// nothing, not even a pong, for the silence window is dropped.
 async fn watch(mut socket: WebSocket, database: Database, token: String, timing: EventTiming) {
     let mut beat = interval_at(Instant::now() + timing.heartbeat, timing.heartbeat);
     beat.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let silence = sleep(timing.silence);
+    tokio::pin!(silence);
     loop {
         tokio::select! {
+            () = &mut silence => return,
             _ = beat.tick() => {
                 if let Some(code) = recheck(&database, &token).await {
                     return close(socket, code).await;
@@ -62,11 +66,14 @@ async fn watch(mut socket: WebSocket, database: Database, token: String, timing:
             }
             frame = socket.recv() => match frame {
                 Some(Ok(Message::Text(_) | Message::Binary(_))) => {
+                    silence.as_mut().reset(Instant::now() + timing.silence);
                     if let Some(code) = recheck(&database, &token).await {
                         return close(socket, code).await;
                     }
                 }
-                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {
+                    silence.as_mut().reset(Instant::now() + timing.silence);
+                }
                 Some(Ok(Message::Close(_)) | Err(_)) | None => return,
             },
         }
