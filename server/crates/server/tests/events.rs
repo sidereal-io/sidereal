@@ -452,3 +452,21 @@ async fn oversized_client_message_ends_the_connection() {
         .unwrap();
     assert!(ends_within(&mut socket, PROMPTLY).await);
 }
+
+#[tokio::test]
+async fn recheck_that_stalls_past_the_silence_window_closes_with_1011() {
+    let db = TestDatabase::new();
+    let served = served(&db, QUIET).await;
+    let mut socket = served.open().await.unwrap();
+    let mut locker = PgConnection::connect_with(&db.options).await.unwrap();
+    let mut held = locker.begin().await.unwrap();
+    sqlx::query("LOCK TABLE public.sessions IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *held)
+        .await
+        .unwrap();
+    assert_eq!(
+        close_code(&mut socket, QUIET.silence * 2).await,
+        CloseCode::Error
+    );
+    held.rollback().await.unwrap();
+}

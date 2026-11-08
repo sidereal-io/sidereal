@@ -11,7 +11,7 @@ use axum::{
 };
 use sidereal_core::database::Database;
 use std::time::Duration;
-use tokio::time::{interval_at, sleep, timeout, Instant, MissedTickBehavior};
+use tokio::time::{interval_at, sleep, timeout, timeout_at, Instant, MissedTickBehavior};
 
 const HEARTBEAT: &str = r#"{"type":"heartbeat"}"#;
 /// How long the server waits for the client to answer its close frame.
@@ -50,7 +50,9 @@ pub async fn open(
 
 /// One task per socket. The session is checked again before each heartbeat
 /// and on each client message, whose content is ignored. A client that sends
-/// nothing, not even a pong, for the silence window is dropped.
+/// nothing, not even a pong, for the silence window is dropped. While the
+/// loop waits on PostgreSQL or a send it reads nothing, so that wait is held
+/// to the silence window too.
 async fn watch(mut socket: WebSocket, database: Database, token: String, timing: EventTiming) {
     let mut beat = interval_at(Instant::now() + timing.heartbeat, timing.heartbeat);
     beat.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -60,19 +62,22 @@ async fn watch(mut socket: WebSocket, database: Database, token: String, timing:
         tokio::select! {
             () = &mut silence => return,
             _ = beat.tick() => {
-                if let Some(code) = recheck(&database, &token).await {
+                let deadline = silence.deadline();
+                if let Some(code) = recheck(&database, &token, deadline).await {
                     return close(socket, code).await;
                 }
-                if socket.send(Message::text(HEARTBEAT)).await.is_err()
-                    || socket.send(Message::Ping(Bytes::new())).await.is_err()
-                {
+                let beat = async {
+                    socket.send(Message::text(HEARTBEAT)).await?;
+                    socket.send(Message::Ping(Bytes::new())).await
+                };
+                if !matches!(timeout_at(deadline, beat).await, Ok(Ok(()))) {
                     return;
                 }
             }
             frame = socket.recv() => match frame {
                 Some(Ok(Message::Text(_) | Message::Binary(_))) => {
                     silence.as_mut().reset(Instant::now() + timing.silence);
-                    if let Some(code) = recheck(&database, &token).await {
+                    if let Some(code) = recheck(&database, &token, silence.deadline()).await {
                         return close(socket, code).await;
                     }
                 }
@@ -92,12 +97,13 @@ async fn watch(mut socket: WebSocket, database: Database, token: String, timing:
 }
 
 /// The close code for a session that can no longer hold the socket, or
-/// `None` while it can.
-async fn recheck(database: &Database, token: &str) -> Option<CloseCode> {
-    match database.session_alive(token).await {
-        Ok(true) => None,
-        Ok(false) => Some(close_code::POLICY),
-        Err(_) => Some(close_code::ERROR),
+/// `None` while it can. A lookup still waiting at `deadline` counts as
+/// PostgreSQL that cannot be read.
+async fn recheck(database: &Database, token: &str, deadline: Instant) -> Option<CloseCode> {
+    match timeout_at(deadline, database.session_alive(token)).await {
+        Ok(Ok(true)) => None,
+        Ok(Ok(false)) => Some(close_code::POLICY),
+        Ok(Err(_)) | Err(_) => Some(close_code::ERROR),
     }
 }
 
