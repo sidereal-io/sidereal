@@ -65,6 +65,18 @@ jobs:
       - name: Web gate
         run: nix develop --command just check-web
 
+  openspec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: DeterminateSystems/determinate-nix-action@v3
+
+      - name: OpenSpec gate
+        run: nix develop --command just check-openspec
+
   # End-to-end gate. Kept out of `check` because it boots the server and a
   # browser, so it runs on its own runner instead of competing with the
   # unit jobs for CPU.
