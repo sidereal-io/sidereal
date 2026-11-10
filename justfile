@@ -47,6 +47,10 @@ check: check-compose check-server check-web
 check-compose:
     @sh scripts/compose-config-check.sh
 
+# OpenSpec gate: strict validation of every spec and active change. Warnings fail it.
+check-openspec:
+    openspec validate --all --strict --no-interactive
+
 # Server gate: format, lint (deny warnings), tests, dependency-direction lint.
 check-server:
     cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
