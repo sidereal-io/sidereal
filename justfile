@@ -49,7 +49,7 @@ check-compose:
 
 # OpenSpec gate: strict validation of every spec and active change. Warnings fail it.
 check-openspec:
-    openspec validate --all --strict --no-interactive
+    OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive
 
 # Server gate: format, lint (deny warnings), tests, dependency-direction lint.
 check-server:
