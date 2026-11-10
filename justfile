@@ -40,8 +40,8 @@ server:
 web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm dev
 
-# The gate to pass before every PR: Compose configuration, server, then web.
-check: check-compose check-server check-web
+# The gate to pass before every PR: Compose configuration, OpenSpec, server, then web.
+check: check-compose check-openspec check-server check-web
 
 # Check Compose installation wiring; needs the Compose CLI and jq, no daemon.
 check-compose:
