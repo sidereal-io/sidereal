@@ -1,7 +1,7 @@
 ## 1. OpenSpec gate
 
 - [x] 1.1 [easy] `just check-openspec` validates every spec and active change in strict mode, and exits 0 on the unchanged checkout without waiting for input (verify: `nix develop --command sh -c 'just check-openspec < /dev/null'`) (✓ `just check-openspec < /dev/null` passed)
-- [ ] 1.2 [easy] `just check-openspec` exits non-zero when a spec has only a warning: its Purpose is shortened to `Short.` (verify: `nix develop --command sh -c 'f=openspec/specs/ci/spec.md; sed -i "5s/.*/Short./" $f; just check-openspec < /dev/null; s=$?; git checkout -- $f; test $s -ne 0'`)
+- [x] 1.2 [easy] `just check-openspec` exits non-zero when a spec has only a warning: its Purpose is shortened to `Short.` (verify: `nix develop --command sh -c 'f=openspec/specs/ci/spec.md; sed -i "5s/.*/Short./" $f; just check-openspec < /dev/null; s=$?; git checkout -- $f; test $s -ne 0'`) (✓ the verify command passed: the gate exits 1 and names spec/ci)
 - [ ] 1.3 [easy] `just check-openspec` exits non-zero when an active change holds a delta requirement with no scenario (verify: `nix develop --command sh -c 'd=openspec/changes/zz-invalid-probe; mkdir -p $d/specs/ci; printf "## ADDED Requirements\n\n### Requirement: Probe\nThe probe SHALL fail.\n" > $d/specs/ci/spec.md; just check-openspec < /dev/null; s=$?; rm -rf $d; test $s -ne 0'`)
 - [ ] 1.4 [easy] `just check-openspec` runs the CLI with usage telemetry turned off (verify: `nix develop --command sh -c 'just --show check-openspec | grep -q OPENSPEC_TELEMETRY=0'`)
 - [ ] 1.5 [easy] `just check` runs `check-openspec` after `check-compose` and before `check-server` (verify: `nix develop --command sh -c 'just --show check | grep -qx "check: check-compose check-openspec check-server check-web"'`)
