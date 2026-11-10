@@ -68,6 +68,7 @@ just server         # Run the server only
 just web            # Run the web interface only
 just check          # The gate to pass before every pull request
 just check-compose  # Compose configuration checks (Compose CLI + jq; no daemon)
+just check-openspec # OpenSpec checks: strict validation of every spec and active change
 just check-server   # Server checks: format, clippy, tests, dependency-direction lint
 just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 just instance-verify  # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
