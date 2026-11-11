@@ -1,11 +1,11 @@
 ---
 name: lets-setup-backlog
-description: Create or check the GitHub Project this repository uses as its backlog. Use when a repository has no Project, when lets-shape or lets-build say to run this skill, or to check that an existing Project has the fields the backlog skills need.
+description: Create or check the GitHub Project this repository uses as its backlog. Use when a repository has no Project, when lets-shape or lets-go say to run this skill, or to check that an existing Project has the fields the backlog skills need.
 ---
 
 # Let's set up the backlog
 
-The backlog is the one open GitHub Project linked to this repository. `lets-shape` and `lets-build` read and write its fields by name. This skill creates that Project, or checks that an existing one has what they need. Run every command below from the repo root.
+The backlog is the one open GitHub Project linked to this repository. `lets-shape` and `lets-go` read and write its fields by name. This skill creates that Project, or checks that an existing one has what they need. Run every command below from the repo root.
 
 `gh project` commands need the `project` scope. If one fails and asks for it, run `gh auth refresh -s project` and try again.
 

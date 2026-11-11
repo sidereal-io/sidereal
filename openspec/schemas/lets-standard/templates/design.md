@@ -19,7 +19,7 @@
 
 ## Scrutiny Tier & Blast Radius
 
-<!-- The review step reads the tier as the reviewer's effort.
+<!-- The plan review reads the tier as the reviewer's effort.
      low: a narrow fix or polish; one package; no new contracts, schema or authorization.
      medium: one subsystem on established patterns; a contained blast radius.
      high: several packages; new contracts, events or migrations; authorization or trust boundaries; architecture-changing; a novel external dependency. -->
