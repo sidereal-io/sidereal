@@ -1,6 +1,6 @@
 ---
 name: lets-shape
-description: Break a large product requirements document (PRD), vision, issue, or product idea into a release plan for an OpenSpec project — personas, journey map, MoSCoW priorities, and thin vertical stories filed as GitHub issues on the repository's Project, which lets-build picks up one at a time. Use when a feature or PRD is too big for one OpenSpec change, when the user asks to split or prioritize work, when a new request must be fitted into an existing backlog, to shape a single bug, chore or story into a complete issue, or to resume or revise a discovery.
+description: Break a large product requirements document (PRD), vision, issue, or product idea into a release plan for an OpenSpec project — personas, journey map, MoSCoW priorities, and thin vertical stories filed as GitHub issues on the repository's Project, which lets-go picks up one at a time. Use when a feature or PRD is too big for one OpenSpec change, when the user asks to split or prioritize work, when a new request must be fitted into an existing backlog, to shape a single bug, chore or story into a complete issue, or to resume or revise a discovery.
 ---
 
 # Let's shape
@@ -12,7 +12,7 @@ Shape a large idea into a backlog. This is discovery: personas, a journey map, M
 - `openspec/discovery.md` — the living map: personas and journey map ([templates/discovery-template.md](templates/discovery-template.md)). It outlives every run; see [The map](#the-map).
 - GitHub issues — one **parent issue** per discovery run, and the stories ([templates/issue-template.md](templates/issue-template.md)).
 
-Changes are created later, one at a time, by `lets-build`.
+Changes are created later, one at a time, by `lets-go`.
 
 **The input is read-only.** A discovery run starts from an input: a PRD or vision file, a GitHub issue, pasted text, or just conversation. Read it. Never create, edit or restate it in a file. The run records what it decides in its parent issue: the confirmed scope, the priorities and the Won't calls.
 
@@ -56,7 +56,7 @@ gh project item-edit <n> --owner <owner> --url <url> --field Size --value S
 gh project item-edit <n> --owner <owner> --url <url> --field Status --value Todo
 ```
 
-An issue is shaped when Kind, Priority and Size are set. Status Todo says nobody has taken it. The glossary documentation Chore below is the sole exception: assign it and set In Progress. Set Todo once, right after the other three, whenever you create or reshape a story, bug or chore; the Project's workflows and `lets-build` move it on from there. An epic gets a Kind and nothing else.
+An issue is shaped when Kind, Priority and Size are set. Status Todo says nobody has taken it. The glossary documentation Chore below is the sole exception: assign it and set In Progress. Set Todo once, right after the other three, whenever you create or reshape a story, bug or chore; the Project's workflows and `lets-go` move it on from there. An epic gets a Kind and nothing else.
 
 ## The stance
 
@@ -246,7 +246,7 @@ Cut the Must (then Should) work into stories:
 - **Size each story XS, S, M, L or XL.** L and XL are too big: split them.
 - **Read the backlog before you cut:** `gh issue list --state all --limit 500 --json number,title,state,body,assignees`. Work that fits an open, unassigned story updates that issue instead of duplicating it.
 
-Each story gets a **story packet**: the story template in [templates/issue-template.md](templates/issue-template.md). Every field is required, because the `lets-build` run that plans the story starts with none of this conversation.
+Each story gets a **story packet**: the story template in [templates/issue-template.md](templates/issue-template.md). Every field is required, because the `lets-go` run that plans the story starts with none of this conversation.
 
 **Size check-out:** after drafting the stories, review each against the ~200-word proposal budget. List every story that looks too large, each with 1-2 candidate split lines (or a one-line reason it genuinely resists splitting), and resolve with the user before finalizing.
 
@@ -255,7 +255,7 @@ Each story gets a **story packet**: the story template in [templates/issue-templ
 - **The whole run fits one story.** The parent issue becomes that story. Retitle it `<kebab-story-name> — <one-line outcome>` and replace its body with the story template. Then set Kind `Story`, its Priority, its Size and Status `Todo`, with four `item-edit` commands. Keep the status line, input reference and complete **Glossary handoff** recovery record when replacing the body. Won't calls go in its Scope `out`.
 - **More than one story.** The stories are sub-issues of the parent.
 
-**Checkpoint:** Issues are public, so show the new and changed issues as a table (title, blocked by, MoSCoW, size) and confirm. Put each blocker on the story it blocks, never only on the parent, because `lets-build` cannot see a blocker on a parent issue when it picks the next story. When something blocks every story under the parent, give each story its own `--blocked-by` link. Then create them in dependency order, blockers first:
+**Checkpoint:** Issues are public, so show the new and changed issues as a table (title, blocked by, MoSCoW, size) and confirm. Put each blocker on the story it blocks, never only on the parent, because `lets-go` cannot see a blocker on a parent issue when it picks the next story. When something blocks every story under the parent, give each story its own `--blocked-by` link. Then create them in dependency order, blockers first:
 
 ```bash
 gh issue create --title "<title>" --body-file <file> --project "<project title>" --parent <parent#> [--blocked-by <n>,<n>]
@@ -279,7 +279,7 @@ Run [Glossary handoff](#glossary-handoff) before the ordinary handoff below.
 
 Then hand off:
 
-> The stories are GitHub issues under #<parent>. To start building, run `lets-build` on the default branch: it picks the next story, claims it and plans it. Run this skill again at any time to revise the plan.
+> The stories are GitHub issues under #<parent>. To start building, run `lets-go` on the default branch: it picks the next story, claims it and builds it. Run this skill again at any time to revise the plan.
 
 ## Shape one issue
 
@@ -295,7 +295,7 @@ Use this when the user brings one bug, chore or small story, or names an open is
 8. **Fetch the thread again**, even when the first fetch found nothing to ask about. Show and ask about each comment that is new or edited since the last fetch. When a yes changes the body, confirm it and write it with `gh issue edit <i> --body-file <file>`. Repeat until a fetch finds nothing new.
 9. **Reply**, when this run judged at least one comment. Post one reply, as the reference says, with `gh issue comment <i> --body-file <file>`. It lists every comment judged in steps 4 and 8.
 
-Checkpoint any glossary edits and run [Glossary handoff](#glossary-handoff). Then say that `lets-build` can take it: on the default branch, it picks the next issue, or the user can name this one.
+Checkpoint any glossary edits and run [Glossary handoff](#glossary-handoff). Then say that `lets-go` can take it: on the default branch, it picks the next issue, or the user can name this one.
 
 ## Resume mode
 
@@ -421,9 +421,9 @@ Only when the user chose a documentation pull request:
 18. If a checkpoint is unpublished or missing, resolve that first. It
     never permits writing competing definitions in another checkout.
 
-## Handing off to lets-build
+## Handing off to lets-go
 
-- Discovery **never** creates changes. `lets-build` creates them, one story at a time.
-- `lets-build` picks the next story, and owns the selection rule. The user can also name an issue for it.
+- Discovery **never** creates changes. `lets-go` creates them, one story at a time.
+- `lets-go` picks the next story, and owns the selection rule. The user can also name an issue for it.
 - The story packet is the input — it must stand alone.
 - One story per change. If the user asks you to batch-create proposals for all stories, decline and explain: proposals written ahead of implementation go stale and overlap on shared specs.

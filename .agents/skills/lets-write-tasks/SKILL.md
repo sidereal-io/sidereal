@@ -1,6 +1,6 @@
 ---
 name: lets-write-tasks
-description: Use when turning an approved plan into an OpenSpec task list. Says how to size, order, tag and verify tasks so that an agent can build them one at a time, test-first. The schema says the checkbox format the apply step parses.
+description: Use when turning a plan into an OpenSpec task list. Says how to size, order, tag and verify tasks so that an agent can build them one at a time, test-first. The schema says the checkbox format the apply step parses.
 ---
 
 # Writing tasks

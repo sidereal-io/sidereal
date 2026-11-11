@@ -83,7 +83,7 @@ These rules come from lets-spec, and apply to every agent.
 - **When you review code, also apply the project's `REVIEW.md`,** if it
   has one.
 - **The backlog is the GitHub Project linked to this repository.**
-  `lets-shape` sets Kind, Priority, Size and Status; `lets-build`
+  `lets-shape` sets Kind, Priority, Size and Status; `lets-go`
   picks, claims and routes. Never set a Project field with `gh` outside
   those skills. Every piece of work is an issue, and its pull request
   says `Closes #<n>`. An epic is a parent issue with its stories as
@@ -111,7 +111,8 @@ These rules come from lets-spec, and apply to every agent.
 |---|---|
 | A large idea, or work that needs splitting or prioritizing | The `lets-shape` skill |
 | A bug, a chore or a single story with no issue yet, or an issue with no packet | The `lets-shape` skill |
-| Start the next story, or move the current branch's change on | The `lets-build` skill |
+| Start the next story, or move the current branch's change on | The `lets-go` skill |
+| Take a shaped story, bug or chore, or an idea in words, to a ready pull request in one run | The `lets-go` skill |
 | Set up or check this repository's backlog | The `lets-setup-backlog` skill |
 
 ### Domain language
@@ -140,7 +141,7 @@ you write it down. Keep that meaning in code names and reviews.
 These rules add to the Let's Spec block above.
 
 - **The backlog is [project 3](https://github.com/orgs/sidereal-io/projects/3).**
-  `lets-shape` files issues and sets their fields; `lets-build` claims the next one.
+  `lets-shape` files issues and sets their fields; `lets-go` claims the next one.
   `openspec/discovery.md` holds the personas and journeys that `lets-shape` keeps. A
   milestone issue or an ADR holds the product intent.
 - **Gate with `just check`** (`check-compose`, `check-server`, then `check-web`) after every change

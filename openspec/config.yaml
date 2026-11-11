@@ -19,17 +19,5 @@ rules:
     - When a change adds or changes a token, include tasks to edit DESIGN.md first,
       then regenerate tokens.css with `pnpm tokens` in web/.
 
-# The code review rule. lets-spec put it here, and this project owns it:
-# delete it to stop code reviews, or edit it to change when they run.
-# OpenSpec keeps a project's rules for finishing a change under
-# operations.archive. lets-build follows them once every task is done,
-# before it runs verify.
-operations:
-  archive:
-    guidance:
-      - >-
-        Every change gets one code review before it is verified. If the
-        pull request description has no **Code review** section, run the
-        `lets-review-code` skill now. Otherwise check the section as that
-        skill's *Check an earlier review* section says, and run the skill
-        again only when it tells you to.
+# lets-review-build now runs the standard flow's code review before verify
+# and archive. No project-specific archive guidance is needed.
