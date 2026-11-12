@@ -153,6 +153,26 @@ Caddy keeps the browser's `Host` header, so the app accepts sign-in from the pro
 SIDEREAL_ALLOWED_ORIGINS=https://photos.example.com
 ```
 
+## Sign-in limits
+
+Sidereal slows down password guessing. It counts failed sign-ins for each client address, and allows at most:
+
+- 1 failed sign-in per second,
+- 5 failed sign-ins per minute, and
+- 20 failed sign-ins per hour.
+
+An IPv4 address is counted on its own. IPv6 addresses are counted by their /64 prefix, so one home network shares one count.
+
+When an address passes a limit, every sign-in from it is refused with status 429 and a `Retry-After` header that gives the wait in seconds. This happens even when the password is correct, so wait the time the sign-in screen shows, then try again. The app writes one line that starts with `sign-in limited:` to its log, with the address and the wait.
+
+A successful sign-in clears the count for its address. Restarting the app clears every count:
+
+```sh
+docker compose restart app
+```
+
+Behind a reverse proxy, the app counts the address in `X-Forwarded-For`. A proxy that does not send that header makes every client look like the proxy, so they all share one limit. The Caddy example above sends it.
+
 ## Use an existing PostgreSQL service
 
 This entry starts only the app. You prepare and operate PostgreSQL separately.

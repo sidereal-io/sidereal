@@ -19,7 +19,7 @@
 
 ## 4. Docs and integration [depends-on: 2, 3]
 
-- [ ] 4.1 [easy] `docs/install.md` gains a `## Sign-in limits` section straight after the reverse-proxy section. It states the three tiers, the 429 and `Retry-After`, that a correct password does not get through while limited, that success and a restart clear the count, and that clients behind a proxy that sends no `X-Forwarded-For` share one limit (verify: grep -q '^## Sign-in limits' docs/install.md && grep -q '429' docs/install.md && grep -q 'Retry-After' docs/install.md)
+- [x] 4.1 [easy] `docs/install.md` gains a `## Sign-in limits` section straight after the reverse-proxy section. It states the three tiers, the 429 and `Retry-After`, that a correct password does not get through while limited, that success and a restart clear the count, and that clients behind a proxy that sends no `X-Forwarded-For` share one limit (verify: grep -q '^## Sign-in limits' docs/install.md && grep -q '429' docs/install.md && grep -q 'Retry-After' docs/install.md) (✓ the three `grep -q` checks passed)
 - [ ] 4.2 [easy] The whole gate passes. Then check by hand with `just dev`: five wrong sign-ins within a minute, then a sixth, show `Too many failed sign-ins. Try again in N seconds.` and leave the form usable (verify: just check)
 
 ## Deviations Ledger
