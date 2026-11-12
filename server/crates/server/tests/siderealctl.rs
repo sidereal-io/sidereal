@@ -523,6 +523,8 @@ mod spawned {
             sign_in(&app, "sam", PASSWORD).await,
             StatusCode::UNAUTHORIZED
         );
+        // A new router, so the failure just made does not limit the sign-in.
+        let app = router(&db).await;
         assert_eq!(sign_in(&app, "sam", NEW_PASSWORD).await, StatusCode::OK);
     }
 

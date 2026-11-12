@@ -336,8 +336,13 @@ async fn session_refusals_do_not_reveal_whether_the_username_exists() {
     let db = TestDatabase::new();
     let app = claimed(&db).await;
     let mut answers = Vec::new();
-    for (username, password) in [("sam", "wrong-password"), ("nobody", PASSWORD)] {
-        let response = sign_in(&app, username, password).await;
+    // Two addresses, so the second refusal is not the sign-in limit's.
+    for (peer, username, password) in [
+        (PEER, "sam", "wrong-password"),
+        ("192.168.1.21:40000", "nobody", PASSWORD),
+    ] {
+        let request = Some(credentials(username, password));
+        let response = send_from(&app, peer, "POST", "/api/session", request, &[]).await;
         let headers = format!("{:?}", response.headers());
         answers.push((response.status(), headers, body(response).await));
     }
@@ -1471,5 +1476,435 @@ mod spawned_events {
             status.is_some_and(|status| status.success()),
             "the server did not exit cleanly within 10 s: {status:?}"
         );
+    }
+}
+
+mod sign_in_limit {
+    use super::*;
+    use sidereal_server::{app_with_tuning, Tuning};
+    use std::{
+        sync::{Arc, Mutex},
+        time::Instant,
+    };
+
+    /// A clock that moves only when the test says so.
+    pub struct Clock(Arc<Mutex<Instant>>);
+
+    impl Clock {
+        pub fn advance(&self, by: Duration) {
+            *self.0.lock().unwrap() += by;
+        }
+    }
+
+    pub fn seconds(value: u64) -> Duration {
+        Duration::from_secs(value)
+    }
+
+    /// The production stack on `database`, trusting `trusted`, with the sign-in
+    /// limit on a manual clock.
+    pub fn tuned(database: Database, trusted: TrustedProxies) -> (Router, Clock) {
+        let now = Arc::new(Mutex::new(Instant::now()));
+        let reading = now.clone();
+        let tuning = Tuning {
+            clock: Arc::new(move || *reading.lock().unwrap()),
+            ..Tuning::default()
+        };
+        let app = app_with_tuning(database, AllowedOrigins::default(), tuning);
+        (with_trusted_proxies(app, trusted), Clock(now))
+    }
+
+    /// A claimed instance trusting `trusted`, on a manual clock.
+    pub async fn limited(db: &TestDatabase, trusted: TrustedProxies) -> (Router, Clock) {
+        let (app, clock) = tuned(database(db).await, trusted);
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        (app, clock)
+    }
+
+    pub async fn attempt(app: &Router, username: &str, password: &str) -> Response {
+        sign_in(app, username, password).await
+    }
+
+    /// `count` wrong passwords for `username`, `apart` from each other,
+    /// leaving the clock at the last one.
+    pub async fn fail_as(app: &Router, clock: &Clock, usernames: &[&str], apart: Duration) {
+        for (n, username) in usernames.iter().enumerate() {
+            if n > 0 {
+                clock.advance(apart);
+            }
+            let response = attempt(app, username, "wrong-password").await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "failure {n}");
+        }
+    }
+
+    pub async fn fail(app: &Router, clock: &Clock, count: usize, apart: Duration) {
+        fail_as(app, clock, &vec!["sam"; count], apart).await;
+    }
+
+    pub fn retry_after(response: &Response) -> Option<&str> {
+        response
+            .headers()
+            .get(header::RETRY_AFTER)
+            .map(|value| value.to_str().unwrap())
+    }
+
+    async fn sessions(db: &TestDatabase) -> i64 {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_scalar("SELECT count(*) FROM public.sessions")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refuses_correct_credentials_from_a_limited_address() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let response = attempt(&app, "sam", PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        let wait: u64 = retry_after(&response).unwrap().parse().unwrap();
+        assert!(wait >= 1);
+        assert!(set_cookie(&response).is_none());
+        assert_eq!(body(response).await, r#"{"error":"too many attempts"}"#);
+        assert_eq!(sessions(&db).await, 0);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refuses_a_malformed_body_from_a_limited_address() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let response = send(&app, "POST", "/api/session", Some("sam".into())).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body(response).await, r#"{"error":"too many attempts"}"#);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refuses_before_reading_the_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let (app, clock) = tuned(database.clone(), TrustedProxies::default());
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        database.close().await;
+        let response = attempt(&app, "sam", PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refuses_a_second_attempt_within_the_second() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        clock.advance(Duration::from_millis(999));
+        let response = attempt(&app, "sam", PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(retry_after(&response), Some("1"));
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refuses_the_sixth_attempt_within_a_minute() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 5, seconds(2)).await;
+        clock.advance(seconds(2));
+        let response = attempt(&app, "sam", PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(retry_after(&response), Some("50"));
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_admits_once_the_minute_tier_has_room() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 5, seconds(2)).await;
+        clock.advance(seconds(61 - 8));
+        assert_eq!(
+            attempt(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refuses_the_twenty_first_attempt_within_an_hour() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 20, seconds(15)).await;
+        clock.advance(seconds(15));
+        let response = attempt(&app, "sam", PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(retry_after(&response), Some("3300"));
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_a_known_and_an_unknown_username_alike() {
+        let mut answers = Vec::new();
+        for usernames in [["sam", "nobody", "nobody", "nobody", "nobody"], ["sam"; 5]] {
+            let db = TestDatabase::new();
+            let (app, clock) = limited(&db, TrustedProxies::default()).await;
+            fail_as(&app, &clock, &usernames, seconds(2)).await;
+            clock.advance(seconds(2));
+            let response = attempt(&app, "sam", PASSWORD).await;
+            answers.push((response.status(), retry_after(&response).map(str::to_owned)));
+        }
+        assert_eq!(
+            answers[0],
+            (StatusCode::TOO_MANY_REQUESTS, Some("50".to_owned()))
+        );
+        assert_eq!(answers[0], answers[1]);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_refusals_do_not_extend_the_wait() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 5, seconds(2)).await;
+        for _ in 0..40 {
+            clock.advance(seconds(1));
+            let response = attempt(&app, "sam", "wrong-password").await;
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+        clock.advance(seconds(61 - 48));
+        assert_eq!(
+            attempt(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_does_not_count_malformed_bodies() {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
+        for _ in 0..25 {
+            let response = send(&app, "POST", "/api/session", Some("sam".into())).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+        assert_eq!(
+            attempt(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_leaves_other_routes_alone() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let response = send(&app, "GET", "/api/claim", None).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    const NEIGHBOUR: &str = "192.168.1.21:40000";
+
+    async fn attempt_from(app: &Router, peer: &str, password: &str) -> Response {
+        let request = Some(credentials("sam", password));
+        send_from(app, peer, "POST", "/api/session", request, &[]).await
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_forgets_failures_before_a_success() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 4, seconds(2)).await;
+        clock.advance(seconds(2));
+        assert_eq!(
+            attempt(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        clock.advance(seconds(2));
+        fail(&app, &clock, 4, seconds(2)).await;
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_success_leaves_another_address_limited() {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
+        let failed = attempt_from(&app, NEIGHBOUR, "wrong-password").await;
+        assert_eq!(failed.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            attempt_from(&app, PEER, PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        let response = attempt_from(&app, NEIGHBOUR, PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_two_ipv4_addresses_apart() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let response = attempt_from(&app, NEIGHBOUR, PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_does_not_count_an_unavailable_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let (app, _clock) = tuned(database.clone(), TrustedProxies::default());
+        database.close().await;
+        for _ in 0..2 {
+            let response = attempt(&app, "sam", PASSWORD).await;
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        }
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_starts_empty_on_a_new_router() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let (restarted, _clock) = tuned(database(&db).await, TrustedProxies::default());
+        assert_eq!(
+            attempt(&restarted, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    const PROXY: &str = "172.18.0.1:50000";
+
+    /// A sign-in through the trusted proxy for the client `forwarded_for`.
+    async fn proxied(app: &Router, forwarded_for: &str, password: &str) -> Response {
+        let request = Some(credentials("sam", password));
+        let headers = [("x-forwarded-for", forwarded_for)];
+        send_from(app, PROXY, "POST", "/api/session", request, &headers).await
+    }
+
+    /// The status of a correct sign-in for `second` right after a failed one
+    /// for `first`, both through the trusted proxy.
+    async fn after_a_failure(first: &str, second: &str) -> StatusCode {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, proxies("172.18.0.1")).await;
+        let failed = proxied(&app, first, "wrong-password").await;
+        assert_eq!(failed.status(), StatusCode::UNAUTHORIZED);
+        proxied(&app, second, PASSWORD).await.status()
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_two_proxied_ipv4_addresses_apart() {
+        let status = after_a_failure("203.0.113.9", "203.0.113.10").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_shares_one_count_across_an_ipv6_64() {
+        let status = after_a_failure("2001:db8:1:2::1", "2001:db8:1:2::ffff").await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_another_ipv6_64_apart() {
+        let status = after_a_failure("2001:db8:1:2::1", "2001:db8:1:3::1").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_shares_one_count_across_unresolved_addresses() {
+        let status = after_a_failure("garbage", "other-garbage").await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_unresolved_addresses_apart_from_resolved_ones() {
+        let status = after_a_failure("garbage", "203.0.113.9").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+}
+
+mod sign_in_limit_concurrent {
+    use super::{sign_in_limit::limited, *};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sign_in_limit_concurrent_attempts_count_together() {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
+        let attempts: Vec<_> = (0..10)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move { sign_in(&app, "sam", "wrong-password").await.status() })
+            })
+            .collect();
+        let mut statuses = Vec::new();
+        for attempt in attempts {
+            statuses.push(attempt.await.unwrap());
+        }
+        let count = |status| statuses.iter().filter(|&&s| s == status).count();
+        assert_eq!(count(StatusCode::UNAUTHORIZED), 1, "{statuses:?}");
+        assert_eq!(count(StatusCode::TOO_MANY_REQUESTS), 9, "{statuses:?}");
+    }
+}
+
+mod spawned_sign_in_limit {
+    use super::*;
+
+    /// A claimed spawned server after five wrong sign-ins as `sam`, each more
+    /// than a second after the last, so only the minute tier fills.
+    fn after_five_failures(db: &TestDatabase) -> spawned::Server {
+        let server = spawned::Server::ready(db);
+        let body = credentials("sam", PASSWORD);
+        let claimed = server.request("POST", "/api/claim", Some(&body)).unwrap();
+        assert!(claimed.starts_with("HTTP/1.1 201"), "{claimed}");
+        let wrong = credentials("sam", "wrong-password");
+        for n in 0..5 {
+            if n > 0 {
+                std::thread::sleep(Duration::from_millis(1100));
+            }
+            let answer = server
+                .request("POST", "/api/session", Some(&wrong))
+                .unwrap();
+            assert!(answer.starts_with("HTTP/1.1 401"), "failure {n}: {answer}");
+        }
+        server
+    }
+
+    fn limit_lines(output: &str) -> Vec<&str> {
+        output
+            .lines()
+            .filter(|line| line.starts_with("sign-in limited:"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn spawned_sign_in_limit_warns_once_for_a_run_of_refusals() {
+        let db = TestDatabase::new();
+        let server = after_five_failures(&db);
+        let body = credentials("sam", PASSWORD);
+        let mut wait = String::new();
+        for _ in 0..3 {
+            let answer = server.request("POST", "/api/session", Some(&body)).unwrap();
+            assert!(answer.starts_with("HTTP/1.1 429"), "{answer}");
+            wait = answer
+                .lines()
+                .find_map(|line| line.strip_prefix("retry-after: "))
+                .expect("a Retry-After header")
+                .trim()
+                .to_owned();
+        }
+        let output = server.output();
+        let lines = limit_lines(&output);
+        assert_eq!(lines.len(), 1, "{output}");
+        assert!(lines[0].contains("127.0.0.1"), "{output}");
+        assert!(!lines[0].contains("sam"), "{output}");
+        let named: u64 = lines[0]
+            .split_whitespace()
+            .find_map(|word| word.parse().ok())
+            .expect("a wait in the line");
+        // The first refusal's wait is at most a second longer than the last.
+        let last: u64 = wait.parse().unwrap();
+        assert!((last..=last + 1).contains(&named), "{output}");
+    }
+
+    #[tokio::test]
+    async fn spawned_sign_in_limit_does_not_warn_for_a_failure_that_fills_a_tier() {
+        let db = TestDatabase::new();
+        let output = after_five_failures(&db).output();
+        assert!(limit_lines(&output).is_empty(), "{output}");
     }
 }

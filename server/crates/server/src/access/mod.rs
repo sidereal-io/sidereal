@@ -2,7 +2,10 @@
 use crate::config::AllowedOrigins;
 use axum::{
     extract::{rejection::JsonRejection, State},
-    http::{header::SET_COOKIE, HeaderMap, StatusCode},
+    http::{
+        header::{RETRY_AFTER, SET_COOKIE},
+        HeaderMap, StatusCode,
+    },
     middleware,
     response::{IntoResponse, Response},
     routing::{any, get},
@@ -18,9 +21,12 @@ pub mod cookie;
 pub mod events;
 pub mod forwarded;
 mod guard;
+pub mod limit;
 
 use events::EventTiming;
 use forwarded::Forwarded;
+use limit::{Key, Limiter, Refusal};
+use std::{net::IpAddr, sync::Arc};
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -31,6 +37,7 @@ pub fn routes(
     database: Database,
     allowed_origins: AllowedOrigins,
     timing: EventTiming,
+    limiter: Arc<Limiter>,
 ) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
@@ -50,6 +57,7 @@ pub fn routes(
             allowed_origins,
             guard::origin,
         ))
+        .layer(Extension(limiter))
 }
 
 async fn not_found() -> StatusCode {
@@ -67,11 +75,17 @@ pub enum AccessError {
     Forbidden,
     Unavailable,
     UntrustedProxy,
+    TooManyAttempts { retry_after: u64 },
 }
 
 impl IntoResponse for AccessError {
     fn into_response(self) -> Response {
         let (status, error) = match self {
+            Self::TooManyAttempts { retry_after } => {
+                let body = Json(json!({ "error": "too many attempts" }));
+                let wait = [(RETRY_AFTER, retry_after.to_string())];
+                return (StatusCode::TOO_MANY_REQUESTS, wait, body).into_response();
+            }
             Self::BadRequest => (StatusCode::BAD_REQUEST, "invalid credentials"),
             Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "invalid credentials"),
             Self::Claimed => (StatusCode::CONFLICT, "claimed"),
@@ -151,18 +165,54 @@ fn over_https(forwarded: Option<Extension<Forwarded>>) -> bool {
     forwarded.is_some_and(|Extension(forwarded)| forwarded.https)
 }
 
+/// A limited address is refused before its body is read as credentials, so
+/// it costs no password check. The attempt is counted before its check
+/// starts, so attempts at the same time count against each other.
 async fn sign_in(
     State(database): State<Database>,
+    Extension(limiter): Extension<Arc<Limiter>>,
     forwarded: Option<Extension<Forwarded>>,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
+    let resolved = forwarded.as_ref().map(|Extension(forwarded)| forwarded);
+    let key = Key::of(resolved);
+    let client = resolved.and_then(|forwarded| forwarded.client);
+    if let Some(refusal) = limiter.refused(key) {
+        return Err(limited(refusal, client));
+    }
     let credentials = Credentials::try_from(body)?;
-    let (signed_in, token) = database
+    let attempt = limiter
+        .admit(key)
+        .map_err(|refusal| limited(refusal, client))?;
+    let signed_in = match database
         .sign_in(&credentials.username, &credentials.password)
-        .await?
-        .ok_or(AccessError::WrongCredentials)?;
+        .await
+    {
+        Ok(signed_in) => signed_in,
+        Err(unavailable) => {
+            attempt.released();
+            return Err(unavailable.into());
+        }
+    };
+    let (signed_in, token) = signed_in.ok_or(AccessError::WrongCredentials)?;
+    attempt.succeeded();
     let cookie = cookie::session(token.as_str(), over_https(forwarded));
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
+}
+
+/// The log names the request's own address, not its /64, and never the
+/// username: the limiter never sees one.
+fn limited(refusal: Refusal, client: Option<IpAddr>) -> AccessError {
+    if refusal.new {
+        let wait = refusal.retry_after;
+        match client {
+            Some(client) => eprintln!("sign-in limited: {client} must wait {wait} s"),
+            None => eprintln!("sign-in limited: unresolved client address must wait {wait} s"),
+        }
+    }
+    AccessError::TooManyAttempts {
+        retry_after: refusal.retry_after,
+    }
 }
 
 /// The guard has already looked the session up and refreshed the cookie.
