@@ -2,7 +2,10 @@
 use crate::config::AllowedOrigins;
 use axum::{
     extract::{rejection::JsonRejection, State},
-    http::{header::SET_COOKIE, HeaderMap, StatusCode},
+    http::{
+        header::{RETRY_AFTER, SET_COOKIE},
+        HeaderMap, StatusCode,
+    },
     middleware,
     response::{IntoResponse, Response},
     routing::{any, get},
@@ -22,7 +25,7 @@ pub mod limit;
 
 use events::EventTiming;
 use forwarded::Forwarded;
-use limit::Limiter;
+use limit::{Key, Limiter, Refusal};
 use std::sync::Arc;
 
 /// Every path under `/api`, behind the origin check and then the session
@@ -72,11 +75,17 @@ pub enum AccessError {
     Forbidden,
     Unavailable,
     UntrustedProxy,
+    TooManyAttempts { retry_after: u64 },
 }
 
 impl IntoResponse for AccessError {
     fn into_response(self) -> Response {
         let (status, error) = match self {
+            Self::TooManyAttempts { retry_after } => {
+                let body = Json(json!({ "error": "too many attempts" }));
+                let wait = [(RETRY_AFTER, retry_after.to_string())];
+                return (StatusCode::TOO_MANY_REQUESTS, wait, body).into_response();
+            }
             Self::BadRequest => (StatusCode::BAD_REQUEST, "invalid credentials"),
             Self::WrongCredentials => (StatusCode::UNAUTHORIZED, "invalid credentials"),
             Self::Claimed => (StatusCode::CONFLICT, "claimed"),
@@ -156,18 +165,41 @@ fn over_https(forwarded: Option<Extension<Forwarded>>) -> bool {
     forwarded.is_some_and(|Extension(forwarded)| forwarded.https)
 }
 
+/// A limited address is refused before its body is read as credentials, so
+/// it costs no password check. The attempt is counted before its check
+/// starts, so attempts at the same time count against each other.
 async fn sign_in(
     State(database): State<Database>,
+    Extension(limiter): Extension<Arc<Limiter>>,
     forwarded: Option<Extension<Forwarded>>,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
+    let key = Key::of(forwarded.as_ref().map(|Extension(forwarded)| forwarded));
+    if let Some(refusal) = limiter.refused(key) {
+        return Err(limited(refusal));
+    }
     let credentials = Credentials::try_from(body)?;
-    let (signed_in, token) = database
+    let attempt = limiter.admit(key).map_err(limited)?;
+    let signed_in = match database
         .sign_in(&credentials.username, &credentials.password)
-        .await?
-        .ok_or(AccessError::WrongCredentials)?;
+        .await
+    {
+        Ok(signed_in) => signed_in,
+        Err(unavailable) => {
+            attempt.released();
+            return Err(unavailable.into());
+        }
+    };
+    let (signed_in, token) = signed_in.ok_or(AccessError::WrongCredentials)?;
+    attempt.succeeded();
     let cookie = cookie::session(token.as_str(), over_https(forwarded));
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
+}
+
+fn limited(refusal: Refusal) -> AccessError {
+    AccessError::TooManyAttempts {
+        retry_after: refusal.retry_after,
+    }
 }
 
 /// The guard has already looked the session up and refreshed the cookie.
