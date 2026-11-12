@@ -257,4 +257,49 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 #### Scenario: The gate does not build the image
 
 - **WHEN** a contributor runs `just --show check`
-- **THEN** the output contains the line `check: check-server check-web`
+- **THEN** the output contains the line `check: check-compose check-openspec check-server check-web`
+- **AND** the output does not contain `instance-verify`
+
+### Requirement: The OpenSpec gate fails on any validation error or warning
+
+`just check-openspec` SHALL validate every spec under `openspec/specs/` and every active change under `openspec/changes/` in strict mode. It SHALL exit with a non-zero status when validation reports an error or a warning. A validation note that is neither an error nor a warning SHALL NOT fail it.
+
+`just check-openspec` SHALL NOT wait for input. It SHALL run the `openspec` CLI with usage telemetry turned off, and SHALL NOT change any file that git tracks.
+
+`just check` SHALL run `just check-openspec` after `just check-compose` and before `just check-server`.
+
+#### Scenario: The specs and changes are valid
+
+- **WHEN** a contributor runs `just check-openspec` on an unchanged checkout inside the development shell
+- **THEN** the command exits with status 0
+- **AND** `git status --porcelain` prints nothing
+
+#### Scenario: A requirement has no scenario
+
+- **WHEN** a tester deletes every scenario from one requirement in a spec under `openspec/specs/`, then runs `just check-openspec`
+- **THEN** the command exits with a non-zero status, and its output names that spec
+
+#### Scenario: A spec has only a warning
+
+- **WHEN** a tester shortens one spec's Purpose section under `openspec/specs/` to the word `Short.`, then runs `just check-openspec`
+- **THEN** the command exits with a non-zero status, and its output names that spec
+
+#### Scenario: An active change is invalid
+
+- **WHEN** a tester adds a requirement with no scenario to a delta spec in an active change under `openspec/changes/`, then runs `just check-openspec`
+- **THEN** the command exits with a non-zero status, and its output names that change
+
+#### Scenario: No terminal is attached
+
+- **WHEN** a contributor runs `just check-openspec < /dev/null` on an unchanged checkout inside the development shell
+- **THEN** the command exits with status 0 without waiting for input
+
+#### Scenario: The full gate stops on an OpenSpec error
+
+- **WHEN** a tester makes any change above that fails `just check-openspec`, then runs `just check`
+- **THEN** `just check` exits with a non-zero status
+
+#### Scenario: The full gate order
+
+- **WHEN** a contributor runs `just --show check`
+- **THEN** the output contains the line `check: check-compose check-openspec check-server check-web`
