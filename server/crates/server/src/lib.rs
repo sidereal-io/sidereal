@@ -1,17 +1,37 @@
 //! The HTTP shell exposes fixed liveness and readiness responses, and the
 //! built web shell when the operator names its folder.
+use access::limit::Limiter;
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use config::{AllowedOrigins, TrustedProxies};
 use serde_json::{json, Value};
 use sidereal_core::database::Database;
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 use tower_http::services::{ServeDir, ServeFile};
 
 pub mod access;
 pub mod config;
 pub mod siderealctl;
 
-pub use access::events::EventTiming;
+pub use access::{events::EventTiming, limit::Clock};
+
+/// What a test may change about the production routes, so it need not wait
+/// out real intervals.
+#[derive(Clone)]
+pub struct Tuning {
+    /// The events socket's heartbeat and silence window.
+    pub events: EventTiming,
+    /// Where the sign-in limit reads the time.
+    pub clock: Clock,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self {
+            events: EventTiming::default(),
+            clock: access::limit::system_clock(),
+        }
+    }
+}
 
 /// Liveness is independent of database availability.
 pub fn app() -> Router {
@@ -22,20 +42,26 @@ pub fn app() -> Router {
 /// `allowed_origins` are the origins beyond the request's own whose
 /// state-changing `/api` requests are accepted.
 pub fn app_with_database(database: Database, allowed_origins: AllowedOrigins) -> Router {
-    app_with_event_timing(database, allowed_origins, EventTiming::default())
+    app_with_tuning(database, allowed_origins, Tuning::default())
 }
 
-/// The production routes with the events socket's intervals chosen by the
-/// caller, so a test need not wait 30 s for a heartbeat.
-pub fn app_with_event_timing(
+/// The production routes, tuned by the caller. Each call starts its own
+/// sign-in counts, as a new process does.
+pub fn app_with_tuning(
     database: Database,
     allowed_origins: AllowedOrigins,
-    timing: EventTiming,
+    tuning: Tuning,
 ) -> Router {
+    let limiter = Arc::new(Limiter::new(tuning.clock));
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
-            .merge(access::routes(database.clone(), allowed_origins, timing))
+            .merge(access::routes(
+                database.clone(),
+                allowed_origins,
+                tuning.events,
+                limiter,
+            ))
             .with_state(database),
     )
 }

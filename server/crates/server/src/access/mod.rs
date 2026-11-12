@@ -22,6 +22,8 @@ pub mod limit;
 
 use events::EventTiming;
 use forwarded::Forwarded;
+use limit::Limiter;
+use std::sync::Arc;
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -32,6 +34,7 @@ pub fn routes(
     database: Database,
     allowed_origins: AllowedOrigins,
     timing: EventTiming,
+    limiter: Arc<Limiter>,
 ) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
@@ -51,6 +54,7 @@ pub fn routes(
             allowed_origins,
             guard::origin,
         ))
+        .layer(Extension(limiter))
 }
 
 async fn not_found() -> StatusCode {
