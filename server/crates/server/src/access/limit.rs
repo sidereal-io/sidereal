@@ -23,6 +23,7 @@ const TIERS: [(usize, Duration); 3] = [
 ];
 /// The longest window. A failure older than this counts against nothing.
 const KEPT: Duration = TIERS[TIERS.len() - 1].1;
+const SWEEP: Duration = Duration::from_secs(60);
 
 /// What one client address is counted under.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -50,6 +51,9 @@ impl Key {
 pub struct Refusal {
     /// Whole seconds until every full tier has room, at least 1.
     pub retry_after: u64,
+    /// Whether this is the first refusal since the key's last attempt that
+    /// was not refused.
+    pub new: bool,
 }
 
 /// One counted attempt, from the moment its password check starts. Dropped
@@ -64,84 +68,133 @@ pub struct Attempt<'a> {
 impl Attempt<'_> {
     /// The sign-in succeeded: forget every failure for this key.
     pub fn succeeded(self) {
-        self.limiter.entries().remove(&self.key);
+        self.limiter.state().entries.remove(&self.key);
     }
 
     /// The attempt reached no answer about the password: stop counting it.
     pub fn released(self) {
-        let mut entries = self.limiter.entries();
-        let Some(attempts) = entries.get_mut(&self.key) else {
+        let mut state = self.limiter.state();
+        let Some(entry) = state.entries.get_mut(&self.key) else {
             return;
         };
         // Attempts settle out of order, so the newest instant may be
         // another attempt's failure.
-        if let Some(index) = attempts.iter().rposition(|&at| at == self.at) {
-            attempts.remove(index);
+        if let Some(index) = entry.attempts.iter().rposition(|&at| at == self.at) {
+            entry.attempts.remove(index);
         }
     }
 }
 
 pub struct Limiter {
     clock: Clock,
-    entries: Mutex<HashMap<Key, VecDeque<Instant>>>,
+    state: Mutex<State>,
+}
+
+struct State {
+    entries: HashMap<Key, Entry>,
+    swept: Instant,
+}
+
+#[derive(Default)]
+struct Entry {
+    /// Counted attempts in the last hour, oldest first.
+    attempts: VecDeque<Instant>,
+    /// Whether the key's latest check was refused.
+    refused: bool,
 }
 
 impl Limiter {
     pub fn new(clock: Clock) -> Self {
+        let swept = clock();
         Self {
             clock,
-            entries: Mutex::new(HashMap::new()),
+            state: Mutex::new(State {
+                entries: HashMap::new(),
+                swept,
+            }),
         }
     }
 
-    fn entries(&self) -> MutexGuard<'_, HashMap<Key, VecDeque<Instant>>> {
-        self.entries.lock().unwrap_or_else(|e| e.into_inner())
+    fn state(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Whether `key` must wait, without counting anything.
     pub fn refused(&self, key: Key) -> Option<Refusal> {
         let now = (self.clock)();
-        let mut entries = self.entries();
-        let attempts = entries.get_mut(&key)?;
-        wait(attempts, now).map(|retry_after| Refusal { retry_after })
+        let mut state = self.state();
+        state.entries.get_mut(&key)?.check(now)
     }
 
     /// Count an attempt for `key` if every tier has room. The check and the
     /// count share one lock, so attempts at the same time see each other.
     pub fn admit(&self, key: Key) -> Result<Attempt<'_>, Refusal> {
         let now = (self.clock)();
-        let mut entries = self.entries();
-        let attempts = entries.entry(key).or_default();
-        if let Some(retry_after) = wait(attempts, now) {
-            return Err(Refusal { retry_after });
+        let mut state = self.state();
+        state.sweep(now);
+        let entry = state.entries.entry(key).or_default();
+        if let Some(refusal) = entry.check(now) {
+            return Err(refusal);
         }
-        attempts.push_back(now);
+        entry.attempts.push_back(now);
         Ok(Attempt {
             limiter: self,
             key,
             at: now,
         })
     }
+
+    #[cfg(test)]
+    fn keys(&self) -> usize {
+        self.state().entries.len()
+    }
 }
 
-/// The whole seconds until every full tier has room, or `None` when none is
-/// full. Forgets failures too old to count. `attempts` runs oldest first.
-fn wait(attempts: &mut VecDeque<Instant>, now: Instant) -> Option<u64> {
-    while attempts
-        .front()
-        .is_some_and(|&at| now.saturating_duration_since(at) >= KEPT)
-    {
-        attempts.pop_front();
+impl State {
+    /// Drop keys with no attempt in the last hour, at most once a minute, so
+    /// memory holds only addresses that each paid for a password check.
+    fn sweep(&mut self, now: Instant) {
+        if now.saturating_duration_since(self.swept) < SWEEP {
+            return;
+        }
+        self.swept = now;
+        self.entries.retain(|_, entry| {
+            entry
+                .attempts
+                .back()
+                .is_some_and(|&at| now.saturating_duration_since(at) < KEPT)
+        });
     }
-    let longest = TIERS
-        .iter()
-        .filter_map(|&(limit, window)| {
-            let oldest = *attempts.iter().rev().nth(limit - 1)?;
-            window.checked_sub(now.saturating_duration_since(oldest))
-        })
-        .filter(|wait| !wait.is_zero())
-        .max()?;
-    Some((longest.as_secs() + u64::from(longest.subsec_nanos() > 0)).max(1))
+}
+
+impl Entry {
+    /// Refuse the key while any tier is full. Forgets failures too old to
+    /// count.
+    fn check(&mut self, now: Instant) -> Option<Refusal> {
+        while self
+            .attempts
+            .front()
+            .is_some_and(|&at| now.saturating_duration_since(at) >= KEPT)
+        {
+            self.attempts.pop_front();
+        }
+        let longest = TIERS
+            .iter()
+            .filter_map(|&(limit, window)| {
+                let oldest = *self.attempts.iter().rev().nth(limit - 1)?;
+                window.checked_sub(now.saturating_duration_since(oldest))
+            })
+            .filter(|wait| !wait.is_zero())
+            .max();
+        let Some(longest) = longest else {
+            self.refused = false;
+            return None;
+        };
+        let retry_after = (longest.as_secs() + u64::from(longest.subsec_nanos() > 0)).max(1);
+        let new = !self.refused;
+        self.refused = true;
+        Some(Refusal { retry_after, new })
+    }
 }
 
 #[cfg(test)]
@@ -283,8 +336,20 @@ mod tests {
         let (limiter, clock) = limiter();
         fail(&limiter, &clock, 5, seconds(2));
         clock.advance(seconds(2));
-        assert_eq!(limiter.refused(KEY), Some(Refusal { retry_after: 50 }));
-        assert_eq!(limiter.refused(KEY), Some(Refusal { retry_after: 50 }));
+        assert_eq!(
+            limiter.refused(KEY),
+            Some(Refusal {
+                retry_after: 50,
+                new: true
+            })
+        );
+        assert_eq!(
+            limiter.refused(KEY),
+            Some(Refusal {
+                retry_after: 50,
+                new: false
+            })
+        );
     }
 
     const OTHER: Key = Key::V4(Ipv4Addr::new(192, 168, 1, 21));
@@ -303,7 +368,13 @@ mod tests {
         let (limiter, _) = limiter();
         let _failed = limiter.admit(OTHER).unwrap();
         limiter.admit(KEY).unwrap().succeeded();
-        assert_eq!(limiter.refused(OTHER), Some(Refusal { retry_after: 1 }));
+        assert_eq!(
+            limiter.refused(OTHER),
+            Some(Refusal {
+                retry_after: 1,
+                new: true
+            })
+        );
     }
 
     #[test]
@@ -340,5 +411,59 @@ mod tests {
         assert_eq!(wait(&limiter), Some(50));
         clock.advance(seconds(61 - 10));
         assert_eq!(wait(&limiter), None);
+    }
+
+    fn is_new(refusal: Result<Attempt<'_>, Refusal>) -> bool {
+        refusal.err().expect("a refusal").new
+    }
+
+    #[test]
+    fn the_first_refusal_is_new() {
+        let (limiter, _) = limiter();
+        let _ = limiter.admit(KEY).unwrap();
+        assert!(is_new(limiter.admit(KEY)));
+    }
+
+    #[test]
+    fn a_later_refusal_in_the_run_is_not_new() {
+        let (limiter, _) = limiter();
+        let _ = limiter.admit(KEY).unwrap();
+        limiter.refused(KEY);
+        assert!(!is_new(limiter.admit(KEY)));
+    }
+
+    #[test]
+    fn a_check_with_room_ends_the_run() {
+        let (limiter, clock) = limiter();
+        let _ = limiter.admit(KEY).unwrap();
+        limiter.refused(KEY);
+        clock.advance(seconds(1));
+        // Room, as before a malformed body that is never counted.
+        assert_eq!(limiter.refused(KEY), None);
+        let _ = limiter.admit(KEY).unwrap();
+        assert!(is_new(limiter.admit(KEY)));
+    }
+
+    const THIRD: Key = Key::V4(Ipv4Addr::new(192, 168, 1, 22));
+
+    #[test]
+    fn an_admit_a_minute_after_the_last_sweep_drops_keys_idle_for_an_hour() {
+        let (limiter, clock) = limiter();
+        let _ = limiter.admit(OTHER).unwrap();
+        clock.advance(seconds(3600));
+        let _ = limiter.admit(KEY).unwrap();
+        assert_eq!(limiter.keys(), 1);
+    }
+
+    #[test]
+    fn an_admit_within_a_minute_of_the_last_sweep_drops_nothing() {
+        let (limiter, clock) = limiter();
+        let _ = limiter.admit(OTHER).unwrap();
+        clock.advance(seconds(3599));
+        // Sweeps, while `OTHER` is not yet an hour old.
+        let _ = limiter.admit(KEY).unwrap();
+        clock.advance(seconds(59));
+        let _ = limiter.admit(THIRD).unwrap();
+        assert_eq!(limiter.keys(), 3);
     }
 }
