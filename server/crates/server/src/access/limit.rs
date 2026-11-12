@@ -1,8 +1,9 @@
 //! The sign-in limit: failed sign-ins counted per client address in three
 //! sliding windows, held only in this process.
+use super::forwarded::Forwarded;
 use std::{
     collections::{HashMap, VecDeque},
-    net::Ipv4Addr,
+    net::{IpAddr, Ipv4Addr},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -30,6 +31,18 @@ pub enum Key {
     /// The top 64 bits of the address.
     V6(u64),
     Unresolved,
+}
+
+impl Key {
+    /// A request without `Forwarded` came through no trusted-proxy layer, so
+    /// its address is as unknown as one the layer could not resolve.
+    pub fn of(forwarded: Option<&Forwarded>) -> Self {
+        match forwarded.and_then(|forwarded| forwarded.client) {
+            Some(IpAddr::V4(address)) => Self::V4(address),
+            Some(IpAddr::V6(address)) => Self::V6((address.to_bits() >> 64) as u64),
+            None => Self::Unresolved,
+        }
+    }
 }
 
 /// An address that must wait before it may try again.
@@ -133,6 +146,44 @@ mod tests {
 
     fn wait(limiter: &Limiter) -> Option<u64> {
         limiter.admit(KEY).err().map(|refusal| refusal.retry_after)
+    }
+
+    fn key(client: &str) -> Key {
+        Key::of(Some(&Forwarded {
+            https: false,
+            client: Some(client.parse().unwrap()),
+        }))
+    }
+
+    #[test]
+    fn an_ipv4_address_is_its_own_key() {
+        assert_eq!(key("192.168.1.20"), KEY);
+        assert_ne!(key("192.168.1.21"), KEY);
+    }
+
+    #[test]
+    fn an_ipv6_address_keys_by_its_64_prefix() {
+        assert_eq!(key("2001:db8:1:2::1"), key("2001:db8:1:2::ffff"));
+        assert_eq!(key("2001:db8:1:2::1"), Key::V6(0x2001_0db8_0001_0002));
+    }
+
+    #[test]
+    fn another_ipv6_64_is_another_key() {
+        assert_ne!(key("2001:db8:1:2::1"), key("2001:db8:1:3::1"));
+    }
+
+    #[test]
+    fn an_unresolved_client_is_the_unresolved_key() {
+        let unresolved = Forwarded {
+            https: false,
+            client: None,
+        };
+        assert_eq!(Key::of(Some(&unresolved)), Key::Unresolved);
+    }
+
+    #[test]
+    fn a_request_without_forwarded_is_the_unresolved_key() {
+        assert_eq!(Key::of(None), Key::Unresolved);
     }
 
     #[test]
