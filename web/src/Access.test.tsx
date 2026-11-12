@@ -1,13 +1,15 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Access from "./Access.tsx";
 import "./styles/tokens.css";
+import { stubWebSocket, type FakeWebSocket } from "./testing/fakeWebSocket.ts";
 
 type Answer = [status: number, body?: unknown];
 
@@ -65,8 +67,15 @@ async function submit(label: string) {
   fireEvent.click(submitButton);
 }
 
+let sockets: FakeWebSocket[];
+
+beforeEach(() => {
+  sockets = stubWebSocket();
+});
+
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -210,5 +219,150 @@ describe("Access", () => {
       "rgb(124, 58, 237)",
     );
     expect(computed(submitButton, "border-radius")).toBe("4px");
+  });
+
+  describe("the events socket", () => {
+    const signedIn: Record<string, Answer> = {
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "DELETE /api/session": [204],
+    };
+
+    // Waits for testing-library still need time to pass, so fake timers
+    // also move with the clock.
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+
+    const sessionAsks = (fetch: ReturnType<typeof stubServer>) =>
+      fetch.mock.calls.filter(
+        ([url, init]) => url === "/api/session" && !init?.method,
+      ).length;
+
+    const theSocket = () => {
+      expect(sockets).toHaveLength(1);
+      const socket = sockets.at(0);
+      if (!socket) throw new Error("no socket was opened");
+      return socket;
+    };
+
+    async function showingSam(answers: Record<string, Answer>) {
+      const fetch = stubServer(answers);
+      render(<Access />);
+      await screen.findByRole("button", { name: "Sign out" });
+      return fetch;
+    }
+
+    it("opens one socket to /api/events after a sign-in", async () => {
+      stubServer({
+        ...signedOut,
+        "POST /api/session": [200, { username: "sam", role: "admin" }],
+      });
+      render(<Access />);
+      expect(sockets).toHaveLength(0);
+      await submit("Sign in");
+      await screen.findByRole("button", { name: "Sign out" });
+      expect(theSocket().url).toBe(`ws://${location.host}/api/events`);
+    });
+
+    it("opens no socket while signed out", async () => {
+      stubServer(signedOut);
+      render(<Access />);
+      await screen.findByRole("button", { name: "Sign in" });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(sockets).toHaveLength(0);
+    });
+
+    it("closes the socket on sign-out and opens no other", async () => {
+      await showingSam({ ...signedIn });
+      const socket = theSocket();
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(socket.closed).toBe(true);
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(sockets).toHaveLength(1);
+    });
+
+    it("shows the sign-in form with no message on a 1008 close", async () => {
+      await showingSam({ ...signedIn });
+      act(() => {
+        theSocket().serverClose(1008);
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(button("Sign out")).toBeNull();
+      expect(document.querySelector(".access-message")).toBeNull();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(sockets).toHaveLength(1);
+    });
+
+    it("keeps showing sam after another close, and reopens on a 200", async () => {
+      const fetch = await showingSam({ ...signedIn });
+      act(() => {
+        theSocket().serverClose(1006);
+      });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(sessionAsks(fetch)).toBe(1);
+      screen.getByText("sam");
+      await vi.advanceTimersByTimeAsync(1);
+      await waitFor(() => {
+        expect(sockets).toHaveLength(2);
+      });
+      screen.getByText("sam");
+    });
+
+    it("shows the sign-in form when the ask after a close answers 401", async () => {
+      const answers = { ...signedIn };
+      await showingSam(answers);
+      answers["GET /api/session"] = [401, { error: "unauthenticated" }];
+      act(() => {
+        theSocket().serverClose(1006);
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(sockets).toHaveLength(1);
+    });
+
+    it("keeps showing sam while the database is down after a 1011 close", async () => {
+      const answers = { ...signedIn };
+      const fetch = await showingSam(answers);
+      answers["GET /api/session"] = [503, { error: "unavailable" }];
+      act(() => {
+        theSocket().serverClose(1011);
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sessionAsks(fetch)).toBe(2);
+      screen.getByText("sam");
+      expect(sockets).toHaveLength(1);
+      answers["GET /api/session"] = [200, { username: "sam", role: "admin" }];
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(() => {
+        expect(sockets).toHaveLength(2);
+      });
+      expect(sessionAsks(fetch)).toBe(3);
+      screen.getByText("sam");
+      expect(button("Sign in")).toBeNull();
+    });
+
+    it("treats a socket silent for 60 s as closed", async () => {
+      const fetch = await showingSam({ ...signedIn });
+      const socket = theSocket();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(socket.closed).toBe(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(sessionAsks(fetch)).toBe(2);
+    });
+
+    it("signing out during the wait sends no ask and opens no socket", async () => {
+      const fetch = await showingSam({ ...signedIn });
+      act(() => {
+        theSocket().serverClose(1006);
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("button", { name: "Sign in" });
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(sessionAsks(fetch)).toBe(1);
+      expect(sockets).toHaveLength(1);
+    });
   });
 });

@@ -5,8 +5,8 @@ use crate::config::AllowedOrigins;
 use axum::{
     extract::{Request, State},
     http::{
-        header::{HOST, ORIGIN, REFERER, SET_COOKIE},
-        Method,
+        header::{HOST, ORIGIN, REFERER, SET_COOKIE, UPGRADE},
+        HeaderMap, Method,
     },
     middleware::Next,
     response::{IntoResponse, Response},
@@ -27,12 +27,17 @@ const PUBLIC: [(Method, &str); 4] = [
 /// allowed. A request with neither `Origin` nor `Referer` passes: browsers
 /// send one of them on a cross-site request, and other callers carry no
 /// ambient cookie to abuse. This reads no database.
+///
+/// A WebSocket upgrade is a `GET`, but it opens a channel that carries the
+/// session, so it is checked too: browsers do not apply CORS to it.
 pub async fn origin(
     State(allowed): State<AllowedOrigins>,
     request: Request,
     next: Next,
 ) -> Response {
-    if [Method::GET, Method::HEAD, Method::OPTIONS].contains(request.method()) {
+    if [Method::GET, Method::HEAD, Method::OPTIONS].contains(request.method())
+        && !upgrades_to_websocket(request.headers())
+    {
         return next.run(request).await;
     }
     let headers = request.headers();
@@ -56,6 +61,15 @@ pub async fn origin(
         return AccessError::Forbidden.into_response();
     }
     next.run(request).await
+}
+
+fn upgrades_to_websocket(headers: &HeaderMap) -> bool {
+    headers
+        .get_all(UPGRADE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|protocol| protocol.trim().eq_ignore_ascii_case("websocket"))
 }
 
 /// Admit a request with an administrator session, hand its `User` to the

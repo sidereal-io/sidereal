@@ -1,0 +1,34 @@
+## 1. Server contracts
+
+- [x] 1.1 [easy] `Database::session_alive` answers true for an unexpired session of an `admin` user, and false for a missing or expired row, and it updates and deletes no row (verify: cd server && cargo test -p sidereal-core session_alive) (✓ cargo test -p sidereal-core session_alive passed, 4 tests)
+- [x] 1.2 [medium] The origin check treats a request whose `Upgrade` header names `websocket` as state-changing: a disallowed `Origin` or `Referer` gets 403 before the session check, while a same-origin upgrade and an upgrade with neither header pass (verify: cd server && cargo test -p sidereal-server --test access origin) (✓ cargo test -p sidereal-server --test access origin passed, 17 tests)
+- [x] 1.3 [medium] `GET /api/events` behind both guards: a WebSocket upgrade with a session answers 101, one without a cookie or with a revoked session answers 401, and a plain `GET` with a session answers a 4xx. Adds axum's `ws` feature, `EventTiming`, `app_with_event_timing`, and `tests/events.rs` serving on `127.0.0.1:0` with `tokio-tungstenite` as a dev dependency (verify: cd server && cargo test -p sidereal-server --test events upgrade) (✓ cargo test -p sidereal-server --test events upgrade passed, 4 tests)
+
+## 2. The socket loop [depends-on: 1]
+
+- [x] 2.1 [medium] Every heartbeat period after the upgrade, the server sends the text `{"type":"heartbeat"}` and a ping. A client text message gets no reply and leaves the socket open (verify: cd server && cargo test -p sidereal-server --test events heartbeat) (✓ cargo test -p sidereal-server --test events heartbeat passed, 2 tests)
+- [x] 2.2 [complex] A recheck, on each tick and on each client text or binary message, closes with 1008 when the session row is gone or expired, and with 1011 when PostgreSQL cannot be read. The server waits for the client's close frame, up to 5 s, before it drops the connection. Tests cover revocation with a message, revocation with a silent client, expiry, access recovery, and closed database connections (verify: cd server && cargo test -p sidereal-server --test events recheck) (✓ cargo test -p sidereal-server --test events recheck passed, 7 tests)
+- [x] 2.3 [easy] A recheck does not move the session's expiry: after the row is aged to 2 days old and the client sends a message, the socket stays open and `expires_at` is unchanged (verify: cd server && cargo test -p sidereal-server --test events not_a_use) (✓ cargo test -p sidereal-server --test events not_a_use passed; fails when the recheck uses Database::session)
+- [x] 2.4 [medium] A client that sends nothing and answers no ping is dropped once the silence window passes, and a client that answers every ping stays open past it (verify: cd server && cargo test -p sidereal-server --test events silent) (✓ cargo test -p sidereal-server --test events silent passed, 3 tests; events suite passed 5 runs in a row)
+
+## 3. The web shell's socket
+
+- [x] 3.1 [medium] `watchSession` opens a WebSocket to `/api/events` on the page's origin (`ws:` or `wss:` from the page). On a 1008 close it calls `onSignedOut` and opens nothing more. Its stop function closes the socket, clears every timer and aborts any in-flight request, and nothing fires after it (verify: cd web && pnpm test -- eventsSocket) (✓ pnpm test -- eventsSocket passed, 5 tests)
+- [x] 3.2 [medium] On any other close, a failed open, or 60 s with no message, `watchSession` waits 5 s and sends `GET /api/session`: 401 calls `onSignedOut`, 200 opens a new socket, and anything else or a network error waits 5 s and asks again (verify: cd web && pnpm test -- eventsSocket) (✓ pnpm test -- eventsSocket passed, 12 tests)
+- [x] 3.3 [medium] The access section holds the socket only in the signed-in view: a sign-in opens it, a sign-out closes it, a signed-out page opens none, and `onSignedOut` shows the sign-in form with no message. Signing out during the 5 s wait sends no `GET /api/session` and opens no socket (verify: cd web && pnpm test -- Access) (✓ pnpm test -- Access passed, 8 new socket tests; a 1008 close that reconnects fails 2 tests)
+
+## 4. Integration [depends-on: 2, 3]
+
+- [x] 4.1 [medium] The real binary upgrades `/api/events` and exits on SIGTERM while a socket is open. The child-process harness in `tests/access.rs` gains a method that sends SIGTERM with `libc::kill` (verify: cd server && cargo test -p sidereal-server --test access spawned) (✓ cargo test -p sidereal-server --test access spawned passed, 4 tests; the server exits 0 on SIGTERM with a socket open)
+- [x] 4.2 [easy] The dev proxy sets `ws: true` on `/api`, and `docs/install.md` says that Caddy passes WebSocket upgrades by itself and that another proxy must pass them for `/api/events`. Then check by hand with `just dev`: sign in, and see the socket open and a heartbeat arrive in the browser's network panel (verify: just check) (✓ just check passed; by hand with just dev on a throwaway database: the upgrade through :5173 opened, a heartbeat arrived after 30 s, and a revoked session closed with 1008)
+
+## Deviations Ledger
+
+<!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
+
+- 2026-11-08, task 3.1: the stop function's checks that it clears the wait and aborts an in-flight `GET /api/session` landed with task 3.2, which adds that request. Task 3.1 covers closing the socket on stop.
+- 2026-11-08, task 1.1: no test for a session whose user is not an `admin`. The `users.role` CHECK constraint allows only `admin`, so such a row cannot be made. The lookup still filters on the role.
+- 2026-11-08, task 2.4: the socket tests use a 10 s silence window except the two silence tests. A test that hashes a password stops reading for long enough that a 600 ms window dropped it.
+- 2026-11-08, task 4.2: the hand check found that a close started by the client reached it as 1006. The socket loop returned on the client's close frame before its queued reply went out. It now reads once more, for at most 5 s, to send the reply. This finishes the closing handshake from Design Decision 4 in the other direction. `closing_by_the_client_gets_the_server_reply` covers it.
+- 2026-11-08, code review: the server reads no client message or frame over 4 KiB, and drops a client that sends one. The plan set no limit, and axum's default is 64 MiB, for content the server throws away.
+- 2026-11-08, code review: a recheck still waiting on PostgreSQL when the silence window ends closes the socket with 1011, as for a database it cannot read. The heartbeat sends are held to the same deadline. Without this, a blocked query held the socket open with no limit.

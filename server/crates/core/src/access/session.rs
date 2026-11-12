@@ -117,6 +117,22 @@ impl Database {
         Ok(Some(User { username, role }))
     }
 
+    /// Whether a token still names an unexpired administrator session.
+    ///
+    /// Unlike [`Database::session`] it only reads: an open socket checking
+    /// again is not a use, and an expired row is left for the guard or the
+    /// sweep to delete.
+    pub async fn session_alive(&self, token: &str) -> Result<bool, Unavailable> {
+        let alive: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM public.sessions s JOIN public.users u ON u.id = s.user_id \
+             WHERE s.token_hash = $1 AND s.expires_at > now() AND u.role = 'admin')",
+        )
+        .bind(digest(token))
+        .fetch_one(self.pool())
+        .await?;
+        Ok(alive)
+    }
+
     /// End a session. Answers whether the token named an unexpired one; an
     /// expired row is deleted either way.
     pub async fn sign_out(&self, token: &str) -> Result<bool, Unavailable> {
@@ -323,6 +339,42 @@ mod tests {
             )
             .await
         );
+    }
+
+    #[tokio::test]
+    async fn session_alive_answers_true_for_an_unexpired_session() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        let (_, token) = database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
+        assert_eq!(database.session_alive(token.as_str()).await, Ok(true));
+    }
+
+    #[tokio::test]
+    async fn session_alive_answers_false_for_a_missing_session() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        database.sign_in("sam", PASSWORD).await.unwrap();
+        assert_eq!(database.session_alive("not-a-token").await, Ok(false));
+    }
+
+    #[tokio::test]
+    async fn session_alive_answers_false_for_an_expired_session_and_keeps_its_row() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        let (_, token) = database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
+        on_sessions(&db, "WITH moved AS (UPDATE public.sessions SET expires_at = now() - interval '1 minute' RETURNING 1) SELECT true FROM moved").await;
+        assert_eq!(database.session_alive(token.as_str()).await, Ok(false));
+        assert_eq!(sessions(&db).await, 1);
+    }
+
+    #[tokio::test]
+    async fn session_alive_records_no_use() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        let (_, token) = database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
+        on_sessions(&db, "WITH moved AS (UPDATE public.sessions SET last_used_at = now() - interval '2 days', expires_at = now() + interval '28 days' RETURNING 1) SELECT true FROM moved").await;
+        assert_eq!(database.session_alive(token.as_str()).await, Ok(true));
+        assert!(on_sessions(&db, "SELECT bool_and(last_used_at < now() - interval '1 day' AND expires_at < now() + interval '29 days') FROM public.sessions").await);
     }
 
     #[tokio::test]

@@ -15,9 +15,11 @@ use sidereal_core::{
 };
 
 pub mod cookie;
+pub mod events;
 pub mod forwarded;
 mod guard;
 
+use events::EventTiming;
 use forwarded::Forwarded;
 
 /// Every path under `/api`, behind the origin check and then the session
@@ -25,12 +27,20 @@ use forwarded::Forwarded;
 /// routes, not a fallback, because `route_layer` guards only matched routes:
 /// an unknown path answers 401 before 404. `{*rest}` never matches an empty
 /// segment, so `/api` and `/api/` need their own.
-pub fn routes(database: Database, allowed_origins: AllowedOrigins) -> Router<Database> {
+pub fn routes(
+    database: Database,
+    allowed_origins: AllowedOrigins,
+    timing: EventTiming,
+) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
         .route(
             "/api/session",
             get(current_session).post(sign_in).delete(sign_out),
+        )
+        .route(
+            "/api/events",
+            get(events::open).with_state((database.clone(), timing)),
         )
         .route("/api", any(not_found))
         .route("/api/", any(not_found))

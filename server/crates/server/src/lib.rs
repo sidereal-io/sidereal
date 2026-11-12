@@ -11,6 +11,8 @@ pub mod access;
 pub mod config;
 pub mod siderealctl;
 
+pub use access::events::EventTiming;
+
 /// Liveness is independent of database availability.
 pub fn app() -> Router {
     Router::new().route("/healthz", get(healthz))
@@ -20,10 +22,20 @@ pub fn app() -> Router {
 /// `allowed_origins` are the origins beyond the request's own whose
 /// state-changing `/api` requests are accepted.
 pub fn app_with_database(database: Database, allowed_origins: AllowedOrigins) -> Router {
+    app_with_event_timing(database, allowed_origins, EventTiming::default())
+}
+
+/// The production routes with the events socket's intervals chosen by the
+/// caller, so a test need not wait 30 s for a heartbeat.
+pub fn app_with_event_timing(
+    database: Database,
+    allowed_origins: AllowedOrigins,
+    timing: EventTiming,
+) -> Router {
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
-            .merge(access::routes(database.clone(), allowed_origins))
+            .merge(access::routes(database.clone(), allowed_origins, timing))
             .with_state(database),
     )
 }
