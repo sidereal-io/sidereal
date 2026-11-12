@@ -18,6 +18,7 @@ pub mod cookie;
 pub mod events;
 pub mod forwarded;
 mod guard;
+pub mod limit;
 
 use events::EventTiming;
 use forwarded::Forwarded;
