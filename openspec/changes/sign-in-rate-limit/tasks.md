@@ -15,7 +15,7 @@
 
 ## 3. The sign-in screen
 
-- [ ] 3.1 [medium] A sign-in answered 429 shows `Too many failed sign-ins. Try again in N seconds.` under 60 s and `… N minutes.` rounded up from 60 s, with the singular for 1, and `Try again later.` when `Retry-After` is missing or not a whole number. The form stays usable and no server text appears. The claim form is unchanged (verify: cd web && pnpm test -- Access)
+- [x] 3.1 [medium] A sign-in answered 429 shows `Too many failed sign-ins. Try again in N seconds.` under 60 s and `… N minutes.` rounded up from 60 s, with the singular for 1, and `Try again later.` when `Retry-After` is missing or not a whole number. The form stays usable and no server text appears. The claim form is unchanged (verify: cd web && pnpm test -- Access) (✓ `pnpm test -- Access` passed, 129 tests)
 
 ## 4. Docs and integration [depends-on: 2, 3]
 

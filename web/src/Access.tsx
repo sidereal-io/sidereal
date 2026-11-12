@@ -46,6 +46,19 @@ function refusal(status: number): string {
     : "Something went wrong";
 }
 
+// What a sign-in from a limited address shows. Only a whole number of
+// seconds in Retry-After is believed.
+function limitedMessage(retryAfter: string | null): string {
+  if (retryAfter === null || !/^\d+$/.test(retryAfter)) {
+    return "Too many failed sign-ins. Try again later.";
+  }
+  const seconds = Number(retryAfter);
+  const [count, unit] =
+    seconds < 60 ? [seconds, "second"] : [Math.ceil(seconds / 60), "minute"];
+  const wait = `${String(count)} ${unit}${count === 1 ? "" : "s"}`;
+  return `Too many failed sign-ins. Try again in ${wait}.`;
+}
+
 async function send(
   method: string,
   url: string,
@@ -146,6 +159,10 @@ function Access() {
 
   async function signIn(credentials: Credentials) {
     const response = await send("POST", "/api/session", credentials);
+    if (response?.status === 429) {
+      setMessage(limitedMessage(response.headers.get("Retry-After")));
+      return;
+    }
     if (response?.status !== 200) {
       setMessage(refusal(response?.status ?? 0));
       return;
