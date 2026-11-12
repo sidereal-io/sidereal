@@ -56,7 +56,7 @@ The server SHALL count failed sign-ins for each client address. A failed sign-in
 
 ### Requirement: Sign-in failures are limited in three tiers
 
-For each counted address the server SHALL apply three sliding windows: at most 1 failed sign-in in any 1 second, 5 in any 60 seconds, and 20 in any 3600 seconds. A tier is full while its window holds as many failures as its limit. While any tier is full, the address SHALL be limited. A tier SHALL have room again once its oldest counted failure is as old as its window.
+For each counted address the server SHALL apply three sliding windows: at most 1 failed sign-in in any 1 second, 5 in any 60 seconds, and 20 in any 3600 seconds. A tier is full while its window holds as many failures as its limit. While any tier is full, the address SHALL be limited. A tier SHALL have room again once its oldest counted failure is as old as its window. An attempt with well-formed credentials SHALL count from the moment the server starts to check its password, so attempts from one address that are checked at the same time count against the tiers together. Such an attempt that then answers 503 SHALL stop counting.
 
 #### Scenario: A second attempt within the second
 - **WHEN** a caller at `192.168.1.20` fails sign-in once and, within the same second, signs in with correct credentials
@@ -74,13 +74,17 @@ For each counted address the server SHALL apply three sliding windows: at most 1
 - **WHEN** a caller at `192.168.1.20` fails sign-in 20 times, 15 seconds apart, and 15 seconds after the twentieth failure signs in with correct credentials
 - **THEN** the attempt answers 429 with `Retry-After: 3300`
 
+#### Scenario: Attempts at the same time are counted together
+- **WHEN** a caller at `192.168.1.20` sends 10 sign-ins with a wrong password at the same moment
+- **THEN** exactly one answers 401 and the other nine answer 429
+
 #### Scenario: A known and an unknown username are limited alike
 - **WHEN** a caller at `192.168.1.20` fails sign-in 5 times, 2 seconds apart, once as `sam` with a wrong password and otherwise as `nobody`, and 2 seconds later signs in as `sam` with correct credentials
 - **THEN** the attempt answers 429 with `Retry-After: 50`, the same answer as when all 5 failures name `sam`
 
 ### Requirement: A limited address is answered 429 before any credential check
 
-While a client address is limited, every `POST /api/session` from it SHALL answer 429 with the body `{"error":"too many attempts"}` and a `Retry-After` header. The server SHALL send this answer before it reads the credentials: with correct credentials, with wrong ones and with a malformed body alike. It SHALL verify no password hash, create no session and set no cookie. `Retry-After` SHALL hold the seconds until every full tier has room again, rounded up to a whole number and at least 1. A 429 SHALL NOT count as a failure and SHALL NOT make the wait longer. Other routes SHALL be unaffected by the limit.
+While a client address is limited, every `POST /api/session` from it SHALL answer 429 with the body `{"error":"too many attempts"}` and a `Retry-After` header. The server SHALL send this answer before it checks the body or a password: with correct credentials, with wrong ones and with a malformed body alike. It SHALL verify no password hash, create no session and set no cookie. `Retry-After` SHALL hold the seconds until every full tier has room again, rounded up to a whole number and at least 1. A 429 SHALL NOT count as a failure and SHALL NOT make the wait longer. Other routes SHALL be unaffected by the limit.
 
 #### Scenario: Correct credentials from a limited address
 - **WHEN** a caller at `192.168.1.20` is limited and signs in with correct credentials
@@ -116,12 +120,12 @@ A sign-in answered 200 SHALL clear every tier's failures for its counted address
 
 ### Requirement: The server warns when an address becomes limited
 
-When the server answers 429 to an address whose previous sign-in attempt it did not refuse, it SHALL write one warning line to its log. The line SHALL name the client address, or say that the address is unresolved, and SHALL name the wait in seconds as `Retry-After` gives it. It SHALL NOT name the username or hold any part of the request body. Further 429s to the same address, with no attempt between them that was not refused, SHALL write nothing.
+When the server answers 429 to an address whose previous sign-in attempt it did not refuse, it SHALL write one warning line to its log. The line SHALL start with `sign-in limited:`, SHALL name the client address, or say that the address is unresolved, and SHALL name the wait in seconds as `Retry-After` gives it. It SHALL NOT name the username or hold any part of the request body. Further 429s to the same address, with no attempt between them that was not refused, SHALL write nothing.
 
 #### Scenario: One line for a run of refusals
-- **WHEN** a caller at `192.168.1.20` fails sign-in once and, within the same second, sends three more sign-ins as `sam`, each refused with 429
-- **THEN** captured stderr holds exactly one warning line that contains `192.168.1.20` and does not contain `sam`
+- **WHEN** a caller at `127.0.0.1` fails sign-in as `sam` 5 times within a minute and then sends three more sign-ins as `sam`, each refused with 429
+- **THEN** captured stderr holds exactly one line that starts with `sign-in limited:`, and that line contains `127.0.0.1` and does not contain `sam`
 
 #### Scenario: A failure that fills a tier writes nothing
-- **WHEN** a caller at `192.168.1.20` fails sign-in once and sends nothing more
-- **THEN** captured stderr holds no warning line about a sign-in limit
+- **WHEN** a caller at `127.0.0.1` fails sign-in 5 times within a minute and sends nothing more
+- **THEN** captured stderr holds no line that starts with `sign-in limited:`
