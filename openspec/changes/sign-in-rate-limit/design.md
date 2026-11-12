@@ -45,7 +45,7 @@
 2. Parse the body. A 400 here never touches the limiter, so it never counts.
 3. `limiter.admit(key)`: under one lock, check the tiers again and, if there is room, push `now` onto the deque. It returns an `Attempt` guard, or the wait. The hash runs only after the push, so ten parallel attempts see each other's pushes and nine are refused.
 
-The guard settles the attempt. A 200 calls `succeeded()`, which removes the key's entry. A 503 calls `released()`, which pops this attempt's instant. A 401 needs nothing: the instant stays. Dropping the guard unsettled, as when the client disconnects mid-hash, keeps the instant, so cancelling a request cannot be used to guess for free.
+The guard settles the attempt. A 200 calls `succeeded()`, which removes the key's entry. A 503 calls `released()`, which removes this attempt's own instant: the guard holds the instant it pushed, and `released()` removes one deque entry equal to it, if the entry is still there. Popping the newest entry instead would drop another attempt's failure when attempts settle out of order. A 401 needs nothing: the instant stays. Dropping the guard unsettled, as when the client disconnects mid-hash, keeps the instant, so cancelling a request cannot be used to guess for free.
 
 The alternative of counting at settle time was rejected: every attempt in flight would pass the check, which turns the 1-per-second tier into "as many as you can send at once".
 
@@ -59,7 +59,7 @@ Each `app_with_tuning` call builds its own `Limiter`, which is how the restart s
 
 **D-8. `AccessError::TooManyAttempts { retry_after: u64 }`.** Its response is 429, `{"error":"too many attempts"}` and a `Retry-After` header. The body stays fixed, as the enum's doc comment promises.
 
-**D-9. The warning line.** When `refused` or `admit` refuses a key whose `refused` flag is false, it sets the flag and the handler writes `sign-in limited: <client address> must wait <n> s` with `eprintln!`. For `Unresolved` the address reads `unresolved client address`. A successful `admit` clears the flag. The line names the request's own client address, not the /64 key, and never the username, which the limiter never sees.
+**D-9. The warning line.** When `refused` or `admit` refuses a key whose `refused` flag is false, it sets the flag and the handler writes `sign-in limited: <client address> must wait <n> s` with `eprintln!`. For `Unresolved` the address reads `unresolved client address`. When `refused` finds room for a key, it clears the flag, so any attempt the server does not refuse, a 400 included, ends the run. The line names the request's own client address, not the /64 key, and never the username, which the limiter never sees.
 
 **D-10. The web message.** `signIn` in `Access.tsx` handles a 429 before `refusal`, with a small pure function `limitedMessage(retryAfter: string | null): string`. It accepts only `/^\d+$/`. Under 60 it says seconds; otherwise minutes as `Math.ceil(seconds / 60)`; `1` takes the singular. Anything else says `Try again later.` The claim form keeps `refusal` unchanged, since the claim has no limit.
 
