@@ -1817,3 +1817,26 @@ mod sign_in_limit {
         assert_eq!(status, StatusCode::OK);
     }
 }
+
+mod sign_in_limit_concurrent {
+    use super::{sign_in_limit::limited, *};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sign_in_limit_concurrent_attempts_count_together() {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
+        let attempts: Vec<_> = (0..10)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move { sign_in(&app, "sam", "wrong-password").await.status() })
+            })
+            .collect();
+        let mut statuses = Vec::new();
+        for attempt in attempts {
+            statuses.push(attempt.await.unwrap());
+        }
+        let count = |status| statuses.iter().filter(|&&s| s == status).count();
+        assert_eq!(count(StatusCode::UNAUTHORIZED), 1, "{statuses:?}");
+        assert_eq!(count(StatusCode::TOO_MANY_REQUESTS), 9, "{statuses:?}");
+    }
+}
