@@ -1699,4 +1699,121 @@ mod sign_in_limit {
         let response = send(&app, "GET", "/api/claim", None).await;
         assert_eq!(response.status(), StatusCode::OK);
     }
+
+    const NEIGHBOUR: &str = "192.168.1.21:40000";
+
+    async fn attempt_from(app: &Router, peer: &str, password: &str) -> Response {
+        let request = Some(credentials("sam", password));
+        send_from(app, peer, "POST", "/api/session", request, &[]).await
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_forgets_failures_before_a_success() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 4, seconds(2)).await;
+        clock.advance(seconds(2));
+        assert_eq!(
+            attempt(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        clock.advance(seconds(2));
+        fail(&app, &clock, 4, seconds(2)).await;
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_success_leaves_another_address_limited() {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
+        let failed = attempt_from(&app, NEIGHBOUR, "wrong-password").await;
+        assert_eq!(failed.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            attempt_from(&app, PEER, PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        let response = attempt_from(&app, NEIGHBOUR, PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_two_ipv4_addresses_apart() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let response = attempt_from(&app, NEIGHBOUR, PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_does_not_count_an_unavailable_database() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let (app, _clock) = tuned(database.clone(), TrustedProxies::default());
+        database.close().await;
+        for _ in 0..2 {
+            let response = attempt(&app, "sam", PASSWORD).await;
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        }
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_starts_empty_on_a_new_router() {
+        let db = TestDatabase::new();
+        let (app, clock) = limited(&db, TrustedProxies::default()).await;
+        fail(&app, &clock, 1, Duration::ZERO).await;
+        let (restarted, _clock) = tuned(database(&db).await, TrustedProxies::default());
+        assert_eq!(
+            attempt(&restarted, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+    }
+
+    const PROXY: &str = "172.18.0.1:50000";
+
+    /// A sign-in through the trusted proxy for the client `forwarded_for`.
+    async fn proxied(app: &Router, forwarded_for: &str, password: &str) -> Response {
+        let request = Some(credentials("sam", password));
+        let headers = [("x-forwarded-for", forwarded_for)];
+        send_from(app, PROXY, "POST", "/api/session", request, &headers).await
+    }
+
+    /// The status of a correct sign-in for `second` right after a failed one
+    /// for `first`, both through the trusted proxy.
+    async fn after_a_failure(first: &str, second: &str) -> StatusCode {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, proxies("172.18.0.1")).await;
+        let failed = proxied(&app, first, "wrong-password").await;
+        assert_eq!(failed.status(), StatusCode::UNAUTHORIZED);
+        proxied(&app, second, PASSWORD).await.status()
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_two_proxied_ipv4_addresses_apart() {
+        let status = after_a_failure("203.0.113.9", "203.0.113.10").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_shares_one_count_across_an_ipv6_64() {
+        let status = after_a_failure("2001:db8:1:2::1", "2001:db8:1:2::ffff").await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_another_ipv6_64_apart() {
+        let status = after_a_failure("2001:db8:1:2::1", "2001:db8:1:3::1").await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_shares_one_count_across_unresolved_addresses() {
+        let status = after_a_failure("garbage", "other-garbage").await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_counts_unresolved_addresses_apart_from_resolved_ones() {
+        let status = after_a_failure("garbage", "203.0.113.9").await;
+        assert_eq!(status, StatusCode::OK);
+    }
 }
