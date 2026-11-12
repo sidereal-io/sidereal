@@ -4,7 +4,7 @@ use super::forwarded::Forwarded;
 use std::{
     collections::{HashMap, VecDeque},
     net::{IpAddr, Ipv4Addr},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
@@ -52,6 +52,35 @@ pub struct Refusal {
     pub retry_after: u64,
 }
 
+/// One counted attempt, from the moment its password check starts. Dropped
+/// unsettled, as when the client goes away mid-check, it stays counted, so
+/// cancelling a request does not make a guess free.
+pub struct Attempt<'a> {
+    limiter: &'a Limiter,
+    key: Key,
+    at: Instant,
+}
+
+impl Attempt<'_> {
+    /// The sign-in succeeded: forget every failure for this key.
+    pub fn succeeded(self) {
+        self.limiter.entries().remove(&self.key);
+    }
+
+    /// The attempt reached no answer about the password: stop counting it.
+    pub fn released(self) {
+        let mut entries = self.limiter.entries();
+        let Some(attempts) = entries.get_mut(&self.key) else {
+            return;
+        };
+        // Attempts settle out of order, so the newest instant may be
+        // another attempt's failure.
+        if let Some(index) = attempts.iter().rposition(|&at| at == self.at) {
+            attempts.remove(index);
+        }
+    }
+}
+
 pub struct Limiter {
     clock: Clock,
     entries: Mutex<HashMap<Key, VecDeque<Instant>>>,
@@ -65,25 +94,33 @@ impl Limiter {
         }
     }
 
+    fn entries(&self) -> MutexGuard<'_, HashMap<Key, VecDeque<Instant>>> {
+        self.entries.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Whether `key` must wait, without counting anything.
     pub fn refused(&self, key: Key) -> Option<Refusal> {
         let now = (self.clock)();
-        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        let mut entries = self.entries();
         let attempts = entries.get_mut(&key)?;
         wait(attempts, now).map(|retry_after| Refusal { retry_after })
     }
 
     /// Count an attempt for `key` if every tier has room. The check and the
     /// count share one lock, so attempts at the same time see each other.
-    pub fn admit(&self, key: Key) -> Result<(), Refusal> {
+    pub fn admit(&self, key: Key) -> Result<Attempt<'_>, Refusal> {
         let now = (self.clock)();
-        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        let mut entries = self.entries();
         let attempts = entries.entry(key).or_default();
         if let Some(retry_after) = wait(attempts, now) {
             return Err(Refusal { retry_after });
         }
         attempts.push_back(now);
-        Ok(())
+        Ok(Attempt {
+            limiter: self,
+            key,
+            at: now,
+        })
     }
 }
 
@@ -140,7 +177,7 @@ mod tests {
             if n > 0 {
                 clock.advance(apart);
             }
-            limiter.admit(KEY).expect("room for a failure");
+            let _failed = limiter.admit(KEY).expect("room for a failure");
         }
     }
 
@@ -248,5 +285,60 @@ mod tests {
         clock.advance(seconds(2));
         assert_eq!(limiter.refused(KEY), Some(Refusal { retry_after: 50 }));
         assert_eq!(limiter.refused(KEY), Some(Refusal { retry_after: 50 }));
+    }
+
+    const OTHER: Key = Key::V4(Ipv4Addr::new(192, 168, 1, 21));
+
+    #[test]
+    fn a_success_forgets_the_key_failures() {
+        let (limiter, clock) = limiter();
+        fail(&limiter, &clock, 4, seconds(2));
+        clock.advance(seconds(2));
+        limiter.admit(KEY).unwrap().succeeded();
+        assert_eq!(wait(&limiter), None);
+    }
+
+    #[test]
+    fn a_success_leaves_another_key_counted() {
+        let (limiter, _) = limiter();
+        let _failed = limiter.admit(OTHER).unwrap();
+        limiter.admit(KEY).unwrap().succeeded();
+        assert_eq!(limiter.refused(OTHER), Some(Refusal { retry_after: 1 }));
+    }
+
+    #[test]
+    fn a_released_attempt_stops_counting() {
+        let (limiter, _) = limiter();
+        limiter.admit(KEY).unwrap().released();
+        assert_eq!(wait(&limiter), None);
+    }
+
+    #[test]
+    fn a_release_removes_only_its_own_attempt() {
+        let (limiter, clock) = limiter();
+        let first = limiter.admit(KEY).unwrap();
+        clock.advance(seconds(1));
+        // The later attempt fails first.
+        let _ = limiter.admit(KEY).unwrap();
+        first.released();
+        clock.advance(Duration::from_millis(500));
+        assert_eq!(wait(&limiter), Some(1));
+    }
+
+    #[test]
+    fn an_unsettled_attempt_stays_counted() {
+        let (limiter, _) = limiter();
+        let _ = limiter.admit(KEY).unwrap();
+        assert_eq!(wait(&limiter), Some(1));
+    }
+
+    #[test]
+    fn a_refusal_is_not_counted() {
+        let (limiter, clock) = limiter();
+        fail(&limiter, &clock, 5, seconds(2));
+        clock.advance(seconds(2));
+        assert_eq!(wait(&limiter), Some(50));
+        clock.advance(seconds(61 - 10));
+        assert_eq!(wait(&limiter), None);
     }
 }
