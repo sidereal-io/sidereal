@@ -1840,3 +1840,71 @@ mod sign_in_limit_concurrent {
         assert_eq!(count(StatusCode::TOO_MANY_REQUESTS), 9, "{statuses:?}");
     }
 }
+
+mod spawned_sign_in_limit {
+    use super::*;
+
+    /// A claimed spawned server after five wrong sign-ins as `sam`, each more
+    /// than a second after the last, so only the minute tier fills.
+    fn after_five_failures(db: &TestDatabase) -> spawned::Server {
+        let server = spawned::Server::ready(db);
+        let body = credentials("sam", PASSWORD);
+        let claimed = server.request("POST", "/api/claim", Some(&body)).unwrap();
+        assert!(claimed.starts_with("HTTP/1.1 201"), "{claimed}");
+        let wrong = credentials("sam", "wrong-password");
+        for n in 0..5 {
+            if n > 0 {
+                std::thread::sleep(Duration::from_millis(1100));
+            }
+            let answer = server
+                .request("POST", "/api/session", Some(&wrong))
+                .unwrap();
+            assert!(answer.starts_with("HTTP/1.1 401"), "failure {n}: {answer}");
+        }
+        server
+    }
+
+    fn limit_lines(output: &str) -> Vec<&str> {
+        output
+            .lines()
+            .filter(|line| line.starts_with("sign-in limited:"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn spawned_sign_in_limit_warns_once_for_a_run_of_refusals() {
+        let db = TestDatabase::new();
+        let server = after_five_failures(&db);
+        let body = credentials("sam", PASSWORD);
+        let mut wait = String::new();
+        for _ in 0..3 {
+            let answer = server.request("POST", "/api/session", Some(&body)).unwrap();
+            assert!(answer.starts_with("HTTP/1.1 429"), "{answer}");
+            wait = answer
+                .lines()
+                .find_map(|line| line.strip_prefix("retry-after: "))
+                .expect("a Retry-After header")
+                .trim()
+                .to_owned();
+        }
+        let output = server.output();
+        let lines = limit_lines(&output);
+        assert_eq!(lines.len(), 1, "{output}");
+        assert!(lines[0].contains("127.0.0.1"), "{output}");
+        assert!(!lines[0].contains("sam"), "{output}");
+        let named: u64 = lines[0]
+            .split_whitespace()
+            .find_map(|word| word.parse().ok())
+            .expect("a wait in the line");
+        // The first refusal's wait is at most a second longer than the last.
+        let last: u64 = wait.parse().unwrap();
+        assert!((last..=last + 1).contains(&named), "{output}");
+    }
+
+    #[tokio::test]
+    async fn spawned_sign_in_limit_does_not_warn_for_a_failure_that_fills_a_tier() {
+        let db = TestDatabase::new();
+        let output = after_five_failures(&db).output();
+        assert!(limit_lines(&output).is_empty(), "{output}");
+    }
+}

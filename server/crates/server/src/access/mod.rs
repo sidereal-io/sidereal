@@ -26,7 +26,7 @@ pub mod limit;
 use events::EventTiming;
 use forwarded::Forwarded;
 use limit::{Key, Limiter, Refusal};
-use std::sync::Arc;
+use std::{net::IpAddr, sync::Arc};
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -174,12 +174,16 @@ async fn sign_in(
     forwarded: Option<Extension<Forwarded>>,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
-    let key = Key::of(forwarded.as_ref().map(|Extension(forwarded)| forwarded));
+    let resolved = forwarded.as_ref().map(|Extension(forwarded)| forwarded);
+    let key = Key::of(resolved);
+    let client = resolved.and_then(|forwarded| forwarded.client);
     if let Some(refusal) = limiter.refused(key) {
-        return Err(limited(refusal));
+        return Err(limited(refusal, client));
     }
     let credentials = Credentials::try_from(body)?;
-    let attempt = limiter.admit(key).map_err(limited)?;
+    let attempt = limiter
+        .admit(key)
+        .map_err(|refusal| limited(refusal, client))?;
     let signed_in = match database
         .sign_in(&credentials.username, &credentials.password)
         .await
@@ -196,7 +200,16 @@ async fn sign_in(
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
-fn limited(refusal: Refusal) -> AccessError {
+/// The log names the request's own address, not its /64, and never the
+/// username: the limiter never sees one.
+fn limited(refusal: Refusal, client: Option<IpAddr>) -> AccessError {
+    if refusal.new {
+        let wait = refusal.retry_after;
+        match client {
+            Some(client) => eprintln!("sign-in limited: {client} must wait {wait} s"),
+            None => eprintln!("sign-in limited: unresolved client address must wait {wait} s"),
+        }
+    }
     AccessError::TooManyAttempts {
         retry_after: refusal.retry_after,
     }
