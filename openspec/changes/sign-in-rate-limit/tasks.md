@@ -20,7 +20,7 @@
 ## 4. Docs and integration [depends-on: 2, 3]
 
 - [x] 4.1 [easy] `docs/install.md` gains a `## Sign-in limits` section straight after the reverse-proxy section. It states the three tiers, the 429 and `Retry-After`, that a correct password does not get through while limited, that success and a restart clear the count, and that clients behind a proxy that sends no `X-Forwarded-For` share one limit (verify: grep -q '^## Sign-in limits' docs/install.md && grep -q '429' docs/install.md && grep -q 'Retry-After' docs/install.md) (✓ the three `grep -q` checks passed)
-- [ ] 4.2 [easy] The whole gate passes. Then check by hand with `just dev`: five wrong sign-ins within a minute, then a sixth, show `Too many failed sign-ins. Try again in N seconds.` and leave the form usable (verify: just check)
+- [x] 4.2 [easy] The whole gate passes. Then check by hand with `just dev`: five wrong sign-ins within a minute, then a sixth, show `Too many failed sign-ins. Try again in N seconds.` and leave the form usable (verify: just check) (✓ `just check` passed; `just dev` check: five 401s, then a 429 with `Retry-After: 53` showed `Too many failed sign-ins. Try again in 53 seconds.` with the form usable)
 
 ## Deviations Ledger
 
@@ -28,3 +28,4 @@
 
 - 2026-11-11, task 2.2: two existing tests sent a failed sign-in and then another sign-in from one address at once, which the 1-per-second tier now refuses. `session_refusals_do_not_reveal_whether_the_username_exists` in `tests/access.rs` now sends its second attempt from `192.168.1.21`. `spawned_reset_state_sets_the_password_and_ends_every_session` in `tests/siderealctl.rs` signs in with the new password on a new router. Each test still checks what it checked before.
 - 2026-11-11, task 2.2: `sign_in_limit_refuses_before_reading_the_database` closes the pool after limiting the address and expects 429, not 503. It is the observable form of "before any password check".
+- 2026-11-11, task 4.2: the check by hand ran as a throwaway Playwright script against `just dev`, on a separate empty database, so the development database's instance stayed unclaimed. The server logged `sign-in limited: 127.0.0.1 must wait 53 s`.
