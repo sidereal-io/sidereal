@@ -11,19 +11,19 @@ import Access from "./Access.tsx";
 import "./styles/tokens.css";
 import { stubWebSocket, type FakeWebSocket } from "./testing/fakeWebSocket.ts";
 
-type Answer = [status: number, body?: unknown];
+type Answer = [status: number, body?: unknown, headers?: HeadersInit];
 
-// Answer each "METHOD /path" request with its status and JSON body. A request
-// with no answer fails like a network error.
+// Answer each "METHOD /path" request with its status, JSON body and headers.
+// A request with no answer fails like a network error.
 function stubServer(answers: Partial<Record<string, Answer>>) {
   const fetch = vi.fn((input: string, init?: RequestInit) => {
     const answer = answers[`${init?.method ?? "GET"} ${input}`];
     if (!answer) return Promise.reject(new TypeError("network error"));
-    const [status, body] = answer;
+    const [status, body, headers] = answer;
     return Promise.resolve(
       body === undefined
-        ? new Response(null, { status })
-        : Response.json(body, { status }),
+        ? new Response(null, { status, headers })
+        : Response.json(body, { status, headers }),
     );
   });
   vi.stubGlobal("fetch", fetch);
@@ -187,6 +187,64 @@ describe("Access", () => {
     await submit("Sign in");
     await screen.findByText("Something went wrong");
     screen.getByRole("button", { name: "Sign in" });
+  });
+
+  describe("a limited sign-in", () => {
+    const limited = (headers?: HeadersInit) => {
+      stubServer({
+        ...signedOut,
+        "POST /api/session": [429, { error: "<b>nope</b>" }, headers],
+      });
+    };
+
+    it("shows the wait in seconds and keeps the form usable", async () => {
+      limited({ "Retry-After": "30" });
+      render(<Access />);
+      await submit("Sign in");
+      await screen.findByText(
+        "Too many failed sign-ins. Try again in 30 seconds.",
+      );
+      expect(button("Sign in")?.hasAttribute("disabled")).toBe(false);
+      expect(document.body.textContent).not.toContain("nope");
+    });
+
+    it.each([
+      ["1", "1 second"],
+      ["59", "59 seconds"],
+      ["60", "1 minute"],
+      ["61", "2 minutes"],
+      ["3300", "55 minutes"],
+    ])("shows Retry-After: %s as %s", async (retryAfter, wait) => {
+      limited({ "Retry-After": retryAfter });
+      render(<Access />);
+      await submit("Sign in");
+      await screen.findByText(
+        `Too many failed sign-ins. Try again in ${wait}.`,
+      );
+    });
+
+    it.each([
+      ["missing", undefined],
+      ["a fraction", { "Retry-After": "1.5" }],
+      ["negative", { "Retry-After": "-3" }],
+      ["a date", { "Retry-After": "Wed, 11 Nov 2026 07:28:00 GMT" }],
+    ])("shows a wait of later when Retry-After is %s", async (_, headers) => {
+      limited(headers);
+      render(<Access />);
+      await submit("Sign in");
+      await screen.findByText("Too many failed sign-ins. Try again later.");
+      screen.getByRole("button", { name: "Sign in" });
+    });
+
+    it("leaves a limited claim to the usual failure", async () => {
+      stubServer({
+        "GET /api/claim": [200, { open: true }],
+        "POST /api/claim": [429, { error: "too many attempts" }],
+      });
+      render(<Access />);
+      await submit("Claim");
+      await screen.findByText("Something went wrong");
+    });
   });
 
   it("shows the username after a sign-in", async () => {

@@ -8,7 +8,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use sidereal_core::database::{initialize, Database};
 use sidereal_server::{
-    app_with_event_timing, config::AllowedOrigins, with_trusted_proxies, EventTiming,
+    app_with_tuning, config::AllowedOrigins, with_trusted_proxies, EventTiming, Tuning,
 };
 use sqlx::{AssertSqlSafe, Connection, PgConnection};
 use std::{net::SocketAddr, time::Duration};
@@ -69,7 +69,14 @@ async fn served(db: &TestDatabase, timing: EventTiming) -> Served {
     .await
     .unwrap();
     let app = with_trusted_proxies(
-        app_with_event_timing(database.clone(), AllowedOrigins::default(), timing),
+        app_with_tuning(
+            database.clone(),
+            AllowedOrigins::default(),
+            Tuning {
+                events: timing,
+                ..Tuning::default()
+            },
+        ),
         Default::default(),
     );
     let credentials = serde_json::json!({ "username": "sam", "password": PASSWORD }).to_string();

@@ -356,6 +356,7 @@ The guide SHALL cover these points:
 - that requests carrying forwarded headers from an unlisted address are refused;
 - that `SIDEREAL_BIND_ADDRESS=127.0.0.1` keeps the plain-HTTP port off the network when the proxy runs on the same machine;
 - that `SIDEREAL_ALLOWED_ORIGINS` is optional and needed only when a proxy rewrites the `Host` header;
+- the fixed sign-in limits: per client address, at most 1 failed sign-in per second, 5 per minute and 20 per hour; that a limited address is answered 429 with `Retry-After`, even for the correct password; that a successful sign-in and a restart clear the count; and that clients behind a proxy that sends no `X-Forwarded-For` share the proxy's address and so one limit;
 - the commands that stop and recreate the instance;
 - that `down --volumes` with one bind override deletes only the named-volume data location;
 - that retained database pairing with deleted storage refuses startup;
@@ -405,6 +406,11 @@ The guide SHALL cover these points:
 - **WHEN** a reviewer reads the installation guide
 - **THEN** it names `.env`, the storage marker, the PostgreSQL pairing, and both persistent data locations
 - **AND** it states which remain after `docker compose down --volumes`
+
+#### Scenario: The guide states the sign-in limits
+
+- **WHEN** a reviewer reads `docs/install.md`
+- **THEN** it has a section whose heading contains `Sign-in limits`, placed after the reverse-proxy section, which names `429`, `Retry-After`, and the limits of 1 per second, 5 per minute and 20 per hour
 
 ### Requirement: Operators can select persistent host directories independently
 
