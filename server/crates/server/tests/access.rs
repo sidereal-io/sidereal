@@ -1852,33 +1852,6 @@ mod sign_in_limit_concurrent {
         assert_eq!(count(StatusCode::UNAUTHORIZED), 1, "{statuses:?}");
         assert_eq!(count(StatusCode::TOO_MANY_REQUESTS), 9, "{statuses:?}");
     }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn sign_in_limit_concurrent_attempts_keep_one_row_of_each_outcome() {
-        let db = TestDatabase::new();
-        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
-        let attempts: Vec<_> = (0..10)
-            .map(|_| {
-                let app = app.clone();
-                tokio::spawn(async move { sign_in(&app, "sam", "wrong-password").await.status() })
-            })
-            .collect();
-        for attempt in attempts {
-            attempt.await.unwrap();
-        }
-        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
-        let outcomes: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT outcome, count(*) FROM public.security_events WHERE kind = 'sign_in' \
-             GROUP BY outcome ORDER BY outcome",
-        )
-        .fetch_all(&mut conn)
-        .await
-        .unwrap();
-        assert_eq!(
-            outcomes,
-            [("limited".into(), 1), ("wrong_credentials".into(), 1)]
-        );
-    }
 }
 
 mod spawned_sign_in_limit {
@@ -1959,11 +1932,10 @@ mod spawned_sign_in_limit {
 
 mod security_events {
     use super::{
-        sign_in_limit::{fail, retry_after, seconds, tuned_with, Clock},
+        sign_in_limit::{fail, seconds, tuned_with, Clock},
         *,
     };
     use sidereal_server::Log;
-    use sqlx::Executor;
     use std::sync::{Arc, Mutex};
 
     /// The lines a router wrote to its log, in order.
@@ -2000,58 +1972,6 @@ mod security_events {
         let lines = Lines::default();
         let (app, clock) = tuned_with(database(db).await, trusted, lines.log());
         (app, lines, clock)
-    }
-
-    type Row = (
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<i64>,
-    );
-
-    fn row(
-        kind: &str,
-        outcome: &str,
-        username: Option<&str>,
-        client_address: Option<&str>,
-        user_agent: Option<&str>,
-    ) -> Row {
-        (
-            kind.into(),
-            outcome.into(),
-            "http".into(),
-            username.map(Into::into),
-            client_address.map(Into::into),
-            user_agent.map(Into::into),
-            None,
-        )
-    }
-
-    async fn rows(db: &TestDatabase) -> Vec<Row> {
-        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
-        sqlx::query_as(
-            "SELECT kind, outcome, source, username, host(client_address), user_agent, sessions_ended \
-             FROM public.security_events ORDER BY id",
-        )
-        .fetch_all(&mut conn)
-        .await
-        .unwrap()
-    }
-
-    /// Make PostgreSQL refuse every insert into `security_events`.
-    async fn refuse_events(db: &TestDatabase) {
-        PgConnection::connect_with(&db.options)
-            .await
-            .unwrap()
-            .execute(
-                "CREATE FUNCTION public.refuse() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''refused''; END'; \
-                 CREATE TRIGGER refuse BEFORE INSERT ON public.security_events FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()",
-            )
-            .await
-            .unwrap();
     }
 
     const FIREFOX: (&str, &str) = ("user-agent", "Firefox/140");
@@ -2195,21 +2115,6 @@ mod security_events {
         app.clone().oneshot(request).await.unwrap()
     }
 
-    fn failed_row(client_address: Option<&str>, user_agent: Option<&str>) -> Row {
-        row(
-            "sign_in",
-            "wrong_credentials",
-            None,
-            client_address,
-            user_agent,
-        )
-    }
-
-    /// The rows after the claim's.
-    async fn later_rows(db: &TestDatabase) -> Vec<Row> {
-        rows(db).await.into_iter().skip(1).collect()
-    }
-
     #[tokio::test]
     async fn sign_in_fails_writes_one_line() {
         let db = TestDatabase::new();
@@ -2322,29 +2227,29 @@ mod security_events {
         );
     }
 
-    #[tokio::test]
-    async fn sign_in_limit_keeps_one_limited_row_for_a_run_of_refusals() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sign_in_limit_concurrent_attempts_write_one_line_of_each_outcome() {
         let db = TestDatabase::new();
-        let (app, _lines, _clock) = after_five_failures(&db).await;
-        for _ in 0..3 {
-            sign_in(&app, "sam", PASSWORD).await;
+        let (app, lines) = claimed_logged(&db).await;
+        let attempts: Vec<_> = (0..10)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move { sign_in(&app, "sam", WRONG).await.status() })
+            })
+            .collect();
+        for attempt in attempts {
+            attempt.await.unwrap();
         }
-        let address = Some("192.168.1.20");
-        let mut expected = vec![failed_row(address, None); 5];
-        expected.push(row("sign_in", "limited", None, address, None));
-        assert_eq!(later_rows(&db).await, expected);
-    }
-
-    #[tokio::test]
-    async fn sign_in_limit_answers_429_when_its_row_is_refused() {
-        let db = TestDatabase::new();
-        let (app, lines, _clock) = after_five_failures(&db).await;
-        refuse_events(&db).await;
-        let response = sign_in(&app, "sam", PASSWORD).await;
-        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-        assert_eq!(retry_after(&response), Some("50"));
-        let lines = lines.take();
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains("outcome=limited"), "{lines:?}");
+        let mut outcomes: Vec<_> = lines
+            .take()
+            .iter()
+            .filter_map(|line| {
+                line.split_whitespace()
+                    .find_map(|field| field.strip_prefix("outcome="))
+                    .map(str::to_owned)
+            })
+            .collect();
+        outcomes.sort();
+        assert_eq!(outcomes, ["limited", "wrong_credentials"]);
     }
 }

@@ -241,12 +241,12 @@ async fn sign_in(
     let key = Key::of(forwarded.as_ref().map(|Extension(forwarded)| forwarded));
     let source = http(forwarded.as_ref(), &headers);
     if let Some(refusal) = limiter.refused(key) {
-        return Err(limited(refusal, &database, &log, source).await);
+        return Err(limited(refusal, &log, source));
     }
     let credentials = Credentials::try_from(body)?;
     let attempt = match limiter.admit(key) {
         Ok(attempt) => attempt,
-        Err(refusal) => return Err(limited(refusal, &database, &log, source).await),
+        Err(refusal) => return Err(limited(refusal, &log, source)),
     };
     let signed_in = match database
         .sign_in(&credentials.username, &credentials.password)
@@ -282,7 +282,7 @@ async fn sign_in(
 /// The first refusal of a run is a failed sign-in with outcome `limited`.
 /// It names the request's own address, not its /64, and never the username:
 /// the limiter never sees one.
-async fn limited(refusal: Refusal, database: &Database, log: &Log, source: Source) -> AccessError {
+fn limited(refusal: Refusal, log: &Log, source: Source) -> AccessError {
     if refusal.new {
         let limited = SecurityEvent {
             retry_after: Some(refusal.retry_after),
