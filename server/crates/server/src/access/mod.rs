@@ -209,8 +209,8 @@ fn http(forwarded: Option<&Extension<Forwarded>>, headers: &HeaderMap) -> Source
     }
 }
 
-/// The first `User-Agent` value as text, cut to 256 characters, so the row
-/// and the line hold the same value and a caller cannot grow either.
+/// The first `User-Agent` value as text, cut to 256 characters, so a caller
+/// cannot grow the line.
 fn user_agent(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(USER_AGENT)?;
     Some(
@@ -259,6 +259,7 @@ async fn sign_in(
         }
     };
     let Some((signed_in, token)) = signed_in else {
+        // Known and unknown usernames write the same line, so it reveals neither.
         log.write(&event(
             Kind::SignIn,
             Outcome::WrongCredentials,
