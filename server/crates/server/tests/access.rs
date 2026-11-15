@@ -2101,4 +2101,84 @@ mod security_events {
         assert!(lines.take().is_empty());
         assert_eq!(rows(&db).await.len(), 1);
     }
+
+    /// A claimed instance whose claim line has been taken.
+    async fn claimed_logged(db: &TestDatabase) -> (Router, Lines) {
+        let (app, lines) = logged(db).await;
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        lines.take();
+        (app, lines)
+    }
+
+    async fn sign_out(app: &Router, cookie: &str) -> Response {
+        send_with(app, "DELETE", "/api/session", None, &[("cookie", cookie)]).await
+    }
+
+    #[tokio::test]
+    async fn session_sign_in_writes_one_success_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        assert_eq!(
+            sign_in(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=sign_in outcome=success source=http username="sam" client_address=192.168.1.20"#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn session_sign_in_keeps_no_row() {
+        let db = TestDatabase::new();
+        let (app, _lines) = claimed_logged(&db).await;
+        signed_in(&app).await;
+        let kinds: Vec<_> = rows(&db).await.into_iter().map(|row| row.0).collect();
+        assert_eq!(kinds, ["instance_claim"]);
+    }
+
+    #[tokio::test]
+    async fn session_sign_out_writes_one_success_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let cookie = signed_in(&app).await;
+        lines.take();
+        assert_eq!(
+            sign_out(&app, &cookie).await.status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=sign_out outcome=success source=http username="sam" client_address=192.168.1.20"#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn session_sign_out_keeps_no_row() {
+        let db = TestDatabase::new();
+        let (app, _lines) = claimed_logged(&db).await;
+        let cookie = signed_in(&app).await;
+        assert_eq!(
+            sign_out(&app, &cookie).await.status(),
+            StatusCode::NO_CONTENT
+        );
+        let kinds: Vec<_> = rows(&db).await.into_iter().map(|row| row.0).collect();
+        assert_eq!(kinds, ["instance_claim"]);
+    }
+
+    #[tokio::test]
+    async fn session_sign_out_without_a_cookie_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = send(&app, "DELETE", "/api/session", None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(lines.take().is_empty());
+    }
 }

@@ -13,7 +13,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sidereal_core::{
-    access::{ClaimError, SecurityEvent, Source, Unavailable, User},
+    access::{ClaimError, Kind, Outcome, SecurityEvent, Source, Unavailable, User},
     database::Database,
 };
 
@@ -190,6 +190,17 @@ async fn claim(
     Ok((StatusCode::CREATED, user(&claimed.user)))
 }
 
+fn event(kind: Kind, outcome: Outcome, source: Source, username: Option<String>) -> SecurityEvent {
+    SecurityEvent {
+        kind,
+        outcome,
+        source,
+        username,
+        sessions_ended: None,
+        retry_after: None,
+    }
+}
+
 /// Where a request came from, as its security event names it.
 fn http(forwarded: Option<&Extension<Forwarded>>, headers: &HeaderMap) -> Source {
     Source::Http {
@@ -217,7 +228,9 @@ fn over_https(forwarded: Option<Extension<Forwarded>>) -> bool {
 async fn sign_in(
     State(database): State<Database>,
     Extension(limiter): Extension<Arc<Limiter>>,
+    Extension(log): Extension<Log>,
     forwarded: Option<Extension<Forwarded>>,
+    headers: HeaderMap,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
     let resolved = forwarded.as_ref().map(|Extension(forwarded)| forwarded);
@@ -242,6 +255,12 @@ async fn sign_in(
     };
     let (signed_in, token) = signed_in.ok_or(AccessError::WrongCredentials)?;
     attempt.succeeded();
+    log.write(&event(
+        Kind::SignIn,
+        Outcome::Success,
+        http(forwarded.as_ref(), &headers),
+        Some(signed_in.username.clone()),
+    ));
     let cookie = cookie::session(token.as_str(), over_https(forwarded));
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
@@ -269,6 +288,8 @@ async fn current_session(Extension(signed_in): Extension<User>) -> Json<Value> {
 /// The guard has proven the token valid; it is still needed to delete the row.
 async fn sign_out(
     State(database): State<Database>,
+    Extension(signed_in): Extension<User>,
+    Extension(log): Extension<Log>,
     forwarded: Option<Extension<Forwarded>>,
     headers: HeaderMap,
 ) -> Result<Response, AccessError> {
@@ -279,5 +300,11 @@ async fn sign_out(
     if !database.sign_out(token).await? {
         return Ok((cleared, AccessError::Unauthenticated).into_response());
     }
+    log.write(&event(
+        Kind::SignOut,
+        Outcome::Success,
+        http(forwarded.as_ref(), &headers),
+        Some(signed_in.username),
+    ));
     Ok((StatusCode::NO_CONTENT, cleared).into_response())
 }
