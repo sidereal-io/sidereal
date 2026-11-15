@@ -1,6 +1,8 @@
 //! Access recovery from the box: the administrator lookup and the password
 //! reset that `siderealctl` runs.
-use super::{check_password, password, Unavailable};
+use super::{
+    check_password, password, security_event, Kind, Outcome, SecurityEvent, Source, Unavailable,
+};
 use crate::database::Database;
 use rand::{distr::Alphanumeric, RngExt};
 
@@ -10,6 +12,7 @@ pub struct Reset {
     pub username: String,
     /// How many sessions the reset ended.
     pub sessions: u64,
+    pub event: SecurityEvent,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,8 +48,9 @@ impl Database {
 
     /// Replace the administrator's password and end every session.
     ///
-    /// One transaction holds both, so a signed-in browser can never outlive
-    /// the password it signed in with.
+    /// One transaction holds both and the reset's security event, so a
+    /// signed-in browser can never outlive the password it signed in with,
+    /// and no reset goes unrecorded.
     pub async fn reset_admin_password(&self, password: &str) -> Result<Reset, ResetError> {
         check_password(password).map_err(|_| ResetError::Invalid)?;
         let hash = password::hash(password).await?;
@@ -64,8 +68,21 @@ impl Database {
             .execute(&mut *tx)
             .await?
             .rows_affected();
+        let event = SecurityEvent {
+            kind: Kind::AccessRecovery,
+            outcome: Outcome::Success,
+            source: Source::Siderealctl,
+            username: Some(username.clone()),
+            sessions_ended: Some(sessions),
+            retry_after: None,
+        };
+        security_event::insert(&mut *tx, &event).await?;
         tx.commit().await?;
-        Ok(Reset { username, sessions })
+        Ok(Reset {
+            username,
+            sessions,
+            event,
+        })
     }
 }
 
@@ -82,7 +99,7 @@ pub fn generate_password() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{access::Source, database::initialize, test_support::TestDatabase};
+    use crate::{database::initialize, test_support::TestDatabase};
     use sqlx::{Connection, Executor, PgConnection};
     use std::time::Duration;
 
@@ -188,10 +205,59 @@ mod tests {
             database.reset_admin_password(NEW_PASSWORD).await,
             Ok(Reset {
                 username: "sam".into(),
-                sessions: 2
+                sessions: 2,
+                event: SecurityEvent {
+                    kind: Kind::AccessRecovery,
+                    outcome: Outcome::Success,
+                    source: Source::Siderealctl,
+                    username: Some("sam".into()),
+                    sessions_ended: Some(2),
+                    retry_after: None,
+                },
             })
         );
         assert_eq!(session_count(&db).await, 0);
+    }
+
+    async fn recovery_rows(db: &TestDatabase) -> Vec<(String, Option<String>, Option<i64>, bool)> {
+        sqlx::query_as(
+            "SELECT source, username, sessions_ended, client_address IS NULL AND user_agent IS NULL \
+             FROM public.security_events WHERE kind = 'access_recovery' AND outcome = 'success' ORDER BY id",
+        )
+        .fetch_all(&mut connection(db).await)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn reset_admin_password_keeps_one_access_recovery_row() {
+        let db = TestDatabase::new();
+        let database = claimed(&db, 2).await;
+        database.reset_admin_password(NEW_PASSWORD).await.unwrap();
+        assert_eq!(
+            recovery_rows(&db).await,
+            [("siderealctl".into(), Some("sam".into()), Some(2), true)]
+        );
+    }
+
+    #[tokio::test]
+    async fn reset_admin_password_keeps_the_hash_and_sessions_when_its_row_is_refused() {
+        let db = TestDatabase::new();
+        let database = claimed(&db, 1).await;
+        let before = hash(&db).await;
+        connection(&db)
+            .await
+            .execute(
+                "CREATE FUNCTION public.refuse() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''refused''; END'; \
+                 CREATE TRIGGER refuse BEFORE INSERT ON public.security_events FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            database.reset_admin_password(NEW_PASSWORD).await,
+            Err(ResetError::Unavailable)
+        );
+        assert_eq!((hash(&db).await, session_count(&db).await), (before, 1));
     }
 
     #[tokio::test]

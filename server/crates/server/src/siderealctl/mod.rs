@@ -101,7 +101,9 @@ async fn reset_admin_password(
             Err(ClaimError::Unavailable) => return refuse(err, UNAVAILABLE),
         },
         State::Reset { .. } => match database.reset_admin_password(&credentials.password).await {
-            Ok(Reset { username, sessions }) => format!(
+            Ok(Reset {
+                username, sessions, ..
+            }) => format!(
                 "Reset the password of administrator {username} and ended {sessions} sessions."
             ),
             Err(ResetError::NoAdministrator) => {
