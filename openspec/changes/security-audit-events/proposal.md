@@ -8,7 +8,7 @@ Sam cannot tell today whether someone else claimed the instance, reset its passw
 - A claim from the browser or from `siderealctl`, a `siderealctl reset-admin-password` reset, a sign-in that fails on wrong credentials, and an address becoming limited each also leave one row in a new `security_events` table (D1, D2). A successful sign-in and a sign-out leave no row (D1).
 - Every row records its source, `http` or `siderealctl` (D7). A failed sign-in names no username, only the client address and the user agent (D9). A reset row records how many sessions the reset ended (D13).
 - A claim or a reset writes its row in its own transaction. When the row cannot be written, the act fails as unavailable: 503 from the browser, exit 1 from `siderealctl` (D4). A 401 or 429 sign-in answer does not change when its row cannot be written (D5).
-- Refused requests are not security events and write neither a row nor a line: a malformed sign-in body (400), a 429 after the first of a run, a refused claim (409), and a `siderealctl` create that loses the race to a browser claim (D10, D11, D12).
+- Refused requests are not security events and write neither a row nor a line (D10, D11, D12). They include a malformed sign-in body (400), a 429 after the first of a run, and a refused claim (409). They also include a `siderealctl` create that loses the race to a browser claim.
 - **BREAKING** for anyone who watches the log: the `security event:` line replaces the `sign-in limited:` line, so each event writes exactly one line (D3).
 - A forward-only migration `4_` adds the table, with no foreign keys, so a row outlives the user and session it names.
 - Out of scope: a screen for the events, retention or pruning, events from later epics, and a logging framework (D15).

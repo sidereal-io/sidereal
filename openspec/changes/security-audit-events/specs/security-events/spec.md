@@ -6,7 +6,16 @@ Sam can see who claimed the instance, who recovered access from the box, and who
 
 ### Requirement: Each security event writes one log line
 
-Each of these acts SHALL write exactly one line that starts with `security event:`: an instance claim from the browser or from `siderealctl`, a sign-in answered 200, a sign-in answered 401, a sign-in that makes an address limited, a sign-out answered 204, and a reset by `siderealctl reset-admin-password`. The server SHALL write its lines to its stderr. `siderealctl` SHALL write its line to its own stderr. A line SHALL be written only once the act has taken effect, and SHALL be written even when what follows the act fails.
+Each of these acts SHALL write exactly one line that starts with `security event:`:
+
+- an instance claim from the browser or from `siderealctl`;
+- a sign-in answered 200;
+- a sign-in answered 401;
+- a sign-in that makes an address limited;
+- a sign-out answered 204;
+- a reset by `siderealctl reset-admin-password`.
+
+The server SHALL write its lines to its stderr. `siderealctl` SHALL write its line to its own stderr. A line SHALL be written only once the act has taken effect, and SHALL be written even when what follows the act fails.
 
 #### Scenario: A claim from the browser
 - **WHEN** no administrator exists and Sam sends `POST /api/claim` with username `sam` and a valid password, answered 201
@@ -147,7 +156,7 @@ A claim and an access recovery SHALL write their row in the same transaction as 
 
 ### Requirement: A failed sign-in answers the same without its row
 
-When the row of a failed sign-in cannot be written, the server SHALL still answer as the sign-in requirements in `instance-access` say, 401 or 429 with the same body and headers, and SHALL still write the line.
+When the row of a failed sign-in cannot be written, the server SHALL still answer as the sign-in requirements in `instance-access` say. The answer SHALL be 401 or 429 with the same body and headers, and the server SHALL still write the line.
 
 #### Scenario: A wrong password whose row is refused
 - **WHEN** a trigger makes PostgreSQL refuse every insert into `security_events` and a caller signs in as `sam` with a wrong password
@@ -159,7 +168,14 @@ When the row of a failed sign-in cannot be written, the server SHALL still answe
 
 ### Requirement: A refused request is not a security event
 
-A request or command that the system refuses, other than a failed sign-in answered 401 or the first 429 of a run, SHALL write no `security event:` line and add no row. This covers a sign-in answered 400, a 429 to an address whose previous attempt was also refused, a claim answered 400 or 409, a sign-out answered 401, any answer of 503, and a `siderealctl` create that finds an administrator already created, exit 1.
+A request or command that the system refuses, other than a failed sign-in answered 401 or the first 429 of a run, SHALL write no `security event:` line and add no row. This covers:
+
+- a sign-in answered 400;
+- a 429 to an address whose previous attempt was also refused;
+- a claim answered 400 or 409;
+- a sign-out answered 401;
+- any answer of 503;
+- a `siderealctl` create that finds an administrator already created, exit 1.
 
 #### Scenario: A malformed sign-in body
 - **WHEN** a caller sends `POST /api/session` with a body that is not credentials, answered 400

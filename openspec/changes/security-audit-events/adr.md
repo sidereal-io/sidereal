@@ -5,7 +5,7 @@
 
 ## Review Summary
 
-ADR review completed for this change. Brainstorm decisions D1 and D4, carried into the `security-events` spec and design decisions D-4 and D-6, fix how ADR-007's "trust-relevant events are audited" is met: every security event writes a log line, only a claim, an access recovery and a failed sign-in keep a row, and a claim or a recovery fails without its row. This is a privacy posture. An engineer reading only the code could add rows for successful sign-ins, or make the claim's row best effort, without seeing why not. So ADR-007 is amended in place, dated 2026-11-14, with the comparison with Home Assistant, Frigate and Immich, as the user decided. No new record is needed.
+ADR review completed for this change. Brainstorm decisions D1 and D4 fix how ADR-007's "trust-relevant events are audited" is met. The `security-events` spec and design decisions D-4 and D-6 carry them. Every security event writes a log line. Only a claim, an access recovery and a failed sign-in keep a row. A claim or a recovery fails without its row. This is a privacy posture. An engineer reading only the code could add rows for successful sign-ins, or make the claim's row best effort, without seeing why not. So ADR-007 is amended in place, dated 2026-11-14, with the comparison with Home Assistant, Frigate and Immich, as the user decided. No new record is needed.
 
 The other decisions are recoverable from code and cheap to change:
 
