@@ -5,10 +5,12 @@ use std::fmt;
 mod claim;
 mod password;
 mod recovery;
+mod security_event;
 mod session;
 
 pub use claim::{check_password, check_username, ClaimError, CredentialRule};
 pub use recovery::{generate_password, Reset, ResetError};
+pub use security_event::{Kind, Outcome, SecurityEvent, Source};
 pub use session::{Token, SESSION_LIFETIME};
 
 /// What a user may do. This release has one role.
