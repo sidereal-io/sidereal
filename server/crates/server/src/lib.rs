@@ -12,7 +12,7 @@ pub mod access;
 pub mod config;
 pub mod siderealctl;
 
-pub use access::{events::EventTiming, limit::Clock};
+pub use access::{events::EventTiming, limit::Clock, Log};
 
 /// What a test may change about the production routes, so it need not wait
 /// out real intervals.
@@ -22,6 +22,8 @@ pub struct Tuning {
     pub events: EventTiming,
     /// Where the sign-in limit reads the time.
     pub clock: Clock,
+    /// Where the access routes write their `security event:` lines.
+    pub log: Log,
 }
 
 impl Default for Tuning {
@@ -29,6 +31,7 @@ impl Default for Tuning {
         Self {
             events: EventTiming::default(),
             clock: access::limit::system_clock(),
+            log: Log::default(),
         }
     }
 }
@@ -61,6 +64,7 @@ pub fn app_with_tuning(
                 allowed_origins,
                 tuning.events,
                 limiter,
+                tuning.log,
             ))
             .with_state(database),
     )

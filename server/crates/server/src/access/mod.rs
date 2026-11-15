@@ -3,7 +3,7 @@ use crate::config::AllowedOrigins;
 use axum::{
     extract::{rejection::JsonRejection, State},
     http::{
-        header::{RETRY_AFTER, SET_COOKIE},
+        header::{RETRY_AFTER, SET_COOKIE, USER_AGENT},
         HeaderMap, StatusCode,
     },
     middleware,
@@ -13,7 +13,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sidereal_core::{
-    access::{ClaimError, Source, Unavailable, User},
+    access::{ClaimError, SecurityEvent, Source, Unavailable, User},
     database::Database,
 };
 
@@ -38,6 +38,7 @@ pub fn routes(
     allowed_origins: AllowedOrigins,
     timing: EventTiming,
     limiter: Arc<Limiter>,
+    log: Log,
 ) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
@@ -58,6 +59,28 @@ pub fn routes(
             guard::origin,
         ))
         .layer(Extension(limiter))
+        .layer(Extension(log))
+}
+
+/// Where the server writes one line for each security event. Its default
+/// is stderr; a test captures the lines instead.
+#[derive(Clone)]
+pub struct Log(Arc<dyn Fn(&str) + Send + Sync>);
+
+impl Log {
+    pub fn new(write: impl Fn(&str) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(write))
+    }
+
+    fn write(&self, event: &SecurityEvent) {
+        (self.0)(&event.to_string());
+    }
+}
+
+impl Default for Log {
+    fn default() -> Self {
+        Self::new(|line| eprintln!("{line}"))
+    }
 }
 
 async fn not_found() -> StatusCode {
@@ -150,17 +173,36 @@ async fn claim_state(State(database): State<Database>) -> Result<Json<Value>, Ac
 
 async fn claim(
     State(database): State<Database>,
+    Extension(log): Extension<Log>,
+    forwarded: Option<Extension<Forwarded>>,
+    headers: HeaderMap,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Value>), AccessError> {
     let credentials = Credentials::try_from(body)?;
-    let source = Source::Http {
-        client_address: None,
-        user_agent: None,
-    };
     let claimed = database
-        .claim(&credentials.username, &credentials.password, source)
+        .claim(
+            &credentials.username,
+            &credentials.password,
+            http(forwarded.as_ref(), &headers),
+        )
         .await?;
+    log.write(&claimed.event);
     Ok((StatusCode::CREATED, user(&claimed.user)))
+}
+
+/// Where a request came from, as its security event names it.
+fn http(forwarded: Option<&Extension<Forwarded>>, headers: &HeaderMap) -> Source {
+    Source::Http {
+        client_address: forwarded.and_then(|Extension(forwarded)| forwarded.client),
+        user_agent: user_agent(headers),
+    }
+}
+
+/// The first `User-Agent` value as text, so the row and the line hold the
+/// same value.
+fn user_agent(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(USER_AGENT)?;
+    Some(String::from_utf8_lossy(value.as_bytes()).into_owned())
 }
 
 /// Whether the request arrived over HTTPS. Without the trusted-proxy layer

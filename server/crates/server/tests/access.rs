@@ -1488,7 +1488,7 @@ mod spawned_events {
 
 mod sign_in_limit {
     use super::*;
-    use sidereal_server::{app_with_tuning, Tuning};
+    use sidereal_server::{app_with_tuning, Log, Tuning};
     use std::{
         sync::{Arc, Mutex},
         time::Instant,
@@ -1510,10 +1510,16 @@ mod sign_in_limit {
     /// The production stack on `database`, trusting `trusted`, with the sign-in
     /// limit on a manual clock.
     pub fn tuned(database: Database, trusted: TrustedProxies) -> (Router, Clock) {
+        tuned_with(database, trusted, Log::default())
+    }
+
+    /// As `tuned`, writing security event lines to `log`.
+    pub fn tuned_with(database: Database, trusted: TrustedProxies, log: Log) -> (Router, Clock) {
         let now = Arc::new(Mutex::new(Instant::now()));
         let reading = now.clone();
         let tuning = Tuning {
             clock: Arc::new(move || *reading.lock().unwrap()),
+            log,
             ..Tuning::default()
         };
         let app = app_with_tuning(database, AllowedOrigins::default(), tuning);
@@ -1913,5 +1919,186 @@ mod spawned_sign_in_limit {
         let db = TestDatabase::new();
         let output = after_five_failures(&db).output();
         assert!(limit_lines(&output).is_empty(), "{output}");
+    }
+}
+
+mod security_events {
+    use super::{sign_in_limit::tuned_with, *};
+    use sidereal_server::Log;
+    use sqlx::Executor;
+    use std::sync::{Arc, Mutex};
+
+    /// The lines a router wrote to its log, in order.
+    #[derive(Clone, Default)]
+    struct Lines(Arc<Mutex<Vec<String>>>);
+
+    impl Lines {
+        fn log(&self) -> Log {
+            let lines = self.0.clone();
+            Log::new(move |line| lines.lock().unwrap().push(line.to_owned()))
+        }
+
+        /// The `security event:` lines written since the last call.
+        fn take(&self) -> Vec<String> {
+            std::mem::take(&mut *self.0.lock().unwrap())
+                .into_iter()
+                .filter(|line| line.starts_with("security event:"))
+                .collect()
+        }
+    }
+
+    /// The production stack on a fresh database, with no trusted proxies,
+    /// writing its lines to the returned `Lines`.
+    async fn logged(db: &TestDatabase) -> (Router, Lines) {
+        let lines = Lines::default();
+        let (app, _clock) = tuned_with(database(db).await, TrustedProxies::default(), lines.log());
+        (app, lines)
+    }
+
+    type Row = (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+    );
+
+    fn row(
+        kind: &str,
+        outcome: &str,
+        username: Option<&str>,
+        client_address: Option<&str>,
+        user_agent: Option<&str>,
+    ) -> Row {
+        (
+            kind.into(),
+            outcome.into(),
+            "http".into(),
+            username.map(Into::into),
+            client_address.map(Into::into),
+            user_agent.map(Into::into),
+            None,
+        )
+    }
+
+    async fn rows(db: &TestDatabase) -> Vec<Row> {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_as(
+            "SELECT kind, outcome, source, username, host(client_address), user_agent, sessions_ended \
+             FROM public.security_events ORDER BY id",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap()
+    }
+
+    /// Make PostgreSQL refuse every insert into `security_events`.
+    async fn refuse_events(db: &TestDatabase) {
+        PgConnection::connect_with(&db.options)
+            .await
+            .unwrap()
+            .execute(
+                "CREATE FUNCTION public.refuse() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''refused''; END'; \
+                 CREATE TRIGGER refuse BEFORE INSERT ON public.security_events FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()",
+            )
+            .await
+            .unwrap();
+    }
+
+    const FIREFOX: (&str, &str) = ("user-agent", "Firefox/140");
+
+    async fn claim_as(app: &Router, username: &str) -> Response {
+        let request = Some(credentials(username, PASSWORD));
+        send_with(app, "POST", "/api/claim", request, &[FIREFOX]).await
+    }
+
+    #[tokio::test]
+    async fn claim_from_the_browser_writes_one_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        assert_eq!(claim_as(&app, "sam").await.status(), StatusCode::CREATED);
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=instance_claim outcome=success source=http username="sam" client_address=192.168.1.20 user_agent="Firefox/140""#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_from_the_browser_keeps_one_row() {
+        let db = TestDatabase::new();
+        let (app, _lines) = logged(&db).await;
+        assert_eq!(claim_as(&app, "sam").await.status(), StatusCode::CREATED);
+        assert_eq!(
+            rows(&db).await,
+            [row(
+                "instance_claim",
+                "success",
+                Some("sam"),
+                Some("192.168.1.20"),
+                Some("Firefox/140")
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_escapes_a_line_feed_in_the_username() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        let response = claim_as(&app, "sam\nsecurity event: kind=sign_in").await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let lines = lines.take();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains(r#"username="sam\u{a}security event: kind=sign_in""#),
+            "{lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_escapes_a_quote_and_a_backslash_in_the_username() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        let response = claim_as(&app, r#"sa"m\"#).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let lines = lines.take();
+        assert!(lines[0].contains(r#"username="sa\"m\\""#), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn claim_whose_row_is_refused_is_unavailable() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        refuse_events(&db).await;
+        let response = claim_as(&app, "sam").await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body(response).await, r#"{"error":"unavailable"}"#);
+        assert_eq!(users(&db).await, 0);
+        assert!(lines.take().is_empty());
+    }
+
+    #[tokio::test]
+    async fn claim_answered_400_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        let response = claim(&app, "sam", "short").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(lines.take().is_empty());
+        assert!(rows(&db).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn claim_answered_409_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        claim_as(&app, "sam").await;
+        lines.take();
+        let response = claim_as(&app, "alex").await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert!(lines.take().is_empty());
+        assert_eq!(rows(&db).await.len(), 1);
     }
 }
