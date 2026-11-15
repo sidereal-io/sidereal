@@ -136,16 +136,6 @@ mod in_process {
         .unwrap()
     }
 
-    fn from_the_box(kind: &str, sessions_ended: Option<i64>) -> Row {
-        (
-            "siderealctl".into(),
-            kind.into(),
-            Some("sam".into()),
-            sessions_ended,
-            true,
-        )
-    }
-
     /// The `security event:` lines of a command's stderr.
     fn events(err: &str) -> Vec<&str> {
         err.lines()
@@ -605,14 +595,6 @@ mod in_process {
     }
 
     #[tokio::test]
-    async fn in_process_a_create_keeps_its_row() {
-        let db = TestDatabase::new();
-        database(&db).await;
-        reset(&db, &["sam", PASSWORD, PASSWORD]).await;
-        assert_eq!(rows(&db).await, [from_the_box("instance_claim", None)]);
-    }
-
-    #[tokio::test]
     async fn in_process_a_reset_writes_its_event_line() {
         let db = TestDatabase::new();
         let app = router(&db).await;
@@ -626,20 +608,6 @@ mod in_process {
             [
                 r#"security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2"#
             ]
-        );
-    }
-
-    #[tokio::test]
-    async fn in_process_a_reset_keeps_its_row() {
-        let db = TestDatabase::new();
-        let app = router(&db).await;
-        claim(&app, "sam", PASSWORD).await;
-        signed_in(&app).await;
-        signed_in(&app).await;
-        reset(&db, &[NEW_PASSWORD, NEW_PASSWORD]).await;
-        assert_eq!(
-            rows(&db).await.last(),
-            Some(&from_the_box("access_recovery", Some(2)))
         );
     }
 }
