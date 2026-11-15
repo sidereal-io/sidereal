@@ -82,7 +82,7 @@ pub fn generate_password() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{database::initialize, test_support::TestDatabase};
+    use crate::{access::Source, database::initialize, test_support::TestDatabase};
     use sqlx::{Connection, Executor, PgConnection};
     use std::time::Duration;
 
@@ -102,7 +102,10 @@ mod tests {
     /// A database whose administrator `sam` is signed in `sessions` times.
     async fn claimed(db: &TestDatabase, sessions: usize) -> Database {
         let database = database(db).await;
-        database.claim("sam", PASSWORD).await.unwrap();
+        database
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         for _ in 0..sessions {
             database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
         }

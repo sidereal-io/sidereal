@@ -4,7 +4,7 @@ use crate::config::DatabaseConfig;
 use args::{Options, Parsed, Usage, USAGE};
 use prompts::{Refusal, State};
 use sidereal_core::{
-    access::{ClaimError, Reset, ResetError, Unavailable},
+    access::{ClaimError, Reset, ResetError, Source, Unavailable},
     database::{Database, DatabaseError},
 };
 use std::io::{self, Write};
@@ -83,10 +83,14 @@ async fn reset_admin_password(
     };
     let done = match state {
         State::Create => match database
-            .claim(&credentials.username, &credentials.password)
+            .claim(
+                &credentials.username,
+                &credentials.password,
+                Source::Siderealctl,
+            )
             .await
         {
-            Ok(user) => format!("Created administrator {}.", user.username),
+            Ok(claimed) => format!("Created administrator {}.", claimed.user.username),
             Err(ClaimError::Claimed) => {
                 return refuse(
                     err,

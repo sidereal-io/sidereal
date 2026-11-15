@@ -6,7 +6,10 @@ use axum::{
     response::Response,
     Router,
 };
-use sidereal_core::database::{initialize, Database};
+use sidereal_core::{
+    access::Source,
+    database::{initialize, Database},
+};
 use sidereal_server::{app_with_database, config::AllowedOrigins};
 use std::time::Duration;
 use tower::ServiceExt;
@@ -368,7 +371,11 @@ mod in_process {
                         let database = Database::open(options, Duration::from_secs(10))
                             .await
                             .unwrap();
-                        database.claim("alex", PASSWORD).await.unwrap();
+                        let browser = Source::Http {
+                            client_address: None,
+                            user_agent: None,
+                        };
+                        database.claim("alex", PASSWORD, browser).await.unwrap();
                         database.close().await;
                     });
                 })

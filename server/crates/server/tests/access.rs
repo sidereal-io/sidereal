@@ -7,7 +7,10 @@ use axum::{
     response::Response,
     Router,
 };
-use sidereal_core::database::{initialize, Database};
+use sidereal_core::{
+    access::Source,
+    database::{initialize, Database},
+};
 use sidereal_server::{
     app_with_database,
     config::{allowed_origins, trusted_proxies, AllowedOrigins, TrustedProxies},
@@ -1432,7 +1435,11 @@ mod warning {
     #[tokio::test]
     async fn a_claimed_start_does_not_warn() {
         let db = TestDatabase::new();
-        database(&db).await.claim("sam", PASSWORD).await.unwrap();
+        database(&db)
+            .await
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         let output = spawned::Server::ready(&db).output();
         assert_eq!(warnings(&output), 0, "{output}");
     }

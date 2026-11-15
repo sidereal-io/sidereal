@@ -149,7 +149,11 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{access::Role, database::initialize, test_support::TestDatabase};
+    use crate::{
+        access::{Role, Source},
+        database::initialize,
+        test_support::TestDatabase,
+    };
     use base64ct::{Base64UrlUnpadded, Encoding};
     use sqlx::{AssertSqlSafe, Connection, PgConnection};
 
@@ -163,7 +167,10 @@ mod tests {
         )
         .await
         .unwrap();
-        database.claim("sam", PASSWORD).await.unwrap();
+        database
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         database
     }
 

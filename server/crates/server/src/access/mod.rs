@@ -13,7 +13,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sidereal_core::{
-    access::{ClaimError, Unavailable, User},
+    access::{ClaimError, Source, Unavailable, User},
     database::Database,
 };
 
@@ -153,10 +153,14 @@ async fn claim(
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Value>), AccessError> {
     let credentials = Credentials::try_from(body)?;
-    let created = database
-        .claim(&credentials.username, &credentials.password)
+    let source = Source::Http {
+        client_address: None,
+        user_agent: None,
+    };
+    let claimed = database
+        .claim(&credentials.username, &credentials.password, source)
         .await?;
-    Ok((StatusCode::CREATED, user(&created)))
+    Ok((StatusCode::CREATED, user(&claimed.user)))
 }
 
 /// Whether the request arrived over HTTPS. Without the trusted-proxy layer
