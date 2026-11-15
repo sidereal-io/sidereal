@@ -1950,8 +1950,12 @@ mod security_events {
     /// The production stack on a fresh database, with no trusted proxies,
     /// writing its lines to the returned `Lines`.
     async fn logged(db: &TestDatabase) -> (Router, Lines) {
+        logged_trusting(db, TrustedProxies::default()).await
+    }
+
+    async fn logged_trusting(db: &TestDatabase, trusted: TrustedProxies) -> (Router, Lines) {
         let lines = Lines::default();
-        let (app, _clock) = tuned_with(database(db).await, TrustedProxies::default(), lines.log());
+        let (app, _clock) = tuned_with(database(db).await, trusted, lines.log());
         (app, lines)
     }
 
@@ -2180,5 +2184,178 @@ mod security_events {
         let response = send(&app, "DELETE", "/api/session", None).await;
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
         assert!(lines.take().is_empty());
+    }
+
+    const WRONG: &str = "wrong-password";
+
+    /// A wrong sign-in as `username` from `PEER` with a `User-Agent` of `agent`.
+    async fn fail_with_agent(app: &Router, username: &str, agent: &[u8]) -> Response {
+        let peer: SocketAddr = PEER.parse().unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/session")
+            .extension(ConnectInfo(peer))
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(
+                header::USER_AGENT,
+                header::HeaderValue::from_bytes(agent).unwrap(),
+            )
+            .body(Body::from(credentials(username, WRONG)))
+            .unwrap();
+        app.clone().oneshot(request).await.unwrap()
+    }
+
+    fn failed_row(client_address: Option<&str>, user_agent: Option<&str>) -> Row {
+        row(
+            "sign_in",
+            "wrong_credentials",
+            None,
+            client_address,
+            user_agent,
+        )
+    }
+
+    /// The rows after the claim's.
+    async fn later_rows(db: &TestDatabase) -> Vec<Row> {
+        rows(db).await.into_iter().skip(1).collect()
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_writes_one_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = fail_with_agent(&app, "sam", b"Firefox/140").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=sign_in outcome=wrong_credentials source=http client_address=192.168.1.20 user_agent="Firefox/140""#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_keeps_one_row_before_it_answers() {
+        let db = TestDatabase::new();
+        let (app, _lines) = claimed_logged(&db).await;
+        let response = fail_with_agent(&app, "sam", b"Firefox/140").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            later_rows(&db).await,
+            [failed_row(Some("192.168.1.20"), Some("Firefox/140"))]
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_names_no_unknown_username() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = fail_with_agent(&app, "nobody-distinctive", b"Firefox/140").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let lines = lines.take();
+        assert_eq!(lines.len(), 1);
+        assert!(!lines[0].contains("nobody-distinctive"), "{lines:?}");
+        assert_eq!(
+            later_rows(&db).await,
+            [failed_row(Some("192.168.1.20"), Some("Firefox/140"))]
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_leaves_out_an_unresolved_client_address() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged_trusting(&db, proxies("172.18.0.1")).await;
+        claim(&app, "sam", PASSWORD).await;
+        lines.take();
+        let request = Some(credentials("sam", WRONG));
+        let headers = [("x-forwarded-for", "garbage")];
+        let response = send_from(
+            &app,
+            "172.18.0.1:50000",
+            "POST",
+            "/api/session",
+            request,
+            &headers,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            lines.take(),
+            ["security event: kind=sign_in outcome=wrong_credentials source=http"]
+        );
+        assert_eq!(later_rows(&db).await, [failed_row(None, None)]);
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_escapes_a_tab_in_the_user_agent() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        fail_with_agent(&app, "sam", b"Firefox\t140").await;
+        let lines = lines.take();
+        assert!(
+            lines[0].ends_with(r#"user_agent="Firefox\u{9}140""#),
+            "{lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_keeps_the_first_256_characters_of_the_user_agent() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        fail_with_agent(&app, "sam", "a".repeat(1000).as_bytes()).await;
+        let kept = "a".repeat(256);
+        assert_eq!(later_rows(&db).await[0].5.as_deref(), Some(kept.as_str()));
+        assert!(lines.take()[0].ends_with(&format!(r#"user_agent="{kept}""#)));
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_keeps_bytes_that_are_not_utf8_as_replacement_characters() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        fail_with_agent(&app, "sam", b"ab\xffcd").await;
+        assert_eq!(later_rows(&db).await[0].5.as_deref(), Some("ab\u{fffd}cd"));
+        assert!(lines.take()[0].ends_with("user_agent=\"ab\u{fffd}cd\""));
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_answers_401_when_its_row_is_refused() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        refuse_events(&db).await;
+        let response = sign_in(&app, "sam", WRONG).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(body(response).await, r#"{"error":"invalid credentials"}"#);
+        let lines = lines.take();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("outcome=wrong_credentials"), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_with_a_malformed_body_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = send(&app, "POST", "/api/session", Some("sam".into())).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(lines.take().is_empty());
+        assert!(later_rows(&db).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_rows_do_not_limit_a_new_router() {
+        let db = TestDatabase::new();
+        let (app, _lines) = claimed_logged(&db).await;
+        assert_eq!(
+            sign_in(&app, "sam", WRONG).await.status(),
+            StatusCode::UNAUTHORIZED
+        );
+        let (restarted, _lines) = logged(&db).await;
+        assert_eq!(
+            sign_in(&restarted, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            later_rows(&db).await,
+            [failed_row(Some("192.168.1.20"), None)]
+        );
     }
 }

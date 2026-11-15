@@ -209,11 +209,16 @@ fn http(forwarded: Option<&Extension<Forwarded>>, headers: &HeaderMap) -> Source
     }
 }
 
-/// The first `User-Agent` value as text, so the row and the line hold the
-/// same value.
+/// The first `User-Agent` value as text, cut to 256 characters, so the row
+/// and the line hold the same value and a caller cannot grow either.
 fn user_agent(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(USER_AGENT)?;
-    Some(String::from_utf8_lossy(value.as_bytes()).into_owned())
+    Some(
+        String::from_utf8_lossy(value.as_bytes())
+            .chars()
+            .take(256)
+            .collect(),
+    )
 }
 
 /// Whether the request arrived over HTTPS. Without the trusted-proxy layer
@@ -253,7 +258,19 @@ async fn sign_in(
             return Err(unavailable.into());
         }
     };
-    let (signed_in, token) = signed_in.ok_or(AccessError::WrongCredentials)?;
+    let Some((signed_in, token)) = signed_in else {
+        // Known and unknown usernames make the same insert, so its time
+        // reveals neither. A lost row never changes the answer.
+        let failed = event(
+            Kind::SignIn,
+            Outcome::WrongCredentials,
+            http(forwarded.as_ref(), &headers),
+            None,
+        );
+        let _ = database.record(&failed).await;
+        log.write(&failed);
+        return Err(AccessError::WrongCredentials);
+    };
     attempt.succeeded();
     log.write(&event(
         Kind::SignIn,
