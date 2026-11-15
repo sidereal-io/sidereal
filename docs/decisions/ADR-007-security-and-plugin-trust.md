@@ -1,7 +1,7 @@
 ---
 id: adrs-adr007
 date: 2026-08-18
-amended: 2026-11-14
+amended: 2026-11-15
 status: accepted
 title: 'ADR007: Security and Plugin Trust Model'
 description: Architecture Decision Record (ADR) for the v2 trust boundary — built-in single-user authentication and explicit, per-install plugin capability grants.

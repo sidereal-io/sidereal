@@ -89,8 +89,8 @@ D-9, the `security_events` migration, was removed with the rows.
 ### D-10: A `siderealctl` line reaches the server through PostgreSQL
 
 - `core` sends a `siderealctl` event's line with `SELECT pg_notify('sidereal_security_event', $1)` inside the act's transaction. PostgreSQL delivers a notification only when its transaction commits, so a rolled-back act sends nothing.
-- `core` offers `Database::security_event_lines()`, a `sqlx::postgres::PgListener` on that channel. The server starts one task at start-up, after migrations and before it serves HTTP. The task writes each payload to the `Log` sink of D-5.
-- The task writes a payload only when it starts with `security event:` and holds no control character. It drops any other payload, so a stray `NOTIFY` on the channel cannot forge a line.
+- `core` offers `Database::security_event_lines()`, a `sqlx::postgres::PgListener` on that channel. `PgListener::connect_with` holds a connection from the pool it is given, so `Database` gains a third lazy pool, `listener`, of one connection, built from the same options as the other two. The relay then takes no connection from the operational pool. The server starts one task at start-up, after migrations and before it serves HTTP. The task writes each payload to the `Log` sink of D-5.
+- The task writes a payload only when it starts with `security event: kind=instance_claim outcome=success source=siderealctl` or the same with `kind=access_recovery`, and holds no control character. Those are the only lines `siderealctl` sends. It drops any other payload, so a `NOTIFY` on the channel cannot add an HTTP event, a failed sign-in or a second line.
 - A payload is at most about 700 bytes: a username is at most 64 characters, each escaped to at most 9 bytes, and a `siderealctl` line has no user agent. PostgreSQL's limit is 8000 bytes.
 
 Alternative: `siderealctl` writes to `/proc/1/fd/2`, the server's stderr. Rejected: it depends on the server being PID 1 in the same container, and outside a container it would write to init. Alternative: `siderealctl` calls a local HTTP route on the server. Rejected: it needs a new unauthenticated or secret-bearing route for a command that already reaches the database.
@@ -99,7 +99,8 @@ Alternative: `siderealctl` writes to `/proc/1/fd/2`, the server's stderr. Reject
 
 - [Operators filtering on `sign-in limited:` lose their match] → The proposal marks the change **BREAKING**. The sign-in limits section of `docs/install.md` names the new line in place of the old, and the pull request description names the new prefix.
 - [A `siderealctl` line is lost while the server is stopped, or while its listener reconnects] → The command's own stderr always shows it. `PgListener::recv` reconnects on its own, and the gap is a dropped connection, not a normal state.
-- [The relay holds one more PostgreSQL connection] → One connection for the server's life, outside the pool's count.
+- [The relay holds one more PostgreSQL connection] → One connection for the server's life, in its own `listener` pool, outside the operational pool's five.
+- [Any session that can connect to the database can send on the channel] → PostgreSQL does not say who sent a notification, so the relay cannot tell `siderealctl` from another session. The filter limits a forged line to a box-side claim or reset. The `users` and `sessions` tables show whether one happened.
 - [Security events leave no durable record] → Accepted by D1. The log is the trace, and Docker's log rotation decides how long it lasts. ADR-007's amendment records this.
 - [A claim from the box now runs a transaction] → The unique index still decides the race on the user insert, before the notification. The core test of ten concurrent claims stays.
 

@@ -76,7 +76,7 @@ After `security event:`, the line SHALL hold `key=value` fields separated by one
 
 ### Requirement: Caller-supplied values cannot forge a line
 
-Each `username` and `user_agent` value SHALL be written in double quotes. Inside the quotes, a backslash SHALL be written as `\\`, a double quote as `\"`, and every control character, such as a line feed, as `\u{<hex>}` with its code point in lowercase hexadecimal. A line SHALL therefore hold no line break and no unescaped double quote inside a value.
+Each `username` and `user_agent` value SHALL be written in double quotes. Inside the quotes, a backslash SHALL be written as `\\` and a double quote as `\"`. Every control character, such as a line feed, SHALL be written as `\u{<hex>}`, with its code point in lowercase hexadecimal. A line SHALL therefore hold no line break and no unescaped double quote inside a value.
 
 #### Scenario: A line feed in a claimed username
 - **WHEN** no administrator exists and a caller claims with a username that is `sam`, a line feed, and `security event: kind=sign_in`
@@ -92,7 +92,12 @@ Each `username` and `user_agent` value SHALL be written in double quotes. Inside
 
 ### Requirement: An event from `siderealctl` reaches the server's log
 
-A `siderealctl` claim or reset SHALL send its line with the act, so that it is sent only when the act takes effect. A running server SHALL write each line it receives this way to its stderr, exactly once, as it writes its own lines. The server SHALL write a received line only when it is one line that starts with `security event:` and holds no control character, and SHALL drop any other. When no server is running, the event SHALL still appear on the command's stderr.
+A `siderealctl` claim or reset SHALL send its line with the act, so that it is sent only when the act takes effect. A running server SHALL write each line it receives this way to its stderr, exactly once, as it writes its own lines. The server SHALL write a received line only when all of these hold, and SHALL drop any other:
+
+- it starts with `security event: kind=instance_claim outcome=success source=siderealctl` or `security event: kind=access_recovery outcome=success source=siderealctl`;
+- it holds no control character.
+
+When no server is running, the event SHALL still appear on the command's stderr.
 
 #### Scenario: A reset while the server runs
 - **WHEN** the server is running, Sam is signed in once, and Sam runs the reset from the box with a valid password, exit 0
@@ -101,6 +106,10 @@ A `siderealctl` claim or reset SHALL send its line with the act, so that it is s
 #### Scenario: A create from the box while the server runs
 - **WHEN** the server is running, no administrator exists, and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with a valid password, exit 0
 - **THEN** captured server stderr holds exactly one new line, `security event: kind=instance_claim outcome=success source=siderealctl username="sam"`
+
+#### Scenario: A line on the channel that `siderealctl` never sends
+- **WHEN** the server is running and another database session sends `security event: kind=sign_in outcome=success source=http username="sam"` on the channel
+- **THEN** captured server stderr gains no `security event:` line
 
 #### Scenario: A reset that takes no effect
 - **WHEN** the server is running, an administrator exists, and Sam runs the reset from the box but the database refuses the password update, so the command exits 1
