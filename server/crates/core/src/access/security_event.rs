@@ -1,6 +1,9 @@
 //! A security event: one trust-relevant act on access. The same value makes
 //! the `security_events` row and the `security event:` log line, so the two
 //! cannot drift apart.
+use super::Unavailable;
+use crate::database::Database;
+use sqlx::PgExecutor;
 use std::{fmt, net::IpAddr};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,6 +86,41 @@ impl Source {
     }
 }
 
+impl Database {
+    /// Keep the event as one `security_events` row.
+    pub async fn record(&self, event: &SecurityEvent) -> Result<(), Unavailable> {
+        insert(self.pool(), event).await
+    }
+}
+
+/// Insert the row on `executor`, so a claim or a reset can hold it in its
+/// own transaction.
+pub(super) async fn insert<'e>(
+    executor: impl PgExecutor<'e>,
+    event: &SecurityEvent,
+) -> Result<(), Unavailable> {
+    // Bound as text and cast, so sqlx needs no network-type feature.
+    sqlx::query(
+        "INSERT INTO public.security_events \
+         (occurred_at, kind, outcome, source, username, client_address, user_agent, sessions_ended) \
+         VALUES (now(), $1, $2, $3, $4, $5::inet, $6, $7)",
+    )
+    .bind(event.kind.as_str())
+    .bind(event.outcome.as_str())
+    .bind(event.source.as_str())
+    .bind(event.username.as_deref())
+    .bind(event.source.client_address().map(|address| address.to_string()))
+    .bind(event.source.user_agent())
+    .bind(
+        event
+            .sessions_ended
+            .map(|sessions| i64::try_from(sessions).unwrap_or(i64::MAX)),
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
+}
+
 /// The whole `security event:` line, with no line feed.
 impl fmt::Display for SecurityEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -133,6 +171,9 @@ impl fmt::Display for Quoted<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{database::initialize, test_support::TestDatabase};
+    use sqlx::{Connection, PgConnection};
+    use std::time::Duration;
 
     const ADDRESS: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 20));
 
@@ -261,5 +302,99 @@ mod tests {
             ..event(Kind::InstanceClaim, Outcome::Success, Source::Siderealctl)
         };
         assert!(line.to_string().ends_with(r#"username="sämé""#));
+    }
+
+    type Row = (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<i64>,
+        bool,
+    );
+
+    async fn database(db: &TestDatabase) -> Database {
+        initialize(
+            db.options.clone(),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn rows(db: &TestDatabase) -> Vec<Row> {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_as(
+            "SELECT kind, outcome, source, username, host(client_address), user_agent, sessions_ended, \
+             occurred_at BETWEEN now() - interval '1 minute' AND now() \
+             FROM public.security_events ORDER BY id",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn record_keeps_an_http_event_as_one_row() {
+        let db = TestDatabase::new();
+        let event = SecurityEvent {
+            username: Some("sam".into()),
+            retry_after: Some(60),
+            ..event(
+                Kind::SignIn,
+                Outcome::Limited,
+                http(Some(ADDRESS), Some("Firefox/140")),
+            )
+        };
+        database(&db).await.record(&event).await.unwrap();
+        assert_eq!(
+            rows(&db).await,
+            [(
+                "sign_in".into(),
+                "limited".into(),
+                "http".into(),
+                Some("sam".into()),
+                Some("192.168.1.20".into()),
+                Some("Firefox/140".into()),
+                None,
+                true
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn record_keeps_a_siderealctl_event_without_a_client() {
+        let db = TestDatabase::new();
+        let event = SecurityEvent {
+            username: Some("sam".into()),
+            sessions_ended: Some(2),
+            ..event(Kind::AccessRecovery, Outcome::Success, Source::Siderealctl)
+        };
+        database(&db).await.record(&event).await.unwrap();
+        assert_eq!(
+            rows(&db).await,
+            [(
+                "access_recovery".into(),
+                "success".into(),
+                "siderealctl".into(),
+                Some("sam".into()),
+                None,
+                None,
+                Some(2),
+                true
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn record_is_unavailable_when_the_pool_is_closed() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        database.close().await;
+        let event = event(Kind::SignIn, Outcome::WrongCredentials, http(None, None));
+        assert_eq!(database.record(&event).await, Err(Unavailable));
     }
 }
