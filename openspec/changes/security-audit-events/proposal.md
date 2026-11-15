@@ -32,4 +32,5 @@ This narrows issue #453, whose Scope also asks for rows for a successful sign-in
 - **Core:** `server/crates/core/src/access/` gains the event record and its log line, so the server and `siderealctl` share one format. `claim` and `reset_admin_password` take the event and write it in their transaction. The failed sign-in row is a separate write.
 - **Server:** the claim, sign-in and sign-out handlers and `limited()` in `server/crates/server/src/access/mod.rs` pass the client address and user agent and write the line. `siderealctl` in `server/crates/server/src/siderealctl/mod.rs` writes its line to its own stderr.
 - **Tests:** `server/crates/server/tests/access.rs` and `siderealctl.rs` gain per-path row and line checks. The existing `sign-in limited:` tests change to the new line. The startup migration tests count four migrations.
+- **Docs:** the sign-in limits section of `docs/install.md` names the `security event:` line in place of `sign-in limited:`.
 - **Operators:** a log filter on `sign-in limited:` must change to `security event:`. No API, cookie or web change.
