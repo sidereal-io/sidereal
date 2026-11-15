@@ -90,8 +90,8 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: First startup
 - **WHEN** Sam starts the server against an empty dedicated database
-- **THEN** the database contains the Sidereal identity row and three successful migration records
-- **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, `users` and `sessions`
+- **THEN** the database contains the Sidereal identity row and four successful migration records
+- **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, `users`, `sessions` and `security_events`
 
 #### Scenario: Repeated startup
 - **WHEN** Sam restarts against an initialized database
@@ -99,7 +99,7 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: Concurrent startup
 - **WHEN** two servers start against the same empty database
-- **THEN** both complete startup and exactly three successful migration records exist
+- **THEN** both complete startup and exactly four successful migration records exist
 
 #### Scenario: Incompatible history or schema
 - **WHEN** a fixture contains a newer version, changed checksum, missing history entry, failed record, or altered expected table
@@ -118,7 +118,11 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: Upgrade adds the access tables
 - **WHEN** a database holding the first two migrations starts under the new binary
-- **THEN** the first two migration records remain identical, a third successful record exists, and the `users` and `sessions` tables are empty
+- **THEN** the first two migration records remain identical, a third and a fourth successful record exist, and the `users`, `sessions` and `security_events` tables are empty
+
+#### Scenario: Upgrade adds the security events table
+- **WHEN** a database holding the first three migrations, with an administrator and a session, starts under the new binary
+- **THEN** the first three migration records remain identical, a fourth successful record exists, the administrator and the session are unchanged, and the `security_events` table is empty
 
 ### Requirement: Separate liveness and readiness
 
