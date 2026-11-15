@@ -169,8 +169,6 @@ When an address passes a limit, every sign-in from it is refused with status 429
 security event: kind=sign_in outcome=limited source=http client_address=192.168.1.20 retry_after=50
 ```
 
-It also keeps the event as a row in the `security_events` table. The row is a record only: the limit never reads it.
-
 A successful sign-in clears the count for its address. Restarting the app clears every count:
 
 ```sh
@@ -541,6 +539,14 @@ printf '%s\n' "$NEW_PASSWORD" | docker compose exec -T app siderealctl reset-adm
 ### What a reset changes
 
 A reset sets the new password and signs out every browser and client at once. The command prints how many sessions it ended. Everyone signs in again with the new password.
+
+A reset or a create prints one line that starts with `security event:` on the command's standard error. The same line appears in the app's log, so you can find it later with `docker compose logs app`. For example:
+
+```text
+security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2
+```
+
+The app's log gets the line only while the app is running. The command always prints it.
 
 The command changes nothing when it stops early: for a wrong username, a password that breaks the rules, passwords that do not match, or input that ends before an answer. It prints the reason on one line and exits with status 1.
 
