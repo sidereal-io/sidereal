@@ -117,8 +117,9 @@ impl Database {
 pub struct SecurityEventLines(PgListener);
 
 impl SecurityEventLines {
-    /// The next relayed line. A dropped connection is reconnected, and
-    /// anything sent while it was down is lost.
+    /// The next relayed line. A connection lost to an I/O error is
+    /// reconnected until the pool's acquire timeout, and anything sent while
+    /// it was down is lost. An error means the listener is gone for good.
     pub async fn next(&mut self) -> Result<String, Unavailable> {
         loop {
             let notification = self.0.recv().await?;

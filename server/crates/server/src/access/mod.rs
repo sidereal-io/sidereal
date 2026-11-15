@@ -13,7 +13,9 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sidereal_core::{
-    access::{ClaimError, Kind, Outcome, SecurityEvent, Source, Unavailable, User},
+    access::{
+        ClaimError, Kind, Outcome, SecurityEvent, SecurityEventLines, Source, Unavailable, User,
+    },
     database::Database,
 };
 
@@ -26,7 +28,7 @@ pub mod limit;
 use events::EventTiming;
 use forwarded::Forwarded;
 use limit::{Key, Limiter, Refusal};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 
 /// Every path under `/api`, behind the origin check and then the session
@@ -86,14 +88,45 @@ impl Default for Log {
 
 /// Write each line `siderealctl` sends to `log`, so an event from the box
 /// reaches the server's log. It listens before it returns, so no line sent
-/// after that is missed. The task ends when the database closes.
+/// after that is missed. A listener that fails is rebuilt, and a line sent
+/// while it is down is lost. The task ends when the database closes.
 pub async fn relay(database: &Database, log: Log) -> Result<JoinHandle<()>, Unavailable> {
     let mut lines = database.security_event_lines().await?;
+    let database = database.clone();
     Ok(tokio::spawn(async move {
-        while let Ok(line) = lines.next().await {
-            (log.0)(&line);
+        loop {
+            while let Ok(line) = lines.next().await {
+                (log.0)(&line);
+            }
+            // The listener pool holds one connection, which the old listener
+            // must give back before a new one can take it.
+            drop(lines);
+            if database.is_closed() {
+                return;
+            }
+            eprintln!("database unavailable: lost the listener for security events from siderealctl; reconnecting");
+            match listen_again(&database).await {
+                Some(again) => lines = again,
+                None => return,
+            }
         }
     }))
+}
+
+/// A new listener, retried with a doubling wait, or `None` once the database
+/// closes.
+async fn listen_again(database: &Database) -> Option<SecurityEventLines> {
+    let mut wait = Duration::from_millis(250);
+    loop {
+        tokio::time::sleep(wait).await;
+        if database.is_closed() {
+            return None;
+        }
+        if let Ok(lines) = database.security_event_lines().await {
+            return Some(lines);
+        }
+        wait = (wait * 2).min(Duration::from_secs(30));
+    }
 }
 
 async fn not_found() -> StatusCode {

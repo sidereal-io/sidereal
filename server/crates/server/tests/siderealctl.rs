@@ -607,7 +607,7 @@ mod in_process {
 mod relay {
     use super::{in_process::reset, *};
     use sidereal_server::{access::relay, Log};
-    use sqlx::{Connection, PgConnection};
+    use sqlx::{AssertSqlSafe, Connection, Executor, PgConnection};
     use std::sync::{Arc, Mutex};
 
     /// A line `siderealctl` could send, so the relay passes it through.
@@ -623,17 +623,16 @@ mod relay {
             Log::new(move |line| lines.lock().unwrap().push(line.to_owned()))
         }
 
-        /// Every line relayed before a marker sent now. PostgreSQL delivers
-        /// notifications in commit order, so nothing sent earlier is still
-        /// on its way once the marker is in.
+        /// Every line but a marker relayed before a marker sent now.
+        /// PostgreSQL delivers notifications in commit order, so nothing sent
+        /// earlier is still on its way once the marker is in.
         async fn written(&self, db: &TestDatabase) -> Vec<String> {
             notify(db, MARKER).await;
             tokio::time::timeout(Duration::from_secs(10), async {
                 loop {
-                    let mut lines = self.0.lock().unwrap().clone();
+                    let lines = self.0.lock().unwrap().clone();
                     if lines.last().map(String::as_str) == Some(MARKER) {
-                        lines.pop();
-                        return lines;
+                        return lines.into_iter().filter(|line| line != MARKER).collect();
                     }
                     tokio::time::sleep(Duration::from_millis(10)).await;
                 }
@@ -641,6 +640,32 @@ mod relay {
             .await
             .expect("the marker never reached the log")
         }
+
+        /// Wait until the relay listens again: a line sent while it is
+        /// down is lost, so send a marker until one gets through.
+        async fn relaying_again(&self, db: &TestDatabase) {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                while !self.0.lock().unwrap().iter().any(|line| line == MARKER) {
+                    notify(db, MARKER).await;
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+            })
+            .await
+            .expect("the relay never listened again");
+        }
+    }
+
+    /// End the relay's backend, as a PostgreSQL restart or an operator's
+    /// `pg_terminate_backend` would.
+    async fn terminate_listener(conn: &mut PgConnection) {
+        let ended: Vec<bool> = sqlx::query_scalar(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+             WHERE datname = current_database() AND query = 'LISTEN \"sidereal_security_event\"'",
+        )
+        .fetch_all(conn)
+        .await
+        .unwrap();
+        assert_eq!(ended, [true], "the relay's backend was not found");
     }
 
     async fn notify(db: &TestDatabase, payload: &str) {
@@ -682,6 +707,62 @@ mod relay {
     async fn relay_writes_a_create_from_the_box() {
         let db = TestDatabase::new();
         let (_database, lines) = relaying(&db).await;
+        let outcome = reset(&db, &["sam", PASSWORD, PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(
+            lines.written(&db).await,
+            [
+                r#"security event: kind=instance_claim outcome=success source=siderealctl username="sam""#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn relay_listens_again_after_its_backend_ends() {
+        let db = TestDatabase::new();
+        let (_database, lines) = relaying(&db).await;
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        terminate_listener(&mut conn).await;
+        lines.relaying_again(&db).await;
+        let outcome = reset(&db, &["sam", PASSWORD, PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(
+            lines.written(&db).await,
+            [
+                r#"security event: kind=instance_claim outcome=success source=siderealctl username="sam""#
+            ]
+        );
+    }
+
+    /// `PgListener` reconnects on its own only until its pool's acquire
+    /// timeout, so a database down for longer used to end the relay.
+    #[tokio::test]
+    async fn relay_listens_again_after_the_database_refuses_it_for_a_while() {
+        let db = TestDatabase::new();
+        let database = initialize(
+            db.options.clone(),
+            Duration::from_secs(1),
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap();
+        let lines = Lines::default();
+        relay(&database, lines.log()).await.unwrap();
+        let name = db.options.get_database().unwrap();
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        conn.execute(AssertSqlSafe(format!(
+            "ALTER DATABASE {name} CONNECTION LIMIT 0"
+        )))
+        .await
+        .unwrap();
+        terminate_listener(&mut conn).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        conn.execute(AssertSqlSafe(format!(
+            "ALTER DATABASE {name} CONNECTION LIMIT -1"
+        )))
+        .await
+        .unwrap();
+        lines.relaying_again(&db).await;
         let outcome = reset(&db, &["sam", PASSWORD, PASSWORD]).await;
         assert_eq!(outcome.status, 0, "{}", outcome.err);
         assert_eq!(

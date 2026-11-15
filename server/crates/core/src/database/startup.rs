@@ -145,6 +145,11 @@ impl Database {
         &self.listener
     }
 
+    /// Whether `close` has been called, so a task that retries knows to stop.
+    pub fn is_closed(&self) -> bool {
+        self.listener.is_closed()
+    }
+
     pub async fn close(&self) {
         self.listener.close().await;
         self.readiness.close().await;

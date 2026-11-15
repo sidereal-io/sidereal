@@ -77,13 +77,18 @@ impl Server {
     }
 
     /// Every stderr line but the unclaimed-start warning, which belongs to
-    /// the access tests.
+    /// the access tests, and the security event relay's lost listener, which
+    /// an outage may or may not cause and which belongs to the relay tests.
     fn logs(&self) -> Vec<String> {
+        const RELAY_LOST: &str =
+            "database unavailable: lost the listener for security events from siderealctl";
         self.lines
             .lock()
             .unwrap()
             .iter()
-            .filter(|line| !line.starts_with("instance unclaimed:"))
+            .filter(|line| {
+                !line.starts_with("instance unclaimed:") && !line.starts_with(RELAY_LOST)
+            })
             .cloned()
             .collect()
     }
