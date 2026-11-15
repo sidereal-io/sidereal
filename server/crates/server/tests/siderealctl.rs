@@ -506,7 +506,7 @@ mod in_process {
 
     #[tokio::test]
     async fn no_secret_reaches_an_event() {
-        use sidereal_server::{app_with_tuning, Log, Tuning};
+        use sidereal_server::{access::relay, app_with_tuning, Log, Tuning};
         use std::sync::{Arc, Mutex};
 
         const CLAIMED: &str = "claimed-distinctive-1";
@@ -518,11 +518,13 @@ mod in_process {
             let written = written.clone();
             Log::new(move |line| written.lock().unwrap().push(line.to_owned()))
         };
+        let database = database(&db).await;
+        relay(&database, log.clone()).await.unwrap();
         let tuning = Tuning {
             log,
             ..Tuning::default()
         };
-        let app = app_with_tuning(database(&db).await, AllowedOrigins::default(), tuning);
+        let app = app_with_tuning(database, AllowedOrigins::default(), tuning);
         claim(&app, "sam", CLAIMED).await;
         let response = send(
             &app,
@@ -545,18 +547,25 @@ mod in_process {
         let outcome = reset(&db, &[RESET, RESET]).await;
         assert_eq!(outcome.status, 0, "{}", outcome.err);
 
+        // The relay writes the reset's line once its notification arrives.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !written
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|line| line.contains("kind=access_recovery"))
+            {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the relay never wrote the reset's line");
+
         let mut lines = written.lock().unwrap().clone();
         lines.extend(events(&outcome.err).into_iter().map(str::to_owned));
-        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
-        let rows: Vec<String> = sqlx::query_scalar(
-            "SELECT to_jsonb(e)::text FROM public.security_events e ORDER BY id",
-        )
-        .fetch_all(&mut conn)
-        .await
-        .unwrap();
-        assert_eq!((lines.len(), rows.len()), (5, 3), "{lines:?} {rows:?}");
+        assert_eq!(lines.len(), 6, "{lines:?}");
         let token = cookie.split_once('=').unwrap().1;
-        for text in lines.iter().chain(&rows) {
+        for text in &lines {
             for secret in [CLAIMED, WRONG, RESET, "$argon2", token] {
                 assert!(!text.contains(secret), "{secret:?} in {text}");
             }
