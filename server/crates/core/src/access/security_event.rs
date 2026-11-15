@@ -85,6 +85,23 @@ impl Source {
     }
 }
 
+/// The channel a `siderealctl` event's line takes to the server's log.
+const CHANNEL: &str = "sidereal_security_event";
+
+/// Send the event's line on `executor`. PostgreSQL delivers it only when the
+/// act's transaction commits, so an act that did not happen sends nothing.
+pub(super) async fn notify<'e>(
+    executor: impl PgExecutor<'e>,
+    event: &SecurityEvent,
+) -> Result<(), Unavailable> {
+    sqlx::query("SELECT pg_notify($1, $2)")
+        .bind(CHANNEL)
+        .bind(event.to_string())
+        .execute(executor)
+        .await?;
+    Ok(())
+}
+
 /// Insert the row on `executor`, so a claim or a reset can hold it in its
 /// own transaction.
 pub(super) async fn insert<'e>(
@@ -157,6 +174,65 @@ impl fmt::Display for Quoted<'_> {
             }
         }
         f.write_str("\"")
+    }
+}
+
+/// A listener on the channel, so a test can see what an act sent there.
+#[cfg(test)]
+pub(super) struct TestChannel {
+    listener: sqlx::postgres::PgListener,
+    options: sqlx::postgres::PgConnectOptions,
+}
+
+#[cfg(test)]
+impl TestChannel {
+    const END: &str = "end of the test's lines";
+
+    pub async fn listen(db: &crate::test_support::TestDatabase) -> Self {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect_lazy_with(db.options.clone());
+        let mut listener = sqlx::postgres::PgListener::connect_with(&pool)
+            .await
+            .unwrap();
+        listener.listen(CHANNEL).await.unwrap();
+        Self {
+            listener,
+            options: db.options.clone(),
+        }
+    }
+
+    /// Send `payload` on the channel from another session.
+    pub async fn send(&self, payload: &str) {
+        use sqlx::Connection;
+        let mut conn = sqlx::PgConnection::connect_with(&self.options)
+            .await
+            .unwrap();
+        sqlx::query("SELECT pg_notify($1, $2)")
+            .bind(CHANNEL)
+            .bind(payload)
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+
+    /// Every payload sent since the last call. PostgreSQL delivers
+    /// notifications in commit order, so once a marker sent now arrives,
+    /// nothing committed before it is still on its way.
+    pub async fn lines(&mut self) -> Vec<String> {
+        self.send(Self::END).await;
+        let mut lines = Vec::new();
+        loop {
+            let notification =
+                tokio::time::timeout(std::time::Duration::from_secs(10), self.listener.recv())
+                    .await
+                    .expect("the marker never arrived")
+                    .unwrap();
+            if notification.payload() == Self::END {
+                return lines;
+            }
+            lines.push(notification.payload().to_owned());
+        }
     }
 }
 
