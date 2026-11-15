@@ -1852,6 +1852,33 @@ mod sign_in_limit_concurrent {
         assert_eq!(count(StatusCode::UNAUTHORIZED), 1, "{statuses:?}");
         assert_eq!(count(StatusCode::TOO_MANY_REQUESTS), 9, "{statuses:?}");
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sign_in_limit_concurrent_attempts_keep_one_row_of_each_outcome() {
+        let db = TestDatabase::new();
+        let (app, _clock) = limited(&db, TrustedProxies::default()).await;
+        let attempts: Vec<_> = (0..10)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move { sign_in(&app, "sam", "wrong-password").await.status() })
+            })
+            .collect();
+        for attempt in attempts {
+            attempt.await.unwrap();
+        }
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let outcomes: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT outcome, count(*) FROM public.security_events WHERE kind = 'sign_in' \
+             GROUP BY outcome ORDER BY outcome",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(
+            outcomes,
+            [("limited".into(), 1), ("wrong_credentials".into(), 1)]
+        );
+    }
 }
 
 mod spawned_sign_in_limit {
@@ -1877,10 +1904,12 @@ mod spawned_sign_in_limit {
         server
     }
 
+    /// The `security event:` lines of a `limited` sign-in. Each earlier 401
+    /// also writes a `security event:` line, so the outcome tells them apart.
     fn limit_lines(output: &str) -> Vec<&str> {
         output
             .lines()
-            .filter(|line| line.starts_with("sign-in limited:"))
+            .filter(|line| line.starts_with("security event:") && line.contains("outcome=limited"))
             .collect()
     }
 
@@ -1903,11 +1932,17 @@ mod spawned_sign_in_limit {
         let output = server.output();
         let lines = limit_lines(&output);
         assert_eq!(lines.len(), 1, "{output}");
-        assert!(lines[0].contains("127.0.0.1"), "{output}");
+        assert!(lines[0].contains("client_address=127.0.0.1"), "{output}");
         assert!(!lines[0].contains("sam"), "{output}");
+        assert!(
+            !output
+                .lines()
+                .any(|line| line.starts_with("sign-in limited:")),
+            "{output}"
+        );
         let named: u64 = lines[0]
             .split_whitespace()
-            .find_map(|word| word.parse().ok())
+            .find_map(|word| word.strip_prefix("retry_after=")?.parse().ok())
             .expect("a wait in the line");
         // The first refusal's wait is at most a second longer than the last.
         let last: u64 = wait.parse().unwrap();
@@ -1923,7 +1958,10 @@ mod spawned_sign_in_limit {
 }
 
 mod security_events {
-    use super::{sign_in_limit::tuned_with, *};
+    use super::{
+        sign_in_limit::{fail, retry_after, seconds, tuned_with, Clock},
+        *,
+    };
     use sidereal_server::Log;
     use sqlx::Executor;
     use std::sync::{Arc, Mutex};
@@ -1954,9 +1992,14 @@ mod security_events {
     }
 
     async fn logged_trusting(db: &TestDatabase, trusted: TrustedProxies) -> (Router, Lines) {
-        let lines = Lines::default();
-        let (app, _clock) = tuned_with(database(db).await, trusted, lines.log());
+        let (app, lines, _clock) = clocked(db, trusted).await;
         (app, lines)
+    }
+
+    async fn clocked(db: &TestDatabase, trusted: TrustedProxies) -> (Router, Lines, Clock) {
+        let lines = Lines::default();
+        let (app, clock) = tuned_with(database(db).await, trusted, lines.log());
+        (app, lines, clock)
     }
 
     type Row = (
@@ -2357,5 +2400,56 @@ mod security_events {
             later_rows(&db).await,
             [failed_row(Some("192.168.1.20"), None)]
         );
+    }
+
+    /// A claimed instance on a manual clock after five wrong sign-ins two
+    /// seconds apart, which fill the minute tier. Its lines are taken.
+    async fn after_five_failures(db: &TestDatabase) -> (Router, Lines, Clock) {
+        let (app, lines, clock) = clocked(db, TrustedProxies::default()).await;
+        claim(&app, "sam", PASSWORD).await;
+        fail(&app, &clock, 5, seconds(2)).await;
+        clock.advance(seconds(2));
+        lines.take();
+        (app, lines, clock)
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_writes_one_limited_line_for_a_run_of_refusals() {
+        let db = TestDatabase::new();
+        let (app, lines, _clock) = after_five_failures(&db).await;
+        for _ in 0..3 {
+            let response = sign_in(&app, "sam", PASSWORD).await;
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+        assert_eq!(
+            lines.take(),
+            ["security event: kind=sign_in outcome=limited source=http client_address=192.168.1.20 retry_after=50"]
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_keeps_one_limited_row_for_a_run_of_refusals() {
+        let db = TestDatabase::new();
+        let (app, _lines, _clock) = after_five_failures(&db).await;
+        for _ in 0..3 {
+            sign_in(&app, "sam", PASSWORD).await;
+        }
+        let address = Some("192.168.1.20");
+        let mut expected = vec![failed_row(address, None); 5];
+        expected.push(row("sign_in", "limited", None, address, None));
+        assert_eq!(later_rows(&db).await, expected);
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_answers_429_when_its_row_is_refused() {
+        let db = TestDatabase::new();
+        let (app, lines, _clock) = after_five_failures(&db).await;
+        refuse_events(&db).await;
+        let response = sign_in(&app, "sam", PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(retry_after(&response), Some("50"));
+        let lines = lines.take();
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("outcome=limited"), "{lines:?}");
     }
 }

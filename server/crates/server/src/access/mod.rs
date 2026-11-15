@@ -26,7 +26,7 @@ pub mod limit;
 use events::EventTiming;
 use forwarded::Forwarded;
 use limit::{Key, Limiter, Refusal};
-use std::{net::IpAddr, sync::Arc};
+use std::sync::Arc;
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -238,16 +238,16 @@ async fn sign_in(
     headers: HeaderMap,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
-    let resolved = forwarded.as_ref().map(|Extension(forwarded)| forwarded);
-    let key = Key::of(resolved);
-    let client = resolved.and_then(|forwarded| forwarded.client);
+    let key = Key::of(forwarded.as_ref().map(|Extension(forwarded)| forwarded));
+    let source = http(forwarded.as_ref(), &headers);
     if let Some(refusal) = limiter.refused(key) {
-        return Err(limited(refusal, client));
+        return Err(limited(refusal, &database, &log, source).await);
     }
     let credentials = Credentials::try_from(body)?;
-    let attempt = limiter
-        .admit(key)
-        .map_err(|refusal| limited(refusal, client))?;
+    let attempt = match limiter.admit(key) {
+        Ok(attempt) => attempt,
+        Err(refusal) => return Err(limited(refusal, &database, &log, source).await),
+    };
     let signed_in = match database
         .sign_in(&credentials.username, &credentials.password)
         .await
@@ -261,12 +261,7 @@ async fn sign_in(
     let Some((signed_in, token)) = signed_in else {
         // Known and unknown usernames make the same insert, so its time
         // reveals neither. A lost row never changes the answer.
-        let failed = event(
-            Kind::SignIn,
-            Outcome::WrongCredentials,
-            http(forwarded.as_ref(), &headers),
-            None,
-        );
+        let failed = event(Kind::SignIn, Outcome::WrongCredentials, source, None);
         let _ = database.record(&failed).await;
         log.write(&failed);
         return Err(AccessError::WrongCredentials);
@@ -275,22 +270,24 @@ async fn sign_in(
     log.write(&event(
         Kind::SignIn,
         Outcome::Success,
-        http(forwarded.as_ref(), &headers),
+        source,
         Some(signed_in.username.clone()),
     ));
     let cookie = cookie::session(token.as_str(), over_https(forwarded));
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
-/// The log names the request's own address, not its /64, and never the
-/// username: the limiter never sees one.
-fn limited(refusal: Refusal, client: Option<IpAddr>) -> AccessError {
+/// The first refusal of a run is a failed sign-in with outcome `limited`.
+/// It names the request's own address, not its /64, and never the username:
+/// the limiter never sees one. A lost row never changes the answer.
+async fn limited(refusal: Refusal, database: &Database, log: &Log, source: Source) -> AccessError {
     if refusal.new {
-        let wait = refusal.retry_after;
-        match client {
-            Some(client) => eprintln!("sign-in limited: {client} must wait {wait} s"),
-            None => eprintln!("sign-in limited: unresolved client address must wait {wait} s"),
-        }
+        let limited = SecurityEvent {
+            retry_after: Some(refusal.retry_after),
+            ..event(Kind::SignIn, Outcome::Limited, source, None)
+        };
+        let _ = database.record(&limited).await;
+        log.write(&limited);
     }
     AccessError::TooManyAttempts {
         retry_after: refusal.retry_after,
