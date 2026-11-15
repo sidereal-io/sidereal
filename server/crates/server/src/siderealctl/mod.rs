@@ -90,7 +90,10 @@ async fn reset_admin_password(
             )
             .await
         {
-            Ok(claimed) => format!("Created administrator {}.", claimed.user.username),
+            Ok(claimed) => {
+                let _ = writeln!(err, "{}", claimed.event);
+                format!("Created administrator {}.", claimed.user.username)
+            }
             Err(ClaimError::Claimed) => {
                 return refuse(
                     err,
@@ -100,22 +103,29 @@ async fn reset_admin_password(
             Err(ClaimError::Invalid) => return refuse(err, "the credentials break a rule"),
             Err(ClaimError::Unavailable) => return refuse(err, UNAVAILABLE),
         },
-        State::Reset { .. } => match database.reset_admin_password(&credentials.password).await {
-            Ok(Reset {
-                username, sessions, ..
-            }) => format!(
-                "Reset the password of administrator {username} and ended {sessions} sessions."
-            ),
-            Err(ResetError::NoAdministrator) => {
-                return refuse(
-                    err,
-                    "the administrator no longer exists; run the command again to create one",
-                )
+        State::Reset { .. } => {
+            match database.reset_admin_password(&credentials.password).await {
+                Ok(Reset {
+                    username,
+                    sessions,
+                    event,
+                }) => {
+                    let _ = writeln!(err, "{event}");
+                    format!("Reset the password of administrator {username} and ended {sessions} sessions.")
+                }
+                Err(ResetError::NoAdministrator) => {
+                    return refuse(
+                        err,
+                        "the administrator no longer exists; run the command again to create one",
+                    )
+                }
+                Err(ResetError::Invalid) => return refuse(err, "the password breaks a rule"),
+                Err(ResetError::Unavailable) => return refuse(err, UNAVAILABLE),
             }
-            Err(ResetError::Invalid) => return refuse(err, "the password breaks a rule"),
-            Err(ResetError::Unavailable) => return refuse(err, UNAVAILABLE),
-        },
+        }
     };
+    // The event line is already on stderr, so a failed write below cannot
+    // hide an act that took effect.
     // Printed only now, so a password that was never stored is never shown.
     // A password that was stored but not shown locks Sam out, so that write
     // is the one whose failure the exit status must carry.

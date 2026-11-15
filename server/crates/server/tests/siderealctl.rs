@@ -118,7 +118,40 @@ async fn claim_state(app: &Router) -> String {
 mod in_process {
     use super::*;
     use sidereal_server::{config::DatabaseConfig, siderealctl::Terminal};
+    use sqlx::{Connection, PgConnection};
     use std::{collections::VecDeque, io};
+
+    type Row = (String, String, Option<String>, Option<i64>, bool);
+
+    /// Each `security_events` row's source, kind, username and sessions
+    /// ended, and whether it names no client.
+    async fn rows(db: &TestDatabase) -> Vec<Row> {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_as(
+            "SELECT source, kind, username, sessions_ended, client_address IS NULL AND user_agent IS NULL \
+             FROM public.security_events ORDER BY id",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap()
+    }
+
+    fn from_the_box(kind: &str, sessions_ended: Option<i64>) -> Row {
+        (
+            "siderealctl".into(),
+            kind.into(),
+            Some("sam".into()),
+            sessions_ended,
+            true,
+        )
+    }
+
+    /// The `security event:` lines of a command's stderr.
+    fn events(err: &str) -> Vec<&str> {
+        err.lines()
+            .filter(|line| line.starts_with("security event:"))
+            .collect()
+    }
 
     /// A terminal a person types into, answering from a script. An exhausted
     /// script is a closed stdin. `before_read` runs once, before the read it
@@ -241,9 +274,11 @@ mod in_process {
         .await;
         let err = String::from_utf8(err).unwrap();
         assert_eq!(status, 1, "{err}");
+        // The reset took effect, so its event line stands before the refusal.
         assert_eq!(
             err,
-            "the generated password could not be shown; run the command again to set a new one\n"
+            "security event: kind=access_recovery outcome=success source=siderealctl username=\"sam\" sessions_ended=0\n\
+             the generated password could not be shown; run the command again to set a new one\n"
         );
         // The reset itself stood: the old password no longer signs in.
         assert_eq!(
@@ -389,6 +424,57 @@ mod in_process {
         assert_eq!(
             outcome.err,
             "an administrator now exists; run the command again to set its password\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn in_process_a_create_writes_its_event_line() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let outcome = reset(&db, &["sam", PASSWORD, PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(
+            outcome.err,
+            "security event: kind=instance_claim outcome=success source=siderealctl username=\"sam\"\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn in_process_a_create_keeps_its_row() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        reset(&db, &["sam", PASSWORD, PASSWORD]).await;
+        assert_eq!(rows(&db).await, [from_the_box("instance_claim", None)]);
+    }
+
+    #[tokio::test]
+    async fn in_process_a_reset_writes_its_event_line() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        signed_in(&app).await;
+        signed_in(&app).await;
+        let outcome = reset(&db, &[NEW_PASSWORD, NEW_PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(
+            events(&outcome.err),
+            [
+                r#"security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2"#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn in_process_a_reset_keeps_its_row() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        signed_in(&app).await;
+        signed_in(&app).await;
+        reset(&db, &[NEW_PASSWORD, NEW_PASSWORD]).await;
+        assert_eq!(
+            rows(&db).await.last(),
+            Some(&from_the_box("access_recovery", Some(2)))
         );
     }
 }
@@ -711,7 +797,13 @@ mod spawned {
             run.out,
             "No administrator exists. Creating one.\nCreated administrator sam.\n"
         );
-        assert_eq!(run.err, "Username: New password: Repeat password: ");
+        // Through a pipe each prompt's line is ended, so the event line
+        // starts a line of its own.
+        assert_eq!(
+            run.err,
+            "Username: \nNew password: \nRepeat password: \n\
+             security event: kind=instance_claim outcome=success source=siderealctl username=\"sam\"\n"
+        );
     }
 
     #[tokio::test]

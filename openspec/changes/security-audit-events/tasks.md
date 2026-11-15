@@ -18,7 +18,7 @@
 
 ## 4. The events from the box [depends-on: 2]
 
-- [ ] 4.1 [parallel] [medium] `siderealctl reset-admin-password` writes the returned event's line to its stderr right after the `core` call succeeds, before `Generated password:` (design D-8). A create leaves one `instance_claim` row with source `siderealctl`, and a reset of a user signed in twice prints `security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2` and leaves the matching row. A reset whose generated password cannot be written to stdout still has exactly one line (verify: cd server && cargo test -p sidereal-server --test siderealctl in_process)
+- [x] 4.1 [parallel] [medium] `siderealctl reset-admin-password` writes the returned event's line to its stderr right after the `core` call succeeds, before `Generated password:` (design D-8). A create leaves one `instance_claim` row with source `siderealctl`, and a reset of a user signed in twice prints `security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2` and leaves the matching row. A reset whose generated password cannot be written to stdout still has exactly one line (verify: cd server && cargo test -p sidereal-server --test siderealctl in_process) (✓ cd server && cargo test -p sidereal-server --test siderealctl in_process passed: 13 passed)
 - [ ] 4.2 [parallel] [medium] A reset or a create whose row is refused, by a trigger installed through the `Scripted` terminal's `before_read` hook after the schema check, exits 1 with the database-unavailable line, no `security event:` line, and the hash, sessions and `users` unchanged. A create that loses the race to a browser claim writes no line, and only the browser claim's row exists (verify: cd server && cargo test -p sidereal-server --test siderealctl in_process)
 
 ## 5. Docs and integration [depends-on: 3, 4]
@@ -29,3 +29,5 @@
 ## Deviations Ledger
 
 <!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
+
+- 2026-11-14, task 4.1: `siderealctl` prompts written to a pipe never ended their line, so the event line followed `Repeat password: ` and did not start a line, as the spec requires. `Console` in `siderealctl/terminal.rs` now ends an open prompt's line after its answer is read when stdin is not a terminal. Prompts on a terminal are unchanged, and `--password-stdin` writes no prompt, so nothing changes there. Through a pipe, stderr now reads `Username: \nNew password: \nRepeat password: \n` before the event line.
