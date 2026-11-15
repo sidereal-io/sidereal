@@ -534,6 +534,65 @@ mod in_process {
     }
 
     #[tokio::test]
+    async fn no_secret_reaches_an_event() {
+        use sidereal_server::{app_with_tuning, Log, Tuning};
+        use std::sync::{Arc, Mutex};
+
+        const CLAIMED: &str = "claimed-distinctive-1";
+        const WRONG: &str = "wrong-distinctive-2";
+        const RESET: &str = "reset-distinctive-3";
+        let db = TestDatabase::new();
+        let written = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = {
+            let written = written.clone();
+            Log::new(move |line| written.lock().unwrap().push(line.to_owned()))
+        };
+        let tuning = Tuning {
+            log,
+            ..Tuning::default()
+        };
+        let app = app_with_tuning(database(&db).await, AllowedOrigins::default(), tuning);
+        claim(&app, "sam", CLAIMED).await;
+        let response = send(
+            &app,
+            "POST",
+            "/api/session",
+            Some(credentials("sam", CLAIMED)),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        assert_eq!(sign_in(&app, "sam", WRONG).await, StatusCode::UNAUTHORIZED);
+        let signed_out = send_with(&app, "DELETE", "/api/session", None, Some(&cookie)).await;
+        assert_eq!(signed_out.status(), StatusCode::NO_CONTENT);
+        let outcome = reset(&db, &[RESET, RESET]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+
+        let mut lines = written.lock().unwrap().clone();
+        lines.extend(events(&outcome.err).into_iter().map(str::to_owned));
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let rows: Vec<String> = sqlx::query_scalar(
+            "SELECT to_jsonb(e)::text FROM public.security_events e ORDER BY id",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!((lines.len(), rows.len()), (5, 3), "{lines:?} {rows:?}");
+        let token = cookie.split_once('=').unwrap().1;
+        for text in lines.iter().chain(&rows) {
+            for secret in [CLAIMED, WRONG, RESET, "$argon2", token] {
+                assert!(!text.contains(secret), "{secret:?} in {text}");
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn in_process_a_create_writes_its_event_line() {
         let db = TestDatabase::new();
         database(&db).await;
