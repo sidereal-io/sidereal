@@ -48,9 +48,9 @@ impl Database {
 
     /// Replace the administrator's password and end every session.
     ///
-    /// One transaction holds both and the reset's security event, so a
-    /// signed-in browser can never outlive the password it signed in with,
-    /// and no reset goes unrecorded.
+    /// One transaction holds both and sends the reset's line to the server,
+    /// so a signed-in browser can never outlive the password it signed in
+    /// with, and no line is sent for a reset that did not happen.
     pub async fn reset_admin_password(&self, password: &str) -> Result<Reset, ResetError> {
         check_password(password).map_err(|_| ResetError::Invalid)?;
         let hash = password::hash(password).await?;
@@ -76,7 +76,7 @@ impl Database {
             sessions_ended: Some(sessions),
             retry_after: None,
         };
-        security_event::insert(&mut *tx, &event).await?;
+        security_event::notify(&mut *tx, &event).await?;
         tx.commit().await?;
         Ok(Reset {
             username,
@@ -99,7 +99,10 @@ pub fn generate_password() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{database::initialize, test_support::TestDatabase};
+    use crate::{
+        access::security_event::TestChannel as Channel, database::initialize,
+        test_support::TestDatabase,
+    };
     use sqlx::{Connection, Executor, PgConnection};
     use std::time::Duration;
 
@@ -219,37 +222,31 @@ mod tests {
         assert_eq!(session_count(&db).await, 0);
     }
 
-    async fn recovery_rows(db: &TestDatabase) -> Vec<(String, Option<String>, Option<i64>, bool)> {
-        sqlx::query_as(
-            "SELECT source, username, sessions_ended, client_address IS NULL AND user_agent IS NULL \
-             FROM public.security_events WHERE kind = 'access_recovery' AND outcome = 'success' ORDER BY id",
-        )
-        .fetch_all(&mut connection(db).await)
-        .await
-        .unwrap()
-    }
-
     #[tokio::test]
-    async fn reset_admin_password_keeps_one_access_recovery_row() {
+    async fn reset_admin_password_sends_its_line() {
         let db = TestDatabase::new();
         let database = claimed(&db, 2).await;
+        let mut channel = Channel::listen(&db).await;
         database.reset_admin_password(NEW_PASSWORD).await.unwrap();
         assert_eq!(
-            recovery_rows(&db).await,
-            [("siderealctl".into(), Some("sam".into()), Some(2), true)]
+            channel.lines().await,
+            [
+                r#"security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2"#
+            ]
         );
     }
 
     #[tokio::test]
-    async fn reset_admin_password_keeps_the_hash_and_sessions_when_its_row_is_refused() {
+    async fn a_reset_whose_hash_update_is_refused_changes_and_sends_nothing() {
         let db = TestDatabase::new();
         let database = claimed(&db, 1).await;
         let before = hash(&db).await;
+        let mut channel = Channel::listen(&db).await;
         connection(&db)
             .await
             .execute(
                 "CREATE FUNCTION public.refuse() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''refused''; END'; \
-                 CREATE TRIGGER refuse BEFORE INSERT ON public.security_events FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()",
+                 CREATE TRIGGER refuse BEFORE UPDATE ON public.users FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()",
             )
             .await
             .unwrap();
@@ -258,6 +255,7 @@ mod tests {
             Err(ResetError::Unavailable)
         );
         assert_eq!((hash(&db).await, session_count(&db).await), (before, 1));
+        assert!(channel.lines().await.is_empty());
     }
 
     #[tokio::test]

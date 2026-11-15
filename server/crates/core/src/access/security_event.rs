@@ -102,34 +102,6 @@ pub(super) async fn notify<'e>(
     Ok(())
 }
 
-/// Insert the row on `executor`, so a claim or a reset can hold it in its
-/// own transaction.
-pub(super) async fn insert<'e>(
-    executor: impl PgExecutor<'e>,
-    event: &SecurityEvent,
-) -> Result<(), Unavailable> {
-    // Bound as text and cast, so sqlx needs no network-type feature.
-    sqlx::query(
-        "INSERT INTO public.security_events \
-         (occurred_at, kind, outcome, source, username, client_address, user_agent, sessions_ended) \
-         VALUES (now(), $1, $2, $3, $4, $5::inet, $6, $7)",
-    )
-    .bind(event.kind.as_str())
-    .bind(event.outcome.as_str())
-    .bind(event.source.as_str())
-    .bind(event.username.as_deref())
-    .bind(event.source.client_address().map(|address| address.to_string()))
-    .bind(event.source.user_agent())
-    .bind(
-        event
-            .sessions_ended
-            .map(|sessions| i64::try_from(sessions).unwrap_or(i64::MAX)),
-    )
-    .execute(executor)
-    .await?;
-    Ok(())
-}
-
 /// The whole `security event:` line, with no line feed.
 impl fmt::Display for SecurityEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
