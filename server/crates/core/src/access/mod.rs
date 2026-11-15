@@ -10,7 +10,7 @@ mod session;
 
 pub use claim::{check_password, check_username, ClaimError, Claimed, CredentialRule};
 pub use recovery::{generate_password, Reset, ResetError};
-pub use security_event::{Kind, Outcome, SecurityEvent, Source};
+pub use security_event::{Kind, Outcome, SecurityEvent, SecurityEventLines, Source};
 pub use session::{Token, SESSION_LIFETIME};
 
 /// What a user may do. This release has one role.

@@ -77,6 +77,7 @@ impl ProbeResult {
 pub struct Database {
     operational: PgPool,
     readiness: PgPool,
+    listener: PgPool,
     permit: Arc<Semaphore>,
     last: Arc<Mutex<Option<Cause>>>,
 }
@@ -139,7 +140,13 @@ impl Database {
         &self.operational
     }
 
+    /// The one connection the security event relay holds while it listens.
+    pub(crate) fn listener_pool(&self) -> &PgPool {
+        &self.listener
+    }
+
     pub async fn close(&self) {
+        self.listener.close().await;
         self.readiness.close().await;
         self.operational.close().await;
     }
@@ -207,6 +214,13 @@ impl Database {
             readiness: PgPoolOptions::new()
                 .max_connections(1)
                 .acquire_timeout(Duration::from_millis(1500))
+                .connect_lazy_with(options.clone()),
+            // The listener holds its connection for the server's life.
+            listener: PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(startup)
+                .max_lifetime(None)
+                .idle_timeout(None)
                 .connect_lazy_with(options),
             permit: Arc::new(Semaphore::new(1)),
             last: Arc::new(Mutex::new(None)),

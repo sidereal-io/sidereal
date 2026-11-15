@@ -2,7 +2,8 @@
 //! `security event:` log line, so the server and `siderealctl` cannot drift
 //! apart.
 use super::Unavailable;
-use sqlx::PgExecutor;
+use crate::database::Database;
+use sqlx::{postgres::PgListener, PgExecutor};
 use std::{fmt, net::IpAddr};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,6 +101,42 @@ pub(super) async fn notify<'e>(
         .execute(executor)
         .await?;
     Ok(())
+}
+
+impl Database {
+    /// Listen for the lines `siderealctl` sends, on a pool of its own so the
+    /// relay never takes an operational connection.
+    pub async fn security_event_lines(&self) -> Result<SecurityEventLines, Unavailable> {
+        let mut listener = PgListener::connect_with(self.listener_pool()).await?;
+        listener.listen(CHANNEL).await?;
+        Ok(SecurityEventLines(listener))
+    }
+}
+
+/// The lines received on the channel that `siderealctl` could have sent.
+pub struct SecurityEventLines(PgListener);
+
+impl SecurityEventLines {
+    /// The next relayed line. A dropped connection is reconnected, and
+    /// anything sent while it was down is lost.
+    pub async fn next(&mut self) -> Result<String, Unavailable> {
+        loop {
+            let notification = self.0.recv().await?;
+            if relayed(notification.payload()) {
+                return Ok(notification.payload().to_owned());
+            }
+        }
+    }
+}
+
+/// Any session that can connect may send on the channel, so only the two
+/// lines `siderealctl` sends get through, and none can break a line.
+fn relayed(payload: &str) -> bool {
+    const SENT: [&str; 2] = [
+        "security event: kind=instance_claim outcome=success source=siderealctl",
+        "security event: kind=access_recovery outcome=success source=siderealctl",
+    ];
+    SENT.iter().any(|prefix| payload.starts_with(prefix)) && !payload.chars().any(char::is_control)
 }
 
 /// The whole `security event:` line, with no line feed.
@@ -211,6 +248,8 @@ impl TestChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{database::initialize, test_support::TestDatabase};
+    use std::time::Duration;
 
     const ADDRESS: IpAddr = IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 20));
 
@@ -339,5 +378,78 @@ mod tests {
             ..event(Kind::InstanceClaim, Outcome::Success, Source::Siderealctl)
         };
         assert!(line.to_string().ends_with(r#"username="sämé""#));
+    }
+    const CLAIM_LINE: &str =
+        r#"security event: kind=instance_claim outcome=success source=siderealctl username="sam""#;
+    const RESET_LINE: &str = r#"security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=1"#;
+
+    async fn database(db: &TestDatabase) -> Database {
+        initialize(
+            db.options.clone(),
+            Duration::from_secs(10),
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn next(lines: &mut SecurityEventLines) -> String {
+        tokio::time::timeout(Duration::from_secs(10), lines.next())
+            .await
+            .expect("no line arrived")
+            .unwrap()
+    }
+
+    #[test]
+    fn only_a_siderealctl_claim_or_reset_is_relayed() {
+        for line in [CLAIM_LINE, RESET_LINE] {
+            assert!(relayed(line), "{line}");
+        }
+        for line in [
+            "forged",
+            r#"security event: kind=sign_in outcome=success source=http username="sam""#,
+            r#"security event: kind=sign_in outcome=wrong_credentials source=siderealctl"#,
+            "security event: kind=instance_claim outcome=success source=siderealctl\nsecurity event: kind=sign_in",
+            "security event: kind=access_recovery outcome=success source=siderealctl\tusername=\"sam\"",
+            "",
+        ] {
+            assert!(!relayed(line), "{line:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn security_event_lines_yield_only_relayed_lines() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let mut lines = database.security_event_lines().await.unwrap();
+        let channel = TestChannel::listen(&db).await;
+        for payload in [
+            "forged",
+            r#"security event: kind=sign_in outcome=success source=http username="sam""#,
+            "security event: kind=instance_claim outcome=success source=siderealctl\nsecurity event: kind=sign_in",
+            CLAIM_LINE,
+            "forged",
+            RESET_LINE,
+        ] {
+            channel.send(payload).await;
+        }
+        assert_eq!(next(&mut lines).await, CLAIM_LINE);
+        assert_eq!(next(&mut lines).await, RESET_LINE);
+    }
+
+    #[tokio::test]
+    async fn security_event_lines_take_no_operational_connection() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let _lines = database.security_event_lines().await.unwrap();
+        let mut held = Vec::new();
+        for _ in 0..5 {
+            held.push(
+                tokio::time::timeout(Duration::from_secs(5), database.pool().acquire())
+                    .await
+                    .expect("the operational pool is short of a connection")
+                    .unwrap(),
+            );
+        }
     }
 }
