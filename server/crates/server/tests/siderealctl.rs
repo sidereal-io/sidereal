@@ -121,21 +121,6 @@ mod in_process {
     use sqlx::{Connection, PgConnection};
     use std::{collections::VecDeque, io};
 
-    type Row = (String, String, Option<String>, Option<i64>, bool);
-
-    /// Each `security_events` row's source, kind, username and sessions
-    /// ended, and whether it names no client.
-    async fn rows(db: &TestDatabase) -> Vec<Row> {
-        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
-        sqlx::query_as(
-            "SELECT source, kind, username, sessions_ended, client_address IS NULL AND user_agent IS NULL \
-             FROM public.security_events ORDER BY id",
-        )
-        .fetch_all(&mut conn)
-        .await
-        .unwrap()
-    }
-
     /// The `security event:` lines of a command's stderr.
     fn events(err: &str) -> Vec<&str> {
         err.lines()
@@ -430,16 +415,16 @@ mod in_process {
         .unwrap();
     }
 
-    const REFUSE_EVENTS: &str =
+    const REFUSE_UPDATES: &str =
         "CREATE FUNCTION public.refuse() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''refused''; END'; \
-         CREATE TRIGGER refuse BEFORE INSERT ON public.security_events FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()";
+         CREATE TRIGGER refuse BEFORE UPDATE ON public.users FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()";
 
-    /// A script whose first read waits until PostgreSQL refuses every
-    /// insert into `security_events`. The command has checked the schema by then.
+    /// A script whose first read waits until PostgreSQL refuses every update
+    /// of `users`. The command has checked the schema by then.
     fn refusing(db: &TestDatabase, answers: &[&'static str]) -> Scripted {
         let options = db.options.clone();
         let mut terminal = Scripted::new(answers);
-        terminal.before_read = Some((0, Box::new(move || execute_now(options, REFUSE_EVENTS))));
+        terminal.before_read = Some((0, Box::new(move || execute_now(options, REFUSE_UPDATES))));
         terminal
     }
 
@@ -459,7 +444,7 @@ mod in_process {
         "database unavailable: check that PostgreSQL is running, then try again\n";
 
     #[tokio::test]
-    async fn in_process_a_reset_whose_row_is_refused_changes_nothing() {
+    async fn in_process_a_reset_whose_hash_update_is_refused_changes_nothing() {
         let db = TestDatabase::new();
         let app = router(&db).await;
         claim(&app, "sam", PASSWORD).await;
@@ -473,21 +458,18 @@ mod in_process {
     }
 
     #[tokio::test]
-    async fn in_process_a_create_whose_row_is_refused_creates_no_administrator() {
-        let db = TestDatabase::new();
-        database(&db).await;
-        let mut terminal = refusing(&db, &["sam", PASSWORD, PASSWORD]);
-        let outcome = siderealctl(&db, &["reset-admin-password"], &mut terminal).await;
-        assert_eq!(outcome.status, 1);
-        assert_eq!(outcome.err, UNAVAILABLE);
-        assert_eq!(access(&db).await, (None, 0, 0));
-    }
+    async fn in_process_a_create_that_loses_the_race_writes_only_the_browser_line() {
+        use sidereal_server::{app_with_tuning, Log, Tuning};
+        use std::sync::{Arc, Mutex};
 
-    #[tokio::test]
-    async fn in_process_a_create_that_loses_the_race_keeps_only_the_browser_row() {
         let db = TestDatabase::new();
         database(&db).await;
         let options = db.options.clone();
+        let written = Arc::new(Mutex::new(Vec::<String>::new()));
+        let log = {
+            let written = written.clone();
+            Log::new(move |line| written.lock().unwrap().push(line.to_owned()))
+        };
         let mut terminal = Scripted::new(&["sam", PASSWORD, PASSWORD]);
         terminal.before_read = Some((
             1,
@@ -495,11 +477,16 @@ mod in_process {
                 std::thread::spawn(move || {
                     let runtime = tokio::runtime::Runtime::new().unwrap();
                     runtime.block_on(async {
-                        let app = app_with_database(
+                        let tuning = Tuning {
+                            log,
+                            ..Tuning::default()
+                        };
+                        let app = app_with_tuning(
                             Database::open(options, Duration::from_secs(10))
                                 .await
                                 .unwrap(),
                             AllowedOrigins::default(),
+                            tuning,
                         );
                         claim(&app, "alex", PASSWORD).await;
                     });
@@ -512,14 +499,8 @@ mod in_process {
         assert_eq!(outcome.status, 1);
         assert!(events(&outcome.err).is_empty(), "{}", outcome.err);
         assert_eq!(
-            rows(&db).await,
-            [(
-                "http".into(),
-                "instance_claim".into(),
-                Some("alex".into()),
-                None,
-                true
-            )]
+            *written.lock().unwrap(),
+            [r#"security event: kind=instance_claim outcome=success source=http username="alex""#]
         );
     }
 
