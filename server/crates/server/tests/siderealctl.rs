@@ -199,10 +199,10 @@ mod in_process {
         }
     }
 
-    struct Outcome {
-        status: u8,
+    pub(super) struct Outcome {
+        pub status: u8,
         out: String,
-        err: String,
+        pub err: String,
     }
 
     async fn siderealctl(db: &TestDatabase, args: &[&str], terminal: &mut Scripted) -> Outcome {
@@ -229,7 +229,7 @@ mod in_process {
         }
     }
 
-    async fn reset(db: &TestDatabase, answers: &[&'static str]) -> Outcome {
+    pub(super) async fn reset(db: &TestDatabase, answers: &[&'static str]) -> Outcome {
         siderealctl(db, &["reset-admin-password"], &mut Scripted::new(answers)).await
     }
 
@@ -641,6 +641,110 @@ mod in_process {
             rows(&db).await.last(),
             Some(&from_the_box("access_recovery", Some(2)))
         );
+    }
+}
+
+/// The server's relay of `siderealctl` lines, running against the test
+/// database with a capturing log.
+mod relay {
+    use super::{in_process::reset, *};
+    use sidereal_server::{access::relay, Log};
+    use sqlx::{Connection, PgConnection};
+    use std::sync::{Arc, Mutex};
+
+    /// A line `siderealctl` could send, so the relay passes it through.
+    const MARKER: &str = r#"security event: kind=access_recovery outcome=success source=siderealctl username="marker""#;
+
+    /// The lines the relay wrote to its log.
+    #[derive(Clone, Default)]
+    struct Lines(Arc<Mutex<Vec<String>>>);
+
+    impl Lines {
+        fn log(&self) -> Log {
+            let lines = self.0.clone();
+            Log::new(move |line| lines.lock().unwrap().push(line.to_owned()))
+        }
+
+        /// Every line relayed before a marker sent now. PostgreSQL delivers
+        /// notifications in commit order, so nothing sent earlier is still
+        /// on its way once the marker is in.
+        async fn written(&self, db: &TestDatabase) -> Vec<String> {
+            notify(db, MARKER).await;
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    let mut lines = self.0.lock().unwrap().clone();
+                    if lines.last().map(String::as_str) == Some(MARKER) {
+                        lines.pop();
+                        return lines;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("the marker never reached the log")
+        }
+    }
+
+    async fn notify(db: &TestDatabase, payload: &str) {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query("SELECT pg_notify('sidereal_security_event', $1)")
+            .bind(payload)
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+
+    /// A migrated database with the relay running, writing to the returned
+    /// `Lines`.
+    async fn relaying(db: &TestDatabase) -> (Database, Lines) {
+        let database = database(db).await;
+        let lines = Lines::default();
+        relay(&database, lines.log()).await.unwrap();
+        (database, lines)
+    }
+
+    #[tokio::test]
+    async fn relay_writes_a_reset_from_the_box() {
+        let db = TestDatabase::new();
+        let (database, lines) = relaying(&db).await;
+        let app = app_with_database(database, AllowedOrigins::default());
+        claim(&app, "sam", PASSWORD).await;
+        signed_in(&app).await;
+        let outcome = reset(&db, &[NEW_PASSWORD, NEW_PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(
+            lines.written(&db).await,
+            [
+                r#"security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=1"#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn relay_writes_a_create_from_the_box() {
+        let db = TestDatabase::new();
+        let (_database, lines) = relaying(&db).await;
+        let outcome = reset(&db, &["sam", PASSWORD, PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(
+            lines.written(&db).await,
+            [
+                r#"security event: kind=instance_claim outcome=success source=siderealctl username="sam""#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn relay_drops_a_line_siderealctl_never_sends() {
+        let db = TestDatabase::new();
+        let (_database, lines) = relaying(&db).await;
+        notify(&db, "forged").await;
+        notify(
+            &db,
+            r#"security event: kind=sign_in outcome=success source=http username="sam""#,
+        )
+        .await;
+        assert!(lines.written(&db).await.is_empty());
     }
 }
 

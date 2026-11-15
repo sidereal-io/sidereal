@@ -27,6 +27,7 @@ use events::EventTiming;
 use forwarded::Forwarded;
 use limit::{Key, Limiter, Refusal};
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -81,6 +82,18 @@ impl Default for Log {
     fn default() -> Self {
         Self::new(|line| eprintln!("{line}"))
     }
+}
+
+/// Write each line `siderealctl` sends to `log`, so an event from the box
+/// reaches the server's log. It listens before it returns, so no line sent
+/// after that is missed. The task ends when the database closes.
+pub async fn relay(database: &Database, log: Log) -> Result<JoinHandle<()>, Unavailable> {
+    let mut lines = database.security_event_lines().await?;
+    Ok(tokio::spawn(async move {
+        while let Ok(line) = lines.next().await {
+            (log.0)(&line);
+        }
+    }))
 }
 
 async fn not_found() -> StatusCode {
