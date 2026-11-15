@@ -427,6 +427,112 @@ mod in_process {
         );
     }
 
+    /// Run `sql` on its own connection from inside a synchronous hook.
+    fn execute_now(options: sqlx::postgres::PgConnectOptions, sql: &'static str) {
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(async {
+                let mut conn = PgConnection::connect_with(&options).await.unwrap();
+                sqlx::Executor::execute(&mut conn, sql).await.unwrap();
+            });
+        })
+        .join()
+        .unwrap();
+    }
+
+    const REFUSE_EVENTS: &str =
+        "CREATE FUNCTION public.refuse() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''refused''; END'; \
+         CREATE TRIGGER refuse BEFORE INSERT ON public.security_events FOR EACH STATEMENT EXECUTE FUNCTION public.refuse()";
+
+    /// A script whose first read waits until PostgreSQL refuses every
+    /// insert into `security_events`. The command has checked the schema by then.
+    fn refusing(db: &TestDatabase, answers: &[&'static str]) -> Scripted {
+        let options = db.options.clone();
+        let mut terminal = Scripted::new(answers);
+        terminal.before_read = Some((0, Box::new(move || execute_now(options, REFUSE_EVENTS))));
+        terminal
+    }
+
+    /// The administrator's hash, the session count and the user count.
+    async fn access(db: &TestDatabase) -> (Option<String>, i64, i64) {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        sqlx::query_as(
+            "SELECT (SELECT password_hash FROM public.users WHERE role = 'admin'), \
+             (SELECT count(*) FROM public.sessions), (SELECT count(*) FROM public.users)",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap()
+    }
+
+    const UNAVAILABLE: &str =
+        "database unavailable: check that PostgreSQL is running, then try again\n";
+
+    #[tokio::test]
+    async fn in_process_a_reset_whose_row_is_refused_changes_nothing() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        signed_in(&app).await;
+        let before = access(&db).await;
+        let mut terminal = refusing(&db, &[NEW_PASSWORD, NEW_PASSWORD]);
+        let outcome = siderealctl(&db, &["reset-admin-password"], &mut terminal).await;
+        assert_eq!(outcome.status, 1);
+        assert_eq!(outcome.err, UNAVAILABLE);
+        assert_eq!(access(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn in_process_a_create_whose_row_is_refused_creates_no_administrator() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let mut terminal = refusing(&db, &["sam", PASSWORD, PASSWORD]);
+        let outcome = siderealctl(&db, &["reset-admin-password"], &mut terminal).await;
+        assert_eq!(outcome.status, 1);
+        assert_eq!(outcome.err, UNAVAILABLE);
+        assert_eq!(access(&db).await, (None, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn in_process_a_create_that_loses_the_race_keeps_only_the_browser_row() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let options = db.options.clone();
+        let mut terminal = Scripted::new(&["sam", PASSWORD, PASSWORD]);
+        terminal.before_read = Some((
+            1,
+            Box::new(move || {
+                std::thread::spawn(move || {
+                    let runtime = tokio::runtime::Runtime::new().unwrap();
+                    runtime.block_on(async {
+                        let app = app_with_database(
+                            Database::open(options, Duration::from_secs(10))
+                                .await
+                                .unwrap(),
+                            AllowedOrigins::default(),
+                        );
+                        claim(&app, "alex", PASSWORD).await;
+                    });
+                })
+                .join()
+                .unwrap();
+            }),
+        ));
+        let outcome = siderealctl(&db, &["reset-admin-password"], &mut terminal).await;
+        assert_eq!(outcome.status, 1);
+        assert!(events(&outcome.err).is_empty(), "{}", outcome.err);
+        assert_eq!(
+            rows(&db).await,
+            [(
+                "http".into(),
+                "instance_claim".into(),
+                Some("alex".into()),
+                None,
+                true
+            )]
+        );
+    }
+
     #[tokio::test]
     async fn in_process_a_create_writes_its_event_line() {
         let db = TestDatabase::new();
