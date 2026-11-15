@@ -117,7 +117,7 @@ async fn upgrade_preserves_the_original_migration_and_metadata() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!(migrations, 3);
+    assert_eq!(migrations, 4);
 }
 
 async fn successful_records(conn: &mut PgConnection) -> i64 {
@@ -139,15 +139,21 @@ async fn first_startup_holds_the_access_tables() {
     let db = TestDatabase::new();
     init(&db).await.unwrap();
     let mut conn = connection(&db).await;
-    assert_eq!(successful_records(&mut conn).await, 3);
+    assert_eq!(successful_records(&mut conn).await, 4);
     assert_eq!(
         application_tables(&mut conn).await,
-        ["_sqlx_migrations", "sessions", "sidereal_metadata", "users"]
+        [
+            "_sqlx_migrations",
+            "security_events",
+            "sessions",
+            "sidereal_metadata",
+            "users"
+        ]
     );
 }
 
 #[tokio::test]
-async fn concurrent_startup_applies_three_records_once() {
+async fn concurrent_startup_applies_four_records_once() {
     let db = TestDatabase::new();
     let (first, second) = tokio::join!(init(&db), init(&db));
     first.unwrap();
@@ -157,7 +163,7 @@ async fn concurrent_startup_applies_three_records_once() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!((total, successful_records(&mut conn).await), (3, 3));
+    assert_eq!((total, successful_records(&mut conn).await), (4, 4));
 }
 
 #[tokio::test]
@@ -181,14 +187,64 @@ async fn upgrade_adds_empty_access_tables() {
         upgraded.as_array().unwrap()[..2],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 3);
+    assert_eq!(successful_records(&mut conn).await, 4);
     let rows: i64 = sqlx::query_scalar(
-        "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions)",
+        "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions) \
+         + (SELECT count(*) FROM public.security_events)",
     )
     .fetch_one(&mut conn)
     .await
     .unwrap();
     assert_eq!(rows, 0);
+}
+
+#[tokio::test]
+async fn upgrade_adds_an_empty_security_events_table() {
+    let db = TestDatabase::new();
+    initialize_with(
+        &db.options,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+        &prefix(3),
+        &baselines(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut conn = connection(&db).await;
+    conn.execute(
+        "INSERT INTO public.users (username, password_hash, role, created_at) \
+         VALUES ('sam', 'hash', 'admin', now()); \
+         INSERT INTO public.sessions (token_hash, user_id, auth_type, created_at, last_used_at, expires_at) \
+         SELECT '\\x01', id, 'password', now(), now(), now() + interval '1 day' FROM public.users",
+    )
+    .await
+    .unwrap();
+    let access = "SELECT jsonb_build_array(\
+         (SELECT jsonb_agg(to_jsonb(u)) FROM public.users u), \
+         (SELECT jsonb_agg(to_jsonb(s)) FROM public.sessions s))::text";
+    let before: String = sqlx::query_scalar(access)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    let original: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    init(&db).await.unwrap();
+    let upgraded: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    assert_eq!(
+        upgraded.as_array().unwrap()[..3],
+        original.as_array().unwrap()[..]
+    );
+    assert_eq!(successful_records(&mut conn).await, 4);
+    let after: String = sqlx::query_scalar(access)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(before, after);
+    let events: i64 = sqlx::query_scalar("SELECT count(*) FROM public.security_events")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(events, 0);
 }
 
 #[tokio::test]
