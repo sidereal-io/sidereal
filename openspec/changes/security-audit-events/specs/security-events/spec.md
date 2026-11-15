@@ -1,6 +1,6 @@
 ## Purpose
 
-Sam can see who claimed the instance, who recovered access from the box, and who tried to sign in and failed: every security event writes one log line, and the ones that matter after the fact also leave a row in PostgreSQL.
+Sam can see in the app's normal log who claimed the instance, who signed in and out, who recovered access from the box, and who tried to sign in and failed. Every security event writes one `security event:` line, and nothing is stored in PostgreSQL.
 
 ## ADDED Requirements
 
@@ -15,7 +15,7 @@ Each of these acts SHALL write exactly one line that starts with `security event
 - a sign-out answered 204;
 - a reset by `siderealctl reset-admin-password`.
 
-The server SHALL write its lines to its stderr. `siderealctl` SHALL write its line to its own stderr. A line SHALL be written only once the act has taken effect, and SHALL be written even when what follows the act fails.
+The server SHALL write its lines to its stderr. `siderealctl` SHALL write its line to its own stderr, and the server SHALL also write it, as "An event from `siderealctl` reaches the server's log" says. A line SHALL be written only once the act has taken effect, and SHALL be written even when what follows the act fails. No security event SHALL write to PostgreSQL beyond the act itself.
 
 #### Scenario: A claim from the browser
 - **WHEN** no administrator exists and Sam sends `POST /api/claim` with username `sam` and a valid password, answered 201
@@ -40,6 +40,10 @@ The server SHALL write its lines to its stderr. `siderealctl` SHALL write its li
 #### Scenario: The generated password cannot be shown
 - **WHEN** Sam resets the password from the box, leaves `New password:` empty, and stdout cannot be written, so the command exits 1
 - **THEN** the command's stderr holds exactly one line that starts with `security event:`, because the reset took effect
+
+#### Scenario: Nothing is stored
+- **WHEN** Sam claims, signs in, fails a sign-in, signs out, and resets the password from the box
+- **THEN** the database's application tables are still `sidereal_metadata`, `_sqlx_migrations`, `users` and `sessions`
 
 ### Requirement: The log line names the event in fixed fields
 
@@ -86,89 +90,45 @@ Each `username` and `user_agent` value SHALL be written in double quotes. Inside
 - **WHEN** no administrator exists and a caller claims with username `sa"m\` and a valid password
 - **THEN** the line holds `username="sa\"m\\"`
 
-### Requirement: A claim, an access recovery and a failed sign-in leave a row
+### Requirement: An event from `siderealctl` reaches the server's log
 
-An instance claim, an access recovery, and a failed sign-in with outcome `wrong_credentials` or `limited` SHALL each add exactly one row to the `security_events` table. A row SHALL hold the time of the event and the same `kind`, `outcome`, `source`, `username`, `client_address`, `user_agent` and `sessions_ended` values as its line, with no value where the line leaves a field out. A row SHALL hold no `retry_after`. The row SHALL exist when the server answers, or when `siderealctl` exits.
+A `siderealctl` claim or reset SHALL send its line with the act, so that it is sent only when the act takes effect. A running server SHALL write each line it receives this way to its stderr, exactly once, as it writes its own lines. The server SHALL write a received line only when it is one line that starts with `security event:` and holds no control character, and SHALL drop any other. When no server is running, the event SHALL still appear on the command's stderr.
 
-#### Scenario: A claim from the browser
-- **WHEN** no administrator exists and Sam, at `192.168.1.20` with `User-Agent: Firefox/140`, claims with username `sam`, answered 201
-- **THEN** `security_events` holds one row with kind `instance_claim`, outcome `success`, source `http`, username `sam`, client address `192.168.1.20`, user agent `Firefox/140` and no sessions ended
+#### Scenario: A reset while the server runs
+- **WHEN** the server is running, Sam is signed in once, and Sam runs the reset from the box with a valid password, exit 0
+- **THEN** captured server stderr holds exactly one new line that starts with `security event:`, and it is `security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=1`
 
-#### Scenario: A claim from the box
-- **WHEN** no administrator exists and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with a valid password, exit 0
-- **THEN** `security_events` holds one row with kind `instance_claim`, outcome `success`, source `siderealctl` and username `sam`
+#### Scenario: A create from the box while the server runs
+- **WHEN** the server is running, no administrator exists, and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with a valid password, exit 0
+- **THEN** captured server stderr holds exactly one new line, `security event: kind=instance_claim outcome=success source=siderealctl username="sam"`
 
-#### Scenario: A failed sign-in
-- **WHEN** a caller at `192.168.1.20` signs in as `sam` with a wrong password, answered 401
-- **THEN** `security_events` gains one row with kind `sign_in`, outcome `wrong_credentials`, source `http` and client address `192.168.1.20`
-
-#### Scenario: An address becomes limited
-- **WHEN** a caller at `127.0.0.1` fails sign-in 5 times within a minute and then sends three more sign-ins, each answered 429
-- **THEN** `security_events` holds five rows with outcome `wrong_credentials` and exactly one with outcome `limited`, all with client address `127.0.0.1`
-
-#### Scenario: Attempts at the same time
-- **WHEN** a caller at `192.168.1.20` sends 10 sign-ins with a wrong password at the same moment, and one answers 401 and nine answer 429
-- **THEN** `security_events` holds exactly one row with outcome `wrong_credentials` and exactly one with outcome `limited`
-
-### Requirement: A successful sign-in and a sign-out leave no row
-
-A sign-in answered 200 and a sign-out answered 204 SHALL write their line and SHALL add no row to `security_events`.
-
-#### Scenario: Sign in and sign out
-- **WHEN** an administrator exists, `security_events` holds its claim row, and Sam signs in with correct credentials and then signs out
-- **THEN** `security_events` still holds only the claim row, and captured stderr holds two new `security event:` lines, one with `kind=sign_in` and one with `kind=sign_out`
+#### Scenario: A reset that takes no effect
+- **WHEN** the server is running, an administrator exists, and Sam runs the reset from the box but the database refuses the password update, so the command exits 1
+- **THEN** captured server stderr gains no `security event:` line
 
 ### Requirement: A failed sign-in names no username
 
-A failed sign-in's line and row SHALL hold no username: neither the username in the request nor the username of a user it matched. Its line and row SHALL NOT hold any other part of the request body.
+A failed sign-in's line SHALL hold no username: neither the username in the request nor the username of a user it matched. Its line SHALL NOT hold any other part of the request body.
 
 #### Scenario: A wrong password for a known user
 - **WHEN** a caller signs in as `sam` with a wrong password
-- **THEN** the new line and the new row hold no username, and the line does not contain `sam`
+- **THEN** the new line holds no `username` field and does not contain `sam`
 
 #### Scenario: An unknown username
 - **WHEN** a caller signs in as `nobody-distinctive` with any password
-- **THEN** neither the new line nor any `security_events` row contains `nobody-distinctive`
+- **THEN** the new line does not contain `nobody-distinctive`
 
 ### Requirement: An event from `siderealctl` names no client
 
-A `siderealctl` event's line and row SHALL hold source `siderealctl` and SHALL hold no client address and no user agent.
+A `siderealctl` event's line SHALL hold source `siderealctl` and SHALL hold no client address and no user agent.
 
 #### Scenario: A reset from the box
-- **WHEN** Sam is signed in twice and runs the reset from the box with a valid password
-- **THEN** `security_events` gains one row with kind `access_recovery`, outcome `success`, source `siderealctl`, username `sam`, 2 sessions ended, and no client address or user agent
-
-### Requirement: A claim or an access recovery needs its row
-
-A claim and an access recovery SHALL write their row in the same transaction as the act. When the row cannot be written, the act SHALL take no effect and SHALL fail as unavailable, and no line SHALL be written. From the browser, the claim SHALL answer 503 with the body `{"error":"unavailable"}`. From `siderealctl`, the command SHALL print its database-unavailable line on stderr and exit 1.
-
-#### Scenario: A browser claim whose row is refused
-- **WHEN** no administrator exists, a trigger makes PostgreSQL refuse every insert into `security_events`, and a caller claims with valid credentials
-- **THEN** the status is 503, the body is `{"error":"unavailable"}`, the `users` table is empty, and stderr holds no `security event:` line
-
-#### Scenario: A reset whose row is refused
-- **WHEN** Sam is signed in once, a trigger makes PostgreSQL refuse every insert into `security_events`, and Sam runs the reset from the box with a valid password
-- **THEN** the exit status is 1, the password hash is unchanged, the `sessions` table still holds the session, and stderr holds no `security event:` line
-
-#### Scenario: A create from the box whose row is refused
-- **WHEN** no administrator exists, a trigger makes PostgreSQL refuse every insert into `security_events`, and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with a valid password
-- **THEN** the exit status is 1 and the `users` table is empty
-
-### Requirement: A failed sign-in answers the same without its row
-
-When the row of a failed sign-in cannot be written, the server SHALL still answer as the sign-in requirements in `instance-access` say. The answer SHALL be 401 or 429 with the same body and headers, and the server SHALL still write the line.
-
-#### Scenario: A wrong password whose row is refused
-- **WHEN** a trigger makes PostgreSQL refuse every insert into `security_events` and a caller signs in as `sam` with a wrong password
-- **THEN** the status is 401, the body is `{"error":"invalid credentials"}`, and stderr gains one line with `outcome=wrong_credentials`
-
-#### Scenario: A limited address whose row is refused
-- **WHEN** a trigger makes PostgreSQL refuse every insert into `security_events`, and a caller at `127.0.0.1` fails sign-in 5 times within a minute and sends one more sign-in
-- **THEN** the last answer is 429 with a `Retry-After` header, and stderr gains one line with `outcome=limited`
+- **WHEN** Sam runs the reset from the box with a valid password
+- **THEN** the line holds `source=siderealctl` and has no `client_address` and no `user_agent` field
 
 ### Requirement: A refused request is not a security event
 
-A request or command that the system refuses, other than a failed sign-in answered 401 or the first 429 of a run, SHALL write no `security event:` line and add no row. This covers:
+A request or command that the system refuses, other than a failed sign-in answered 401 or the first 429 of a run, SHALL write no `security event:` line. This covers:
 
 - a sign-in answered 400;
 - a 429 to an address whose previous attempt was also refused;
@@ -179,11 +139,11 @@ A request or command that the system refuses, other than a failed sign-in answer
 
 #### Scenario: A malformed sign-in body
 - **WHEN** a caller sends `POST /api/session` with a body that is not credentials, answered 400
-- **THEN** stderr gains no `security event:` line and `security_events` gains no row
+- **THEN** stderr gains no `security event:` line
 
 #### Scenario: A second claim
 - **WHEN** an administrator exists and a caller sends `POST /api/claim` with any credentials, answered 409
-- **THEN** stderr gains no `security event:` line and `security_events` gains no row
+- **THEN** stderr gains no `security event:` line
 
 #### Scenario: A sign-out without a session
 - **WHEN** a caller sends `DELETE /api/session` with no cookie, answered 401
@@ -191,24 +151,24 @@ A request or command that the system refuses, other than a failed sign-in answer
 
 #### Scenario: A create from the box that loses the race
 - **WHEN** no administrator exists when the command starts, and a `POST /api/claim` creates one before the command writes
-- **THEN** the command's stderr holds no `security event:` line, and `security_events` holds only the browser claim's row
+- **THEN** the command's stderr holds no `security event:` line, and the server's stderr holds only the browser claim's line
 
-### Requirement: No secret reaches a row or a line
+### Requirement: No secret reaches a line
 
-No `security_events` row and no `security event:` line SHALL hold a password, a password hash, a session token or a session token hash.
+No `security event:` line SHALL hold a password, a password hash, a session token or a session token hash.
 
 #### Scenario: A distinctive password
 - **WHEN** Sam claims, signs in, fails a sign-in and signs out, each with a distinctive password, and then resets the password from the box with another distinctive password
-- **THEN** no `security_events` row and no `security event:` line contains either password, a `$argon2` string, or the session cookie's value
+- **THEN** no `security event:` line, on the server's stderr or the command's, contains either password, a `$argon2` string, or the session cookie's value
 
 ### Requirement: The user agent is kept as sent, up to 256 characters
 
-The `user_agent` value SHALL be the request's `User-Agent` header, cut to its first 256 characters. Bytes that are not valid UTF-8 SHALL each be kept as U+FFFD. The row and the line SHALL hold the same value, before the line's escaping.
+The `user_agent` value SHALL be the request's `User-Agent` header, cut to its first 256 characters. Bytes that are not valid UTF-8 SHALL each be kept as U+FFFD. The cut and the replacement SHALL happen before the line's escaping.
 
 #### Scenario: A long user agent
 - **WHEN** a caller fails sign-in with a `User-Agent` header of 1000 `a` characters
-- **THEN** the new row's user agent is 256 `a` characters
+- **THEN** the new line holds `user_agent="` followed by 256 `a` characters and `"`
 
 #### Scenario: A user agent that is not UTF-8
 - **WHEN** a caller fails sign-in with a `User-Agent` header holding the bytes `ab\xffcd`
-- **THEN** the new row's user agent is `ab\u{fffd}cd`
+- **THEN** the new line holds `user_agent="ab` followed by U+FFFD and `cd"`
