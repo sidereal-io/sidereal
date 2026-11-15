@@ -163,7 +163,13 @@ Sidereal slows down password guessing. It counts failed sign-ins for each client
 
 An IPv4 address is counted on its own. IPv6 addresses are counted by their /64 prefix, so one home network shares one count.
 
-When an address passes a limit, every sign-in from it is refused with status 429 and a `Retry-After` header that gives the wait in seconds. This happens even when the password is correct, so wait the time the sign-in screen shows, then try again. The app writes one line that starts with `sign-in limited:` to its log, with the address and the wait.
+When an address passes a limit, every sign-in from it is refused with status 429 and a `Retry-After` header that gives the wait in seconds. This happens even when the password is correct, so wait the time the sign-in screen shows, then try again. The app writes one line that starts with `security event:` and holds `outcome=limited` to its log, with the address as `client_address` and the wait in seconds as `retry_after`. For example:
+
+```text
+security event: kind=sign_in outcome=limited source=http client_address=192.168.1.20 retry_after=50
+```
+
+It also keeps the event as a row in the `security_events` table. The row is a record only: the limit never reads it.
 
 A successful sign-in clears the count for its address. Restarting the app clears every count:
 
