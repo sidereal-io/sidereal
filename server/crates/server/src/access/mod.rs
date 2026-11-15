@@ -259,11 +259,12 @@ async fn sign_in(
         }
     };
     let Some((signed_in, token)) = signed_in else {
-        // Known and unknown usernames make the same insert, so its time
-        // reveals neither. A lost row never changes the answer.
-        let failed = event(Kind::SignIn, Outcome::WrongCredentials, source, None);
-        let _ = database.record(&failed).await;
-        log.write(&failed);
+        log.write(&event(
+            Kind::SignIn,
+            Outcome::WrongCredentials,
+            source,
+            None,
+        ));
         return Err(AccessError::WrongCredentials);
     };
     attempt.succeeded();
@@ -279,14 +280,13 @@ async fn sign_in(
 
 /// The first refusal of a run is a failed sign-in with outcome `limited`.
 /// It names the request's own address, not its /64, and never the username:
-/// the limiter never sees one. A lost row never changes the answer.
+/// the limiter never sees one.
 async fn limited(refusal: Refusal, database: &Database, log: &Log, source: Source) -> AccessError {
     if refusal.new {
         let limited = SecurityEvent {
             retry_after: Some(refusal.retry_after),
             ..event(Kind::SignIn, Outcome::Limited, source, None)
         };
-        let _ = database.record(&limited).await;
         log.write(&limited);
     }
     AccessError::TooManyAttempts {
