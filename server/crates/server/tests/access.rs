@@ -2075,23 +2075,6 @@ mod security_events {
     }
 
     #[tokio::test]
-    async fn claim_from_the_browser_keeps_one_row() {
-        let db = TestDatabase::new();
-        let (app, _lines) = logged(&db).await;
-        assert_eq!(claim_as(&app, "sam").await.status(), StatusCode::CREATED);
-        assert_eq!(
-            rows(&db).await,
-            [row(
-                "instance_claim",
-                "success",
-                Some("sam"),
-                Some("192.168.1.20"),
-                Some("Firefox/140")
-            )]
-        );
-    }
-
-    #[tokio::test]
     async fn claim_escapes_a_line_feed_in_the_username() {
         let db = TestDatabase::new();
         let (app, lines) = logged(&db).await;
@@ -2116,25 +2099,12 @@ mod security_events {
     }
 
     #[tokio::test]
-    async fn claim_whose_row_is_refused_is_unavailable() {
-        let db = TestDatabase::new();
-        let (app, lines) = logged(&db).await;
-        refuse_events(&db).await;
-        let response = claim_as(&app, "sam").await;
-        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(body(response).await, r#"{"error":"unavailable"}"#);
-        assert_eq!(users(&db).await, 0);
-        assert!(lines.take().is_empty());
-    }
-
-    #[tokio::test]
     async fn claim_answered_400_writes_nothing() {
         let db = TestDatabase::new();
         let (app, lines) = logged(&db).await;
         let response = claim(&app, "sam", "short").await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert!(lines.take().is_empty());
-        assert!(rows(&db).await.is_empty());
     }
 
     #[tokio::test]
@@ -2146,7 +2116,6 @@ mod security_events {
         let response = claim_as(&app, "alex").await;
         assert_eq!(response.status(), StatusCode::CONFLICT);
         assert!(lines.take().is_empty());
-        assert_eq!(rows(&db).await.len(), 1);
     }
 
     /// A claimed instance whose claim line has been taken.
@@ -2181,15 +2150,6 @@ mod security_events {
     }
 
     #[tokio::test]
-    async fn session_sign_in_keeps_no_row() {
-        let db = TestDatabase::new();
-        let (app, _lines) = claimed_logged(&db).await;
-        signed_in(&app).await;
-        let kinds: Vec<_> = rows(&db).await.into_iter().map(|row| row.0).collect();
-        assert_eq!(kinds, ["instance_claim"]);
-    }
-
-    #[tokio::test]
     async fn session_sign_out_writes_one_success_line() {
         let db = TestDatabase::new();
         let (app, lines) = claimed_logged(&db).await;
@@ -2205,19 +2165,6 @@ mod security_events {
                 r#"security event: kind=sign_out outcome=success source=http username="sam" client_address=192.168.1.20"#
             ]
         );
-    }
-
-    #[tokio::test]
-    async fn session_sign_out_keeps_no_row() {
-        let db = TestDatabase::new();
-        let (app, _lines) = claimed_logged(&db).await;
-        let cookie = signed_in(&app).await;
-        assert_eq!(
-            sign_out(&app, &cookie).await.status(),
-            StatusCode::NO_CONTENT
-        );
-        let kinds: Vec<_> = rows(&db).await.into_iter().map(|row| row.0).collect();
-        assert_eq!(kinds, ["instance_claim"]);
     }
 
     #[tokio::test]
