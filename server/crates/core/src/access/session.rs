@@ -150,14 +150,20 @@ impl Database {
 mod tests {
     use super::*;
     use crate::{
-        access::{Role, Source},
+        access::{Reset, ResetError, Role, Source},
         database::initialize,
         test_support::TestDatabase,
     };
     use base64ct::{Base64UrlUnpadded, Encoding};
-    use sqlx::{AssertSqlSafe, Connection, PgConnection};
+    use sqlx::{AssertSqlSafe, Connection, Executor, PgConnection};
+    use tokio::task::JoinHandle;
 
     const PASSWORD: &str = "correct-horse-battery";
+    const NEW_PASSWORD: &str = "new-horse-battery";
+    /// The advisory lock key a held reset waits on.
+    const HOLD: i64 = 462;
+    /// How long a test waits for another connection before it fails.
+    const WAIT: Duration = Duration::from_secs(10);
 
     async fn claimed(db: &TestDatabase) -> Database {
         let database = initialize(
@@ -193,11 +199,92 @@ mod tests {
             .unwrap()
     }
 
+    async fn hash(db: &TestDatabase) -> String {
+        sqlx::query_scalar("SELECT password_hash FROM public.users WHERE username = 'sam'")
+            .fetch_one(&mut connection(db).await)
+            .await
+            .unwrap()
+    }
+
+    /// Whether a backend in this test's database waits on a lock. `advisory`
+    /// picks advisory locks; otherwise only the others count.
+    async fn waiting_on(db: &TestDatabase, advisory: bool) -> bool {
+        sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid \
+             WHERE a.datname = current_database() AND NOT l.granted AND (l.locktype = 'advisory') = $1)",
+        )
+        .bind(advisory)
+        .fetch_one(&mut connection(db).await)
+        .await
+        .unwrap()
+    }
+
+    /// Poll `done` until it answers true, failing after [`WAIT`].
+    async fn wait_until(mut done: impl AsyncFnMut() -> bool) {
+        tokio::time::timeout(WAIT, async {
+            while !done().await {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("waited too long");
+    }
+
+    /// A reset that has replaced the hash and deleted every session, and
+    /// waits to commit until [`HeldReset::release`].
+    struct HeldReset {
+        lock: PgConnection,
+        task: JoinHandle<Result<Reset, ResetError>>,
+    }
+
+    impl HeldReset {
+        async fn start(db: &TestDatabase, database: &Database) -> Self {
+            let mut lock = connection(db).await;
+            lock.execute(AssertSqlSafe(format!(
+                "SELECT pg_advisory_lock({HOLD}); \
+                 CREATE FUNCTION public.hold() RETURNS trigger LANGUAGE plpgsql \
+                 AS 'BEGIN PERFORM pg_advisory_xact_lock_shared({HOLD}); RETURN NULL; END'; \
+                 CREATE TRIGGER hold AFTER DELETE ON public.sessions \
+                 FOR EACH STATEMENT EXECUTE FUNCTION public.hold()"
+            )))
+            .await
+            .unwrap();
+            let database = database.clone();
+            let task =
+                tokio::spawn(async move { database.reset_admin_password(NEW_PASSWORD).await });
+            wait_until(async || waiting_on(db, true).await).await;
+            Self { lock, task }
+        }
+
+        async fn release(mut self) -> Result<Reset, ResetError> {
+            self.lock
+                .execute(AssertSqlSafe(format!("SELECT pg_advisory_unlock({HOLD})")))
+                .await
+                .unwrap();
+            tokio::time::timeout(WAIT, self.task)
+                .await
+                .expect("waited too long")
+                .unwrap()
+        }
+    }
+
     fn sam() -> User {
         User {
             username: "sam".into(),
             role: Role::Admin,
         }
+    }
+
+    #[tokio::test]
+    async fn a_held_reset_commits_only_when_released() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        let before = hash(&db).await;
+        let held = HeldReset::start(&db, &database).await;
+        assert_eq!(hash(&db).await, before);
+        assert!(!held.task.is_finished());
+        assert!(held.release().await.is_ok());
+        assert_ne!(hash(&db).await, before);
     }
 
     #[tokio::test]
