@@ -68,15 +68,15 @@ The comparison is on the stored hash string, not on a second argon2 check: the s
 
 ### D-2. The test holds the reset open with a trigger and an advisory lock
 
-The test makes the reset pause between its `UPDATE` and its `DELETE`, so the order is fixed rather than timed:
+The test makes the reset pause after its `DELETE` and before its commit, so the order is fixed rather than timed. This is the window brainstorm D1 describes:
 
-1. A test connection takes `pg_advisory_lock(<key>)` and creates a statement trigger, `BEFORE DELETE ON public.sessions`, whose function waits on the same key with `pg_advisory_xact_lock_shared`.
-2. Spawn `reset_admin_password(NEW_PASSWORD)`. It updates the hash, then waits in the trigger. Poll `pg_stat_activity` until a backend waits with `wait_event = 'advisory'`.
-3. Spawn `sign_in("sam", PASSWORD)`. Its first `SELECT` reads the old hash, because the reset has not committed. Poll until the sign-in task has finished, or `pg_locks` shows an ungranted lock that is not an advisory lock.
+1. A test connection takes `pg_advisory_lock(<key>)` and creates a statement trigger, `AFTER DELETE ON public.sessions`, whose function waits on the same key with `pg_advisory_xact_lock_shared`.
+2. Spawn `reset_admin_password(NEW_PASSWORD)`. It updates the hash and deletes every session, then waits in the trigger. Poll `pg_stat_activity` until a backend waits with `wait_event = 'advisory'`.
+3. Spawn `sign_in("sam", PASSWORD)`. Its first `SELECT` reads the old hash, because the reset has not committed. Poll until the sign-in task has finished, or `pg_locks` shows an ungranted lock that is not an advisory lock. Record which of the two ended the poll.
 4. Release the advisory lock. Await both tasks.
-5. Assert: the reset succeeded, the sign-in returned `Ok(None)`, and `public.sessions` is empty.
+5. Assert, in this order: the reset succeeded, the sign-in returned `Ok(None)`, `public.sessions` is empty, and the poll ended on the lock wait.
 
-Without D-1 the insert does not wait, so the sign-in returns `Some` and the test fails on that assertion. That is the red step. Each poll has a 10-second limit, so a regression fails instead of hanging.
+Without D-1 the insert does not wait. It lands after the reset's `DELETE`, so the sign-in returns `Some` and its session survives the commit. The test fails on the `Ok(None)` assertion first. That is the red step. The last assertion stops a sign-in that returns `None` for another reason, such as a wrong test password, from passing. Each poll has a 10-second limit, so a regression fails instead of hanging.
 
 The opposite order gets no new test (brainstorm D7).
 
