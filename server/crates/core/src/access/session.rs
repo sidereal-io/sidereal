@@ -43,6 +43,12 @@ impl Database {
     ///
     /// An unknown username is checked against a dummy hash, so it costs the
     /// same as a wrong password and the answer does not reveal which it was.
+    ///
+    /// The session is saved only while the user row still holds the hash the
+    /// password matched. The share lock waits for an open reset, and once it
+    /// commits the replaced hash no longer matches, so no session made with
+    /// the old password outlives the reset. No lock is held during the slow
+    /// password check.
     pub async fn sign_in(
         &self,
         username: &str,
@@ -58,20 +64,26 @@ impl Database {
             None => password::dummy().await?,
         };
         let matches = password::verify(password, hash).await?;
-        let Some((id, _, role)) = found.filter(|_| matches) else {
+        let Some((id, hash, role)) = found.filter(|_| matches) else {
             return Ok(None);
         };
         let role = Role::parse(&role).ok_or(Unavailable)?;
         let token = Token::new();
-        sqlx::query(
-            "INSERT INTO public.sessions (token_hash, user_id, auth_type, created_at, last_used_at, expires_at) \
-             VALUES ($1, $2, 'password', now(), now(), now() + make_interval(secs => $3))",
+        let saved = sqlx::query(
+            "WITH checked AS (SELECT id FROM public.users WHERE id = $2 AND password_hash = $4 FOR SHARE) \
+             INSERT INTO public.sessions (token_hash, user_id, auth_type, created_at, last_used_at, expires_at) \
+             SELECT $1, id, 'password', now(), now(), now() + make_interval(secs => $3) FROM checked",
         )
         .bind(digest(token.as_str()))
         .bind(id)
         .bind(SESSION_LIFETIME.as_secs_f64())
+        .bind(hash)
         .execute(self.pool())
-        .await?;
+        .await?
+        .rows_affected();
+        if saved == 0 {
+            return Ok(None);
+        }
         let user = User {
             username: username.to_owned(),
             role,
@@ -285,6 +297,27 @@ mod tests {
         assert!(!held.task.is_finished());
         assert!(held.release().await.is_ok());
         assert_ne!(hash(&db).await, before);
+    }
+
+    #[tokio::test]
+    async fn a_sign_in_during_a_reset_answers_none_and_saves_nothing() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        let held = HeldReset::start(&db, &database).await;
+        let sign_in = tokio::spawn({
+            let database = database.clone();
+            async move { database.sign_in("sam", PASSWORD).await }
+        });
+        let mut waited = false;
+        wait_until(async || {
+            waited = waiting_on(&db, false).await;
+            waited || sign_in.is_finished()
+        })
+        .await;
+        assert!(held.release().await.is_ok());
+        assert_eq!(sign_in.await.unwrap(), Ok(None));
+        assert_eq!(sessions(&db).await, 0);
+        assert!(waited, "the sign-in never waited on the reset's row lock");
     }
 
     #[tokio::test]
