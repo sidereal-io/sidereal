@@ -3,7 +3,7 @@ use crate::config::AllowedOrigins;
 use axum::{
     extract::{rejection::JsonRejection, State},
     http::{
-        header::{RETRY_AFTER, SET_COOKIE},
+        header::{RETRY_AFTER, SET_COOKIE, USER_AGENT},
         HeaderMap, StatusCode,
     },
     middleware,
@@ -13,7 +13,9 @@ use axum::{
 };
 use serde_json::{json, Value};
 use sidereal_core::{
-    access::{ClaimError, Unavailable, User},
+    access::{
+        ClaimError, Kind, Outcome, SecurityEvent, SecurityEventLines, Source, Unavailable, User,
+    },
     database::Database,
 };
 
@@ -26,7 +28,8 @@ pub mod limit;
 use events::EventTiming;
 use forwarded::Forwarded;
 use limit::{Key, Limiter, Refusal};
-use std::{net::IpAddr, sync::Arc};
+use std::{sync::Arc, time::Duration};
+use tokio::task::JoinHandle;
 
 /// Every path under `/api`, behind the origin check and then the session
 /// guard. The layer added last runs first. The catch-alls are
@@ -38,6 +41,7 @@ pub fn routes(
     allowed_origins: AllowedOrigins,
     timing: EventTiming,
     limiter: Arc<Limiter>,
+    log: Log,
 ) -> Router<Database> {
     Router::new()
         .route("/api/claim", get(claim_state).post(claim))
@@ -58,6 +62,71 @@ pub fn routes(
             guard::origin,
         ))
         .layer(Extension(limiter))
+        .layer(Extension(log))
+}
+
+/// Where the server writes one line for each security event. Its default
+/// is stderr; a test captures the lines instead.
+#[derive(Clone)]
+pub struct Log(Arc<dyn Fn(&str) + Send + Sync>);
+
+impl Log {
+    pub fn new(write: impl Fn(&str) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(write))
+    }
+
+    fn write(&self, event: &SecurityEvent) {
+        (self.0)(&event.to_string());
+    }
+}
+
+impl Default for Log {
+    fn default() -> Self {
+        Self::new(|line| eprintln!("{line}"))
+    }
+}
+
+/// Write each line `siderealctl` sends to `log`, so an event from the box
+/// reaches the server's log. It listens before it returns, so no line sent
+/// after that is missed. A listener that fails is rebuilt, and a line sent
+/// while it is down is lost. The task ends when the database closes.
+pub async fn relay(database: &Database, log: Log) -> Result<JoinHandle<()>, Unavailable> {
+    let mut lines = database.security_event_lines().await?;
+    let database = database.clone();
+    Ok(tokio::spawn(async move {
+        loop {
+            while let Ok(line) = lines.next().await {
+                (log.0)(&line);
+            }
+            // The listener pool holds one connection, which the old listener
+            // must give back before a new one can take it.
+            drop(lines);
+            if database.is_closed() {
+                return;
+            }
+            eprintln!("database unavailable: lost the listener for security events from siderealctl; reconnecting");
+            match listen_again(&database).await {
+                Some(again) => lines = again,
+                None => return,
+            }
+        }
+    }))
+}
+
+/// A new listener, retried with a doubling wait, or `None` once the database
+/// closes.
+async fn listen_again(database: &Database) -> Option<SecurityEventLines> {
+    let mut wait = Duration::from_millis(250);
+    loop {
+        tokio::time::sleep(wait).await;
+        if database.is_closed() {
+            return None;
+        }
+        if let Ok(lines) = database.security_event_lines().await {
+            return Some(lines);
+        }
+        wait = (wait * 2).min(Duration::from_secs(30));
+    }
 }
 
 async fn not_found() -> StatusCode {
@@ -150,13 +219,52 @@ async fn claim_state(State(database): State<Database>) -> Result<Json<Value>, Ac
 
 async fn claim(
     State(database): State<Database>,
+    Extension(log): Extension<Log>,
+    forwarded: Option<Extension<Forwarded>>,
+    headers: HeaderMap,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<(StatusCode, Json<Value>), AccessError> {
     let credentials = Credentials::try_from(body)?;
-    let created = database
-        .claim(&credentials.username, &credentials.password)
+    let claimed = database
+        .claim(
+            &credentials.username,
+            &credentials.password,
+            http(forwarded.as_ref(), &headers),
+        )
         .await?;
-    Ok((StatusCode::CREATED, user(&created)))
+    log.write(&claimed.event);
+    Ok((StatusCode::CREATED, user(&claimed.user)))
+}
+
+fn event(kind: Kind, outcome: Outcome, source: Source, username: Option<String>) -> SecurityEvent {
+    SecurityEvent {
+        kind,
+        outcome,
+        source,
+        username,
+        sessions_ended: None,
+        retry_after: None,
+    }
+}
+
+/// Where a request came from, as its security event names it.
+fn http(forwarded: Option<&Extension<Forwarded>>, headers: &HeaderMap) -> Source {
+    Source::Http {
+        client_address: forwarded.and_then(|Extension(forwarded)| forwarded.client),
+        user_agent: user_agent(headers),
+    }
+}
+
+/// The first `User-Agent` value as text, cut to 256 characters, so a caller
+/// cannot grow the line.
+fn user_agent(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(USER_AGENT)?;
+    Some(
+        String::from_utf8_lossy(value.as_bytes())
+            .chars()
+            .take(256)
+            .collect(),
+    )
 }
 
 /// Whether the request arrived over HTTPS. Without the trusted-proxy layer
@@ -171,19 +279,21 @@ fn over_https(forwarded: Option<Extension<Forwarded>>) -> bool {
 async fn sign_in(
     State(database): State<Database>,
     Extension(limiter): Extension<Arc<Limiter>>,
+    Extension(log): Extension<Log>,
     forwarded: Option<Extension<Forwarded>>,
+    headers: HeaderMap,
     body: Result<Json<Value>, JsonRejection>,
 ) -> Result<Response, AccessError> {
-    let resolved = forwarded.as_ref().map(|Extension(forwarded)| forwarded);
-    let key = Key::of(resolved);
-    let client = resolved.and_then(|forwarded| forwarded.client);
+    let key = Key::of(forwarded.as_ref().map(|Extension(forwarded)| forwarded));
+    let source = http(forwarded.as_ref(), &headers);
     if let Some(refusal) = limiter.refused(key) {
-        return Err(limited(refusal, client));
+        return Err(limited(refusal, &log, source));
     }
     let credentials = Credentials::try_from(body)?;
-    let attempt = limiter
-        .admit(key)
-        .map_err(|refusal| limited(refusal, client))?;
+    let attempt = match limiter.admit(key) {
+        Ok(attempt) => attempt,
+        Err(refusal) => return Err(limited(refusal, &log, source)),
+    };
     let signed_in = match database
         .sign_in(&credentials.username, &credentials.password)
         .await
@@ -194,21 +304,37 @@ async fn sign_in(
             return Err(unavailable.into());
         }
     };
-    let (signed_in, token) = signed_in.ok_or(AccessError::WrongCredentials)?;
+    let Some((signed_in, token)) = signed_in else {
+        // Known and unknown usernames write the same line, so it reveals neither.
+        log.write(&event(
+            Kind::SignIn,
+            Outcome::WrongCredentials,
+            source,
+            None,
+        ));
+        return Err(AccessError::WrongCredentials);
+    };
     attempt.succeeded();
+    log.write(&event(
+        Kind::SignIn,
+        Outcome::Success,
+        source,
+        Some(signed_in.username.clone()),
+    ));
     let cookie = cookie::session(token.as_str(), over_https(forwarded));
     Ok(([(SET_COOKIE, cookie)], user(&signed_in)).into_response())
 }
 
-/// The log names the request's own address, not its /64, and never the
-/// username: the limiter never sees one.
-fn limited(refusal: Refusal, client: Option<IpAddr>) -> AccessError {
+/// The first refusal of a run is a failed sign-in with outcome `limited`.
+/// It names the request's own address, not its /64, and never the username:
+/// the limiter never sees one.
+fn limited(refusal: Refusal, log: &Log, source: Source) -> AccessError {
     if refusal.new {
-        let wait = refusal.retry_after;
-        match client {
-            Some(client) => eprintln!("sign-in limited: {client} must wait {wait} s"),
-            None => eprintln!("sign-in limited: unresolved client address must wait {wait} s"),
-        }
+        let limited = SecurityEvent {
+            retry_after: Some(refusal.retry_after),
+            ..event(Kind::SignIn, Outcome::Limited, source, None)
+        };
+        log.write(&limited);
     }
     AccessError::TooManyAttempts {
         retry_after: refusal.retry_after,
@@ -223,6 +349,8 @@ async fn current_session(Extension(signed_in): Extension<User>) -> Json<Value> {
 /// The guard has proven the token valid; it is still needed to delete the row.
 async fn sign_out(
     State(database): State<Database>,
+    Extension(signed_in): Extension<User>,
+    Extension(log): Extension<Log>,
     forwarded: Option<Extension<Forwarded>>,
     headers: HeaderMap,
 ) -> Result<Response, AccessError> {
@@ -233,5 +361,11 @@ async fn sign_out(
     if !database.sign_out(token).await? {
         return Ok((cleared, AccessError::Unauthenticated).into_response());
     }
+    log.write(&event(
+        Kind::SignOut,
+        Outcome::Success,
+        http(forwarded.as_ref(), &headers),
+        Some(signed_in.username),
+    ));
     Ok((StatusCode::NO_CONTENT, cleared).into_response())
 }

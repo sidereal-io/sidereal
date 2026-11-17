@@ -22,3 +22,6 @@ Shared vocabulary for Sidereal. A spec folder under `openspec/specs/` may hold i
   proxy.
 - **Allowed origin** — an origin whose state-changing requests the server accepts: the
   request's own host and port, plus any listed in `SIDEREAL_ALLOWED_ORIGINS`.
+- **Security event** — one trust-relevant act on access, written as one line in the
+  server's log: an instance claim, a sign-in that succeeds or fails, a sign-out, or an
+  access recovery.

@@ -7,7 +7,10 @@ use axum::{
     response::Response,
     Router,
 };
-use sidereal_core::database::{initialize, Database};
+use sidereal_core::{
+    access::Source,
+    database::{initialize, Database},
+};
 use sidereal_server::{
     app_with_database,
     config::{allowed_origins, trusted_proxies, AllowedOrigins, TrustedProxies},
@@ -1432,7 +1435,11 @@ mod warning {
     #[tokio::test]
     async fn a_claimed_start_does_not_warn() {
         let db = TestDatabase::new();
-        database(&db).await.claim("sam", PASSWORD).await.unwrap();
+        database(&db)
+            .await
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         let output = spawned::Server::ready(&db).output();
         assert_eq!(warnings(&output), 0, "{output}");
     }
@@ -1481,7 +1488,7 @@ mod spawned_events {
 
 mod sign_in_limit {
     use super::*;
-    use sidereal_server::{app_with_tuning, Tuning};
+    use sidereal_server::{app_with_tuning, Log, Tuning};
     use std::{
         sync::{Arc, Mutex},
         time::Instant,
@@ -1503,10 +1510,16 @@ mod sign_in_limit {
     /// The production stack on `database`, trusting `trusted`, with the sign-in
     /// limit on a manual clock.
     pub fn tuned(database: Database, trusted: TrustedProxies) -> (Router, Clock) {
+        tuned_with(database, trusted, Log::default())
+    }
+
+    /// As `tuned`, writing security event lines to `log`.
+    pub fn tuned_with(database: Database, trusted: TrustedProxies, log: Log) -> (Router, Clock) {
         let now = Arc::new(Mutex::new(Instant::now()));
         let reading = now.clone();
         let tuning = Tuning {
             clock: Arc::new(move || *reading.lock().unwrap()),
+            log,
             ..Tuning::default()
         };
         let app = app_with_tuning(database, AllowedOrigins::default(), tuning);
@@ -1864,10 +1877,12 @@ mod spawned_sign_in_limit {
         server
     }
 
+    /// The `security event:` lines of a `limited` sign-in. Each earlier 401
+    /// also writes a `security event:` line, so the outcome tells them apart.
     fn limit_lines(output: &str) -> Vec<&str> {
         output
             .lines()
-            .filter(|line| line.starts_with("sign-in limited:"))
+            .filter(|line| line.starts_with("security event:") && line.contains("outcome=limited"))
             .collect()
     }
 
@@ -1890,11 +1905,17 @@ mod spawned_sign_in_limit {
         let output = server.output();
         let lines = limit_lines(&output);
         assert_eq!(lines.len(), 1, "{output}");
-        assert!(lines[0].contains("127.0.0.1"), "{output}");
+        assert!(lines[0].contains("client_address=127.0.0.1"), "{output}");
         assert!(!lines[0].contains("sam"), "{output}");
+        assert!(
+            !output
+                .lines()
+                .any(|line| line.starts_with("sign-in limited:")),
+            "{output}"
+        );
         let named: u64 = lines[0]
             .split_whitespace()
-            .find_map(|word| word.parse().ok())
+            .find_map(|word| word.strip_prefix("retry_after=")?.parse().ok())
             .expect("a wait in the line");
         // The first refusal's wait is at most a second longer than the last.
         let last: u64 = wait.parse().unwrap();
@@ -1906,5 +1927,329 @@ mod spawned_sign_in_limit {
         let db = TestDatabase::new();
         let output = after_five_failures(&db).output();
         assert!(limit_lines(&output).is_empty(), "{output}");
+    }
+}
+
+mod security_events {
+    use super::{
+        sign_in_limit::{fail, seconds, tuned_with, Clock},
+        *,
+    };
+    use sidereal_server::Log;
+    use std::sync::{Arc, Mutex};
+
+    /// The lines a router wrote to its log, in order.
+    #[derive(Clone, Default)]
+    struct Lines(Arc<Mutex<Vec<String>>>);
+
+    impl Lines {
+        fn log(&self) -> Log {
+            let lines = self.0.clone();
+            Log::new(move |line| lines.lock().unwrap().push(line.to_owned()))
+        }
+
+        /// The `security event:` lines written since the last call.
+        fn take(&self) -> Vec<String> {
+            std::mem::take(&mut *self.0.lock().unwrap())
+                .into_iter()
+                .filter(|line| line.starts_with("security event:"))
+                .collect()
+        }
+    }
+
+    /// The production stack on a fresh database, with no trusted proxies,
+    /// writing its lines to the returned `Lines`.
+    async fn logged(db: &TestDatabase) -> (Router, Lines) {
+        logged_trusting(db, TrustedProxies::default()).await
+    }
+
+    async fn logged_trusting(db: &TestDatabase, trusted: TrustedProxies) -> (Router, Lines) {
+        let (app, lines, _clock) = clocked(db, trusted).await;
+        (app, lines)
+    }
+
+    async fn clocked(db: &TestDatabase, trusted: TrustedProxies) -> (Router, Lines, Clock) {
+        let lines = Lines::default();
+        let (app, clock) = tuned_with(database(db).await, trusted, lines.log());
+        (app, lines, clock)
+    }
+
+    const FIREFOX: (&str, &str) = ("user-agent", "Firefox/140");
+
+    async fn claim_as(app: &Router, username: &str) -> Response {
+        let request = Some(credentials(username, PASSWORD));
+        send_with(app, "POST", "/api/claim", request, &[FIREFOX]).await
+    }
+
+    #[tokio::test]
+    async fn claim_from_the_browser_writes_one_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        assert_eq!(claim_as(&app, "sam").await.status(), StatusCode::CREATED);
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=instance_claim outcome=success source=http username="sam" client_address=192.168.1.20 user_agent="Firefox/140""#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_escapes_a_line_feed_in_the_username() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        let response = claim_as(&app, "sam\nsecurity event: kind=sign_in").await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let lines = lines.take();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains(r#"username="sam\u{a}security event: kind=sign_in""#),
+            "{lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn claim_escapes_a_quote_and_a_backslash_in_the_username() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        let response = claim_as(&app, r#"sa"m\"#).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let lines = lines.take();
+        assert!(lines[0].contains(r#"username="sa\"m\\""#), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn claim_answered_400_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        let response = claim(&app, "sam", "short").await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(lines.take().is_empty());
+    }
+
+    #[tokio::test]
+    async fn claim_answered_409_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged(&db).await;
+        claim_as(&app, "sam").await;
+        lines.take();
+        let response = claim_as(&app, "alex").await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        assert!(lines.take().is_empty());
+    }
+
+    /// A claimed instance whose claim line has been taken.
+    async fn claimed_logged(db: &TestDatabase) -> (Router, Lines) {
+        let (app, lines) = logged(db).await;
+        assert_eq!(
+            claim(&app, "sam", PASSWORD).await.status(),
+            StatusCode::CREATED
+        );
+        lines.take();
+        (app, lines)
+    }
+
+    async fn sign_out(app: &Router, cookie: &str) -> Response {
+        send_with(app, "DELETE", "/api/session", None, &[("cookie", cookie)]).await
+    }
+
+    #[tokio::test]
+    async fn session_sign_in_writes_one_success_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        assert_eq!(
+            sign_in(&app, "sam", PASSWORD).await.status(),
+            StatusCode::OK
+        );
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=sign_in outcome=success source=http username="sam" client_address=192.168.1.20"#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn session_sign_out_writes_one_success_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let cookie = signed_in(&app).await;
+        lines.take();
+        assert_eq!(
+            sign_out(&app, &cookie).await.status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=sign_out outcome=success source=http username="sam" client_address=192.168.1.20"#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn session_sign_out_without_a_cookie_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = send(&app, "DELETE", "/api/session", None).await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert!(lines.take().is_empty());
+    }
+
+    const WRONG: &str = "wrong-password";
+
+    /// A wrong sign-in as `username` from `PEER` with a `User-Agent` of `agent`.
+    async fn fail_with_agent(app: &Router, username: &str, agent: &[u8]) -> Response {
+        let peer: SocketAddr = PEER.parse().unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/session")
+            .extension(ConnectInfo(peer))
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(
+                header::USER_AGENT,
+                header::HeaderValue::from_bytes(agent).unwrap(),
+            )
+            .body(Body::from(credentials(username, WRONG)))
+            .unwrap();
+        app.clone().oneshot(request).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_writes_one_line() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = fail_with_agent(&app, "sam", b"Firefox/140").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            lines.take(),
+            [
+                r#"security event: kind=sign_in outcome=wrong_credentials source=http client_address=192.168.1.20 user_agent="Firefox/140""#
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_names_no_unknown_username() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = fail_with_agent(&app, "nobody-distinctive", b"Firefox/140").await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let lines = lines.take();
+        assert_eq!(lines.len(), 1);
+        assert!(!lines[0].contains("nobody-distinctive"), "{lines:?}");
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_leaves_out_an_unresolved_client_address() {
+        let db = TestDatabase::new();
+        let (app, lines) = logged_trusting(&db, proxies("172.18.0.1")).await;
+        claim(&app, "sam", PASSWORD).await;
+        lines.take();
+        let request = Some(credentials("sam", WRONG));
+        let headers = [("x-forwarded-for", "garbage")];
+        let response = send_from(
+            &app,
+            "172.18.0.1:50000",
+            "POST",
+            "/api/session",
+            request,
+            &headers,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            lines.take(),
+            ["security event: kind=sign_in outcome=wrong_credentials source=http"]
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_escapes_a_tab_in_the_user_agent() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        fail_with_agent(&app, "sam", b"Firefox\t140").await;
+        let lines = lines.take();
+        assert!(
+            lines[0].ends_with(r#"user_agent="Firefox\u{9}140""#),
+            "{lines:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_keeps_the_first_256_characters_of_the_user_agent() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        fail_with_agent(&app, "sam", "a".repeat(1000).as_bytes()).await;
+        let kept = "a".repeat(256);
+        assert!(lines.take()[0].ends_with(&format!(r#"user_agent="{kept}""#)));
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_keeps_bytes_that_are_not_utf8_as_replacement_characters() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        fail_with_agent(&app, "sam", b"ab\xffcd").await;
+        assert!(lines.take()[0].ends_with("user_agent=\"ab\u{fffd}cd\""));
+    }
+
+    #[tokio::test]
+    async fn sign_in_fails_with_a_malformed_body_writes_nothing() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let response = send(&app, "POST", "/api/session", Some("sam".into())).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(lines.take().is_empty());
+    }
+
+    /// A claimed instance on a manual clock after five wrong sign-ins two
+    /// seconds apart, which fill the minute tier. Its lines are taken.
+    async fn after_five_failures(db: &TestDatabase) -> (Router, Lines, Clock) {
+        let (app, lines, clock) = clocked(db, TrustedProxies::default()).await;
+        claim(&app, "sam", PASSWORD).await;
+        fail(&app, &clock, 5, seconds(2)).await;
+        clock.advance(seconds(2));
+        lines.take();
+        (app, lines, clock)
+    }
+
+    #[tokio::test]
+    async fn sign_in_limit_writes_one_limited_line_for_a_run_of_refusals() {
+        let db = TestDatabase::new();
+        let (app, lines, _clock) = after_five_failures(&db).await;
+        for _ in 0..3 {
+            let response = sign_in(&app, "sam", PASSWORD).await;
+            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        }
+        assert_eq!(
+            lines.take(),
+            ["security event: kind=sign_in outcome=limited source=http client_address=192.168.1.20 retry_after=50"]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn sign_in_limit_concurrent_attempts_write_one_line_of_each_outcome() {
+        let db = TestDatabase::new();
+        let (app, lines) = claimed_logged(&db).await;
+        let attempts: Vec<_> = (0..10)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move { sign_in(&app, "sam", WRONG).await.status() })
+            })
+            .collect();
+        for attempt in attempts {
+            attempt.await.unwrap();
+        }
+        let mut outcomes: Vec<_> = lines
+            .take()
+            .iter()
+            .filter_map(|line| {
+                line.split_whitespace()
+                    .find_map(|field| field.strip_prefix("outcome="))
+                    .map(str::to_owned)
+            })
+            .collect();
+        outcomes.sort();
+        assert_eq!(outcomes, ["limited", "wrong_credentials"]);
     }
 }

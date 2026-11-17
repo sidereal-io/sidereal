@@ -10,6 +10,8 @@ pub struct Console<R, W> {
     fd: RawFd,
     input: R,
     prompts: W,
+    /// Whether the last prompt left its line open.
+    open: bool,
 }
 
 impl Console<io::StdinLock<'static>, io::Stderr> {
@@ -23,7 +25,12 @@ impl<R: BufRead, W: Write> Console<R, W> {
     /// `fd` is the descriptor `input` reads from; its echo is what a hidden
     /// read turns off.
     pub fn new(fd: RawFd, input: R, prompts: W) -> Self {
-        Self { fd, input, prompts }
+        Self {
+            fd,
+            input,
+            prompts,
+            open: false,
+        }
     }
 }
 
@@ -34,12 +41,20 @@ impl<R: BufRead, W: Write> Terminal for Console<R, W> {
 
     fn prompt(&mut self, text: &str) -> io::Result<()> {
         self.prompts.write_all(text.as_bytes())?;
+        self.open = !text.ends_with('\n');
         self.prompts.flush()
     }
 
     fn read_line(&mut self) -> io::Result<Option<String>> {
         let mut line = String::new();
-        if self.input.read_line(&mut line)? == 0 {
+        let read = self.input.read_line(&mut line);
+        // Through a pipe nothing echoes the answer's line ending, so end the
+        // prompt's line here: the next line on stderr, such as a security
+        // event, then starts a line of its own.
+        if self.open && !self.is_interactive() {
+            self.prompt("\n")?;
+        }
+        if read? == 0 {
             return Ok(None);
         }
         if line.ends_with('\n') {
@@ -188,6 +203,19 @@ mod tests {
             Some("secret-password")
         );
         assert!(console.prompts.is_empty());
+    }
+
+    #[test]
+    fn a_read_through_a_pipe_ends_the_prompt_line() {
+        let (read, mut write) = pipe();
+        write.write_all(b"sam\nsecret-password\n").unwrap();
+        drop(write);
+        let mut console = file_console(read);
+        console.prompt("Username: ").unwrap();
+        console.read_line().unwrap();
+        console.prompt("New password: ").unwrap();
+        console.read_hidden().unwrap();
+        assert_eq!(console.prompts, b"Username: \nNew password: \n");
     }
 
     #[test]

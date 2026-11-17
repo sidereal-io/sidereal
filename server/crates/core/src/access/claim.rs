@@ -1,6 +1,8 @@
 //! The instance claim: the one unauthenticated write, allowed only while no
 //! administrator exists.
-use super::{password, Role, Unavailable, User};
+use super::{
+    password, security_event, Kind, Outcome, Role, SecurityEvent, Source, Unavailable, User,
+};
 use crate::database::Database;
 use std::fmt;
 
@@ -21,6 +23,19 @@ impl From<Unavailable> for ClaimError {
     }
 }
 
+impl From<sqlx::Error> for ClaimError {
+    fn from(_: sqlx::Error) -> Self {
+        Self::Unavailable
+    }
+}
+
+/// What a claim created, and its event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Claimed {
+    pub user: User,
+    pub event: SecurityEvent,
+}
+
 impl Database {
     /// Whether the instance can still be claimed. Read from PostgreSQL on
     /// every call, so a restart or a second process sees the same answer.
@@ -37,7 +52,12 @@ impl Database {
     /// A closed claim answers before hashing, so a public route spends no
     /// CPU once the instance is claimed. Two first claims racing past that
     /// check are decided by the unique index on the administrator role.
-    pub async fn claim(&self, username: &str, password: &str) -> Result<User, ClaimError> {
+    pub async fn claim(
+        &self,
+        username: &str,
+        password: &str,
+        source: Source,
+    ) -> Result<Claimed, ClaimError> {
         if !self.claim_open().await? {
             return Err(ClaimError::Claimed);
         }
@@ -45,26 +65,48 @@ impl Database {
             return Err(ClaimError::Invalid);
         }
         let hash = password::hash(password).await?;
-        let inserted = sqlx::query(
+        let event = SecurityEvent {
+            kind: Kind::InstanceClaim,
+            outcome: Outcome::Success,
+            source,
+            username: Some(username.to_owned()),
+            sessions_ended: None,
+            retry_after: None,
+        };
+        let insert = sqlx::query(
             "INSERT INTO public.users (username, password_hash, role, created_at) VALUES ($1, $2, $3, now())",
         )
         .bind(username)
         .bind(hash)
-        .bind(Role::Admin.as_str())
-        .execute(self.pool())
-        .await;
-        match inserted {
-            Ok(_) => Ok(User {
+        .bind(Role::Admin.as_str());
+        // The server writes a browser claim's line itself. A claim from the
+        // box sends its line with the insert, to reach the server's log.
+        if event.source == Source::Siderealctl {
+            let mut tx = self.pool().begin().await?;
+            insert.execute(&mut *tx).await.map_err(refused)?;
+            security_event::notify(&mut *tx, &event).await?;
+            tx.commit().await?;
+        } else {
+            insert.execute(self.pool()).await.map_err(refused)?;
+        }
+        Ok(Claimed {
+            user: User {
                 username: username.to_owned(),
                 role: Role::Admin,
-            }),
-            Err(sqlx::Error::Database(error))
-                if error.code().as_deref() == Some(UNIQUE_VIOLATION) =>
-            {
-                Err(ClaimError::Claimed)
-            }
-            Err(_) => Err(ClaimError::Unavailable),
+            },
+            event,
+        })
+    }
+}
+
+/// A lost race to the unique index on the administrator role is a claim
+/// already made.
+fn refused(error: sqlx::Error) -> ClaimError {
+    match error {
+        sqlx::Error::Database(error) if error.code().as_deref() == Some(UNIQUE_VIOLATION) => {
+            ClaimError::Claimed
         }
+        _ => ClaimError::Unavailable,
     }
 }
 
@@ -109,9 +151,13 @@ pub fn check_password(password: &str) -> Result<(), CredentialRule> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{access::Role, database::initialize, test_support::TestDatabase};
+    use crate::{
+        access::{security_event::TestChannel as Channel, Role},
+        database::initialize,
+        test_support::TestDatabase,
+    };
     use sqlx::{Connection, PgConnection};
-    use std::time::Duration;
+    use std::{net::IpAddr, time::Duration};
 
     const PASSWORD: &str = "correct-horse-battery";
 
@@ -191,16 +237,23 @@ mod tests {
     async fn claim_is_closed_once_an_administrator_exists() {
         let db = TestDatabase::new();
         let database = database(&db).await;
-        database.claim("sam", PASSWORD).await.unwrap();
+        database
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         assert_eq!(database.claim_open().await, Ok(false));
     }
 
     #[tokio::test]
     async fn first_claim_creates_an_administrator() {
         let db = TestDatabase::new();
-        let user = database(&db).await.claim("sam", PASSWORD).await.unwrap();
+        let claimed = database(&db)
+            .await
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         assert_eq!(
-            user,
+            claimed.user,
             User {
                 username: "sam".into(),
                 role: Role::Admin
@@ -209,9 +262,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn claim_returns_its_event() {
+        let db = TestDatabase::new();
+        let source = Source::Http {
+            client_address: Some(IpAddr::from([192, 168, 1, 20])),
+            user_agent: Some("Firefox/140".into()),
+        };
+        let claimed = database(&db)
+            .await
+            .claim("sam", PASSWORD, source.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            claimed.event,
+            SecurityEvent {
+                kind: Kind::InstanceClaim,
+                outcome: Outcome::Success,
+                source,
+                username: Some("sam".into()),
+                sessions_ended: None,
+                retry_after: None,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_claim_from_the_box_sends_its_line() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let mut channel = Channel::listen(&db).await;
+        let claimed = database
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
+        assert_eq!(
+            channel.lines().await,
+            [
+                r#"security event: kind=instance_claim outcome=success source=siderealctl username="sam""#
+            ]
+        );
+        assert_eq!(claimed.event.source, Source::Siderealctl);
+    }
+
+    #[tokio::test]
+    async fn a_claim_from_the_browser_sends_nothing() {
+        let db = TestDatabase::new();
+        let database = database(&db).await;
+        let mut channel = Channel::listen(&db).await;
+        let source = Source::Http {
+            client_address: None,
+            user_agent: None,
+        };
+        database.claim("sam", PASSWORD, source).await.unwrap();
+        assert_eq!(users(&db).await.len(), 1);
+        assert!(channel.lines().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn claim_stores_an_argon2id_hash_of_the_password() {
         let db = TestDatabase::new();
-        database(&db).await.claim("sam", PASSWORD).await.unwrap();
+        database(&db)
+            .await
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         let [(username, hash, role)] = &users(&db).await[..] else {
             panic!("expected one user");
         };
@@ -235,7 +349,9 @@ mod tests {
             ("trailing space", "sam\t", PASSWORD),
         ] {
             assert_eq!(
-                database.claim(username, password).await,
+                database
+                    .claim(username, password, Source::Siderealctl)
+                    .await,
                 Err(ClaimError::Invalid),
                 "{case}"
             );
@@ -252,7 +368,7 @@ mod tests {
             let db = TestDatabase::new();
             assert!(database(&db)
                 .await
-                .claim(&username, &password)
+                .claim(&username, &password, Source::Siderealctl)
                 .await
                 .is_ok());
         }
@@ -262,10 +378,15 @@ mod tests {
     async fn a_second_claim_is_refused_whatever_its_credentials() {
         let db = TestDatabase::new();
         let database = database(&db).await;
-        database.claim("sam", PASSWORD).await.unwrap();
+        database
+            .claim("sam", PASSWORD, Source::Siderealctl)
+            .await
+            .unwrap();
         for (username, password) in [("alex", PASSWORD), ("alex", "short")] {
             assert_eq!(
-                database.claim(username, password).await,
+                database
+                    .claim(username, password, Source::Siderealctl)
+                    .await,
                 Err(ClaimError::Claimed)
             );
         }
@@ -276,9 +397,14 @@ mod tests {
     async fn concurrent_first_claims_create_one_administrator() {
         let db = TestDatabase::new();
         let database = database(&db).await;
+        let mut channel = Channel::listen(&db).await;
         let claims = (0..10).map(|n| {
             let database = database.clone();
-            tokio::spawn(async move { database.claim(&format!("user{n}"), PASSWORD).await })
+            tokio::spawn(async move {
+                database
+                    .claim(&format!("user{n}"), PASSWORD, Source::Siderealctl)
+                    .await
+            })
         });
         let mut results = Vec::new();
         for claim in claims {
@@ -289,6 +415,7 @@ mod tests {
             .iter()
             .all(|r| r.is_ok() || *r == Err(ClaimError::Claimed)));
         assert_eq!(users(&db).await.len(), 1);
+        assert_eq!(channel.lines().await.len(), 1);
     }
 
     #[tokio::test]
@@ -298,7 +425,7 @@ mod tests {
         database.close().await;
         assert_eq!(database.claim_open().await, Err(Unavailable));
         assert_eq!(
-            database.claim("sam", PASSWORD).await,
+            database.claim("sam", PASSWORD, Source::Siderealctl).await,
             Err(ClaimError::Unavailable)
         );
     }

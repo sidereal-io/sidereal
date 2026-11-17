@@ -1,7 +1,7 @@
 ---
 id: adrs-adr007
 date: 2026-08-18
-amended: 2026-11-02
+amended: 2026-11-15
 status: accepted
 title: 'ADR007: Security and Plugin Trust Model'
 description: Architecture Decision Record (ADR) for the v2 trust boundary — built-in single-user authentication and explicit, per-install plugin capability grants.
@@ -58,6 +58,14 @@ The CSRF defence is an origin check, not a token. The original text asked for a 
 A reverse proxy is believed only when it is named. The server trusts `X-Forwarded-Proto` and `X-Forwarded-For` from the addresses and ranges in `SIDEREAL_TRUSTED_PROXIES`, and from nobody else. Unset trusts nobody. A request that carries either header from an unlisted peer is refused with a fixed 400 that names the setting, on every route, and is not logged. The session cookie is `Secure` when the resolved scheme is HTTPS, and the client address behind a trusted proxy is the nearest `X-Forwarded-For` entry that is not itself trusted, so later rate limiting and audit see the real caller.
 
 Immich's default, trusting private ranges without a setting, was weighed and dropped: it makes the LAN the boundary again, which this record exists to avoid. Ignoring the headers silently, as ASP.NET does with no known proxies, was dropped because a misconfigured proxy would run quietly weaker, with no `Secure` cookie and one shared client address, and nothing would tell the operator. Refusing, as Home Assistant does, fails at setup instead. The cost is one required line in `.env` behind a proxy, and that a LAN client behind a forwarding proxy such as Squid is refused.
+
+## Amendment, 2026-11-15
+
+"Trust-relevant events are audited" now says how. Every security event writes one `security event:` line to the server's log, and nothing about it is kept in PostgreSQL. The events are a claim, a sign-in that succeeds or fails, a sign-out, and an access recovery. When the operator acts from the box, the command sends its line through PostgreSQL with the act, and the running server writes it to the same log. So `docker compose logs app` shows every event in one place. A failed sign-in's line names no username, typed or matched, as Home Assistant does. A typed username can be a password typed into the wrong field. A matched one would show which usernames exist.
+
+A table of security events was planned and dropped. Home Assistant, Frigate and Immich were compared, and none keeps a durable history of sign-ins: Home Assistant writes a failed sign-in to its log and raises a notice, Frigate only limits the rate, and Immich lists current sessions. A durable row for every sign-in would be a lasting record of when the one user uses their instance. Rows for only some events would still grow with every guess, and would still need a screen, retention and a pruning rule. The log already has a rotation policy that Docker and the operator control.
+
+The cost is that the record lasts only as long as the log. An operator who wants a longer history must keep the server's log. A later feature that shows events in the app decides its own store and retention, and does not change this line.
 
 ## Alternatives Considered
 
