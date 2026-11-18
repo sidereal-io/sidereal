@@ -8,7 +8,7 @@
 
 ## 2. Integration [depends-on: 1]
 
-- [ ] 2.1 [easy] The whole gate passes (verify: just check)
+- [x] 2.1 [easy] The whole gate passes (verify: just check) (✓ just check passed, exit 0)
 
 ## Deviations Ledger
 
