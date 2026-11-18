@@ -192,6 +192,10 @@ async fn claim_with_bad_credentials_is_a_bad_request() {
     for (case, request) in [
         ("short password", Some(credentials("sam", "short"))),
         ("padded username", Some(credentials(" sam", PASSWORD))),
+        (
+            "control character",
+            Some(credentials("sa\u{1b}[2Jm", PASSWORD)),
+        ),
         ("array", Some(r#"["sam"]"#.into())),
         ("positional", Some(format!(r#"["sam","{PASSWORD}"]"#))),
         (

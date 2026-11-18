@@ -10,7 +10,7 @@ const UNIQUE_VIOLATION: &str = "23505";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClaimError {
-    /// The credentials break the length rules.
+    /// The credentials break the credential rules.
     Invalid,
     /// An administrator already exists.
     Claimed,
@@ -115,6 +115,7 @@ fn refused(error: sqlx::Error) -> ClaimError {
 pub enum CredentialRule {
     UsernameLength,
     UsernameWhitespace,
+    UsernameControl,
     PasswordLength,
 }
 
@@ -123,6 +124,7 @@ impl fmt::Display for CredentialRule {
         f.write_str(match self {
             Self::UsernameLength => "username must be 1 to 64 characters",
             Self::UsernameWhitespace => "username must not start or end with whitespace",
+            Self::UsernameControl => "username must not contain control characters",
             Self::PasswordLength => "password must be 8 to 256 bytes",
         })
     }
@@ -130,13 +132,17 @@ impl fmt::Display for CredentialRule {
 
 impl std::error::Error for CredentialRule {}
 
-/// A username is 1 to 64 characters with no surrounding whitespace.
+/// A username meets the credential rules: 1 to 64 characters, no surrounding
+/// whitespace and no control character.
 pub fn check_username(username: &str) -> Result<(), CredentialRule> {
     if !(1..=64).contains(&username.chars().count()) {
         return Err(CredentialRule::UsernameLength);
     }
     if username.trim() != username {
         return Err(CredentialRule::UsernameWhitespace);
+    }
+    if username.chars().any(char::is_control) {
+        return Err(CredentialRule::UsernameControl);
     }
     Ok(())
 }
