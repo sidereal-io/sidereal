@@ -36,7 +36,7 @@ PostgreSQL's `text` type cannot store a NUL character. Today a claim whose usern
 
 **D-1. A new variant, `CredentialRule::UsernameControl`, displayed as `username must not contain control characters`.** The text follows the form of the two existing username rules (brainstorm D8). The alternative was to widen `UsernameWhitespace` to cover control characters. That would merge two rules with different fixes under one message, and the spec names each rule on its own.
 
-**D-2. The check is `username.chars().any(char::is_control)`.** `char::is_control` is true for exactly the Unicode general category Cc: C0, DEL and C1 (brainstorm D1). That is the category the spec names. The security event writer already uses the same test to decide what to escape, at `server/crates/core/src/access/security_event.rs:182`. The alternative, a list of named characters such as ESC and line feed, would miss C1 controls such as U+009B, which some terminals read as the start of an escape sequence.
+**D-2. The check is `username.chars().any(char::is_control)`.** `char::is_control` is true for exactly the Unicode general category Cc: C0, DEL and C1 (brainstorm D1). That is the category the spec names. The security event writer already uses the same test to decide what to escape, at `server/crates/core/src/access/security_event.rs:182`. The alternative was a list of named characters, such as ESC and line feed. That list would miss C1 controls such as U+009B, which some terminals read as the start of an escape sequence.
 
 **D-3. The control check runs last, after length and whitespace.** A username such as `sam\t` breaks both the whitespace rule and the control rule. Running the new check last keeps every existing case on the rule it reports today, so the existing tests and the `Padded username` scenarios stay as they are. A name with a control character inside it, such as `sa\nm`, reaches the new check and reports it.
 
@@ -47,7 +47,7 @@ No decision here is costly to reverse, so none needs an ADR.
 ## Risks / Trade-offs
 
 - [A claim whose username holds `\u0000` changes from 503 to 400.] → This is the right answer for a bad request, not a fault. NUL is in Cc, so the new rule refuses it before the insert. The core unit table gains a NUL row, and no caller depends on the 503.
-- [Format characters, such as bidi overrides and zero-width characters, still pass.] → Out of scope by brainstorm D2. They cannot move the cursor or end a line, so they do not break the one-line stdout and stderr contract.
+- [Format characters, such as bidi overrides and zero-width characters, still pass.] → Out of scope by brainstorm D2. They cannot move the cursor or end a line, so they do not break the one-line stdout and stderr contract. A bidi override such as U+202E can still reverse how the rest of a printed line looks. That spoof stays possible until a later change sets a Unicode profile for usernames.
 
 ## Migration & Rollback
 

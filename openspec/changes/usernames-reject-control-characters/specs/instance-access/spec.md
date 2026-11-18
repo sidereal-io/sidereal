@@ -7,7 +7,15 @@
 
 ### Requirement: Claimed credentials meet the credential rules
 
-`POST /api/claim` SHALL answer 400 with the body `{"error":"invalid credentials"}` and write nothing when the request breaks a rule. The rules are: the body is a JSON object with string `username` and `password`; the username is 1 to 64 characters; the username has no leading or trailing whitespace; the username holds no control character; the password is 8 to 256 bytes. A control character is any character in the Unicode general category Cc, such as a line feed, an escape or a delete, wherever it appears in the username.
+`POST /api/claim` SHALL answer 400 with the body `{"error":"invalid credentials"}` and write nothing when the request breaks a rule. The rules are:
+
+- The body is a JSON object with string `username` and `password`.
+- The username is 1 to 64 characters.
+- The username has no leading or trailing whitespace.
+- The username holds no control character.
+- The password is 8 to 256 bytes.
+
+A control character is any character in the Unicode general category Cc, such as a line feed, an escape or a delete, wherever it appears in the username.
 
 #### Scenario: Short password
 - **WHEN** no administrator exists and a caller sends `POST /api/claim` with username `sam` and password `short`

@@ -1,6 +1,6 @@
 ## Why
 
-Today a username may hold any character except whitespace at its ends. On an exposed, unclaimed instance, whoever claims first picks the name. `siderealctl reset-admin-password` prints that name unchanged, so a newline or an ANSI escape sequence in it runs in Sam's terminal the moment Sam runs the one tool meant to take control back. It can retitle the window, erase lines or fake the state line, and it breaks the command's one-line stdout and stderr contract.
+Today a username may hold any character except whitespace at its ends. On an exposed, unclaimed instance, whoever claims first picks the name. `siderealctl reset-admin-password` prints that name unchanged. A newline or an ANSI escape sequence in it then runs in Sam's terminal, the moment Sam runs the one tool meant to take control back. It can retitle the window, erase lines or fake the state line, and it breaks the command's one-line stdout and stderr contract.
 
 ## What Changes
 
