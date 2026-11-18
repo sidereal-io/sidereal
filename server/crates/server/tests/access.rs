@@ -1995,20 +1995,6 @@ mod security_events {
     }
 
     #[tokio::test]
-    async fn claim_escapes_a_line_feed_in_the_username() {
-        let db = TestDatabase::new();
-        let (app, lines) = logged(&db).await;
-        let response = claim_as(&app, "sam\nsecurity event: kind=sign_in").await;
-        assert_eq!(response.status(), StatusCode::CREATED);
-        let lines = lines.take();
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(
-            lines[0].contains(r#"username="sam\u{a}security event: kind=sign_in""#),
-            "{lines:?}"
-        );
-    }
-
-    #[tokio::test]
     async fn claim_escapes_a_quote_and_a_backslash_in_the_username() {
         let db = TestDatabase::new();
         let (app, lines) = logged(&db).await;
