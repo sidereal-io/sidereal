@@ -15,6 +15,7 @@
 | D7 | Does the web shell change? | No. It holds no username rules of its own and shows the server's refusal as it does today. | Evidence: `web/src/Access.tsx` |
 | D8 | What text names the new rule? | `username must not contain control characters`, in the same form as the two existing username rules. The recovery command's create state prints it on stderr. | User |
 | D9 | Is the requirement "Claimed credentials meet the length rules" renamed, now that a rule not about length joins it? | Yes. It becomes "Claimed credentials meet the credential rules", and the reference to it in "The recovery command applies the claim's credential rules" changes to match. | User |
+| D10 | The rule makes the security-events scenario "A line feed in a claimed username" impossible, and its test `claim_escapes_a_line_feed_in_the_username` fails. How does the plan handle it? | A security-events delta removes "Caller-supplied values cannot forge a line" and adds "Caller-supplied values are escaped in a line" with the same text and the two other scenarios, because OpenSpec rejects a MODIFIED delta that drops a scenario and a REMOVED plus ADDED pair under one name. The test is deleted. `a_line_feed_in_a_username_is_escaped` still covers username escaping. | User |
 
 ## Changes from the story
 

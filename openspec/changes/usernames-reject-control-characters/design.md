@@ -25,12 +25,13 @@ PostgreSQL's `text` type cannot store a NUL character. Today a claim whose usern
 ## Test Seams
 
 - **Primary test seam:** the server's integration suites, which already drive both callers. `claim_with_bad_credentials_is_a_bad_request` in `server/crates/server/tests/access.rs` gains a control-character case. `server/crates/server/tests/siderealctl.rs` gains a spawned test next to `spawned_a_padded_username_creates_nothing` that asserts the exact stderr line.
+- **Retired test:** `claim_escapes_a_line_feed_in_the_username` in `server/crates/server/tests/access.rs` claims with a line feed in the username and expects 201. The new rule answers that claim 400, so the test is deleted with its scenario. The core unit test `a_line_feed_in_a_username_is_escaped` in `security_event.rs` still covers the escaping of a username, and `A tab in the user agent` still covers an HTTP value that reaches the log.
 - **Existing seams reused:** the core unit table `credential_rule_names_the_rule_a_username_breaks` in `claim.rs`. It gains rows for the new rule, and keeps `sam\t` as a whitespace case to fix the check order.
 
 ## Scrutiny Tier & Blast Radius
 
 - **Tier:** low
-- **Blast radius:** `check_username` and `CredentialRule` in `core`'s access module, and the tests of its two callers. No schema, API shape, dependency or `plugin-abi` change.
+- **Blast radius:** `check_username` and `CredentialRule` in `core`'s access module, and the tests of its two callers. The security-events spec loses one scenario that the rule makes impossible. No schema, API shape, dependency or `plugin-abi` change.
 
 ## Decisions
 
