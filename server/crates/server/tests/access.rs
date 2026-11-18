@@ -192,6 +192,10 @@ async fn claim_with_bad_credentials_is_a_bad_request() {
     for (case, request) in [
         ("short password", Some(credentials("sam", "short"))),
         ("padded username", Some(credentials(" sam", PASSWORD))),
+        (
+            "control character",
+            Some(credentials("sa\u{1b}[2Jm", PASSWORD)),
+        ),
         ("array", Some(r#"["sam"]"#.into())),
         ("positional", Some(format!(r#"["sam","{PASSWORD}"]"#))),
         (
@@ -1991,20 +1995,6 @@ mod security_events {
             [
                 r#"security event: kind=instance_claim outcome=success source=http username="sam" client_address=192.168.1.20 user_agent="Firefox/140""#
             ]
-        );
-    }
-
-    #[tokio::test]
-    async fn claim_escapes_a_line_feed_in_the_username() {
-        let db = TestDatabase::new();
-        let (app, lines) = logged(&db).await;
-        let response = claim_as(&app, "sam\nsecurity event: kind=sign_in").await;
-        assert_eq!(response.status(), StatusCode::CREATED);
-        let lines = lines.take();
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(
-            lines[0].contains(r#"username="sam\u{a}security event: kind=sign_in""#),
-            "{lines:?}"
         );
     }
 

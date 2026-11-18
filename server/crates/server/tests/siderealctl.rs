@@ -1033,6 +1033,25 @@ mod spawned {
     }
 
     #[tokio::test]
+    async fn spawned_a_control_character_in_the_username_creates_nothing() {
+        let db = TestDatabase::new();
+        database(&db).await;
+        let run = siderealctl(
+            Some(&url(&db)),
+            &[
+                "reset-admin-password",
+                "--username",
+                "sa\nm",
+                "--password-stdin",
+            ],
+            Some("correct-horse-battery\n"),
+        );
+        assert_eq!(run.status, 1);
+        assert_eq!(run.err, "username must not contain control characters\n");
+        assert_eq!(count(&db, "users").await, 0);
+    }
+
+    #[tokio::test]
     async fn spawned_password_stdin_refuses_an_empty_line_or_no_input() {
         for input in [Some("\n"), Some(""), None] {
             let db = TestDatabase::new();

@@ -75,22 +75,6 @@ After `security event:`, the line SHALL hold `key=value` fields separated by one
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request from `172.18.0.1` with `X-Forwarded-For: garbage` fails sign-in
 - **THEN** the new line holds `kind=sign_in` and `outcome=wrong_credentials` and has no `client_address` field
 
-### Requirement: Caller-supplied values cannot forge a line
-
-Each `username` and `user_agent` value SHALL be written in double quotes. Inside the quotes, a backslash SHALL be written as `\\` and a double quote as `\"`. Every control character, such as a line feed, SHALL be written as `\u{<hex>}`, with its code point in lowercase hexadecimal. A line SHALL therefore hold no line break and no unescaped double quote inside a value.
-
-#### Scenario: A line feed in a claimed username
-- **WHEN** no administrator exists and a caller claims with a username that is `sam`, a line feed, and `security event: kind=sign_in`
-- **THEN** captured stderr gains exactly one `security event:` line, and it holds `username="sam\u{a}security event: kind=sign_in"`
-
-#### Scenario: A tab in the user agent
-- **WHEN** a caller fails sign-in with a `User-Agent` header of `Firefox`, a tab, and `140`
-- **THEN** the new line holds `user_agent="Firefox\u{9}140"`
-
-#### Scenario: A quote and a backslash in a claimed username
-- **WHEN** no administrator exists and a caller claims with username `sa"m\` and a valid password
-- **THEN** the line holds `username="sa\"m\\"`
-
 ### Requirement: An event from `siderealctl` reaches the server's log
 
 A `siderealctl` claim or reset SHALL send its line with the act, so that it is sent only when the act takes effect. A running server SHALL write each line it receives this way to its stderr, exactly once, as it writes its own lines. The server SHALL write a received line only when all of these hold, and SHALL drop any other:
@@ -182,3 +166,15 @@ The `user_agent` value SHALL be the request's `User-Agent` header, cut to its fi
 #### Scenario: A user agent that is not UTF-8
 - **WHEN** a caller fails sign-in with a `User-Agent` header holding the bytes `ab\xffcd`
 - **THEN** the new line holds `user_agent="ab` followed by U+FFFD and `cd"`
+
+### Requirement: Caller-supplied values are escaped in a line
+
+Each `username` and `user_agent` value SHALL be written in double quotes. Inside the quotes, a backslash SHALL be written as `\\` and a double quote as `\"`. Every control character, such as a line feed, SHALL be written as `\u{<hex>}`, with its code point in lowercase hexadecimal. A line SHALL therefore hold no line break and no unescaped double quote inside a value.
+
+#### Scenario: A tab in the user agent
+- **WHEN** a caller fails sign-in with a `User-Agent` header of `Firefox`, a tab, and `140`
+- **THEN** the new line holds `user_agent="Firefox\u{9}140"`
+
+#### Scenario: A quote and a backslash in a claimed username
+- **WHEN** no administrator exists and a caller claims with username `sa"m\` and a valid password
+- **THEN** the line holds `username="sa\"m\\"`
