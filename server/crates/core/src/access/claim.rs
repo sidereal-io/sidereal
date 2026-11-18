@@ -192,6 +192,10 @@ mod tests {
             (&"s".repeat(65), CredentialRule::UsernameLength),
             (" sam", CredentialRule::UsernameWhitespace),
             ("sam\t", CredentialRule::UsernameWhitespace),
+            ("sa\0m", CredentialRule::UsernameControl),
+            ("sa\nm", CredentialRule::UsernameControl),
+            ("sa\u{7f}m", CredentialRule::UsernameControl),
+            ("sa\u{9b}m", CredentialRule::UsernameControl),
         ] {
             assert_eq!(check_username(username), Err(rule), "{username:?}");
         }
@@ -226,6 +230,10 @@ mod tests {
         assert_eq!(
             CredentialRule::UsernameWhitespace.to_string(),
             "username must not start or end with whitespace"
+        );
+        assert_eq!(
+            CredentialRule::UsernameControl.to_string(),
+            "username must not contain control characters"
         );
         assert_eq!(
             CredentialRule::PasswordLength.to_string(),
