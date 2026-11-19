@@ -136,19 +136,47 @@ async fn refuse_connections(db: &TestDatabase) -> PgConnection {
 }
 
 /// A sweep task whose first sweep, a second after it starts, finds the
-/// database refusing connections, and the database it was given.
+/// database refusing connections. Before it starts, the database holds
+/// `expired_before` expired sessions.
 async fn sweeping_while_unavailable(
     db: &TestDatabase,
     lines: &Lines,
-) -> (Database, JoinHandle<()>, PgConnection) {
+    expired_before: usize,
+    every: Duration,
+) -> Outage {
     let database = claimed(db, ACQUIRE).await;
-    let task = sweep(
-        database.clone(),
-        first_after(Duration::from_secs(1)),
-        lines.log(),
-    );
+    expired(db, &database, expired_before).await;
+    let schedule = Schedule {
+        first: Duration::from_secs(1),
+        every,
+    };
+    let task = sweep(database.clone(), schedule, lines.log());
     let conn = refuse_connections(db).await;
-    (database, task, conn)
+    Outage {
+        database,
+        task,
+        conn,
+    }
+}
+
+/// A sweep task running while the database refuses connections.
+struct Outage {
+    database: Database,
+    task: JoinHandle<()>,
+    /// The test's own connection, which outlives the outage.
+    conn: PgConnection,
+}
+
+impl Outage {
+    async fn end(mut self, db: &TestDatabase) {
+        let name = db.options.get_database().unwrap();
+        self.conn
+            .execute(AssertSqlSafe(format!(
+                "ALTER DATABASE {name} CONNECTION LIMIT -1"
+            )))
+            .await
+            .unwrap();
+    }
 }
 
 fn first_after(first: Duration) -> Schedule {
@@ -258,7 +286,7 @@ async fn a_sweep_that_deletes_nothing_writes_no_line() {
 async fn an_unavailable_database_gets_one_warning() {
     let db = TestDatabase::new();
     let lines = Lines::default();
-    let _outage = sweeping_while_unavailable(&db, &lines).await;
+    let _outage = sweeping_while_unavailable(&db, &lines, 0, NEVER).await;
     assert_eq!(lines.first().await, [UNAVAILABLE]);
 }
 
@@ -266,21 +294,33 @@ async fn an_unavailable_database_gets_one_warning() {
 async fn the_sweep_task_outlives_an_unavailable_database() {
     let db = TestDatabase::new();
     let lines = Lines::default();
-    let (_database, task, _conn) = sweeping_while_unavailable(&db, &lines).await;
+    let outage = sweeping_while_unavailable(&db, &lines, 0, NEVER).await;
     lines.first().await;
     tokio::time::sleep(Duration::from_millis(200)).await;
-    assert!(!task.is_finished());
+    assert!(!outage.task.is_finished());
 }
 
 #[tokio::test]
 async fn healthz_answers_200_while_the_sweep_finds_the_database_unavailable() {
     let db = TestDatabase::new();
     let lines = Lines::default();
-    let (database, _task, _conn) = sweeping_while_unavailable(&db, &lines).await;
+    let outage = sweeping_while_unavailable(&db, &lines, 0, NEVER).await;
     lines.first().await;
-    let response = app_with_database(database, AllowedOrigins::default())
+    let response = app_with_database(outage.database.clone(), AllowedOrigins::default())
         .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+/// A failed sweep waits for the pool's acquire timeout, so the outage ends
+/// only once its warning is written, and the next sweep is due after that.
+#[tokio::test]
+async fn the_sweep_recovers_once_the_database_is_back() {
+    let db = TestDatabase::new();
+    let lines = Lines::default();
+    let outage = sweeping_while_unavailable(&db, &lines, 1, Duration::from_secs(3)).await;
+    assert_eq!(lines.first().await, [UNAVAILABLE]);
+    outage.end(&db).await;
+    wait_until(async || sessions(&db).await == (0, 0)).await;
 }
