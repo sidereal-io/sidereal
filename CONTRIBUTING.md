@@ -96,8 +96,10 @@ cover database outage and recovery. Keep these cases there when changing deploym
 ## 🧰 Development Environment
 
 The repo pins its tools — Rust, Node, pnpm, `just`, `gh`, the `openspec` CLI and
-[Let's Spec](https://github.com/sidereal-io/lets-spec) — through a Nix flake. Nix is
-optional. Pick either route.
+[Let's Spec](https://github.com/sidereal-io/lets-spec) — through a Nix flake and
+through mise. Neither is required. Pick one route, and use only that route in a
+shell: with both direnv's Nix shell and `mise activate` loaded, you get two copies
+of each tool on `PATH`, in whichever order they loaded.
 
 If you cloned before the Rust workspace moved from `backend/` to `server/`, run
 `rm -rf backend/target` once after you pull. Git ignores that folder, so it stays behind.
@@ -134,6 +136,43 @@ the shell until you run `git add` on it.
 Keep personal direnv settings in `.envrc.local`, next to `.envrc`. Git ignores
 it, and it loads after the pinned shell, so your settings take precedence.
 
+### With mise
+
+1. Install [mise](https://mise.jdx.dev/getting-started.html). Use a recent
+   release: an old mise may fail to read `mise.lock`.
+2. Add `mise activate` to your shell's startup file, as mise's
+   [activation guide](https://mise.jdx.dev/getting-started.html#activate-mise)
+   shows. For bash, add `eval "$(mise activate bash)"` to `~/.bashrc`.
+3. In the repo root, trust the repo's `mise.toml` and install its tools, as one
+   command:
+
+   ```
+   mise trust && mise install
+   ```
+
+   Run them together. Once the repo is trusted, your next prompt runs the
+   `enter` hook in `mise.toml`, and its `lets sync` fails until `mise install`
+   has installed `lets`.
+
+   `mise.toml` names each tool, and `mise.lock` pins each tool's exact release
+   and checksum. mise reads the Node version from `.nvmrc`.
+4. mise installs Rust through rustup, on the `stable` channel. `mise.lock`
+   records the channel, not a release, so rustup's newest stable release
+   decides it. Run `rustup update` to move to a newer release.
+5. Nothing to run for the agent skills. Entering the repo directory runs
+   `lets sync`, which keeps them at the pinned Let's Spec release. See
+   [Agent skills](#agent-skills).
+
+Keep personal mise settings in `mise.local.toml`, next to `mise.toml`. Git
+ignores it, and mise applies it over `mise.toml`, so your settings take
+precedence.
+
+**Run `mise trust --untrust` before you check out a branch you don't trust.**
+Entering the repo runs the `enter` hook in the checked-out `mise.toml`. mise
+trusts that file by its path, not its contents, so a checkout can run a
+branch's hook without asking. After you read the branch's changes, run
+`mise trust` again.
+
 ### Without Nix
 
 1. Install [rustup](https://rustup.rs/). It reads `server/rust-toolchain.toml`,
@@ -165,10 +204,10 @@ it, and it loads after the pinned shell, so your settings take precedence.
    ```
 
    The agent skills, schemas and rules are committed, so you have them without
-   running anything. Only the Nix shell keeps them up to date: see
+   running anything. Only the Nix shell and mise keep them up to date: see
    [Agent skills](#agent-skills).
 
-Both routes pass the same `just check` gate. Prepare the PostgreSQL fixture and export
+Every route passes the same `just check` gate. Prepare the PostgreSQL fixture and export
 `DATABASE_URL` and `TEST_DATABASE_URL` using the commands above. Docker Engine or
 Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates local fixture certificates.
 See [server setup](server/README.md) for container-free test prerequisites.
@@ -218,7 +257,8 @@ through the `.claude/skills` link. The folder holds two kinds of skill:
   release, with the `lets-*` schemas in `openspec/schemas/` and the rules block
   in `AGENTS.md`. Git tracks the copies, so every clone has them.
 
-The Nix shell runs `lets sync` when it loads. It rewrites any copy that differs
+The Nix shell runs `lets sync` when it loads, and mise runs it when you enter
+the repo directory. It rewrites any copy that differs
 from the release and tells you to commit, and it prints nothing when all is
 well. CI runs `lets sync --check`, which fails when a committed copy is out of
 date. Never edit a `lets-*` or `openspec-*` skill, a `lets-*` schema or the
