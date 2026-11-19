@@ -25,19 +25,24 @@ impl Schedule {
 
 /// Delete expired sessions on `schedule`, in a task of its own, so no
 /// request waits on a sweep. A late sweep, after an outage or a suspended
-/// host, is one sweep, not a burst of catch-up ones.
+/// host, is one sweep, not a burst of catch-up ones. The task ends when the
+/// database closes, without a line, so a graceful shutdown logs no outage.
 pub fn sweep(database: Database, schedule: Schedule, log: Log) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticks = interval_at(Instant::now() + schedule.first, schedule.every);
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             ticks.tick().await;
+            if database.is_closed() {
+                return;
+            }
             match database.sweep_sessions().await {
                 Ok(0) => {}
                 Ok(1) => log.line("session sweep: deleted 1 expired session"),
                 Ok(deleted) => log.line(&format!(
                     "session sweep: deleted {deleted} expired sessions"
                 )),
+                Err(_) if database.is_closed() => return,
                 Err(_) => log.line(
                     "database unavailable: cannot sweep expired sessions; trying again in an hour",
                 ),

@@ -324,3 +324,36 @@ async fn the_sweep_recovers_once_the_database_is_back() {
     outage.end(&db).await;
     wait_until(async || sessions(&db).await == (0, 0)).await;
 }
+
+/// A sweep task whose database closes before its first sweep, as at a
+/// graceful shutdown.
+async fn sweeping_after_close(db: &TestDatabase, lines: &Lines) -> JoinHandle<()> {
+    let database = claimed(db, Duration::from_secs(10)).await;
+    let task = sweep(
+        database.clone(),
+        first_after(Duration::from_millis(300)),
+        lines.log(),
+    );
+    database.close().await;
+    task
+}
+
+#[tokio::test]
+async fn the_sweep_ends_once_the_database_is_closed() {
+    let db = TestDatabase::new();
+    let task = sweeping_after_close(&db, &Lines::default()).await;
+    tokio::time::timeout(WAIT, task)
+        .await
+        .expect("the sweep outlived its database")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_sweep_after_the_database_is_closed_writes_nothing() {
+    let db = TestDatabase::new();
+    let lines = Lines::default();
+    let task = sweeping_after_close(&db, &lines).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(task.is_finished());
+    assert!(lines.written().is_empty(), "{:?}", lines.written());
+}
