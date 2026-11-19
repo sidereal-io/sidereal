@@ -14,6 +14,11 @@ gh = "2"
 "npm:@fission-ai/openspec" = "1.13.2"
 "github:sidereal-io/lets-spec" = "0.8.0"
 
+[env]
+LETS_SPEC_FLOW = "standard"
+# Keeps the OpenSpec CLI offline, as the Nix shell does.
+OPENSPEC_NO_UPDATE_CHECK = "1"
+
 [hooks]
 enter = "lets sync"
 
