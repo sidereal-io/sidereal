@@ -22,7 +22,7 @@
 
 ## 5. Integration [depends-on: 3, 4]
 
-- [ ] 5.1 [easy] The gate passes, and both routes report the same `lets` and `openspec` versions (verify: just check && mise exec -- lets sync --check && test "$(nix develop --command sh -c 'lets --version; openspec --version')" = "$(mise exec -- sh -c 'lets --version; openspec --version')")
+- [x] 5.1 [easy] The gate passes, and both routes report the same `lets` and `openspec` versions (verify: just check && mise exec -- lets sync --check && test "$(nix develop --command sh -c 'lets --version; openspec --version')" = "$(mise exec -- sh -c 'lets --version; openspec --version')") (✓ `just check` passed with the database fixture up; `mise exec -- lets sync --check` exited 0 outside the Nix shell; both routes print lets 0.8.0 and openspec 1.13.2)
 - [ ] 5.2 [easy] On the change's pull request, the `mise`, `nix` and `ci` workflows pass (verify: gh pr checks mise-dev-env --watch --fail-fast)
 
 ## Deviations Ledger
