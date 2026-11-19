@@ -1,0 +1,22 @@
+## 1. The delete
+
+- [ ] 1.1 [easy] `Database::sweep_sessions` deletes every session row whose `expires_at <= now()` and answers how many it deleted, as design "The delete is a `Database` method in `core`" says. Test it in the `session.rs` test module with the `claimed`, `on_sessions` and `sessions` helpers: with two expired rows and one unexpired row it answers `Ok(2)` and the unexpired row stays, and with only unexpired rows it answers `Ok(0)` and deletes nothing (verify: cd server && cargo test -p sidereal-core --lib access::session::tests::a_sweep)
+
+## 2. The sweep task [depends-on: 1]
+
+- [ ] 2.1 [easy] `Schedule::HOURLY` in a new `server/crates/server/src/access/sweep.rs` is `first` 60 seconds and `every` 3600 seconds, and nothing reads either from the environment. A unit test in that file pins both values (verify: cd server && cargo test -p sidereal-server --lib access::sweep)
+- [ ] 2.2 [medium] `sweep(database, schedule, log)` spawns a task that deletes expired rows at its first tick, `schedule.first` after it starts, and not before. In a new `server/crates/server/tests/sweep.rs` that uses `TestDatabase` as `tests/siderealctl.rs` does: with a schedule of a few hundred milliseconds, one expired row and one unexpired row, the expired row is still there right after the task starts, and once the first tick has passed only the unexpired row is left. The loop uses `interval_at` with `MissedTickBehavior::Delay`, as design says (verify: cd server && cargo test -p sidereal-server --test sweep first)
+- [ ] 2.3 [easy] The task sweeps again every `schedule.every`: a row whose expiry is moved into the past after the first tick is gone after the next one (verify: cd server && cargo test -p sidereal-server --test sweep again)
+- [ ] 2.4 [medium] A sweep that deletes rows writes exactly one line through its `Log`: `session sweep: deleted 3 expired sessions` for three rows, and `session sweep: deleted 1 expired session` for one. A sweep that deletes nothing writes no line. Capture lines with a `Lines` helper like the one in `tests/siderealctl.rs`. Give `Log` a crate-visible way to write a plain line, and widen its doc comment from security events to the server's log lines (verify: cd server && cargo test -p sidereal-server --test sweep line)
+- [ ] 2.5 [complex] A sweep that cannot reach PostgreSQL writes exactly one line, `database unavailable: cannot sweep expired sessions; trying again in an hour`, and the task keeps running. Cause the outage as `relay_listens_again_after_the_database_refuses_it_for_a_while` does: `initialize` with a 1-second startup timeout, `ALTER DATABASE … CONNECTION LIMIT 0`, then end the database's other backends except the test's own. Set the schedule so the first tick falls inside the outage (verify: cd server && cargo test -p sidereal-server --test sweep unavailable)
+- [ ] 2.6 [medium] After a failed sweep, once PostgreSQL accepts connections again, the next tick deletes an expired row (verify: cd server && cargo test -p sidereal-server --test sweep recovers)
+- [ ] 2.7 [easy] Once `Database::close` has run, the task ends at its next tick or failed sweep and writes no line, so a graceful shutdown never logs `database unavailable:` from the sweep. A test closes the database before the first tick, waits past it, and sees the task finished and no line captured (verify: cd server && cargo test -p sidereal-server --test sweep closed)
+
+## 3. Wiring and integration [depends-on: 2]
+
+- [ ] 3.1 [easy] `main.rs` starts `sweep(database.clone(), Schedule::HOURLY, Log::default())` after `relay` succeeds and before the listener binds. A test in the `lifetime` module of `tests/access.rs` starts the spawned server with `spawned::Server::ready`, sends `SIGTERM` with `terminate` before the first sweep, and sees it exit with success within 5 seconds (verify: cd server && cargo test -p sidereal-server --test access exits_on_sigterm_before_its_first_sweep)
+- [ ] 3.2 [easy] The whole gate passes, including the readiness tests that assert the server's exact stderr lines (verify: just check)
+
+## Deviations Ledger
+
+<!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
