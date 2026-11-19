@@ -13,6 +13,7 @@
 | D5 | Should `mise.toml` set `OPENSPEC_NO_UPDATE_CHECK=1`, as the Nix shell does? | Yes, so both routes keep the OpenSpec CLI offline. | User |
 | D6 | Which platforms does `mise.lock` cover? | Every platform `mise lock` writes by default, with no `--platform` flag and no `lockfile_platforms` setting. The Windows and musl entries are download records nobody uses. They do not make Windows supported: #496 still lists native Windows development as Won't. #503 narrows to what is left once Linux and macOS are in the lock. | User |
 | D7 | `CONTRIBUTING.md`'s "Where versions are set" table says each tool version lives in one file. Does this change add `mise.lock` to it? | Yes. Add `mise.lock` to the rows for the tools it pins beside `flake.lock`, so the table is right from this merge until #502. | User |
+| D8 | From the repo root, mise neither locks nor installs Rust from `server/rust-toolchain.toml`: it reads that file only inside `server/`. How does mise get Rust? | `mise.toml` names `rust = { version = "stable", components = "rustfmt,clippy" }`. `server/rust-toolchain.toml` stays for rustup users. The `mise` workflow fails when the two files name different channels. The spec's rule becomes "both files name the stable channel and no file names a release". | User |
 
 ## Changes from the story
 
@@ -22,5 +23,6 @@
 - **Answered:** the packet's open question on Rust. `mise.lock` does not pin the exact Rust release (D3).
 - **Moved in:** the packet left Linux and macOS entries in the lock to #503. This change's lock covers every platform `mise lock` writes by default, so #503 keeps only the workflow check for a missing platform and the weekly update that keeps every platform (D6).
 - **Added:** `CONTRIBUTING.md`'s "Where versions are set" table names `mise.lock` beside `flake.lock` (D7).
+- **Changed:** the packet said `mise.toml` takes Rust "from `server/rust-toolchain.toml`". mise reads that file only inside `server/`, so `mise.toml` names the `stable` channel itself, and the `mise` workflow checks the two files agree (D8).
 
 Confirmed by user: yes
