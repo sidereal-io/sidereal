@@ -38,5 +38,15 @@ jobs:
           install_args: --locked
           cache: false
 
+      # Each route reads its own file, so the two must name one channel.
+      - name: Rust channels agree
+        run: |
+          mise_channel=$(mise config get tools.rust.version)
+          file_channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' server/rust-toolchain.toml)
+          if [ "$mise_channel" != "$file_channel" ]; then
+            echo "::error::Rust channels differ: mise.toml names '$mise_channel', server/rust-toolchain.toml names '$file_channel'"
+            exit 1
+          fi
+
       - name: Tool versions
         run: mise exec -- sh -c 'rustc --version && node --version && pnpm --version && just --version && gh --version && openspec --version && lets --version'
