@@ -1,6 +1,6 @@
 ## 1. The delete
 
-- [ ] 1.1 [easy] `Database::sweep_sessions` deletes every session row whose `expires_at <= now()` and answers how many it deleted, as design "The delete is a `Database` method in `core`" says. Test it in the `session.rs` test module with the `claimed`, `on_sessions` and `sessions` helpers: with two expired rows and one unexpired row it answers `Ok(2)` and the unexpired row stays, and with only unexpired rows it answers `Ok(0)` and deletes nothing (verify: cd server && cargo test -p sidereal-core --lib access::session::tests::a_sweep)
+- [x] 1.1 [easy] `Database::sweep_sessions` deletes every session row whose `expires_at <= now()` and answers how many it deleted, as design "The delete is a `Database` method in `core`" says. Test it in the `session.rs` test module with the `claimed`, `on_sessions` and `sessions` helpers: with two expired rows and one unexpired row it answers `Ok(2)` and the unexpired row stays, and with only unexpired rows it answers `Ok(0)` and deletes nothing (verify: cd server && cargo test -p sidereal-core --lib access::session::tests::a_sweep) (✓ cd server && cargo test -p sidereal-core --lib access::session::tests::a_sweep passed)
 
 ## 2. The sweep task [depends-on: 1]
 
