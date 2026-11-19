@@ -14,7 +14,7 @@
 
 ## 3. Wiring and integration [depends-on: 2]
 
-- [ ] 3.1 [easy] `main.rs` starts `sweep(database.clone(), Schedule::HOURLY, Log::default())` after `relay` succeeds and before the listener binds. A test in the `lifetime` module of `tests/access.rs` starts the spawned server with `spawned::Server::ready`, sends `SIGTERM` with `terminate` before the first sweep, and sees it exit with success within 5 seconds (verify: cd server && cargo test -p sidereal-server --test access exits_on_sigterm_before_its_first_sweep)
+- [x] 3.1 [easy] `main.rs` starts `sweep(database.clone(), Schedule::HOURLY, Log::default())` after `relay` succeeds and before the listener binds. A test in the `lifetime` module of `tests/access.rs` starts the spawned server with `spawned::Server::ready`, sends `SIGTERM` with `terminate` before the first sweep, and sees it exit with success within 5 seconds (verify: cd server && cargo test -p sidereal-server --test access exits_on_sigterm_before_its_first_sweep) (✓ cd server && cargo test -p sidereal-server --test access exits_on_sigterm_before_its_first_sweep passed)
 - [ ] 3.2 [easy] The whole gate passes, including the readiness tests that assert the server's exact stderr lines (verify: just check)
 
 ## Deviations Ledger
@@ -22,3 +22,4 @@
 <!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
 
 - 2026-11-18, task 2.5: the outage ends only the database's client backends (`backend_type = 'client backend'`), not every other backend. One run failed when the terminate query met an autovacuum worker, which the test role may not end. The sweep's pool connections are client backends, so the outage is the same.
+- 2026-11-18, task 3.1: the SIGTERM test passed before `main.rs` started the sweep, as the server already exited on SIGTERM. It guards the wiring rather than driving it, as design "Risks / Trade-offs" expects; the `Schedule::HOURLY` unit test and this one together cover the start.

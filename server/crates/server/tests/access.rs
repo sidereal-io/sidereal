@@ -1275,6 +1275,19 @@ mod lifetime {
         assert!(!captured.contains(DISTINCTIVE));
         assert!(!captured.contains(&hash));
     }
+
+    /// The sweep task sleeps until a minute after start; it must not hold
+    /// the process open.
+    #[tokio::test]
+    async fn exits_on_sigterm_before_its_first_sweep() {
+        let db = TestDatabase::new();
+        let mut server = spawned::Server::ready(&db);
+        let status = server.terminate(Duration::from_secs(5));
+        assert!(
+            status.is_some_and(|status| status.success()),
+            "the server did not exit cleanly within 5 s: {status:?}"
+        );
+    }
 }
 
 mod allowed_origins_at_start {
