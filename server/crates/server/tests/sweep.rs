@@ -123,3 +123,22 @@ async fn the_first_sweep_deletes_only_expired_sessions() {
     wait_until(async || sessions(&db).await.1 == 0).await;
     assert_eq!(sessions(&db).await, (1, 0));
 }
+
+#[tokio::test]
+async fn a_session_that_expires_later_goes_when_the_sweep_runs_again() {
+    let db = TestDatabase::new();
+    let database = claimed(&db, Duration::from_secs(10)).await;
+    expired(&db, &database, 1).await;
+    unexpired(&database).await;
+    let schedule = Schedule {
+        first: Duration::from_millis(200),
+        every: Duration::from_secs(1),
+    };
+    sweep(database, schedule, Lines::default().log());
+    wait_until(async || sessions(&db).await.1 == 0).await;
+    sqlx::query("UPDATE public.sessions SET expires_at = now() - interval '1 minute'")
+        .execute(&mut connection(&db).await)
+        .await
+        .unwrap();
+    wait_until(async || sessions(&db).await.0 == 0).await;
+}
