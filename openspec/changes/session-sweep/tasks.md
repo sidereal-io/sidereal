@@ -15,7 +15,7 @@
 ## 3. Wiring and integration [depends-on: 2]
 
 - [x] 3.1 [easy] `main.rs` starts `sweep(database.clone(), Schedule::HOURLY, Log::default())` after `relay` succeeds and before the listener binds. A test in the `lifetime` module of `tests/access.rs` starts the spawned server with `spawned::Server::ready`, sends `SIGTERM` with `terminate` before the first sweep, and sees it exit with success within 5 seconds (verify: cd server && cargo test -p sidereal-server --test access exits_on_sigterm_before_its_first_sweep) (✓ cd server && cargo test -p sidereal-server --test access exits_on_sigterm_before_its_first_sweep passed)
-- [ ] 3.2 [easy] The whole gate passes, including the readiness tests that assert the server's exact stderr lines (verify: just check)
+- [x] 3.2 [easy] The whole gate passes, including the readiness tests that assert the server's exact stderr lines (verify: just check) (✓ just check passed)
 
 ## Deviations Ledger
 
