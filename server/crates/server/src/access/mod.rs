@@ -24,6 +24,7 @@ pub mod events;
 pub mod forwarded;
 mod guard;
 pub mod limit;
+pub mod sweep;
 
 use events::EventTiming;
 use forwarded::Forwarded;
@@ -65,8 +66,8 @@ pub fn routes(
         .layer(Extension(log))
 }
 
-/// Where the server writes one line for each security event. Its default
-/// is stderr; a test captures the lines instead.
+/// Where the server writes its log lines, such as one for each security
+/// event. Its default is stderr; a test captures the lines instead.
 #[derive(Clone)]
 pub struct Log(Arc<dyn Fn(&str) + Send + Sync>);
 
@@ -76,7 +77,12 @@ impl Log {
     }
 
     fn write(&self, event: &SecurityEvent) {
-        (self.0)(&event.to_string());
+        self.line(&event.to_string());
+    }
+
+    /// Write a line that is not a security event.
+    pub(crate) fn line(&self, line: &str) {
+        (self.0)(line);
     }
 }
 

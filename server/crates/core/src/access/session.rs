@@ -156,6 +156,16 @@ impl Database {
         .await?;
         Ok(deleted.unwrap_or(false))
     }
+
+    /// Delete every expired session, and answer how many went. The test for
+    /// expired is the one [`Database::session`] uses, so the two agree.
+    pub async fn sweep_sessions(&self) -> Result<u64, Unavailable> {
+        let deleted = sqlx::query("DELETE FROM public.sessions WHERE expires_at <= now()")
+            .execute(self.pool())
+            .await?
+            .rows_affected();
+        Ok(deleted)
+    }
 }
 
 #[cfg(test)]
@@ -518,6 +528,29 @@ mod tests {
         let db = TestDatabase::new();
         let database = claimed(&db).await;
         assert_eq!(database.sign_out("not-a-token").await, Ok(false));
+    }
+
+    #[tokio::test]
+    async fn a_sweep_deletes_only_expired_sessions() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        database.sign_in("sam", PASSWORD).await.unwrap();
+        database.sign_in("sam", PASSWORD).await.unwrap();
+        on_sessions(&db, "WITH moved AS (UPDATE public.sessions SET expires_at = now() - interval '1 minute' RETURNING 1) SELECT true FROM moved").await;
+        let (_, token) = database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
+        assert_eq!(database.sweep_sessions().await, Ok(2));
+        assert_eq!(sessions(&db).await, 1);
+        assert_eq!(database.session_alive(token.as_str()).await, Ok(true));
+    }
+
+    #[tokio::test]
+    async fn a_sweep_with_nothing_expired_deletes_nothing() {
+        let db = TestDatabase::new();
+        let database = claimed(&db).await;
+        database.sign_in("sam", PASSWORD).await.unwrap();
+        database.sign_in("sam", PASSWORD).await.unwrap();
+        assert_eq!(database.sweep_sessions().await, Ok(0));
+        assert_eq!(sessions(&db).await, 2);
     }
 
     #[tokio::test]

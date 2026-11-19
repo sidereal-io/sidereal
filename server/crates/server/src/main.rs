@@ -2,7 +2,10 @@
 //! storage, before binding any HTTP listener.
 use sidereal_core::database::{initialize, initialize_with_storage};
 use sidereal_server::{
-    access::relay,
+    access::{
+        relay,
+        sweep::{sweep, Schedule},
+    },
     app_with_database,
     config::{
         allowed_origins_from_env, storage_root_from_env, trusted_proxies_from_env,
@@ -43,6 +46,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "database unavailable: cannot listen for security events from siderealctl".into(),
         );
     }
+    sweep(database.clone(), Schedule::HOURLY, Log::default());
     // A failed read does not stop startup: the claim route reports it as 503.
     if database.claim_open().await == Ok(true) {
         eprintln!("instance unclaimed: open the web shell and claim it");
