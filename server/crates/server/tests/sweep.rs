@@ -87,6 +87,16 @@ impl Lines {
         let lines = self.0.clone();
         Log::new(move |line| lines.lock().unwrap().push(line.to_owned()))
     }
+
+    fn written(&self) -> Vec<String> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// The lines written, once there is at least one.
+    async fn first(&self) -> Vec<String> {
+        wait_until(async || !self.written().is_empty()).await;
+        self.written()
+    }
 }
 
 fn first_after(first: Duration) -> Schedule {
@@ -141,4 +151,53 @@ async fn a_session_that_expires_later_goes_when_the_sweep_runs_again() {
         .await
         .unwrap();
     wait_until(async || sessions(&db).await.0 == 0).await;
+}
+
+#[tokio::test]
+async fn three_deleted_sessions_write_one_line() {
+    let db = TestDatabase::new();
+    let database = claimed(&db, Duration::from_secs(10)).await;
+    expired(&db, &database, 3).await;
+    let lines = Lines::default();
+    sweep(
+        database,
+        first_after(Duration::from_millis(200)),
+        lines.log(),
+    );
+    assert_eq!(
+        lines.first().await,
+        ["session sweep: deleted 3 expired sessions"]
+    );
+}
+
+#[tokio::test]
+async fn one_deleted_session_writes_a_singular_line() {
+    let db = TestDatabase::new();
+    let database = claimed(&db, Duration::from_secs(10)).await;
+    expired(&db, &database, 1).await;
+    let lines = Lines::default();
+    sweep(
+        database,
+        first_after(Duration::from_millis(200)),
+        lines.log(),
+    );
+    assert_eq!(
+        lines.first().await,
+        ["session sweep: deleted 1 expired session"]
+    );
+}
+
+#[tokio::test]
+async fn a_sweep_that_deletes_nothing_writes_no_line() {
+    let db = TestDatabase::new();
+    let database = claimed(&db, Duration::from_secs(10)).await;
+    unexpired(&database).await;
+    let lines = Lines::default();
+    sweep(
+        database,
+        first_after(Duration::from_millis(200)),
+        lines.log(),
+    );
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert!(lines.written().is_empty());
 }
