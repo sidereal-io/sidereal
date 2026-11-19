@@ -24,6 +24,7 @@ pub mod events;
 pub mod forwarded;
 mod guard;
 pub mod limit;
+pub mod sweep;
 
 use events::EventTiming;
 use forwarded::Forwarded;
