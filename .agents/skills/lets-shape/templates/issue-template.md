@@ -1,14 +1,19 @@
 # Issue templates
 
 One shape for each Kind. Every field is required unless marked optional.
+Read [Plain language](../references/plain-language.md) before filling one.
+The next person or agent needs to understand the outcome, scope and next
+work from the issue body alone. Explain necessary terms and keep the field
+names below unchanged.
 
 ## Parent issue (one per discovery run)
 
 Title: `Epic: <capability>`
 
 ```markdown
-> Discovery status: in-progress — next phase: <personas | journey-map | moscow | stories>
+> Discovery status: in-progress — next phase: <personas | journey-map | moscow | stories | finalize>
 > Input: <file path, issue link, or "conversation, YYYY-MM-DD">
+> Map: <path>
 
 ## Scope
 
@@ -37,7 +42,10 @@ Title: `Epic: <capability>`
 - <question, until resolved> (only while the run is in progress)
 ```
 
-When the run finalizes, remove the status line (keep the `Input:` line) and the Open
+`Map:` names the run's discovery map, from the repository root, such as
+`openspec/discovery.md` or `openspec/discovery/<product>.md`.
+
+When the run finalizes, remove the status line (keep the `Input:` and `Map:` lines) and the Open
 questions section, which must be empty by then.
 GitHub lists the sub-issues itself; don't repeat them in the body.
 
@@ -58,7 +66,8 @@ Title: `<kebab-story-name> — <one-line outcome>`
 ```
 
 When the run fits one story, the parent issue takes this shape instead, keeping the
-status line and input reference above the outcome until the run finalizes.
+status line, input reference and `Map:` line above the outcome. The status line
+stays until the run finalizes; the `Input:` and `Map:` lines stay for good.
 
 ## Bug issue
 

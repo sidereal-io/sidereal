@@ -1,3 +1,7 @@
+<!-- Write for the people and agents who use the backlog. Explain each journey
+in the numbered text as well as the diagram. Use the agreed persona and stage
+names, and keep status and issue links beside the stage they describe. -->
+
 # Discovery: <product name>
 
 > The living map behind the backlog: who the product serves and the journeys it supports.
@@ -13,6 +17,14 @@
 - **Goal**: <what they're trying to reach>
 - **Pain today**: <their real-world problem without a good tool — no code, milestones, or epics>
 - **Success looks like**: <the lasting, observable signal they got value>
+
+<!-- In a repository with several products, a persona that more than one
+product serves lives in the root map. Name it here with a link instead of a
+copy (optional): -->
+
+#### <Persona name> — shared
+
+See [<Persona name>](../discovery.md#<anchor>) in the root map.
 
 ### People who build <product name>
 

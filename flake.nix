@@ -9,10 +9,12 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Follows main; flake.lock pins the commit. Its own nixpkgs pins the
-    # OpenSpec CLI the release's openspec-* skills were generated from, so
-    # it does not follow ours.
-    lets-spec.url = "github:sidereal-io/lets-spec";
+    # Pinned to a release tag, so mise.toml can name the same release and
+    # an update cannot land on an untagged commit. It stays pinned until
+    # the Nix route goes. Its own nixpkgs pins the OpenSpec CLI the
+    # release's openspec-* skills were generated from, so it does not
+    # follow ours.
+    lets-spec.url = "github:sidereal-io/lets-spec/v0.8.0";
   };
 
   outputs = inputs@{ flake-parts, ... }:

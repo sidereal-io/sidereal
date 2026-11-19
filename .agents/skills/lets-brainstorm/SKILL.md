@@ -9,6 +9,11 @@ Reach one shared understanding of a story with the user before anyone plans
 it. The schema that calls this skill says which files to write and when to
 commit. This skill says how to question, what to record and when to split.
 
+Read [Plain language](../lets-shape/references/plain-language.md) before
+writing.
+Use it for questions and the decision ledger: make the decision and the
+context needed to answer clear.
+
 ## Read and maintain domain language
 
 Read [Domain language](../lets-shape/references/domain-language.md) before
@@ -31,20 +36,28 @@ shared definitions into another PR.
 
 ## The stance
 
-Be a thinking partner, not a form to fill in.
+Help the user resolve the decisions that define the story.
 
-- **Grounded.** Read the code, tests and specs the story touches before you ask anything. Never ask the user for a fact you can check.
-- **Patient.** Let the shape of the problem emerge. Do not rush to a conclusion.
-- **Skeptical.** Question the story's assumptions, the user's and your own. Say so if the story solves the wrong problem, if a smaller story would deliver the outcome, or if the code hides complexity the story misses.
-- **Honest.** If something is unclear, dig deeper. Never fake understanding, and never invent the user's intent, priorities or constraints: ask.
-- **Visual.** When a flow, a set of states or a choice is hard to hold in words, draw it.
+- **Grounded.** Read the code, tests and specs the story touches before you
+  ask anything. Never ask the user for a fact you can check.
+- **Patient.** Let the shape of the problem emerge. Do not rush to a
+  conclusion.
+- **Skeptical.** Question the story's assumptions, the user's and your own.
+  Say so if the story solves the wrong problem, if a smaller story would
+  deliver the outcome, or if the code hides complexity the story misses.
+- **Honest.** If something is unclear, dig deeper. Never fake understanding,
+  and never invent the user's intent, priorities or constraints: ask.
+- **Visual.** When a flow, a set of states or a choice is hard to hold in
+  words, draw it.
 
 ## Questioning
 
 ### Read the relevant specs first
 
-Run `openspec list --specs` to find existing capability IDs. Read the affected
-specs with `openspec show <spec-id> --type spec`, using each full ID, such as
+Run `openspec list --specs` to find existing capability IDs. Read the
+affected
+specs with `openspec show <spec-id> --type spec`, using each full ID, such
+as
 `identity/user-auth`. Use the planning home OpenSpec resolves, including a
 selected store, rather than assuming the specs live beside the code.
 
@@ -54,30 +67,39 @@ service or feature, with flat capability paths or optional grouping such as
 context and code to identify the affected capabilities; domain names do not
 automatically map to source directories.
 
-Read shared behavior the story depends on too, such as authentication used by
+Read shared behavior the story depends on too, such as authentication used
+by
 both an API and a frontend. A shared spec is context unless its requirements
-change. One story can affect several domains. When the affected area is clear,
+change. One story can affect several domains. When the affected area is
+clear,
 continue without asking the user to select or confirm a domain.
 
 ### Read the thread
 
-Fetch the issue's thread as [Issue comments](../lets-shape/references/issue-comments.md)
-says, and show the user the list it describes. A comment labelled `read` needs no
+Fetch the issue's thread as [Issue
+comments](../lets-shape/references/issue-comments.md)
+says, and show the user the list it describes. A comment labelled `read`
+needs no
 question. Raise any other comment that bears on the story's scope, behavior
 or acceptance as a question, like any other. Write nothing on the issue: no
 reply, no marker and no body edit.
 
 ### Settle the story
 
-- Ask one question at a time, with your recommended answer and why it matters: the decision it settles.
-- Settle first the questions that others depend on, such as scope before behavior. If an answer changes an earlier one, go back to it.
+- Ask one question at a time, with your recommended answer and why it
+  matters: the decision it settles.
+- Settle first the questions that others depend on, such as scope before
+  behavior. If an answer changes an earlier one, go back to it.
 - Skip a question whose answer would not change the plan.
-- Where a question has real alternatives, give two or three with their trade-offs, and lead with the one you recommend.
-- Settle scope, behavior and acceptance: the what and the why. Leave the how to the design step, when the flow has one.
+- Where a question has real alternatives, give two or three with their
+  trade-offs, and lead with the one you recommend.
+- Settle scope, behavior and acceptance: the what and the why. Leave the how
+  to the design step, when the flow has one.
 
 ## The ledger
 
-One row per resolved question, in the order settled. Each row names its source.
+One row per resolved question, in the order settled. Each row names its
+source.
 
 | Source | When |
 |---|---|
@@ -86,20 +108,40 @@ One row per resolved question, in the order settled. Each row names its source.
 | `Evidence: #<n> comment (<author>, <date>)` | The user said yes to the comment's answer. Use the author as the list shows it and the day it was posted, as `YYYY-MM-DD`. |
 | `Assumption` | Neither did. |
 
-Silence is not agreement: a recommendation the user did not accept is an `Assumption`. Keep each row to one line; the design explains the why and the how.
+Silence is not agreement: a recommendation the user did not accept is an
+`Assumption`. Keep each row to one line so readers can scan the decisions.
+The design, if the flow has one, explains the reasons and implementation.
+Without one, the ledger holds the decisions the tasks need, as the schema
+says.
 
-A comment the user has not said yes to stays out of every row, `Assumption` included: settle the question from the packet and the code alone. When the user delegated the brainstorm, still stop and ask them each question a comment raises, whether the comment is `candidate` or `outside`.
+A comment the user has not said yes to stays out of every row, `Assumption`
+included: settle the question from the packet and the code alone. When the
+user delegated the brainstorm, still stop and ask them each question a
+comment raises, whether the comment is `candidate` or `outside`.
 
 ## Splitting the story
 
-A story is the right size when it would take about five to twelve tasks to build. If the answers show it is bigger, split it now, before any plan exists. Keep the thinnest slice that still delivers the outcome, and file the rest as a new issue.
+A story is the right size when it would take about five to twelve tasks to
+build. If the answers show it is bigger, split it now, before any plan
+exists. Keep the thinnest slice that still delivers the outcome, and file
+the rest as a new issue.
 
-1. Show the user the split: what this story keeps, and what moves to the new issue. Get a yes.
-2. File the rest with the `lets-shape` skill: run its single-issue pass on the rest. Tell it that the rest is split from #<n>, this story. Its parent is this story's parent, if it has one. It is blocked by #<n>, unless the rest can ship before this slice. `lets-shape` writes the new issue's packet and sets its fields on the Project.
-3. Record the split under "Changes from the story", with the new issue's number.
+1. Show the user the split: what this story keeps, and what moves to the new
+   issue. Get a yes.
+2. File the rest with the `lets-shape` skill: run its single-issue pass on
+   the rest. Tell it that the rest is split from `#<n>`, this story. Its
+   parent is this story's parent, if it has one. It is blocked by `#<n>`,
+   unless the rest can ship before this slice. `lets-shape` writes the new
+   issue's packet and sets its fields on the Project.
+3. Record the split under "Changes from the story", with the new issue's
+   number.
 
 ## Confirming
 
-First fetch the thread again, even if it was empty. Show each comment that is new or edited since the first fetch, and raise it like the others. The reference says how to find them.
+First fetch the thread again, even if it was empty. Show each comment that
+is new or edited since the first fetch, and raise it like the others. The
+reference says how to find them.
 
-Then show the user the ledger and the changes from the story, and ask them to confirm. Only an explicit yes counts. Until then the brainstorm is not finished, whatever the file says.
+Then show the user the ledger and the changes from the story, and ask them
+to confirm. Only an explicit yes counts. Until then the brainstorm is not
+finished, whatever the file says.

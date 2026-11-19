@@ -7,6 +7,11 @@ artifacts:
     description: Why the change is needed, and a decision ledger from grilling the story with the user, before any spec is written
     template: brainstorm.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
       from the code repository root (not the planning store or change directory).
       Use `planningHome.root` from this artifact's
@@ -52,6 +57,11 @@ artifacts:
     description: Detailed specifications for the change
     template: spec.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
       from the code repository root (not the planning store or change directory).
       Use `planningHome.root` from this artifact's
@@ -114,6 +124,11 @@ artifacts:
     description: Implementation checklist with trackable tasks
     template: tasks.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Break the change into tasks. The `lets-write-tasks` skill says how to size,
       order, tag and verify them. Read brainstorm.md and the specs first: this
       flow has no design, so the ledger holds the decisions the tasks follow.
@@ -136,6 +151,11 @@ apply:
   requires: [ tasks ]
   tracks: tasks.md
   instruction: |
+    Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+    from the code repository root. Apply it to this step's questions,
+    instructions and output for people and agents. Preserve the exact
+    headings, markers and formats this schema requires.
+
     Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
     from the code repository root (not the planning store or change directory).
     Use `root.path` from this apply instruction's

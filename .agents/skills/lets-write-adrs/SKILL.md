@@ -9,6 +9,10 @@ An architecture decision record (ADR) keeps the why of a decision that is
 costly to reverse, so that no one reverses it by accident. Most decisions do
 not need one.
 
+Read [Plain language](../lets-shape/references/plain-language.md) before writing.
+Use it for the decision record: help a future maintainer find the decision,
+understand its reasons and apply its consequences.
+
 ## What qualifies
 
 Write an ADR for a real fork: a choice among viable approaches where
@@ -39,8 +43,8 @@ When nothing qualifies, say so. Never invent a record to have one.
 
 Before writing, read every existing ADR. Note the highest number in use, and
 which records supersede which, so a new record names the one it replaces or
-builds on. Rewrite a record that is hard to read; never delete it. The
-decision still stands.
+builds on. Rewrite a record that is hard to read, but keep its decision, its
+reasons and which records it supersedes or is superseded by. Never delete it.
 
 ## Writing one
 
@@ -49,4 +53,6 @@ decision still stands.
 - **Link at most one other ADR:** the one this supersedes or builds on.
 - **Name the alternatives,** and say specifically why each lost. "Too complex" is not a reason; "needs a running server, and the app must work offline" is.
 - **Consequences both ways.** What becomes easier, and what becomes harder.
-- **Plain language.** Short sentences, active voice, the everyday word.
+- **Reader check.** A future maintainer can find the decision, explain why
+  it was chosen, and tell which constraints and consequences still apply.
+  Use concrete reasons and explain necessary technical terms.

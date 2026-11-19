@@ -1,3 +1,5 @@
+<!-- Plain language: Write questions and answers so a reader without the conversation can understand each decision and its source. Keep the confirmation marker exactly as written. -->
+
 ## Story
 
 <!-- #<n> <title>, and the issue's URL -->

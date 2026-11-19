@@ -1,6 +1,6 @@
 ## 1. The Nix route on Let's Spec v0.8.0
 
-- [ ] 1.1 [medium] The Nix shell runs Let's Spec v0.8.0 and the committed copies match it, as design Decision 1 says. In `flake.nix`, set `lets-spec.url` to `github:sidereal-io/lets-spec/v0.8.0` and rewrite its comment to say the tag stays pinned until the Nix route goes. Run `nix flake update lets-spec`, then `nix develop --command true` so the hook runs `lets sync`. Commit `flake.nix`, `flake.lock` and every file `lets sync` wrote together, in one `chore:` commit and nothing else (verify: nix flake metadata --json | jq -e '.locks.nodes["lets-spec"].original.ref == "v0.8.0"' && nix develop --command lets sync --check)
+- [x] 1.1 [medium] The Nix shell runs Let's Spec v0.8.0 and the committed copies match it, as design Decision 1 says. In `flake.nix`, set `lets-spec.url` to `github:sidereal-io/lets-spec/v0.8.0` and rewrite its comment to say the tag stays pinned until the Nix route goes. Run `nix flake update lets-spec`, then `nix develop --command true` so the hook runs `lets sync`. Commit `flake.nix`, `flake.lock` and every file `lets sync` wrote together, in one `chore:` commit and nothing else (verify: nix flake metadata --json | jq -e '.locks.nodes["lets-spec"].original.ref == "v0.8.0"' && nix develop --command lets sync --check) (✓ verify passed: the flake input's ref is v0.8.0, and `lets sync --check` exits 0)
 
 ## 2. The mise configuration [depends-on: 1]
 

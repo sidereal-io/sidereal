@@ -1,3 +1,5 @@
+<!-- Plain language: Make each record link identify the decision so a reader can find its rationale. Keep this manifest separate from the records themselves. -->
+
 # ADR Review Manifest
 
 - Status: completed
