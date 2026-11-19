@@ -74,7 +74,7 @@ idiomatic_version_file_enable_tools = ["node"]
 
 ### 3. `mise.lock` and its npm sidecar are committed
 
-The builder runs `mise lock` with no flags (D6) and commits `mise.lock` and `.mise/locks/`. Without the sidecar, `mise install --locked` fails, and a plain install would resolve `openspec`'s dependencies afresh. A sidecar change always comes with a digest change in `mise.lock`, so the workflow's `mise.lock` trigger (D4) covers it.
+The builder runs `mise lock` with no flags (D6) and commits `mise.lock` and `.mise/locks/`. Without the sidecar, `mise install --locked` fails, and a plain install would resolve `openspec`'s dependencies afresh. `mise lock` changes the digest in `mise.lock` whenever it changes the sidecar. A deleted or hand-edited sidecar leaves `mise.lock` unchanged, so the workflow also watches `.mise/**` (D4).
 
 ### 4. `.gitignore` ignores the personal files
 
@@ -84,7 +84,7 @@ Add `mise.local.toml`, and also `mise.local.lock` and `.mise/locks/mise.local/`,
 
 `.github/workflows/mise.yml`, copying `nix.yml`'s shape:
 
-- `pull_request` on `mise.toml`, `mise.lock`, `server/rust-toolchain.toml`, `.nvmrc` and `.github/workflows/mise.yml` (D4); the same `concurrency` block; `permissions: contents: read`.
+- `pull_request` on `mise.toml`, `mise.lock`, `.mise/**`, `server/rust-toolchain.toml`, `.nvmrc` and `.github/workflows/mise.yml` (D4); the same `concurrency` block; `permissions: contents: read`.
 - `actions/checkout@v7`, then `jdx/mise-action@v5` with `install_args: --locked`. The action's default `github_token` is the job's own token, not a repository secret, and it keeps GitHub API calls under the rate limit.
 - A "Rust channels agree" step: read `mise config get tools.rust.version` and the `channel` line of `server/rust-toolchain.toml`. If they differ, print one error line naming both files and their values, and exit 1.
 - A "Tool versions" step: `mise exec -- sh -c 'rustc --version && node --version && pnpm --version && just --version && gh --version && openspec --version && lets --version'`.
@@ -97,10 +97,11 @@ A new record, Accepted, chooses mise. Its Context gives #496's four reasons. Its
 
 ### 7. Docs: a short mise section, and the version table names both locks (D7)
 
-- `CONTRIBUTING.md` gets a "With mise" section beside "With Nix": install mise, add `mise activate` to the shell, run `mise trust` and `mise install`, and keep personal settings in `mise.local.toml`. It warns against using both routes in one shell, and against loading an untrusted branch, as the direnv warning does.
+- `CONTRIBUTING.md` gets a "With mise" section beside "With Nix": install mise, add `mise activate` to the shell, run `mise trust && mise install` as one command, and keep personal settings in `mise.local.toml`. One command matters: once the repo is trusted, the next prompt runs the `enter` hook, and `lets sync` fails until `mise install` has installed `lets`. It warns against using both routes in one shell, and against loading an untrusted branch, as the direnv warning does.
 - The "Where versions are set" table names `mise.toml` and `mise.lock` in the rows for Rust, `just`, pnpm and Let's Spec. The Node row says mise reads `.nvmrc`. The lead sentence "Each version lives in one file" changes to say that, until the Nix route goes, some versions are set in both locks and change together.
-- The Let's Spec update paragraph in `CONTRIBUTING.md`, and "Update Let's Spec through the flake" in `AGENTS.md`, change to: edit the tag in `flake.nix` and both versions in `mise.toml`, run `nix flake update lets-spec` and `mise lock`, enter the shell, and commit everything. Dependabot no longer moves Let's Spec, because the input names a tag.
+- Two passages change: the Let's Spec update paragraph in `CONTRIBUTING.md`, and "Update Let's Spec through the flake" in `AGENTS.md`. Both say: edit the tag in `flake.nix` and both versions in `mise.toml`, then run `nix flake update lets-spec` and `mise lock`. Then enter the shell and commit everything. Dependabot no longer moves Let's Spec, because the input names a tag.
 - `AGENTS.md`'s Rust line adds that rustup decides the release on the mise route.
+- `AGENTS.md`'s "Change a version only where it is set" rule says `CONTRIBUTING.md` lists "the one file" that sets each version. It changes to say that, until the Nix route goes, some versions are set in both locks.
 - No doc names the `openspec` version: `1.13.2` matches the spec's Rust-release search. The docs point to the release notes, as now.
 
 ## Risks / Trade-offs

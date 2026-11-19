@@ -3,7 +3,7 @@ id: adrs-adr016
 date: 2026-11-19
 status: accepted
 title: 'ADR-016: Development Environment with mise'
-description: Architecture Decision Record (ADR) for how Sidereal pins its development tools — mise with a committed lock file, in place of the Nix flake, with the plain pin files kept for contributors who use neither.
+description: Architecture Decision Record (ADR) for how Sidereal pins its development tools. mise and a committed lock file replace the Nix flake. The plain pin files stay for contributors who use neither.
 ---
 
 # ADR-016: Development Environment with mise

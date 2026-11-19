@@ -83,7 +83,7 @@ On the mise route, the Rust release SHALL be the newest stable release rustup kn
 
 #### Scenario: mise uses rustup's stable release
 
-- **WHEN** a contributor runs `mise exec -- rustc --version` and `rustup run stable rustc --version` at the repo root
+- **WHEN** a contributor runs `mise exec -- rustc --version` and `mise exec -- rustup run stable rustc --version` at the repo root
 - **THEN** both commands print the same release
 
 ### Requirement: The mise lock pins every other tool's exact release
@@ -175,6 +175,7 @@ mise SHALL apply the settings in a file named `mise.local.toml` at the repo root
 A CI job, the mise check, SHALL run on every pull request that changes one of these files:
 
 - `mise.toml` or `mise.lock`;
+- any file under `.mise/`, which holds the npm dependency lock;
 - `server/rust-toolchain.toml` or `.nvmrc`;
 - the workflow file that defines the mise check.
 
