@@ -1,0 +1,42 @@
+name: mise
+
+on:
+  pull_request:
+    paths:
+      - 'mise.toml'
+      - 'mise.lock'
+      # The npm dependency lock: a deleted or edited file here leaves
+      # mise.lock unchanged.
+      - '.mise/**'
+      - 'server/rust-toolchain.toml'
+      - '.nvmrc'
+      - '.github/workflows/mise.yml'
+
+# A newer commit supersedes checks for the same pull request.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mise-check:
+    name: mise check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # --locked fails on a stale lock, a missing npm sidecar or a wrong
+      # checksum, where a plain install would resolve a fresh release. No
+      # cache: its key ignores .mise/, and a restored install skips the
+      # sidecar and checksum checks.
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
+          cache: false
+
+      - name: Tool versions
+        run: mise exec -- sh -c 'rustc --version && node --version && pnpm --version && just --version && gh --version && openspec --version && lets --version'
