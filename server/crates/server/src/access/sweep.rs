@@ -33,11 +33,14 @@ pub fn sweep(database: Database, schedule: Schedule, log: Log) -> JoinHandle<()>
         loop {
             ticks.tick().await;
             match database.sweep_sessions().await {
-                Ok(0) | Err(_) => {}
+                Ok(0) => {}
                 Ok(1) => log.line("session sweep: deleted 1 expired session"),
                 Ok(deleted) => log.line(&format!(
                     "session sweep: deleted {deleted} expired sessions"
                 )),
+                Err(_) => log.line(
+                    "database unavailable: cannot sweep expired sessions; trying again in an hour",
+                ),
             }
         }
     })

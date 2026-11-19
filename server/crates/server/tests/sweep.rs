@@ -1,18 +1,26 @@
 //! The session sweep task against a fresh database per test, on a schedule
 //! of milliseconds rather than the server's minute and hour.
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
 use sidereal_core::{
     access::Source,
     database::{initialize, Database},
 };
 use sidereal_server::{
     access::sweep::{sweep, Schedule},
+    app_with_database,
+    config::AllowedOrigins,
     Log,
 };
-use sqlx::{Connection, PgConnection};
+use sqlx::{AssertSqlSafe, Connection, Executor, PgConnection};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use tokio::task::JoinHandle;
+use tower::ServiceExt;
 
 #[path = "../../core/src/database/test_support.rs"]
 mod test_support;
@@ -97,6 +105,50 @@ impl Lines {
         wait_until(async || !self.written().is_empty()).await;
         self.written()
     }
+}
+
+/// What a sweep writes when it cannot reach PostgreSQL.
+const UNAVAILABLE: &str =
+    "database unavailable: cannot sweep expired sessions; trying again in an hour";
+/// The sweep's pools give up waiting for a connection after this long.
+const ACQUIRE: Duration = Duration::from_secs(1);
+
+/// Refuse every new connection to the test database, and end every client
+/// connection but the returned one, which the test keeps. An autovacuum
+/// worker is left alone: the test role may not end it.
+async fn refuse_connections(db: &TestDatabase) -> PgConnection {
+    let name = db.options.get_database().unwrap();
+    let mut conn = connection(db).await;
+    conn.execute(AssertSqlSafe(format!(
+        "ALTER DATABASE {name} CONNECTION LIMIT 0"
+    )))
+    .await
+    .unwrap();
+    sqlx::query(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity \
+         WHERE datname = current_database() AND backend_type = 'client backend' \
+         AND pid <> pg_backend_pid()",
+    )
+    .execute(&mut conn)
+    .await
+    .unwrap();
+    conn
+}
+
+/// A sweep task whose first sweep, a second after it starts, finds the
+/// database refusing connections, and the database it was given.
+async fn sweeping_while_unavailable(
+    db: &TestDatabase,
+    lines: &Lines,
+) -> (Database, JoinHandle<()>, PgConnection) {
+    let database = claimed(db, ACQUIRE).await;
+    let task = sweep(
+        database.clone(),
+        first_after(Duration::from_secs(1)),
+        lines.log(),
+    );
+    let conn = refuse_connections(db).await;
+    (database, task, conn)
 }
 
 fn first_after(first: Duration) -> Schedule {
@@ -200,4 +252,35 @@ async fn a_sweep_that_deletes_nothing_writes_no_line() {
     );
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert!(lines.written().is_empty());
+}
+
+#[tokio::test]
+async fn an_unavailable_database_gets_one_warning() {
+    let db = TestDatabase::new();
+    let lines = Lines::default();
+    let _outage = sweeping_while_unavailable(&db, &lines).await;
+    assert_eq!(lines.first().await, [UNAVAILABLE]);
+}
+
+#[tokio::test]
+async fn the_sweep_task_outlives_an_unavailable_database() {
+    let db = TestDatabase::new();
+    let lines = Lines::default();
+    let (_database, task, _conn) = sweeping_while_unavailable(&db, &lines).await;
+    lines.first().await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!task.is_finished());
+}
+
+#[tokio::test]
+async fn healthz_answers_200_while_the_sweep_finds_the_database_unavailable() {
+    let db = TestDatabase::new();
+    let lines = Lines::default();
+    let (database, _task, _conn) = sweeping_while_unavailable(&db, &lines).await;
+    lines.first().await;
+    let response = app_with_database(database, AllowedOrigins::default())
+        .oneshot(Request::get("/healthz").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
