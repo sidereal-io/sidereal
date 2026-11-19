@@ -38,7 +38,8 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
   ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
   `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
-  CI. Never put a Rust release number in a build file or doc. **`just check`**
+  CI. `mise.toml` names the same channel, and on the mise route rustup decides the
+  release. Never put a Rust release number in a build file or doc. **`just check`**
   is the gate — green before every PR. It runs `check-compose` (Compose config checks
   with no daemon), then `check-openspec` (strict `openspec validate` of every spec and
   active change; a warning fails it), then `check-server` (`cargo fmt --check` +
@@ -157,11 +158,13 @@ These rules add to the Let's Spec block above.
   exit demonstration. Identify groundwork and relevant code when exploring and
   cutting stories; do not put a "Relevant code" section in an epic.
 - **Change a version only where it is set.** [`CONTRIBUTING.md`](CONTRIBUTING.md#where-versions-are-set)
-  lists the one file that sets each tool version and product version.
-- **Update Let's Spec through the flake.** Run `nix flake update lets-spec`, enter
-  the dev shell so `lets sync` runs, and commit what it wrote in the same pull
-  request as `flake.lock`. A Dependabot bump of `lets-spec` fails `lets sync --check`
-  until someone does this on its branch.
+  lists where each tool version and product version is set. Until the Nix route
+  goes, `flake.lock` and `mise.lock` both pin some tools; change those together.
+- **Update Let's Spec on both routes.** Change the release tag in `flake.nix`, and
+  in `mise.toml` both the Let's Spec version and the `openspec` version its release
+  notes name. Run `nix flake update lets-spec` and `mise lock`, enter the dev shell
+  so `lets sync` runs, and commit what it wrote in the same pull request as both
+  locks. Dependabot does not move Let's Spec: the flake input names a tag.
 - **`main` does not release yet.** v0.10.x releases are tagged from `v0.x`. A later
   change defines how `main` releases. Never `gh release create` manually.
 
