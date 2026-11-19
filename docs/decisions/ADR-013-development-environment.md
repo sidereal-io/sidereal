@@ -1,7 +1,7 @@
 ---
 id: adrs-adr013
 date: 2026-09-24
-status: accepted
+status: superseded by ADR-016
 title: 'ADR013: Development Environment'
 description: Architecture Decision Record (ADR) for how Sidereal pins its development tools — a native Nix flake built from small modules, turned on by direnv, and optional for contributors.
 ---
