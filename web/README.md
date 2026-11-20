@@ -7,8 +7,8 @@ project, so you never run `npm install` at the repo root.
 
 ## Before you start
 
-You need Node and pnpm. The Nix shell provides both. Without Nix, see
-[`CONTRIBUTING.md`](../CONTRIBUTING.md#development-environment).
+You need Node and pnpm. mise installs both. Without mise, see
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#without-mise).
 
 `package.json` pins one exact pnpm release in its `packageManager` field. The
 pnpm you run in `web/` switches to that release. The first time, pnpm downloads
@@ -65,9 +65,9 @@ through one smoke test. It downloads the Chromium build that `@playwright/test`
 asks for the first time it runs; after that the download is skipped, so there
 is no separate install step.
 
-Playwright owns its browser rather than taking one from Nix, so the versions
-cannot drift: bump `@playwright/test` in `package.json` and Playwright fetches
-the matching browser. On NixOS that download cannot run, because the browser
+Playwright owns its browser rather than using one your system provides, so
+the versions cannot drift: bump `@playwright/test` in `package.json` and
+Playwright fetches the matching browser. On NixOS that download cannot run, because the browser
 expects a system dynamic loader. Point `PLAYWRIGHT_BROWSERS_PATH` at the
 browsers from nixpkgs when their version matches the npm package, or run the
 suite from a non-NixOS host or container.
