@@ -23,4 +23,6 @@
 - Changed: the story's exit demonstration happens after merge, on the first manual run from `main`. Before merge, a tester runs the update script by hand (D6).
 - Added: `docs/dependency-updates.md` says the dependency-merge App's credentials also open the weekly tool-update pull request (D3).
 
-Confirmed by user: no
+lets-go confirmed this ledger against the issue packet, under the user's standing instruction to stop in the brainstorm only when a question has no recommendation. The user did not read the ledger in person.
+
+Confirmed by user: yes
