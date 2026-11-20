@@ -21,10 +21,61 @@ The workflow on `main` handles PR events for both branches. The workflow on
 trigger is unused because GitHub reads `pull_request_target` workflows from the
 default branch. The `v0.x` branch keeps its own CI checks.
 
+## Weekly mise tool updates
+
+Dependabot does not read `mise.toml` or `mise.lock`. The `mise tool updates`
+workflow, `.github/workflows/mise-tool-updates.yml`, updates them instead. It
+runs every Monday at 04:00 UTC, and when someone starts it from the Actions tab.
+It runs from `main` only.
+
+Each run checks out `main`, installs the tools from `mise.lock`, and runs
+`scripts/update-mise-tools.sh`. The script changes these pins:
+
+- Node, pnpm and `gh` move to their newest release within the major version
+  that `.nvmrc` or `mise.toml` names.
+- Let's Spec moves to its newest release. The script changes its version in
+  `mise.toml`, then runs `lets sync` to write the skills, schemas and
+  `AGENTS.md` rules block for that release.
+
+These stay manual: OpenSpec, which `mise.toml` pins on its own; Rust, which
+follows the `stable` channel; and every major version. The script leaves
+`.nvmrc`, `server/rust-toolchain.toml` and `flake.nix` alone, so moving Let's
+Spec on the Nix route is still a manual step in `CONTRIBUTING.md`.
+
+When the script changes any file, the workflow commits it to the branch
+`automation/mise-tool-updates` and opens a pull request against `main`. If
+that pull request is still open, the run updates it instead, so only one is
+open at a time. When nothing changed, the run opens nothing. The workflow
+rewrites that branch each week: to fix an update, push to another branch.
+
+The workflow does not run the gate. CI runs it on the pull request, so a
+failing check there means an update broke something. When `mise lock`,
+`lets sync` or the platform check fails, the run fails and opens nothing.
+
+The pull request is opened with the dependency-merge App's credentials (see
+[Set up the GitHub App](#set-up-the-github-app)), because GitHub runs no CI on
+a pull request opened with the workflow's default token. The token asks for
+contents and pull request write access only, not workflow access. The pull
+request's author is the App, not Dependabot, so auto-merge does not apply to
+it: review and merge it by hand.
+
+To run the update by hand, start from a clean checkout and run, at the repo
+root:
+
+```sh
+mise exec -- scripts/update-mise-tools.sh
+```
+
+The script needs the network. It changes only the working tree: it commits,
+pushes and opens nothing. Read `git diff`, then run `mise run check`.
+
 ## Set up the GitHub App
 
 An organization administrator completes these steps. Keep the private key out
 of commits, issues, and chat.
+
+The same App serves two workflows: `Dependabot auto-merge` merges Dependabot's
+updates, and `mise tool updates` opens the weekly mise tool update pull request.
 
 1. Under the `sidereal-io` organization's **Settings → Developer settings →
    GitHub Apps**, create an App for dependency merging. Disable webhooks;
