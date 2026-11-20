@@ -53,28 +53,37 @@ stop_trees() {
 
 server_pid=
 web_pid=
+events=
+
+# Runs one worker in the background. When the worker exits, the wrapper
+# appends "<worker> <status>" to the events file, so the order in which
+# the workers stopped is kept even when both stop between two polls.
+start_worker() {
+  sh -c 'sh "$0" "$1"; echo "$1 $?" >>"$2"' "$root/scripts/dev.sh" "$1" "$events" &
+}
 
 supervise() {
-  trap 'trap - INT TERM HUP; stop_trees $server_pid $web_pid; exit 130' INT
-  trap 'trap - INT TERM HUP; stop_trees $server_pid $web_pid; exit 143' TERM HUP
-  sh "$root/scripts/dev.sh" server &
+  trap 'trap - INT TERM HUP; stop_trees $server_pid $web_pid; rm -f "$events"; exit 130' INT
+  trap 'trap - INT TERM HUP; stop_trees $server_pid $web_pid; rm -f "$events"; exit 143' TERM HUP
+  events=$(mktemp "${TMPDIR:-/tmp}/sidereal-dev.XXXXXX")
+  start_worker server
   server_pid=$!
-  sh "$root/scripts/dev.sh" web &
+  start_worker web
   web_pid=$!
   # A one-second poll keeps the traps simple: a signal interrupts the
   # foreground sleep, and the trap then runs.
-  while kill -0 "$server_pid" 2>/dev/null && kill -0 "$web_pid" 2>/dev/null; do
+  while [ ! -s "$events" ]; do
     sleep 1
   done
-  if kill -0 "$server_pid" 2>/dev/null; then
-    first=$web_pid other=$server_pid
-  else
-    first=$server_pid other=$web_pid
-  fi
-  status=0
-  wait "$first" || status=$?
+  # The first worker's status, unless it is 0 and the other worker had
+  # also stopped on its own and failed: a failure never comes out as 0.
+  # shellcheck disable=SC2046
+  set -- $(cat "$events")
+  status=$2
+  if [ "$status" -eq 0 ] && [ $# -ge 4 ]; then status=$4; fi
   trap - INT TERM HUP
-  stop_trees "$other"
+  stop_trees $server_pid $web_pid
+  rm -f "$events"
   exit "$status"
 }
 
