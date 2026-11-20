@@ -25,7 +25,7 @@ None.
 ### Modified Capabilities
 
 - `dev-environment`: adds the weekly mise tool update route and the hand-run update script. Changes the `mise.lock` requirement so its Let's Spec scenario names the release in `mise.toml` instead of `0.8.0`.
-- `ci`: "Each workflow grants only the token access it needs" covers the new workflow, whose only write access comes from the App token.
+- `ci`: adds a requirement, beside "Each workflow grants only the token access it needs", that limits the new workflow to `contents: read` for its own token and two write permissions for the App token.
 
 ## Impact
 
