@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build the app image, start disposable instances from the root Compose files,
-# check them, and remove them. Run it through `just instance-verify`.
+# check them, and remove them. Run it through `mise run instance-verify`.
 #
 # The run uses its own Compose project, image, password, host port, and bind
 # directories under .workspace/instance-verify/binds. It never reads the root

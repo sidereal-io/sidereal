@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The root `justfile` runs the server, the web shell and the database fixture for development. The tasks in `mise.toml` run the gate: the checks every pull request must pass.
+The tasks in `mise.toml` run the server, the web shell and the database fixture for development, and the gate: the checks every pull request must pass.
 
 ## Requirements
 

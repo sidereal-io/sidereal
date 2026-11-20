@@ -20,7 +20,7 @@ pub(super) struct TestDatabase {
 
 impl TestDatabase {
     pub fn new() -> Self {
-        let url = std::env::var("TEST_DATABASE_URL").expect("TEST_DATABASE_URL is required; run just db-up, then export TEST_DATABASE_URL=$(just db-test-url)");
+        let url = std::env::var("TEST_DATABASE_URL").expect("TEST_DATABASE_URL is required; run mise run db-up, then export TEST_DATABASE_URL=$(mise run db-test-url)");
         let options: PgConnectOptions = url
             .parse()
             .unwrap_or_else(|_| panic!("TEST_DATABASE_URL must be a PostgreSQL test-role URL"));
@@ -83,7 +83,7 @@ impl TestDatabase {
             });
             runtime.block_on(conn.close()).unwrap();
         });
-        assert!(ready_rx.recv().unwrap_or(false), "test database unavailable; run just db-up and export TEST_DATABASE_URL=$(just db-test-url); the test role needs CREATEDB");
+        assert!(ready_rx.recv().unwrap_or(false), "test database unavailable; run mise run db-up and export TEST_DATABASE_URL=$(mise run db-test-url); the test role needs CREATEDB");
         Self {
             options: database_options,
             cleanup: Some(cleanup),

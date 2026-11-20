@@ -4,7 +4,7 @@ import { configDefaults, defineConfig } from "vitest/config";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // Keep earlier output, such as a cargo error from `just dev`, on screen.
+  // Keep earlier output, such as a cargo error from `mise run dev`, on screen.
   clearScreen: false,
   server: {
     // Stop with an error when 5173 is taken, instead of serving on another

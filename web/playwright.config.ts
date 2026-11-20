@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
 const SERVER_URL = "http://localhost:5000";
 const WEB_URL = "http://localhost:5173";
 
-// A developer almost always has `just dev` running already. Reusing the
+// A developer almost always has `mise run dev` running already. Reusing the
 // existing process keeps the suite fast; when nothing is listening the
 // command below starts it and Playwright waits for the port. An explicit
 // PLAYWRIGHT_REUSE_SERVER=0 forces a fresh stack and =1 forces reuse; unset
@@ -39,7 +39,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // Same command `just server` uses, so a local run and a CI run boot
+      // Same command as `mise run server`, so a local run and a CI run boot
       // the server the same way.
       command: "cargo run -p sidereal-server --manifest-path server/Cargo.toml",
       url: `${SERVER_URL}/healthz`,
