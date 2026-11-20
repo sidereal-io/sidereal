@@ -62,7 +62,7 @@ The job checks out `main`, runs `jdx/mise-action@v5` with `install_args: --locke
 
 The last step passes the App token to `peter-evans/create-pull-request`, pinned to a full commit SHA with its version in a comment, as `dependabot-automerge.yml` pins its actions. It commits whatever the script changed to the fixed branch `automation/mise-tool-updates`, force-pushes it, and opens a pull request against `main`, or updates the open one. When the working tree is clean, it opens nothing and the run succeeds. A fixed branch is what keeps one pull request open at a time.
 
-Settings: title `chore: update mise tools`, a commit message in the same form, `delete-branch: true` so a merged branch goes away, and a body that lists what moved and says the gate runs in CI.
+Settings: title `chore: update mise tools`, a commit message in the same form, `delete-branch: true` so a merged branch goes away, and a body that says the branch is rewritten each week and the gate runs in CI, pointing to the pull request diff for what moved.
 
 *Alternative:* shell steps with `git push` and `gh pr create` / `gh pr edit`. Rejected: about twenty lines that reimplement "no changes, no pull request" and "update the open one", which the action already does.
 
