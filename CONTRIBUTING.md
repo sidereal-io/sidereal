@@ -336,7 +336,7 @@ When you change one of these, change both routes in the same pull request.
 
 Never write a Rust release number in a build file or a document. The channel decides it, with `flake.lock` on the Nix route and rustup on the mise route.
 
-Dependabot proposes updates to these pins every week: `flake.lock`, `server/Cargo.lock`, and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). It does not update `mise.lock`, and it does not move Let's Spec, because `flake.nix` names its release tag.
+Dependabot proposes updates to these pins every week: `flake.lock`, `server/Cargo.lock`, and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec, Rust and `flake.nix` alone. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
 
 **Product versions** are Sidereal's own version numbers.
 
@@ -367,7 +367,12 @@ as it suggests. CI runs `lets sync --check`, which fails when a committed copy i
 date. Never edit a `lets-*` or `openspec-*` skill, a `lets-*` schema or the
 rules block by hand: the next sync undoes it. Change Let's Spec instead.
 
-To move to a newer Let's Spec:
+On the mise route, the weekly `mise-tool-updates.yml` pull request moves Let's
+Spec for you: it changes `mise.toml` and `mise.lock`, and commits what
+`lets sync` wrote. Read the release's upgrading notes before you merge it. The
+release tag in `flake.nix` still moves by hand, in steps 2 and 4 below.
+
+To move to a newer Let's Spec by hand:
 
 1. Read its
    [upgrading notes](https://github.com/sidereal-io/lets-spec/blob/main/docs/upgrading.md).
