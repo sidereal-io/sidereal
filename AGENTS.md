@@ -165,7 +165,9 @@ These rules add to the Let's Spec block above.
   own, in `nix/openspec.nix` and `mise.toml`, until a Let's Spec release names
   OpenSpec 2. Run `nix flake update lets-spec` and `mise lock`, enter the dev shell
   so `lets sync` runs, and commit what it wrote in the same pull request as both
-  locks. Dependabot does not move Let's Spec: the flake input names a tag.
+  locks. Dependabot does not move Let's Spec: the flake input names a tag. The weekly
+  `mise-tool-updates.yml` workflow moves it in `mise.toml` and `mise.lock`, with what
+  `lets sync` writes, in one pull request; the `flake.nix` tag still moves by hand.
 - **`main` does not release yet.** v0.10.x releases are tagged from `v0.x`. A later
   change defines how `main` releases. Never `gh release create` manually.
 
