@@ -109,6 +109,10 @@ raw = true
 description = "Run the Playwright end-to-end suite; the database fixture must be up"
 run = "sh scripts/e2e.sh"
 
+[tasks.db-schema]
+description = "Regenerate normalized schema descriptions using the pinned fixture"
+run = "sh server/scripts/db-schema.sh"
+
 [tasks.db-tls]
 description = "Generate local fixture certificates without requiring Docker"
 run = "sh server/scripts/db-tls.sh"
