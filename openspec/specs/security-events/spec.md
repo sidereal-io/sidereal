@@ -16,7 +16,7 @@ Each of these acts SHALL write exactly one line that starts with `security event
 - a sign-out answered 204;
 - a reset by `siderealctl reset-admin-password`.
 
-The server SHALL write its lines to its stderr. `siderealctl` SHALL write its line to its own stderr, and the server SHALL also write it, as "An event from `siderealctl` reaches the server's log" says. A line SHALL be written only once the act has taken effect, and SHALL be written even when what follows the act fails. No security event SHALL write to PostgreSQL beyond the act itself.
+The server SHALL write its lines to its stderr.
 
 #### Scenario: A claim from the browser
 - **WHEN** no administrator exists and Sam sends `POST /api/claim` with username `sam` and a valid password, answered 201
@@ -34,9 +34,17 @@ The server SHALL write its lines to its stderr. `siderealctl` SHALL write its li
 - **WHEN** Sam sends `DELETE /api/session` with the cookie from sign-in, answered 204
 - **THEN** captured server stderr holds exactly one new line that starts with `security event:`
 
+### Requirement: `siderealctl` writes its own line
+
+`siderealctl` SHALL write its line to its own stderr, and the server SHALL also write it, as "An event from `siderealctl` reaches the server's log" says.
+
 #### Scenario: A reset from the box
 - **WHEN** an administrator exists and Sam runs `siderealctl reset-admin-password --password-stdin` with a valid password, exit 0
 - **THEN** the command's stderr holds exactly one line that starts with `security event:`
+
+### Requirement: A security event is written once its act takes effect
+
+A `security event:` line SHALL be written only once its act has taken effect, and SHALL be written even when what follows the act fails. No security event SHALL write to PostgreSQL beyond the act itself.
 
 #### Scenario: The generated password cannot be shown
 - **WHEN** Sam resets the password from the box, leaves `New password:` empty, and stdout cannot be written, so the command exits 1
@@ -51,36 +59,48 @@ The server SHALL write its lines to its stderr. `siderealctl` SHALL write its li
 After `security event:`, the line SHALL hold `key=value` fields separated by one space, in this order: `kind`, `outcome`, `source`, `username`, `client_address`, `user_agent`, `sessions_ended`, `retry_after`. A field with no value for the event SHALL be left out. The values are:
 
 - `kind`: `instance_claim`, `sign_in`, `sign_out` or `access_recovery`;
-- `outcome`: `success` for every event except a failed sign-in, which is `wrong_credentials` when answered 401 and `limited` when the address becomes limited. Only a `wrong_credentials` sign-in counts toward the sign-in limit, as "Failed sign-ins are counted per client address" in `instance-access` says;
-- `source`: `http` for an event from an HTTP request, `siderealctl` for one from the command;
-- `username`: the user the event is about, as the requirement "A failed sign-in names no username" limits it;
-- `client_address`: the request's resolved client address, as the requirement "The scheme and the client address come from a trusted proxy" in `instance-access` defines it, left out when it is unresolved;
-- `user_agent`: the request's `User-Agent` header, left out when the request has none;
-- `sessions_ended`: for an access recovery, the number of sessions the reset ended;
-- `retry_after`: for a `limited` sign-in, the seconds of the 429's `Retry-After` header.
-
-#### Scenario: A failed sign-in from a browser
-- **WHEN** a caller at `192.168.1.20` with `User-Agent: Firefox/140` signs in as `sam` with a wrong password
-- **THEN** the new line is `security event: kind=sign_in outcome=wrong_credentials source=http client_address=192.168.1.20 user_agent="Firefox/140"`
+- `source`: `http` for an event from an HTTP request, `siderealctl` for one from the command.
 
 #### Scenario: A sign-in answered 200
 - **WHEN** Sam, at `192.168.1.20` with no `User-Agent` header, signs in with correct credentials
 - **THEN** the new line is `security event: kind=sign_in outcome=success source=http username="sam" client_address=192.168.1.20`
 
-#### Scenario: A reset from the box
-- **WHEN** Sam is signed in twice and runs the reset from the box with a valid password
-- **THEN** the command's line is `security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2`
+### Requirement: The outcome field tells success from failure
+
+In a `security event:` line, these fields SHALL hold these values:
+
+- `outcome`: `success` for every event except a failed sign-in, which is `wrong_credentials` when answered 401 and `limited` when the address becomes limited. Only a `wrong_credentials` sign-in counts toward the sign-in limit, as "Failed sign-ins are counted per client address" in `instance-access` says.
+
+#### Scenario: A failed sign-in from a browser
+- **WHEN** a caller at `192.168.1.20` with `User-Agent: Firefox/140` signs in as `sam` with a wrong password
+- **THEN** the new line is `security event: kind=sign_in outcome=wrong_credentials source=http client_address=192.168.1.20 user_agent="Firefox/140"`
+
+### Requirement: The username and client fields describe who acted
+
+In a `security event:` line, these fields SHALL hold these values:
+
+- `username`: the user the event is about, as the requirement "A failed sign-in names no username" limits it;
+- `client_address`: the request's resolved client address, as the requirement "The scheme and the client address come from a trusted proxy" in `instance-access` defines it, left out when it is unresolved;
+- `user_agent`: the request's `User-Agent` header, left out when the request has none.
 
 #### Scenario: An unresolved client address
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request from `172.18.0.1` with `X-Forwarded-For: garbage` fails sign-in
 - **THEN** the new line holds `kind=sign_in` and `outcome=wrong_credentials` and has no `client_address` field
 
+### Requirement: The sessions and retry fields carry counts
+
+In a `security event:` line, these fields SHALL hold these values:
+
+- `sessions_ended`: for an access recovery, the number of sessions the reset ended;
+- `retry_after`: for a `limited` sign-in, the seconds of the 429's `Retry-After` header.
+
+#### Scenario: A reset from the box
+- **WHEN** Sam is signed in twice and runs the reset from the box with a valid password
+- **THEN** the command's line is `security event: kind=access_recovery outcome=success source=siderealctl username="sam" sessions_ended=2`
+
 ### Requirement: An event from `siderealctl` reaches the server's log
 
-A `siderealctl` claim or reset SHALL send its line with the act, so that it is sent only when the act takes effect. A running server SHALL write each line it receives this way to its stderr, exactly once, as it writes its own lines. The server SHALL write a received line only when all of these hold, and SHALL drop any other:
-
-- it starts with `security event: kind=instance_claim outcome=success source=siderealctl` or `security event: kind=access_recovery outcome=success source=siderealctl`;
-- it holds no control character.
+A `siderealctl` claim or reset SHALL send its line with the act, so that it is sent only when the act takes effect. A running server SHALL write each line it receives this way to its stderr, exactly once, as it writes its own lines.
 
 When no server is running, the event SHALL still appear on the command's stderr.
 
@@ -92,12 +112,19 @@ When no server is running, the event SHALL still appear on the command's stderr.
 - **WHEN** the server is running, no administrator exists, and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with a valid password, exit 0
 - **THEN** captured server stderr holds exactly one new line, `security event: kind=instance_claim outcome=success source=siderealctl username="sam"`
 
-#### Scenario: A line on the channel that `siderealctl` never sends
-- **WHEN** the server is running and another database session sends `security event: kind=sign_in outcome=success source=http username="sam"` on the channel
-- **THEN** captured server stderr gains no `security event:` line
-
 #### Scenario: A reset that takes no effect
 - **WHEN** the server is running, an administrator exists, and Sam runs the reset from the box but the database refuses the password update, so the command exits 1
+- **THEN** captured server stderr gains no `security event:` line
+
+### Requirement: The server writes only the lines `siderealctl` sends
+
+The server SHALL write a line received from `siderealctl` only when all of these hold, and SHALL drop any other:
+
+- it starts with `security event: kind=instance_claim outcome=success source=siderealctl` or `security event: kind=access_recovery outcome=success source=siderealctl`;
+- it holds no control character.
+
+#### Scenario: A line on the channel that `siderealctl` never sends
+- **WHEN** the server is running and another database session sends `security event: kind=sign_in outcome=success source=http username="sam"` on the channel
 - **THEN** captured server stderr gains no `security event:` line
 
 ### Requirement: A failed sign-in names no username
