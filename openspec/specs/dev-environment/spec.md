@@ -2,9 +2,9 @@
 
 ## Purpose
 
-The development environment gives every contributor and AI agent the same pinned tools for this repo. It turns on automatically when Nix is installed. It stays optional, so contributors without Nix can still build and check the repo. It also generates the same agent skills on every machine, from settings tracked in the repo.
+The development environment uses mise to give every contributor and AI agent the same pinned tools for this repo. mise stays optional: the plain pin files let a contributor install the tools by hand and still build and check the repo. The environment also generates the same agent skills on every machine, from settings tracked in the repo.
 
-Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). mise does not provide it, so a reviewer installs it first.
 
 ## Requirements
 

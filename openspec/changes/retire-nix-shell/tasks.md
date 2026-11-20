@@ -19,7 +19,7 @@ Each task's verify command is its test: run it first and see it fail, then make 
 
 ## 3. Update the spec Purpose paragraphs
 
-- [ ] 3.1 [parallel] [easy] The Purpose sections of `openspec/specs/dev-environment/spec.md` and `openspec/specs/ci/spec.md` name mise, not Nix or the development shell, including the note that mise does not provide `yq`; a delta cannot change a Purpose, so edit the main specs directly (design: "Edit the two Purpose paragraphs in the main specs") (verify: `! sed -n '/^## Purpose/,/^## Requirements/p' openspec/specs/dev-environment/spec.md openspec/specs/ci/spec.md | grep -n -i -E 'nix|development shell' && mise run check-openspec`)
+- [x] 3.1 [parallel] [easy] The Purpose sections of `openspec/specs/dev-environment/spec.md` and `openspec/specs/ci/spec.md` name mise, not Nix or the development shell, including the note that mise does not provide `yq`; a delta cannot change a Purpose, so edit the main specs directly (design: "Edit the two Purpose paragraphs in the main specs") (verify: `! sed -n '/^## Purpose/,/^## Requirements/p' openspec/specs/dev-environment/spec.md openspec/specs/ci/spec.md | grep -n -i -E 'nix|development shell' && mise run check-openspec`) (✓ verify command passed: no match, `check-openspec` 12 passed, 0 failed)
 
 ## 4. The whole change passes [depends-on: 1, 2, 3]
 

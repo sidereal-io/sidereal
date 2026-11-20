@@ -4,7 +4,7 @@
 
 CI runs the checks that match what a pull request or a push to `main` changes, and code scanning runs on every pull request. `main` builds and releases nothing, and a weekly scan watches the `v0.x` maintenance branch for known vulnerabilities.
 
-Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). mise does not provide it, so a reviewer installs it first.
 
 ## Requirements
 
