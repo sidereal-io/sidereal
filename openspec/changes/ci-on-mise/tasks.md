@@ -15,7 +15,7 @@ Every task in this section edits `.github/workflows/ci.yml`, so they run one at 
 
 These tasks touch only `AGENTS.md` and `CONTRIBUTING.md`, and change only the sentences design.md D-7 names. The wider docs rewrite is not part of this change.
 
-- [ ] 2.1 [parallel] [easy] `AGENTS.md`'s "Rust follows the latest stable release" bullet says `flake.lock` decides the release in the Nix shell and the `nix` workflow, and rustup decides it in the `ci` workflow and on the mise route (verify: `! grep -zqE 'in the Nix shell and[[:space:]]+CI\.' AGENTS.md && grep -q 'nix. workflow' AGENTS.md`)
+- [x] 2.1 [parallel] [easy] `AGENTS.md`'s "Rust follows the latest stable release" bullet says `flake.lock` decides the release in the Nix shell and the `nix` workflow, and rustup decides it in the `ci` workflow and on the mise route (verify: `! grep -zqE 'in the Nix shell and[[:space:]]+CI\.' AGENTS.md && grep -q 'nix. workflow' AGENTS.md`) (✓ verify command passed)
 - [ ] 2.2 [parallel] [easy] `CONTRIBUTING.md`'s "Without Nix" Rust note and the Rust row of its versions table say the `ci` workflow installs Rust's stable channel through mise and rustup decides the release (verify: `! grep -nE 'takes Rust from .flake\.lock.|the .ci. and .nix. workflows' CONTRIBUTING.md`)
 
 ## 3. The change passes its gates [depends-on: 1, 2]
