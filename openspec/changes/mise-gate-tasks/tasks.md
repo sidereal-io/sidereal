@@ -13,7 +13,7 @@ Run every command from the repo root. `design.md` D-2 gives each task body exact
 
 ## 2. CI runs the tasks [depends-on: 1]
 
-- [ ] 2.1 [parallel] [easy] The `compose`, `server`, `web` and `openspec` jobs in `.github/workflows/ci.yml` each run their check as `mise run check-<part>`; the fixture steps and the `e2e` and `lets-spec` jobs do not change (verify: `for j in compose web openspec; do test "$(yq ".jobs.$j.steps[] | select(has(\"run\")) | .run" .github/workflows/ci.yml)" = "mise run check-$j" || exit 1; done && test "$(yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep 'check-')" = 'mise run check-server'`)
+- [x] 2.1 [parallel] [easy] The `compose`, `server`, `web` and `openspec` jobs in `.github/workflows/ci.yml` each run their check as `mise run check-<part>`; the fixture steps and the `e2e` and `lets-spec` jobs do not change (verify: `for j in compose web openspec; do test "$(yq ".jobs.$j.steps[] | select(has(\"run\")) | .run" .github/workflows/ci.yml)" = "mise run check-$j" || exit 1; done && test "$(yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep 'check-')" = 'mise run check-server'`) (✓ verify passed; the `ci` spec's tool-command scan finds no match)
 
 ## 3. Docs name the mise tasks [depends-on: 1]
 
