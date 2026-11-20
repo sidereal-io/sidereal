@@ -47,9 +47,10 @@ awk -v required="$required_platforms" -v exceptions="$exceptions" '
                 if (!((tool[t], platforms[p]) in has)) missing = missing " " platforms[p]
             if (missing != "") {
                 print "check-mise-lock-platforms: FAILED: " tool[t] " lacks" missing
-                exit 1
+                failed = 1
             }
         }
+        exit failed
     }
 ' "$lock" >&2 || status=$?
 [ "$status" -ne 2 ] || fail "$lock holds no [[tools.*]] entry"
