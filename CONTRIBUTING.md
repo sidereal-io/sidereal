@@ -156,6 +156,12 @@ it, and it loads after the pinned shell, so your settings take precedence.
 
    `mise.toml` names each tool, and `mise.lock` pins each tool's exact release
    and checksum. mise reads the Node version from `.nvmrc`.
+
+   `mise.lock` must pin each tool for Linux x64, Linux arm64 and macOS arm64.
+   Rust is the exception: it records a channel, not a download. The `mise`
+   workflow fails when a tool lacks one of these platforms, and names the tool
+   and the platform. To run the same check yourself, run
+   `scripts/check-mise-lock-platforms.sh` in the repo root.
 4. mise installs Rust through rustup, on the `stable` channel. `mise.lock`
    records the channel, not a release, so rustup's newest stable release
    decides it. Run `rustup update` to move to a newer release.

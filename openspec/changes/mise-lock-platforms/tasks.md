@@ -18,7 +18,7 @@
 ## 2. Wiring and docs [depends-on: 1]
 
 - [x] 2.1 [easy] The `mise-check` job in `.github/workflows/mise.yml` runs `scripts/check-mise-lock-platforms.sh` in a step named for the lock platforms, after checkout and before the install step (design Decision 6), and adds `scripts/check-mise-lock-platforms.sh` to the workflow's `paths` filter (verify: `awk '/scripts\/check-mise-lock-platforms.sh/{s=NR} /jdx\/mise-action/{i=NR} END{exit !(s && i && s < i)}' .github/workflows/mise.yml && grep -q 'scripts/check-mise-lock-platforms.sh' .github/workflows/mise.yml`) (✓ red: verify command failed on the unchanged workflow; green: verify command passed)
-- [ ] 2.2 [easy] `CONTRIBUTING.md` says, beside the existing sentence that `mise.lock` pins each tool's exact release and checksum, that the lock must cover Linux x64, Linux arm64 and macOS arm64, that the `mise` workflow fails when it does not, and that `scripts/check-mise-lock-platforms.sh` runs the same check by hand. Name no Rust release number (verify: `grep -q 'scripts/check-mise-lock-platforms.sh' CONTRIBUTING.md`)
+- [x] 2.2 [easy] `CONTRIBUTING.md` says, beside the existing sentence that `mise.lock` pins each tool's exact release and checksum, that the lock must cover Linux x64, Linux arm64 and macOS arm64, that the `mise` workflow fails when it does not, and that `scripts/check-mise-lock-platforms.sh` runs the same check by hand. Name no Rust release number (verify: `grep -q 'scripts/check-mise-lock-platforms.sh' CONTRIBUTING.md`) (✓ red: verify command failed on the unchanged file; green: verify command passed, and the new text names no Rust release)
 
 ## 3. Integration [depends-on: 2]
 
