@@ -95,8 +95,8 @@ data/
 .direnv/
 .envrc.local
 
-# mise — mise.toml, mise.lock and .mise/locks/ are committed; a
-# contributor's own settings, and the lock mise writes for them, aren't
+# mise — mise.toml and mise.lock are committed; a contributor's own
+# settings, and the lock mise writes for them, aren't
 mise.local.toml
 mise.local.lock
 .mise/locks/mise.local/
