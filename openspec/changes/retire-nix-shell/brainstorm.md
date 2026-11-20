@@ -35,4 +35,6 @@
 - Added: comments in `mise.toml` and `scripts/check-mise-lock-platforms.sh` stop naming the Nix shell and `flake.nix` (D16).
 - Deferred: the stale stages in `openspec/discovery.md` wait for the next `lets-shape` pass (D17). The `ci` spec's older path-filter mismatch stays out too, named in the pull request (D9).
 
-Confirmed by user: no
+lets-go confirmed this ledger under the user's standing instruction to stop in the brainstorm only when a question has no recommendation; the user did not read it in person.
+
+Confirmed by user: yes
