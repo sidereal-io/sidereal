@@ -40,11 +40,12 @@ Prepare the fixture and exports before running it.
 ## Verify changes and manage fixture data
 
 ```sh
-just check          # Complete Compose configuration, server, and web gates
-just db-schema      # Regenerate committed normalized schema descriptions
-just db-down        # Stop this fixture while retaining its volume
-just db-test-clean  # Remove this fixture's killed-test leftovers only
-just db-clean       # Explicitly delete this fixture's volume and all its data
+mise run check         # The full gate: Compose configuration, OpenSpec, server, and web
+mise run check-server  # The server checks only
+just db-schema         # Regenerate committed normalized schema descriptions
+just db-down           # Stop this fixture while retaining its volume
+just db-test-clean     # Remove this fixture's killed-test leftovers only
+just db-clean          # Explicitly delete this fixture's volume and all its data
 ```
 
 Database tests use unique temporary databases with a separate supervisor for cleanup

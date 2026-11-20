@@ -39,7 +39,7 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
   `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
   the `nix` workflow. `mise.toml` names the same channel, and in the `ci` workflow
-  and on the mise route rustup decides the release. Never put a Rust release number in a build file or doc. **`just check`**
+  and on the mise route rustup decides the release. Never put a Rust release number in a build file or doc. **`mise run check`**
   is the gate — green before every PR. It runs `check-compose` (Compose config checks
   with no daemon), then `check-openspec` (strict `openspec validate` of every spec and
   active change; a warning fails it), then `check-server` (`cargo fmt --check` +
@@ -150,9 +150,9 @@ These rules add to the Let's Spec block above.
   `lets-shape` files issues and sets their fields; `lets-go` claims the next one.
   `openspec/discovery.md` holds the personas and journeys that `lets-shape` keeps. A
   milestone issue or an ADR holds the product intent.
-- **Gate with `just check`** (`check-compose`, `check-openspec`, `check-server`, then `check-web`)
-  after every change to `server/`, `web/` or `openspec/`. CI runs the same checks in the `ci`
-  workflow's `compose`, `openspec`, `server`, and `web` jobs, and its `lets-spec` job runs
+- **Gate with `mise run check`** (`check-compose`, `check-openspec`, `check-server`, then `check-web`)
+  after every change to `server/`, `web/` or `openspec/`. CI runs the same tasks, as
+  `mise run check-<part>`, in the `ci` workflow's `compose`, `openspec`, `server`, and `web` jobs, and its `lets-spec` job runs
   `lets sync --check`.
 - **Epics describe outcomes.** Record the people served, scope, constraints, and
   exit demonstration. Identify groundwork and relevant code when exploring and

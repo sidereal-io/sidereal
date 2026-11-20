@@ -35,11 +35,11 @@ both files.
 From the repo root:
 
 ```bash
-just check-web
+mise run check-web
 ```
 
 This installs dependencies from `pnpm-lock.yaml`, then runs six checks in
-order. It stops at the first one that fails. `just check` runs it too, after
+order. It stops at the first one that fails. `mise run check` runs it too, after
 the server checks.
 
 To run one check alone, run its script in `web/`:
@@ -77,7 +77,7 @@ generated from it, so never edit that file by hand.
 
 1. Edit the token in `DESIGN.md`.
 2. In `web/`, run `pnpm tokens` to regenerate `src/styles/tokens.css`.
-3. Run `just check-web` from the repo root.
+3. Run `mise run check-web` from the repo root.
 4. Commit `DESIGN.md` and `src/styles/tokens.css` together.
 
 If `pnpm tokens` refuses a token, its message names the token and says what is

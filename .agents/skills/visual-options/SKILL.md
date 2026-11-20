@@ -157,7 +157,7 @@ the person.
    the prose too. Keep `DESIGN.md`'s units: a pixel value tried in Penpot may
    need converting back, as em letter spacing does.
 2. **Regenerate the CSS tokens.** Run `pnpm tokens` in `web/`.
-3. **Check.** Run `just check` from the repository root. It must pass.
+3. **Check.** Run `mise run check` from the repository root. It must pass.
 4. **Leave the options page and set in place** until the change merges. The
    next sync from `main` copies the new values into the `primitives` set,
    redraws the Tokens page, and asks the person whether to delete the options
