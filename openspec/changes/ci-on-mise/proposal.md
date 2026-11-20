@@ -23,7 +23,7 @@ None.
 
 ### Modified Capabilities
 
-- `ci`: "Every CI job runs one recipe inside the development shell" installs tools from `mise.lock` instead of the Nix shell, and names `lets-spec` and `e2e` as exempt from the one-recipe rule. "Each CI job runs its own check recipe" adds `check-compose` for the `compose` job, and its scenarios expect `mise exec -- just <recipe>`.
+- `ci`: "Every CI job runs one recipe inside the development shell" is replaced by five shorter requirements. They say each job installs its tools from `mise.lock` instead of the Nix shell, runs them through mise, and runs one recipe. They also name `lets-spec` and `e2e` as exempt from the one-recipe rule, and say why. "Each CI job runs its own check recipe" adds `check-compose` for the `compose` job, and its scenarios expect `mise exec -- just <recipe>`.
 
 ## Impact
 
