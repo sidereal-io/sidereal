@@ -4,7 +4,7 @@
 
 ### Requirement: The mise check fails when the lock misses a supported platform
 
-The mise check SHALL fail when a `[[tools.*]]` entry in `mise.lock` has no `platforms.linux-x64`, `platforms.linux-arm64` or `platforms.macos-arm64` table. The one exception SHALL be `[[tools.rust]]`, which records the `stable` channel and has no platform tables. The check's log SHALL name each tool that lacks a table and each platform it lacks. The check SHALL NOT require any other platform.
+The mise check SHALL fail when a `[[tools.*]]` entry in `mise.lock` lacks any of the `platforms.linux-x64`, `platforms.linux-arm64` or `platforms.macos-arm64` tables. The one exception SHALL be `[[tools.rust]]`, which records the `stable` channel and has no platform tables. The check's log SHALL name each tool that lacks a table and each platform it lacks. The check SHALL NOT require any other platform.
 
 #### Scenario: A tool lacks a supported platform
 

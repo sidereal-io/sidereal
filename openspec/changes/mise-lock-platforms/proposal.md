@@ -26,7 +26,8 @@ None.
 
 ## Impact
 
-- `.github/workflows/mise.yml`: one new step in the `mise-check` job. The workflow's path filter already includes `mise.lock`, so no trigger changes.
+- `.github/workflows/mise.yml`: one new step in the `mise-check` job, and `scripts/check-mise-lock-platforms.sh` added to the `paths` filter.
 - `scripts/`: one new script that reads `mise.lock`.
+- `CONTRIBUTING.md`: notes that `mise.lock` must cover the supported platforms and documents the manual check.
 - `openspec/specs/dev-environment/spec.md`: one added requirement.
 - No change to `mise.toml`, `mise.lock`, `flake.nix`, the Nix route, or `just check`.
