@@ -4,6 +4,8 @@
 
 CI runs the checks that match what a pull request or a push to `main` changes, and code scanning runs on every pull request. `main` builds and releases nothing, and a weekly scan watches the `v0.x` maintenance branch for known vulnerabilities.
 
+Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+
 ## Requirements
 
 ### Requirement: Every CI job runs one recipe inside the development shell
@@ -15,15 +17,6 @@ Every job in `.github/workflows/ci.yml` SHALL meet these four rules:
 - The job has no step that installs Rust, Node, pnpm, or any other tool the checks use. The shell provides them.
 - A step that caches cargo's build output runs its own Rust commands inside the shell, so it installs no Rust either.
 
-The `server` job's recipe is `check-server`. The `web` job's recipe is `check-web`. The `openspec` job's recipe is `check-openspec`. `just check` SHALL run `check-compose`, then `check-openspec`, then `check-server`, then `check-web`, so a contributor and CI run the same gates.
-
-The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
-
-#### Scenario: The server job has one check step
-
-- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
-- **THEN** the output is exactly one line: `nix develop --command just check-server`
-
 #### Scenario: The server job has no step that installs a tool
 
 - **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("uses")) | .uses | sub("@.*", "")' .github/workflows/ci.yml`
@@ -34,35 +27,44 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(.uses == "Swatinem/rust-cache*") | .with.cmd-format' .github/workflows/ci.yml`
 - **THEN** the output is exactly one line: `nix develop -c {0}`
 
-#### Scenario: The web job has one check step
-
-- **WHEN** a reviewer runs `yq '.jobs.web.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
-- **THEN** the output is exactly one line: `nix develop --command just check-web`
-
 #### Scenario: The web job has no step that installs a tool
 
 - **WHEN** a reviewer runs `yq '.jobs.web.steps[] | select(has("uses")) | .uses | sub("@.*", "")' .github/workflows/ci.yml`
 - **THEN** the output is exactly two lines, in this order: `actions/checkout` and `DeterminateSystems/determinate-nix-action`
-
-#### Scenario: The openspec job has one check step
-
-- **WHEN** a reviewer runs `yq '.jobs.openspec.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
-- **THEN** the output is exactly one line: `nix develop --command just check-openspec`
 
 #### Scenario: The openspec job has no step that installs a tool
 
 - **WHEN** a reviewer runs `yq '.jobs.openspec.steps[] | select(has("uses")) | .uses | sub("@.*", "")' .github/workflows/ci.yml`
 - **THEN** the output is exactly two lines, in this order: `actions/checkout` and `DeterminateSystems/determinate-nix-action`
 
-#### Scenario: The local gate runs the same recipe
-
-- **WHEN** a contributor runs `just --show check`
-- **THEN** the output contains the line `check: check-compose check-openspec check-server check-web`
-
 #### Scenario: A check in the recipe fails
 
 - **WHEN** a pull request changes a file under `server/crates/` so that `cargo fmt --check` reports a difference
 - **THEN** the `server` job fails on that pull request
+
+### Requirement: Each CI job runs its own check recipe
+
+The `server` job's recipe is `check-server`. The `web` job's recipe is `check-web`. The `openspec` job's recipe is `check-openspec`. `just check` SHALL run `check-compose`, then `check-openspec`, then `check-server`, then `check-web`, so a contributor and CI run the same gates.
+
+#### Scenario: The server job has one check step
+
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
+- **THEN** the output is exactly one line: `nix develop --command just check-server`
+
+#### Scenario: The web job has one check step
+
+- **WHEN** a reviewer runs `yq '.jobs.web.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
+- **THEN** the output is exactly one line: `nix develop --command just check-web`
+
+#### Scenario: The openspec job has one check step
+
+- **WHEN** a reviewer runs `yq '.jobs.openspec.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
+- **THEN** the output is exactly one line: `nix develop --command just check-openspec`
+
+#### Scenario: The local gate runs the same recipe
+
+- **WHEN** a contributor runs `just --show check`
+- **THEN** the output contains the line `check: check-compose check-openspec check-server check-web`
 
 ### Requirement: The server checks run when server code changes
 
@@ -75,8 +77,6 @@ A CI job named `server` SHALL run the server checks. The job lives in the workfl
 - `flake.nix` or `flake.lock`;
 - any file under `nix/`;
 - `.github/workflows/ci.yml`.
-
-The checks are the Rust format check, clippy with warnings denied, the tests, and the dependency-direction lint. The job SHALL fail when any check fails.
 
 #### Scenario: A pull request changes Rust code
 
@@ -109,6 +109,15 @@ The checks are the Rust format check, clippy with warnings denied, the tests, an
 - **WHEN** a reviewer lists `.github/workflows/`
 - **THEN** `ci.yml` exists
 - **AND** neither `v2.yml` nor `backend-rs.yml` exists
+
+### Requirement: The server job fails when any server check fails
+
+The `server` job's checks are the Rust format check, clippy with warnings denied, the tests, and the dependency-direction lint. The job SHALL fail when any check fails.
+
+#### Scenario: A server test fails
+
+- **WHEN** a pull request changes a file under `server/crates/` so that `cargo test` reports a failing test
+- **THEN** the `server` job fails on that pull request
 
 ### Requirement: The web checks run when server or web code changes
 
@@ -197,8 +206,6 @@ No workflow on `main` SHALL build or push a container image, or publish a releas
 
 `ci.yml` SHALL grant its jobs `contents: read` and no other permission. `codeql.yml` and `v0-security-scan.yml` SHALL grant `contents: read` and `security-events: write`, and no other permission. None of these three workflows SHALL refer to a repository secret.
 
-The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
-
 #### Scenario: The CI workflow can only read
 
 - **WHEN** a reviewer runs `yq '[.permissions, .jobs[].permissions] | map(select(. != null))' .github/workflows/ci.yml`
@@ -216,18 +223,12 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 ### Requirement: A weekly scan checks v0.x for known vulnerabilities
 
-Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` fills that gap for the `v0.x` branch's dependency manifests, such as its npm lockfile. It does not scan container images, and it does not look for secrets. `v0.x` scans its image on every push and pull request.
+Dependabot alerts read the default branch only, so they do not cover `v0.x`. The workflow `v0-security-scan.yml` fills that gap for the `v0.x` branch's dependency manifests, such as its npm lockfile.
 
 The workflow lives on `main` because GitHub runs scheduled workflows from the default branch only. It SHALL meet these rules:
 
 - It runs at 06:00 UTC every Monday, and on manual dispatch.
 - It checks out the `v0.x` branch at the root of its workspace. It does not check out `main`.
-- It scans for known vulnerabilities only.
-- It uploads results with the ref `refs/heads/v0.x` and the commit SHA it checked out. The category is `v0.x/trivy/dependencies`. Each result names a file path as it appears on the `v0.x` branch.
-- After the upload, it fails the run when it finds a vulnerability rated high or critical.
-- Every action it uses from outside GitHub's `actions/` and `github/` organisations is pinned to a full 40-character commit SHA.
-
-The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
 
 #### Scenario: The scan runs every Monday
 
@@ -241,10 +242,21 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **THEN** the output lists `v0.x` for `ref`, and `null` for `path`
 - **AND** the job has exactly one checkout step
 
+### Requirement: The weekly scan looks for known vulnerabilities only
+
+`v0-security-scan.yml` SHALL scan for known vulnerabilities only. It does not scan container images, and it does not look for secrets. `v0.x` scans its image on every push and pull request.
+
 #### Scenario: Every scan step looks for vulnerabilities in the workspace
 
 - **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "aquasecurity/trivy-action*") | .with | [."scan-type", ."scan-ref", .scanners]' .github/workflows/v0-security-scan.yml`
 - **THEN** every step in the output lists `fs`, `.`, and `vuln`
+
+### Requirement: The weekly scan uploads results for the v0.x commit it checked
+
+`v0-security-scan.yml` SHALL meet these rules:
+
+- It uploads results with the ref `refs/heads/v0.x` and the commit SHA it checked out. The category is `v0.x/trivy/dependencies`. Each result names a file path as it appears on the `v0.x` branch.
+- After the upload, it fails the run when it finds a vulnerability rated high or critical.
 
 #### Scenario: The upload names v0.x and the commit it scanned
 
@@ -257,11 +269,6 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.with."exit-code" == "1") | .with.severity' .github/workflows/v0-security-scan.yml`
 - **THEN** the output is exactly one line: `HIGH,CRITICAL`
 - **AND** that step comes after the upload step in the job
-
-#### Scenario: Third-party actions are pinned
-
-- **WHEN** a reviewer lists every `uses:` value in `v0-security-scan.yml` that does not start with `actions/` or `github/`
-- **THEN** every value ends with `@` followed by 40 hexadecimal characters
 
 #### Scenario: A manual run uploads results for the v0.x commit it scanned
 
@@ -277,6 +284,15 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 - **AND** the maintainer runs `gh api 'repos/sidereal-io/sidereal/code-scanning/alerts?ref=refs/heads/v0.x&tool_name=Trivy' --jq '.[].most_recent_instance.location.path'`
 - **THEN** for every printed path, `git cat-file -e origin/v0.x:<path>` exits with status 0
 
+### Requirement: The weekly scan pins third-party actions
+
+Every action that `v0-security-scan.yml` uses from outside GitHub's `actions/` and `github/` organisations SHALL be pinned to a full 40-character commit SHA.
+
+#### Scenario: Third-party actions are pinned
+
+- **WHEN** a reviewer lists every `uses:` value in `v0-security-scan.yml` that does not start with `actions/` or `github/`
+- **THEN** every value ends with `@` followed by 40 hexadecimal characters
+
 ### Requirement: Scan categories identify the code line and target
 
 Security uploads SHALL use these fixed categories:
@@ -290,23 +306,23 @@ Security uploads SHALL use these fixed categories:
 | v0.x | Trivy dependencies | `v0.x/trivy/dependencies` |
 | v0.x release tag | Trivy release validation | `v0.x/trivy/release-image` |
 
+#### Scenario: Maintenance source analysis has a separate identity
+
+- **WHEN** CodeQL uploads JavaScript/TypeScript results for a PR to `v0.x` and a push to `v0.x`
+- **THEN** both analysis records have category `v0.x/codeql/javascript-typescript`
+- **AND** neither record uses the main JavaScript/TypeScript category
+
+### Requirement: Pull request and branch uploads share one category per target
+
 PR and target-branch uploads SHALL share the category for their code line and scan target. Categories SHALL NOT include a PR number, feature branch name, or release version.
 
 PR uploads SHALL use the PR ref and analyzed commit. Sharing a category SHALL NOT redirect PR results to the target branch ref.
-
-Branch container scans SHALL analyze the immutable AMD64 image digest produced by the same workflow run. Their uploads SHALL retain that run's branch ref and commit SHA.
 
 #### Scenario: Main CodeQL matches its branch baseline
 
 - **WHEN** a successful PR analysis and its main baseline analyze the same language
 - **THEN** both analysis records have `main/codeql/rust` or `main/codeql/javascript-typescript`, matching that language
 - **AND** the PR record names its PR ref rather than `refs/heads/main`
-
-#### Scenario: Maintenance source analysis has a separate identity
-
-- **WHEN** CodeQL uploads JavaScript/TypeScript results for a PR to `v0.x` and a push to `v0.x`
-- **THEN** both analysis records have category `v0.x/codeql/javascript-typescript`
-- **AND** neither record uses the main JavaScript/TypeScript category
 
 #### Scenario: Maintenance container results compare with their branch
 
@@ -321,6 +337,10 @@ Branch container scans SHALL analyze the immutable AMD64 image digest produced b
 - **THEN** both analysis records use `v0.x/trivy/release-image`
 - **AND** each record keeps its own tag ref and analyzed commit
 
+### Requirement: Branch container scans analyze their own run's image
+
+Branch container scans SHALL analyze the immutable AMD64 image digest produced by the same workflow run. Their uploads SHALL retain that run's branch ref and commit SHA.
+
 #### Scenario: Two pushes overlap while publishing the branch image
 
 - **WHEN** a newer push replaces the mutable branch image tag before an earlier run scans
@@ -331,10 +351,6 @@ Branch container scans SHALL analyze the immutable AMD64 image digest produced b
 
 Maintenance branch and PR triggers SHALL target `v0.x` only. Exactly one workflow SHALL upload PR container SARIF results. Other container checks SHALL preserve smoke tests and text vulnerability reports.
 
-Reports SHALL distinguish scanner failure from a successful scan with no findings. Removing a duplicate SARIF scan SHALL NOT leave references to its missing step outcome.
-
-Release validation SHALL preserve its blocking exit code, ignore-unfixed setting, severity selection, and ignore-file policy. It SHALL attempt SARIF upload after scan failure whenever the result file exists.
-
 Every maintenance Trivy action reference SHALL use a reviewed full commit SHA. CodeQL SHALL analyze maintenance JavaScript/TypeScript without an application build.
 
 #### Scenario: A PR has one container SARIF owner
@@ -342,17 +358,6 @@ Every maintenance Trivy action reference SHALL use a reviewed full commit SHA. C
 - **WHEN** a reviewer inspects all maintenance PR workflows
 - **THEN** exactly one workflow contains a container SARIF upload
 - **AND** the Docker smoke-test command and text vulnerability-report step remain present
-
-#### Scenario: The text report fails
-
-- **WHEN** the Docker test workflow's vulnerability-report step fails
-- **THEN** the PR summary does not report a successful security check or zero vulnerabilities
-
-#### Scenario: A release scan finds a blocking vulnerability
-
-- **WHEN** release validation finds a vulnerability blocked by its existing policy
-- **THEN** validation exits unsuccessfully
-- **AND** the SARIF upload step runs if its result file exists
 
 #### Scenario: Maintenance CodeQL needs no build
 
@@ -366,37 +371,37 @@ Every maintenance Trivy action reference SHALL use a reviewed full commit SHA. C
 - **THEN** each push or PR branch filter names only `v0.x`
 - **AND** every Trivy action reference ends with a full 40-character hexadecimal commit SHA
 
+### Requirement: Maintenance reports tell a scanner failure from a clean scan
+
+Reports SHALL distinguish scanner failure from a successful scan with no findings. Removing a duplicate SARIF scan SHALL NOT leave references to its missing step outcome.
+
+#### Scenario: The text report fails
+
+- **WHEN** the Docker test workflow's vulnerability-report step fails
+- **THEN** the PR summary does not report a successful security check or zero vulnerabilities
+
+### Requirement: Release validation keeps its blocking policy
+
+Release validation SHALL preserve its blocking exit code, ignore-unfixed setting, severity selection, and ignore-file policy. It SHALL attempt SARIF upload after scan failure whenever the result file exists.
+
+#### Scenario: A release scan finds a blocking vulnerability
+
+- **WHEN** release validation finds a vulnerability blocked by its existing policy
+- **THEN** validation exits unsuccessfully
+- **AND** the SARIF upload step runs if its result file exists
+
 ### Requirement: Setup retirement follows verified replacement
 
 Maintainers SHALL record the exact tool, category, analysis key, ref, timestamp, and finding count before retiring a setup.
 
 Maintainers SHALL verify replacement uploads before deleting retired setups. Branch targets require successful branch analyses; release validation requires a successful analysis on a legitimate release tag.
 
-For every PR-capable target, maintainers SHALL also verify a subsequent PR comparison. This includes both main CodeQL languages, maintenance CodeQL, and maintenance container analysis.
-
-Maintainers SHALL retain the retired release setup until a legitimate release produces replacement evidence. They SHALL NOT create a release solely to verify this migration.
-
-A controlled PR SHALL demonstrate a new container finding under `v0.x/trivy/image`. The fixture SHALL NOT remain in the final implementation branch.
-
 Maintainers SHALL delete only the recorded retired setups. Current main source coverage and the maintenance dependency scan SHALL remain configured.
-
-#### Scenario: A controlled PR introduces a container finding
-
-- **WHEN** a temporary PR introduces a scanner-detectable vulnerability absent from its established baseline
-- **THEN** its uploaded container SARIF contains that new finding
-- **AND** its Trivy result check compares against `v0.x` without a missing-baseline skip
-- **AND** the final implementation diff contains no vulnerable fixture
 
 #### Scenario: Replacement upload has not succeeded
 
 - **WHEN** a branch target has no successful replacement analysis on its target branch
 - **THEN** the migration inventory records its predecessor as retained
-
-#### Scenario: Release replacement has no legitimate tag analysis
-
-- **WHEN** no legitimate release has uploaded a successful `v0.x/trivy/release-image` analysis
-- **THEN** the migration inventory records the old release setup as retained
-- **AND** the migration creates no release solely to retire that setup
 
 #### Scenario: Historical TypeScript main results are retired
 
@@ -404,6 +409,36 @@ Maintainers SHALL delete only the recorded retired setups. Current main source c
 - **THEN** the deleted setup identities are a subset of the recorded retired identities
 - **AND** successful analyses remain for both current main CodeQL categories
 - **AND** the maintenance dependency setup remains configured
+
+### Requirement: Each pull-request target needs a verified pull request comparison
+
+For every PR-capable target, maintainers SHALL also verify a subsequent PR comparison. This includes both main CodeQL languages, maintenance CodeQL, and maintenance container analysis.
+
+#### Scenario: A PR-capable target has no PR comparison yet
+
+- **WHEN** a PR-capable target has a successful replacement analysis on its branch but no subsequent PR comparison
+- **THEN** the migration inventory records its predecessor as retained
+
+### Requirement: The retired release setup stays until a legitimate release
+
+Maintainers SHALL retain the retired release setup until a legitimate release produces replacement evidence. They SHALL NOT create a release solely to verify this migration.
+
+#### Scenario: Release replacement has no legitimate tag analysis
+
+- **WHEN** no legitimate release has uploaded a successful `v0.x/trivy/release-image` analysis
+- **THEN** the migration inventory records the old release setup as retained
+- **AND** the migration creates no release solely to retire that setup
+
+### Requirement: A controlled pull request demonstrates a new container finding
+
+A controlled PR SHALL demonstrate a new container finding under `v0.x/trivy/image`. The fixture SHALL NOT remain in the final implementation branch.
+
+#### Scenario: A controlled PR introduces a container finding
+
+- **WHEN** a temporary PR introduces a scanner-detectable vulnerability absent from its established baseline
+- **THEN** its uploaded container SARIF contains that new finding
+- **AND** its Trivy result check compares against `v0.x` without a missing-baseline skip
+- **AND** the final implementation diff contains no vulnerable fixture
 
 ### Requirement: Dependabot PR automation accepts both maintained target branches
 
