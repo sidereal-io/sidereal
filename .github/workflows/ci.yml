@@ -153,15 +153,18 @@ jobs:
           retention-days: 7
 
   # The skills, schemas and rules block that lets sync writes must match the
-  # release flake.lock pins. The dev shell's hook skips the sync when CI is set.
+  # release mise.toml names. mise exec runs no enter hook, so nothing syncs
+  # the files before the check compares them.
   lets-spec:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: Check the Let's Spec files
-        run: nix develop --command lets sync --check
+        run: mise exec -- lets sync --check
