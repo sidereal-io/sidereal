@@ -13,3 +13,5 @@ mise upgrade --bump github:sidereal-io/lets-spec
 # mise upgrade may record only this machine's platform for a new release.
 mise lock
 mise exec -- lets sync
+# A lock that lost a platform must fail here, not in the pull request.
+scripts/check-mise-lock-platforms.sh mise.lock
