@@ -56,5 +56,19 @@
     in
     {
       sidereal.shell.packages = lib.mkBefore [ openspec ];
+
+      # Catches another package's `openspec` shadowing this one. Build
+      # inputs go on PATH in list order, as they do in the shell.
+      checks.openspec-version = pkgs.runCommand "openspec-version"
+        { nativeBuildInputs = config.sidereal.shell.packages; }
+        ''
+          export HOME=$TMPDIR
+          actual=$(openspec --version)
+          if [ "$actual" != "${version}" ]; then
+            echo "The shell's openspec --version prints $actual, but nix/openspec.nix pins ${version}." >&2
+            exit 1
+          fi
+          touch $out
+        '';
     };
 }
