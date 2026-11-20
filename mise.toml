@@ -98,6 +98,13 @@ description = "Run the web shell only; installs from web/pnpm-lock.yaml first"
 run = "sh scripts/dev.sh web"
 raw = true
 
+# mise's own parallel run keeps one task going when the other exits with
+# status 0, so the script supervises both itself.
+[tasks.dev]
+description = "Run the server and web shell together; Ctrl-C stops both"
+run = "sh scripts/dev.sh"
+raw = true
+
 [tasks.db-tls]
 description = "Generate local fixture certificates without requiring Docker"
 run = "sh server/scripts/db-tls.sh"
