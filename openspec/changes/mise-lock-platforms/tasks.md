@@ -22,7 +22,7 @@
 
 ## 3. Integration [depends-on: 2]
 
-- [ ] 3.1 [medium] The full gate passes, and after a push the mise check passes on this change's pull request, which changes `.github/workflows/mise.yml` and so triggers it. Its job log shows the lock platform step (verify: `mise exec -- just check && gh pr checks mise-lock-platforms | grep -qE '^mise check\s+pass'`)
+- [x] 3.1 [medium] The full gate passes, and after a push the mise check passes on this change's pull request, which changes `.github/workflows/mise.yml` and so triggers it. Its job log shows the lock platform step (verify: `mise exec -- just check && gh pr checks mise-lock-platforms | grep -qE '^mise check\s+pass'`) (✓ mise exec -- just check passed with TEST_DATABASE_URL from just db-up; mise check passed on pull request 510 at a8774ed, and its log shows the step 'mise.lock covers the supported platforms')
 
 ## Deviations Ledger
 
