@@ -15,7 +15,7 @@ gh = "2"
 
 [env]
 LETS_SPEC_FLOW = "standard"
-# Keeps the OpenSpec CLI offline, as the Nix shell does.
+# Keeps the OpenSpec CLI offline.
 OPENSPEC_NO_UPDATE_CHECK = "1"
 
 [hooks]

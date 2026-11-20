@@ -1,11 +1,12 @@
 #!/bin/sh
-# Check that mise.lock pins every tool for each system the dev shell supports.
+# Check that mise.lock pins every tool for each supported system.
 # Reads only the two header forms `mise lock` writes, so it needs no TOML parser.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 lock=${1:-$root/mise.lock}
 
-# The systems flake.nix supports.
+# The supported systems, as the dev-environment spec names them in
+# "The mise lock pins every other tool's exact release".
 required_platforms='linux-x64 linux-arm64 macos-arm64'
 # Rust records the stable channel, so the lock has no platform tables for it.
 exceptions='rust'
