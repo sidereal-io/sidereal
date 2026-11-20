@@ -23,7 +23,7 @@ Run every command from the repo root. `design.md` D-2 gives each task body exact
 
 ## 4. The whole gate passes [depends-on: 2, 3]
 
-- [ ] 4.1 [medium] With the fixture up, `mise run check` exits 0, and no file outside `openspec/changes/` still names a removed gate recipe as a command (verify: `TEST_DATABASE_URL=$(mise exec -- just db-test-url) mise run check && ! git grep -nE 'just check' -- ':!openspec/changes' ':!openspec/specs'`)
+- [x] 4.1 [medium] With the fixture up, `mise run check` exits 0, and no file outside `openspec/changes/` still names a removed gate recipe as a command (verify: `TEST_DATABASE_URL=$(mise exec -- just db-test-url) mise run check && ! git grep -nE 'just check' -- ':!openspec/changes' ':!openspec/specs'`) (✓ `mise run check` exited 0: compose, openspec 12 items, 499 Rust tests, 129 web tests; `git grep` found no `just check` outside the excluded paths)
 - [ ] 4.2 [easy] Every job of the `ci` workflow passes on pull request #512 after the branch is pushed (verify: `gh pr checks 512`)
 
 ## Deviations Ledger
