@@ -9,9 +9,6 @@ Sam can start Sidereal against a dedicated PostgreSQL database and retain its mi
 ### Requirement: Explicit database configuration
 
 The server SHALL require `DATABASE_URL` for a dedicated PostgreSQL 18 database. It SHALL reject missing, malformed, or unsupported configuration before database writes.
-The server SHALL exit unsuccessfully when startup exceeds its configured connection deadline, defaulting to 30 seconds.
-`DATABASE_STARTUP_TIMEOUT_SECONDS` and `DATABASE_MIGRATION_TIMEOUT_SECONDS` SHALL accept positive seconds and default to 30.
-Invalid timeout values SHALL fail before connecting.
 Errors SHALL identify the failure category without exposing credentials, connection strings, or raw database errors.
 
 #### Scenario: Missing configuration
@@ -22,13 +19,19 @@ Errors SHALL identify the failure category without exposing credentials, connect
 - **WHEN** Sam connects to PostgreSQL with a major version other than 18
 - **THEN** startup fails and leaves database objects and rows unchanged
 
-#### Scenario: Unavailable database
-- **WHEN** the configured database refuses connections or never responds
-- **THEN** startup fails by the configured connection deadline, allowing 250 milliseconds of scheduling tolerance
-
 #### Scenario: Secret-bearing failures
 - **WHEN** connection parsing or authentication fails with a distinctive password in the configuration
 - **THEN** captured stdout and stderr contain neither that password nor the connection string
+
+### Requirement: Database deadlines are configurable and bounded
+
+The server SHALL exit unsuccessfully when startup exceeds its configured connection deadline, defaulting to 30 seconds.
+`DATABASE_STARTUP_TIMEOUT_SECONDS` and `DATABASE_MIGRATION_TIMEOUT_SECONDS` SHALL accept positive seconds and default to 30.
+Invalid timeout values SHALL fail before connecting.
+
+#### Scenario: Unavailable database
+- **WHEN** the configured database refuses connections or never responds
+- **THEN** startup fails by the configured connection deadline, allowing 250 milliseconds of scheduling tolerance
 
 ### Requirement: Explicit database transport security
 
@@ -81,12 +84,6 @@ The server SHALL apply pending migrations automatically before serving HTTP.
 It SHALL accept only successful migration history matching a prefix of the bundled history.
 It SHALL reject unknown versions, changed migration checksums, missing history entries, or mismatched schema objects before writes.
 The server SHALL never reset the database or execute downgrade migrations.
-Each bundled migration SHALL run in one transaction, including its essential migration record fields.
-The `execution_time` field SHALL be best-effort timing metadata; sqlx MAY update it after commit or leave its sentinel after interruption.
-Compatibility checks SHALL NOT reject an otherwise valid migration because of its timing metadata.
-The initial transaction SHALL also create the migration table and identity row.
-The server SHALL reject migrations that disable transactions before applying them.
-Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: First startup
 - **WHEN** Sam starts the server against an empty dedicated database
@@ -97,17 +94,9 @@ Concurrent server startups SHALL apply each migration exactly once.
 - **WHEN** Sam restarts against an initialized database
 - **THEN** migration records, including their timestamps and checksums, remain identical
 
-#### Scenario: Concurrent startup
-- **WHEN** two servers start against the same empty database
-- **THEN** both complete startup and exactly three successful migration records exist
-
 #### Scenario: Incompatible history or schema
 - **WHEN** a fixture contains a newer version, changed checksum, missing history entry, failed record, or altered expected table
 - **THEN** startup fails and database objects and rows remain unchanged
-
-#### Scenario: Migration failure
-- **WHEN** a migration fails partway through its transaction
-- **THEN** startup fails and that migration leaves no committed schema changes or successful migration record
 
 #### Scenario: Upgrade preserves the original migration
 
@@ -120,17 +109,36 @@ Concurrent server startups SHALL apply each migration exactly once.
 - **WHEN** a database holding the first two migrations starts under the new binary
 - **THEN** the first two migration records remain identical, a third successful record exists, and the `users` and `sessions` tables are empty
 
+### Requirement: Each migration runs in one transaction
+
+Each bundled migration SHALL run in one transaction, including its essential migration record fields.
+The initial transaction SHALL also create the migration table and identity row.
+The server SHALL reject migrations that disable transactions before applying them.
+Concurrent server startups SHALL apply each migration exactly once.
+
+#### Scenario: Migration failure
+- **WHEN** a migration fails partway through its transaction
+- **THEN** startup fails and that migration leaves no committed schema changes or successful migration record
+
+#### Scenario: Concurrent startup
+- **WHEN** two servers start against the same empty database
+- **THEN** both complete startup and exactly three successful migration records exist
+
+### Requirement: Migration timing metadata is best-effort
+
+The `execution_time` field SHALL be best-effort timing metadata; sqlx MAY update it after commit or leave its sentinel after interruption.
+Compatibility checks SHALL NOT reject an otherwise valid migration because of its timing metadata.
+
+#### Scenario: A sentinel execution time
+- **WHEN** Sam restarts against an initialized database whose migration records have `execution_time` set to `-1`
+- **THEN** startup succeeds and the migration records remain identical
+
 ### Requirement: Separate liveness and readiness
 
 `GET /healthz` SHALL return `200 {"status":"ok"}` while HTTP is running, independent of database availability.
 A `/readyz` probe that runs its own check SHALL return `200 {"status":"ready"}` only when the database is reachable and compatible.
 Otherwise that probe SHALL return `503 {"status":"not_ready"}`.
 Readiness SHALL finish within two seconds and expose no database details.
-Both endpoints SHALL permit unauthenticated health probes without enabling operational mutations.
-Readiness SHALL allow at most one active database check.
-A probe that arrives while a check is active SHALL immediately return the response of the most recent finished check, without a database check of its own.
-That response can therefore be 200 for a short time after the database becomes unusable, until the active check finishes.
-Before the first check finishes, that response SHALL be the ready response, because startup has just proved the database usable.
 Readiness SHALL use database capacity separate from operational requests.
 
 #### Scenario: Healthy database
@@ -148,9 +156,20 @@ Readiness SHALL use database capacity separate from operational requests.
 - **WHEN** database migration history changes to an unsupported version after startup
 - **THEN** `/readyz` returns its documented 503 response without modifying the database
 
+### Requirement: Health probes need no session and change nothing
+
+Both endpoints SHALL permit unauthenticated health probes without enabling operational mutations.
+
 #### Scenario: HTTP surface
 - **WHEN** a caller sends `POST`, `PUT`, `PATCH`, or `DELETE` to either health route
 - **THEN** the server returns 405 and database objects and rows remain unchanged
+
+### Requirement: Readiness runs one database check at a time
+
+Readiness SHALL allow at most one active database check.
+A probe that arrives while a check is active SHALL immediately return the response of the most recent finished check, without a database check of its own.
+That response can therefore be 200 for a short time after the database becomes unusable, until the active check finishes.
+Before the first check finishes, that response SHALL be the ready response, because startup has just proved the database usable.
 
 #### Scenario: Overlapping probes on a usable database
 - **GIVEN** a ready server whose database stays usable
@@ -220,17 +239,6 @@ When startup cannot open its database connection, the server SHALL report which 
 
 - **unreachable**: the host name does not resolve, the connection is refused or reset, the host does not answer before the connection deadline, or PostgreSQL reports that it is starting up or shutting down;
 - **login rejected**: PostgreSQL rejects the user, the password, or the client's address;
-- **TLS failed**: certificate or hostname verification fails in a verified `sslmode`, including a failure reported during the TLS handshake;
-- **database missing**: the server accepts the login but the configured database does not exist.
-
-Each message SHALL start with a fixed phrase for its cause and SHALL name one recovery action.
-The fixed phrases SHALL be `database unreachable`, `database login rejected`, `database TLS verification failed`, and `database does not exist`.
-A connection failure that matches none of these causes SHALL keep the existing `database connection failed` message.
-A deadline that expires after the connection opens SHALL keep the existing `database startup deadline exceeded` message.
-A connection lost while startup checks ownership or migration history SHALL be reported as unreachable, not as an ownership or history fault. That includes a session that PostgreSQL ends because it is shutting down.
-A verified TLS mode with a trusted certificate SHALL still start.
-Every message SHALL keep the existing redaction: no password, user name, connection string, certificate detail, or raw database error.
-A failed connection SHALL leave database objects and rows unchanged.
 
 #### Scenario: PostgreSQL is not running
 
@@ -248,11 +256,14 @@ A failed connection SHALL leave database objects and rows unchanged.
 - **WHEN** Sam starts the server against a listener that accepts TCP connections but never replies, with a 1-second startup deadline
 - **THEN** the process exits unsuccessfully within 1.25 seconds and its output starts with `database unreachable`
 
-#### Scenario: The password is wrong
+### Requirement: A TLS or missing-database failure names its cause
 
-- **WHEN** Sam starts the server with a distinctive wrong password for an existing role
-- **THEN** the process exits unsuccessfully and its output starts with `database login rejected`
-- **AND** the output contains neither that password nor the connection string
+When startup cannot open its database connection, the server SHALL report which of these causes applies:
+
+- **TLS failed**: certificate or hostname verification fails in a verified `sslmode`, including a failure reported during the TLS handshake;
+- **database missing**: the server accepts the login but the configured database does not exist.
+
+A verified TLS mode with a trusted certificate SHALL still start.
 
 #### Scenario: The certificate does not verify
 
@@ -270,14 +281,62 @@ A failed connection SHALL leave database objects and rows unchanged.
 - **WHEN** Sam starts the server with `sslmode=verify-ca` and `sslrootcert` naming the CA that signed the database's certificate
 - **THEN** startup succeeds and `/readyz` returns `200 {"status":"ready"}`
 
+### Requirement: Each connection failure message starts with a fixed phrase
+
+Each connection failure message SHALL start with a fixed phrase for its cause and SHALL name one recovery action.
+The fixed phrases SHALL be `database unreachable`, `database login rejected`, `database TLS verification failed`, and `database does not exist`.
+A connection failure that matches none of these causes SHALL keep the existing `database connection failed` message.
+A deadline that expires after the connection opens SHALL keep the existing `database startup deadline exceeded` message.
+
+#### Scenario: The deadline expires after the connection opens
+
+- **WHEN** another session holds an exclusive lock on the migration table and Sam starts the server with a 1-second startup deadline
+- **THEN** the process exits unsuccessfully and its output starts with `database startup deadline exceeded`
+
+### Requirement: A connection lost during startup checks is unreachable
+
+A connection lost while startup checks ownership or migration history SHALL be reported as unreachable, not as an ownership or history fault. That includes a session that PostgreSQL ends because it is shutting down.
+
+#### Scenario: PostgreSQL ends the session during startup
+
+- **WHEN** startup is reading migration history and PostgreSQL ends its session with SQLSTATE `57P01`
+- **THEN** the process exits unsuccessfully and its output starts with `database unreachable`
+
+### Requirement: Connection failure messages stay redacted
+
+Every connection failure message SHALL keep the existing redaction: no password, user name, connection string, certificate detail, or raw database error.
+A failed connection SHALL leave database objects and rows unchanged.
+
+#### Scenario: The password is wrong
+
+- **WHEN** Sam starts the server with a distinctive wrong password for an existing role
+- **THEN** the process exits unsuccessfully and its output starts with `database login rejected`
+- **AND** the output contains neither that password nor the connection string
+
 ### Requirement: Certificate files are checked before connecting
 
 Before it connects, startup SHALL read every certificate or key file that the configuration names.
 That includes `sslrootcert`, `sslcert`, and `sslkey` in `DATABASE_URL`, and the `PGSSLROOTCERT`, `PGSSLCERT`, and `PGSSLKEY` environment variables.
 A certificate given inline as PEM text needs no file.
-The check SHALL accept only regular files of at most 1 MiB, and it SHALL NOT wait on a file that never finishes reading.
 When a named file is missing, cannot be read, is not a regular file, or is too large, startup SHALL fail without opening a database connection.
-Its message SHALL start with `database TLS certificate file unreadable` and SHALL tell Sam to check the certificate paths in the configuration.
+
+#### Scenario: The CA path cannot be read
+
+- **WHEN** Sam starts the server with `sslrootcert` naming a directory
+- **THEN** the process exits unsuccessfully and its output starts with `database TLS certificate file unreadable`
+
+### Requirement: Only a small regular file passes the certificate check
+
+The certificate file check SHALL accept only regular files of at most 1 MiB, and it SHALL NOT wait on a file that never finishes reading.
+
+#### Scenario: The CA path is a named pipe
+
+- **WHEN** Sam starts the server with `sslrootcert` naming a named pipe that nothing writes to
+- **THEN** the process exits unsuccessfully within 1 second and its output starts with `database TLS certificate file unreadable`
+
+### Requirement: An unreadable certificate file has one redacted message
+
+The message for an unreadable certificate file SHALL start with `database TLS certificate file unreadable` and SHALL tell Sam to check the certificate paths in the configuration.
 The message SHALL NOT contain the path or any file content.
 
 #### Scenario: The CA file is missing
@@ -286,29 +345,12 @@ The message SHALL NOT contain the path or any file content.
 - **THEN** the process exits unsuccessfully and its output starts with `database TLS certificate file unreadable`
 - **AND** the output does not contain the configured path
 
-#### Scenario: The CA path cannot be read
-
-- **WHEN** Sam starts the server with `sslrootcert` naming a directory
-- **THEN** the process exits unsuccessfully and its output starts with `database TLS certificate file unreadable`
-
-#### Scenario: The CA path is a named pipe
-
-- **WHEN** Sam starts the server with `sslrootcert` naming a named pipe that nothing writes to
-- **THEN** the process exits unsuccessfully within 1 second and its output starts with `database TLS certificate file unreadable`
-
 ### Requirement: Readiness changes are logged
 
 The server SHALL write one line to standard error when a readiness check finds the database unusable after the previous check found it usable.
-The line SHALL name a safe cause, using the connection causes above or another startup category such as permission or incompatible schema.
-A check that cannot open a connection within its deadline SHALL name the cause unreachable.
-A check that opens a connection but does not finish its queries within its deadline SHALL name the cause timed out.
-A check whose connection is lost during its queries SHALL name the cause unreachable.
-The server SHALL write one more line when a later check finds the database unusable for a different cause.
 The server SHALL write one line when a check finds the database usable again.
 Further checks with the same result SHALL write nothing.
-A probe answered without its own check, because another check is active, SHALL write nothing.
 The server SHALL treat the database as usable when startup finishes, so a ready start writes no readiness line.
-Readiness lines SHALL hold no password, user name, connection string, or raw database error.
 The server SHALL observe changes only when a caller probes `/readyz`.
 
 #### Scenario: PostgreSQL stops and starts again
@@ -318,17 +360,24 @@ The server SHALL observe changes only when a caller probes `/readyz`.
 - **THEN** standard error gains exactly one line that reports the database not ready and names it unreachable
 - **AND** it then gains exactly one line that reports the database ready again
 
-#### Scenario: Schema queries stall
-
-- **GIVEN** a ready server
-- **WHEN** another session holds an exclusive lock on the migration table and a caller probes `/readyz`
-- **THEN** standard error gains exactly one line that reports the database not ready and names it timed out
-
 #### Scenario: A ready server writes no readiness lines
 
 - **GIVEN** a ready server whose database stays usable
 - **WHEN** a caller probes `/readyz` 20 times
 - **THEN** standard error gains no line
+
+### Requirement: A readiness line names a safe cause
+
+A readiness line SHALL name a safe cause, using the connection causes that startup reports for a failed connection or another startup category such as permission or incompatible schema.
+A check that cannot open a connection within its deadline SHALL name the cause unreachable.
+A check that opens a connection but does not finish its queries within its deadline SHALL name the cause timed out.
+A check whose connection is lost during its queries SHALL name the cause unreachable.
+
+#### Scenario: Schema queries stall
+
+- **GIVEN** a ready server
+- **WHEN** another session holds an exclusive lock on the migration table and a caller probes `/readyz`
+- **THEN** standard error gains exactly one line that reports the database not ready and names it timed out
 
 #### Scenario: The connection drops during a check
 
@@ -344,8 +393,24 @@ The server SHALL observe changes only when a caller probes `/readyz`.
 - **THEN** `/readyz` returns its documented 503 response
 - **AND** standard error gains exactly one line that names the cause unreachable
 
+### Requirement: Only a check with a new cause writes another line
+
+The server SHALL write one more line when a later check finds the database unusable for a different cause.
+A probe answered without its own check, because another check is active, SHALL write nothing.
+
+#### Scenario: The cause changes during an outage
+
+- **GIVEN** a ready server whose readiness is probed once per second
+- **WHEN** PostgreSQL stops accepting connections, and later accepts them again while another session holds an exclusive lock on the migration table
+- **THEN** standard error gains exactly two lines that report the database not ready, the first naming it unreachable and the second timed out
+
+### Requirement: Readiness lines stay redacted
+
+Readiness lines SHALL hold no password, user name, connection string, or raw database error.
+
 #### Scenario: Readiness lines stay redacted
 
 - **GIVEN** a server started with a distinctive password
 - **WHEN** PostgreSQL stops and readiness reports not ready
 - **THEN** standard error contains neither the password nor the connection string
+
