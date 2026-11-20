@@ -264,33 +264,30 @@ branch's hook without asking. After you read the branch's changes, run
 Every route passes the same gate: `mise run check`, or its four commands by hand.
 Before you run it, prepare the PostgreSQL fixture and export `DATABASE_URL` and
 `TEST_DATABASE_URL` using the commands under Development Commands. Docker Engine or
-Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates local fixture certificates.
+Docker Desktop with Compose v2 or newer runs the fixture. On both routes, the
+`db-tls` and `external-db-verify` tasks need `openssl` on `PATH` to generate
+fixture certificates: mise does not install it, so install it from your system's
+package manager.
 See [server setup](server/README.md) for container-free test prerequisites.
 
 ### Where versions are set
 
-Change a version only where the table below says it is set. Until the Nix
-route goes, some versions are set once for each route. `flake.lock` and
-`mise.lock` both pin Let's Spec and `gh`. `nix/openspec.nix` and
-`mise.lock` both pin `openspec`. The Rust channel, pnpm's major version and
-the Let's Spec release are named for each route too.
-When you change one of these, change both routes in the same pull request.
+Change a version only where the table below says it is set.
 
 **Tool versions** decide which tools you build and check with.
 
 | Tool | Set in | How exact |
 |---|---|---|
-| OpenSSL | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install OpenSSL when using system tools |
 | PostgreSQL | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI. `compose.yml` holds a copy for the Compose instance. Change both together; `mise run instance-verify` fails when they differ |
-| Rust | `server/rust-toolchain.toml`, and `mise.toml` with `mise.lock` | Both files name the `stable` channel, and the `mise` workflow fails when they differ. In the Nix shell and the `nix` workflow, `flake.lock` decides the exact release. In the `ci` workflow and with mise, `mise.lock` records the channel and rustup decides the release. With your own tools, rustup uses the latest stable release you have installed |
-| Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step. mise reads `.nvmrc`, and `mise.lock` pins the exact release. The root `Dockerfile` names the same major version for the image's web build |
-| pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12. `mise.toml` names pnpm 12, and `mise.lock` pins the release |
-| Let's Spec, with `gh` | The release tag in `flake.nix` with `flake.lock`, and `mise.toml` with `mise.lock` | One release of [Let's Spec](https://github.com/sidereal-io/lets-spec), named in `flake.nix` and `mise.toml`. Its flake pins the `gh` the skills call, and an older `openspec` that the Nix shell does not use. `mise.toml` names `gh` 2, and `mise.lock` pins both |
-| `openspec` | `nix/openspec.nix`, and `mise.toml` with `mise.lock` | OpenSpec 2.1.1, the release binary from [GitHub](https://github.com/Fission-AI/OpenSpec/releases/tag/v2.1.1). `nix/openspec.nix` names the release once, with the hash of each download, and `nix flake check` fails when the shell runs another `openspec`. `mise.toml` names the release, and `mise.lock` pins each download's checksum. Pinned on its own until a Let's Spec release names OpenSpec 2: don't take its version from the Let's Spec release notes. With your own tools, install 2.1.1 |
+| Rust | `server/rust-toolchain.toml`, and `mise.toml` with `mise.lock` | Both files name the `stable` channel, and the `mise` workflow fails when they differ. In the `ci` workflow and with mise, `mise.lock` records the channel and rustup decides the release. With your own tools, rustup uses the latest stable release you have installed |
+| Node | `.nvmrc` | Major version 26. mise reads `.nvmrc`, and `mise.lock` pins the exact release. The root `Dockerfile` names the same major version for the image's web build |
+| pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `mise.toml` names pnpm 12, and `mise.lock` pins the release |
+| Let's Spec, with `gh` | `mise.toml` with `mise.lock` | One release of [Let's Spec](https://github.com/sidereal-io/lets-spec), named in `mise.toml`. `mise.toml` names `gh` 2, the CLI the skills call, and `mise.lock` pins both |
+| `openspec` | `mise.toml` with `mise.lock` | OpenSpec 2.1.1, the release binary from [GitHub](https://github.com/Fission-AI/OpenSpec/releases/tag/v2.1.1). `mise.toml` names the release, and `mise.lock` pins each download's checksum. Pinned on its own until a Let's Spec release names OpenSpec 2: don't take its version from the Let's Spec release notes. With your own tools, install 2.1.1 |
 
-Never write a Rust release number in a build file or a document. The channel decides it, with `flake.lock` on the Nix route and rustup on the mise route.
+Never write a Rust release number in a build file or a document. The `stable` channel decides it, and rustup picks the release.
 
-Dependabot proposes updates to these pins every week: `flake.lock`, `server/Cargo.lock`, and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec, Rust and `flake.nix` alone. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
+Dependabot proposes updates to these pins every week: `server/Cargo.lock` and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec and Rust alone. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
 
 **Product versions** are Sidereal's own version numbers.
 
@@ -311,8 +308,7 @@ through the `.claude/skills` link. The folder holds two kinds of skill:
   release, with the `lets-*` schemas in `openspec/schemas/` and the rules block
   in `AGENTS.md`. Git tracks the copies, so every clone has them.
 
-The Nix shell runs `lets sync` when it loads, and mise runs it when you enter
-the repo directory. It rewrites any copy that differs
+mise runs `lets sync` when you enter the repo directory. It rewrites any copy that differs
 from the release and tells you to commit. When all is well, it prints only one
 warning: the OpenSpec CLI on `PATH` is 2.1.1, but the release's `openspec-*`
 skills were generated from an older OpenSpec. Expect that warning on every
@@ -321,23 +317,21 @@ as it suggests. CI runs `lets sync --check`, which fails when a committed copy i
 date. Never edit a `lets-*` or `openspec-*` skill, a `lets-*` schema or the
 rules block by hand: the next sync undoes it. Change Let's Spec instead.
 
-On the mise route, the weekly `mise-tool-updates.yml` pull request moves Let's
-Spec for you: it changes `mise.toml` and `mise.lock`, and commits what
-`lets sync` wrote. Read the release's upgrading notes before you merge it. The
-release tag in `flake.nix` still moves by hand, in steps 2 and 4 below.
+The weekly `mise-tool-updates.yml` pull request moves Let's Spec for you: it
+changes `mise.toml` and `mise.lock`, and commits what `lets sync` wrote. Read
+the release's upgrading notes before you merge it.
 
 To move to a newer Let's Spec by hand:
 
 1. Read its
    [upgrading notes](https://github.com/sidereal-io/lets-spec/blob/main/docs/upgrading.md).
    Some releases need a step of your own.
-2. Change the release tag in `lets-spec.url` in `flake.nix`.
-3. In `mise.toml`, change the `github:sidereal-io/lets-spec` version to the
-   same release. Leave the `github:Fission-AI/OpenSpec` version alone: OpenSpec
+2. In `mise.toml`, change the `github:sidereal-io/lets-spec` version to the
+   new release. Leave the `github:Fission-AI/OpenSpec` version alone: OpenSpec
    is pinned on its own until a Let's Spec release names OpenSpec 2.
-4. Run `nix flake update lets-spec` and `mise lock`.
-5. Enter the Nix shell, so `lets sync` runs. Commit what it wrote with
-   `flake.nix`, `flake.lock`, `mise.toml` and `mise.lock`.
+3. Run `mise lock`, then `mise exec -- lets sync`.
+4. Commit what `lets sync` wrote with `mise.toml` and `mise.lock`, in one pull
+   request.
 
 Don't run `openspec init` or `openspec update` by hand. They write skills of
 their own from your global settings. If you do, run `lets sync` to restore the
