@@ -48,7 +48,7 @@ Every step in `.github/workflows/ci.yml` SHALL run each command that needs a too
 
 #### Scenario: Every tool command runs through mise
 
-- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -nE '(^|[ (])(cargo|pnpm|just|lets|openspec) ' | grep -v 'mise exec -- '`
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -nE '(^|[ (])(cargo|pnpm|lets|openspec) ' | grep -v 'mise exec -- '`
 - **THEN** the search finds no match
 
 #### Scenario: The cache step uses mise's Rust
@@ -56,6 +56,25 @@ Every step in `.github/workflows/ci.yml` SHALL run each command that needs a too
 - **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "Swatinem/rust-cache*") | .with.cmd-format' .github/workflows/ci.yml`
 - **THEN** the output is at least one line
 - **AND** every line of the output is `mise exec -- {0}`
+
+### Requirement: CI runs the database fixture through its mise tasks
+
+The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-up`, and SHALL stop it with `mise run db-down` in a step that runs even when an earlier step failed. The `server` job SHALL read its test URL from `mise run db-test-url`, and the `e2e` job SHALL read its runtime URL from `mise run db-url`.
+
+#### Scenario: The server job uses the fixture tasks
+
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+'`
+- **THEN** the output is exactly three lines, in this order: `mise run db-up`, `mise run db-test-url`, `mise run db-down`
+
+#### Scenario: The e2e job uses the fixture tasks
+
+- **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+'`
+- **THEN** the output is exactly three lines, in this order: `mise run db-up`, `mise run db-url`, `mise run db-down`
+
+#### Scenario: The fixture stops after a failure
+
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[], .jobs.e2e.steps[] | select(.run == "mise run db-down") | .if' .github/workflows/ci.yml`
+- **THEN** the output is exactly two lines, each `always()`
 
 ### Requirement: Every CI job runs its checks as one task
 
@@ -82,13 +101,13 @@ The `lets-spec` job SHALL run `mise exec -- lets sync --check` instead of a mise
 
 ### Requirement: The e2e job builds the server before the end-to-end gate
 
-The `e2e` job SHALL run these steps in order: start the database fixture, build the server, install Chromium with its system libraries, run `just e2e`, and stop the fixture. Building first keeps compiling out of Playwright's 300-second startup window. Chromium's system libraries need root, which `just e2e` does not have, so they install in their own step.
+The `e2e` job SHALL run these steps in order: start the database fixture, build the server, install Chromium with its system libraries, run `mise run e2e`, and stop the fixture. Building first keeps compiling out of Playwright's 300-second startup window. Chromium's system libraries need root, which the `e2e` task does not have, so they install in their own step.
 
 #### Scenario: The server is built before the browser and the gate
 
 - **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
 - **THEN** a line containing `mise exec -- cargo build -p sidereal-server` comes before a line containing `mise exec -- pnpm exec playwright install --with-deps chromium`
-- **AND** that line comes before the line `mise exec -- just e2e`
+- **AND** that line comes before the line `mise run e2e`
 
 ### Requirement: Each CI job runs its own check task
 
@@ -126,7 +145,6 @@ A CI job named `server` SHALL run the server checks. The job lives in the workfl
 - any file under `server/`;
 - any file under `web/`;
 - `DESIGN.md` at the repo root;
-- the root `justfile`;
 - `flake.nix` or `flake.lock`;
 - any file under `nix/`;
 - `.github/workflows/ci.yml`.
