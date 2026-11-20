@@ -32,7 +32,7 @@ The change is to a workflow file and docs, so there are no unit tests. Two seams
 - **Primary test seam:** the `ci` spec's `yq` and `grep` scenarios, run against `.github/workflows/ci.yml` on the branch. They prove the shape of each job.
 - **Existing seams reused:** the `ci` workflow's own run on this pull request. Every job passing proves the tools install and the checks run. `just check` locally proves the `openspec` gate accepts the change.
 
-The "A stale lock fails the job" scenario is checked once, by hand, on a throwaway commit that adds a tool to `mise.toml` without updating `mise.lock`. That commit is not pushed to the pull request branch.
+The "A stale lock fails the job" scenario is checked once, locally, in a scratch worktree that adds a tool to `mise.toml` without updating `mise.lock`. There, `mise install --locked`, the command the install step runs, must fail. Nothing from the scratch worktree is committed or pushed.
 
 ## Scrutiny Tier & Blast Radius
 
