@@ -47,16 +47,16 @@ Claude Code SHALL see the same skill set as agents that read `.agents/skills`. T
 
 ### Requirement: The flake check reports the shell's tool versions
 
-After the shell builds, the flake check SHALL run `rustc --version`, `openspec --version`, `node --version`, and `pnpm --version` inside the shell. A reviewer SHALL be able to read their output in the job log. The flake check SHALL fail when any of the four commands fails.
+After the shell builds, the flake check SHALL run `rustc --version`, `lets --version`, `openspec --version`, `node --version`, and `pnpm --version` inside the shell. A reviewer SHALL be able to read their output in the job log. The flake check SHALL fail when any of the five commands fails.
 
 #### Scenario: A reviewer checks what a pin update changed
 
 - **WHEN** the flake check passes on a pull request
-- **THEN** the job log contains the output of `rustc --version`, `openspec --version`, `node --version`, and `pnpm --version`, each run inside the development shell
+- **THEN** the job log contains the output of `rustc --version`, `lets --version`, `openspec --version`, `node --version`, and `pnpm --version`, each run inside the development shell
 
 #### Scenario: A pin update breaks a tool
 
-- **WHEN** `openspec --version` exits with a non-zero status inside the shell, and the other three commands succeed
+- **WHEN** `openspec --version` exits with a non-zero status inside the shell, and the other four commands succeed
 - **THEN** the flake check fails
 
 ### Requirement: mise provides the pinned toolchain
