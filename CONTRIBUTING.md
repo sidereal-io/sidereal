@@ -85,7 +85,7 @@ mise run external-db-verify  # Check external TLS startup and retained state aft
 
 `mise run check` runs its four parts one at a time, in the order above, and stops
 at the first one that fails. Without mise, run the same four commands by hand: see
-step 6 of [Without Nix](#without-nix). Step 7 lists the command behind each of the
+step 6 of [Without mise](#without-mise). Step 7 lists the command behind each of the
 other tasks.
 
 When you add or change a task, keep a body of up to about six lines inline in
@@ -93,7 +93,7 @@ When you add or change a task, keep a body of up to about six lines inline in
 `server/scripts/`, and make the task run that script, as `check-compose` does.
 A task body must run without mise, so it never calls `mise` itself. When you
 change a development task's body, change its row in step 7 of
-[Without Nix](#without-nix) to match.
+[Without mise](#without-mise) to match.
 
 `mise run check-compose` compares the resolved app services, checks the external entry's
 services and volumes, and verifies URL requirements and mount settings. It needs
@@ -116,52 +116,12 @@ cover database outage and recovery. Keep these cases there when changing deploym
 ## 🧰 Development Environment
 
 The repo pins its tools — Rust, Node, pnpm, `gh`, the `openspec` CLI and
-[Let's Spec](https://github.com/sidereal-io/lets-spec) — through a Nix flake and
-through mise. Neither is required. Pick one route, and use only that route in a
-shell: with both direnv's Nix shell and `mise activate` loaded, you get two copies
-of each tool on `PATH`, in whichever order they loaded.
+[Let's Spec](https://github.com/sidereal-io/lets-spec) — through mise. mise is
+not required: you can install the same tools by hand. Pick one of the two
+routes below, [With mise](#with-mise) or [Without mise](#without-mise).
 
 If you cloned before the Rust workspace moved from `backend/` to `server/`, run
 `rm -rf backend/target` once after you pull. Git ignores that folder, so it stays behind.
-
-### With Nix
-
-1. Install [Nix](https://nixos.org/download/) with flakes enabled.
-   [Determinate's installer](https://determinate.systems/nix-installer/) enables
-   flakes by default. The plain installer at nixos.org does not: after it, add
-   this line to `/etc/nix/nix.conf` (multi-user install) or
-   `~/.config/nix/nix.conf` (single-user install), then restart the Nix daemon
-   if you have one:
-
-   ```
-   experimental-features = nix-command flakes
-   ```
-2. Install [direnv](https://direnv.net/) and run `direnv allow` in the repo root.
-   Entering the repo directory now loads the pinned shell automatically. Leaving
-   restores your previous environment.
-
-   Without direnv, run `nix develop` by hand instead. It gives the same shell for
-   that one terminal session.
-3. Expect a full rebuild of `server/target` the first time you run a Rust
-   command in the shell, and again whenever `flake.lock` brings a new Rust
-   release. The shell's compiler is not the one rustup installed, so cargo's
-   cached build data doesn't carry over.
-4. Nothing to run for the agent skills. The shell runs `lets sync` when it
-   loads, which keeps them at the pinned Let's Spec release. See
-   [Agent skills](#agent-skills).
-5. To run the gate or any other task, pick one of these. The Nix shell has no
-   mise, so `mise run <task>` does not work inside it until the Nix route goes.
-   - Inside the shell, run the commands that the task runs: the four gate
-     commands from step 6 of [Without Nix](#without-nix), in that order, or a
-     development task's command from step 7.
-   - If you also installed mise, run `mise run <task>` in a terminal that has
-     not loaded the Nix shell.
-
-Nix sees only files tracked by git. A new file under `nix/` stays invisible to
-the shell until you run `git add` on it.
-
-Keep personal direnv settings in `.envrc.local`, next to `.envrc`. Git ignores
-it, and it loads after the pinned shell, so your settings take precedence.
 
 ### With mise
 
@@ -206,7 +166,7 @@ trusts that file by its path, not its contents, so a checkout can run a
 branch's hook without asking. After you read the branch's changes, run
 `mise trust` again.
 
-### Without Nix
+### Without mise
 
 1. Install [rustup](https://rustup.rs/). It reads `server/rust-toolchain.toml`,
    which names the `stable` channel, and uses the latest stable Rust release you
@@ -239,7 +199,7 @@ branch's hook without asking. After you read the branch's changes, run
    ```
 
    The agent skills, schemas and rules are committed, so you have them without
-   running anything. Only the Nix shell and mise keep them up to date: see
+   running anything. Only mise keeps them up to date: see
    [Agent skills](#agent-skills).
 6. Run the gate. These are the four commands that `mise run check` runs. Run
    them from the repo root, in this order, and stop at the first one that
@@ -306,12 +266,6 @@ Before you run it, prepare the PostgreSQL fixture and export `DATABASE_URL` and
 `TEST_DATABASE_URL` using the commands under Development Commands. Docker Engine or
 Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates local fixture certificates.
 See [server setup](server/README.md) for container-free test prerequisites.
-
-**Run `direnv deny` before you check out a branch you don't trust.** Loading
-the shell runs code from the working tree: the flake and the `lets-spec` release
-it pins. direnv asks for approval again only when `.envrc` changes,
-so a checkout can run a branch's code without asking. After you read the
-branch's changes, run `direnv allow` again.
 
 ### Where versions are set
 
