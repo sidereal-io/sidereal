@@ -13,7 +13,7 @@ Run every command from the repo root. `design.md` D-1 gives each task's body and
 
 ## 2. `just` leaves every route [depends-on: 1]
 
-- [ ] 2.1 [parallel] [easy] The `justfile` is deleted; `just` is gone from `mise.toml`, `mise.lock`, `nix/toolchains.nix` (with its header comment) and the version prints in `.github/workflows/mise.yml` and `.github/workflows/nix.yml`; the locked install and the lock platform check still pass (D-3) (verify: `test ! -e justfile && test "$(mise ls --current --json | jq 'has("just")')" = false && ! grep -q 'tools.just' mise.lock && ! grep -nw just nix/toolchains.nix .github/workflows/mise.yml .github/workflows/nix.yml && mise install --locked && scripts/check-mise-lock-platforms.sh`)
+- [x] 2.1 [parallel] [easy] The `justfile` is deleted; `just` is gone from `mise.toml`, `mise.lock`, `nix/toolchains.nix` (with its header comment) and the version prints in `.github/workflows/mise.yml` and `.github/workflows/nix.yml`; the locked install and the lock platform check still pass (D-3) (verify: `test ! -e justfile && test "$(mise ls --current --json | jq 'has("just")')" = false && ! grep -q 'tools.just' mise.lock && ! grep -nw just nix/toolchains.nix .github/workflows/mise.yml .github/workflows/nix.yml && mise install --locked && scripts/check-mise-lock-platforms.sh`) (✓ verify command passed; `mise lock` removed the `[[tools.just]]` entry and its platform tables by itself)
 
 ## 3. CI runs the tasks [depends-on: 1]
 

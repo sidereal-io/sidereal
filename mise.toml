@@ -7,7 +7,6 @@
 rust = { version = "stable", components = "rustfmt,clippy" }
 # No node entry: mise reads .nvmrc, so the version lives in one file.
 pnpm = "12"
-just = "1"
 gh = "2"
 # Pinned on its own until a Let's Spec release names OpenSpec 2. Until
 # then, don't take this version from the Let's Spec release notes.

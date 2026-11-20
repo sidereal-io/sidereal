@@ -51,4 +51,4 @@ jobs:
           fi
 
       - name: Tool versions
-        run: mise exec -- sh -c 'rustc --version && node --version && pnpm --version && just --version && gh --version && openspec --version && lets --version'
+        run: mise exec -- sh -c 'rustc --version && node --version && pnpm --version && gh --version && openspec --version && lets --version'
