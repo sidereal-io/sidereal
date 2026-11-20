@@ -22,7 +22,7 @@
 
 ## Changes from the story
 
-Split out: the stale `just skills` requirements in `dev-environment` go to a new chore (D11), because rewording them is not needed to move to OpenSpec 2.1.1. The chore's issue is filed once its packet is confirmed.
+Split out: the stale `just skills` requirements in `dev-environment` go to a new chore (D11), because rewording them is not needed to move to OpenSpec 2.1.1. It is filed as #509, https://github.com/sidereal-io/sidereal/issues/509, blocked by #506.
 
 Confirmed by user: no
 Confirmed by lets-go: yes (the user did not decide)
