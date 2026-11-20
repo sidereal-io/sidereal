@@ -36,10 +36,9 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
   not by accident.
 - **PostgreSQL only** — no SQLite fallback on the Rust side
   ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
-- **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
-  `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
-  the `nix` workflow. `mise.toml` names the same channel, and in the `ci` workflow
-  and on the mise route rustup decides the release. Never put a Rust release number in a build file or doc. **`mise run check`**
+- **Rust follows the latest stable release.** `server/rust-toolchain.toml` and
+  `mise.toml` both name the `stable` channel, and rustup decides the release, in CI
+  and on contributors' machines. Never put a Rust release number in a build file or doc. **`mise run check`**
   is the gate — green before every PR. It runs `check-compose` (Compose config checks
   with no daemon), then `check-openspec` (strict `openspec validate` of every spec and
   active change; a warning fails it), then `check-server` (`cargo fmt --check` +
@@ -158,16 +157,14 @@ These rules add to the Let's Spec block above.
   exit demonstration. Identify groundwork and relevant code when exploring and
   cutting stories; do not put a "Relevant code" section in an epic.
 - **Change a version only where it is set.** [`CONTRIBUTING.md`](CONTRIBUTING.md#where-versions-are-set)
-  lists where each tool version and product version is set. Until the Nix route
-  goes, `flake.lock` and `mise.lock` both pin some tools; change those together.
-- **Update Let's Spec on both routes.** Change the release tag in `flake.nix`, and
-  the Let's Spec version in `mise.toml`. Leave OpenSpec alone: it is pinned on its
-  own, in `nix/openspec.nix` and `mise.toml`, until a Let's Spec release names
-  OpenSpec 2. Run `nix flake update lets-spec` and `mise lock`, enter the dev shell
-  so `lets sync` runs, and commit what it wrote in the same pull request as both
-  locks. Dependabot does not move Let's Spec: the flake input names a tag. The weekly
-  `mise-tool-updates.yml` workflow moves it in `mise.toml` and `mise.lock`, with what
-  `lets sync` writes, in one pull request; the `flake.nix` tag still moves by hand.
+  lists where each tool version and product version is set.
+- **Update Let's Spec through mise.** The weekly `mise-tool-updates.yml` workflow
+  moves it in `mise.toml` and `mise.lock`, with what `lets sync` writes, in one pull
+  request. Dependabot does not move it. To move it by hand, change the Let's Spec
+  version in `mise.toml`. Leave OpenSpec alone: it is pinned on its own in
+  `mise.toml` until a Let's Spec release names OpenSpec 2. Run `mise lock` and
+  `mise exec -- lets sync`, and commit what it wrote with `mise.toml` and
+  `mise.lock` in one pull request.
 - **`main` does not release yet.** v0.10.x releases are tagged from `v0.x`. A later
   change defines how `main` releases. Never `gh release create` manually.
 
