@@ -17,7 +17,7 @@ Run every command from the repo root. `design.md` D-1 gives each task's body and
 
 ## 3. CI runs the tasks [depends-on: 1]
 
-- [ ] 3.1 [parallel] [easy] In `.github/workflows/ci.yml`, the `server` and `e2e` jobs prepare, read and stop the fixture with `mise run db-up`, `db-test-url` or `db-url`, and `db-down`, and the `e2e` job's test step is `mise run e2e`; the comment above the Chromium step names the `e2e` task (D-4) (verify: `test "$(yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+' | paste -sd' ')" = 'mise run db-up mise run db-test-url mise run db-down' && test "$(yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run (db-[a-z-]+|e2e)' | paste -sd' ')" = 'mise run db-up mise run db-url mise run e2e mise run db-down' && ! grep -nw just .github/workflows/ci.yml`)
+- [x] 3.1 [parallel] [easy] In `.github/workflows/ci.yml`, the `server` and `e2e` jobs prepare, read and stop the fixture with `mise run db-up`, `db-test-url` or `db-url`, and `db-down`, and the `e2e` job's test step is `mise run e2e`; the comment above the Chromium step names the `e2e` task (D-4) (verify: `test "$(yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+' | paste -sd' ')" = 'mise run db-up mise run db-test-url mise run db-down' && test "$(yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run (db-[a-z-]+|e2e)' | paste -sd' ')" = 'mise run db-up mise run db-url mise run e2e mise run db-down' && ! grep -nw just .github/workflows/ci.yml`) (✓ verify command passed)
 
 ## 4. Docs and messages name the tasks [depends-on: 1]
 

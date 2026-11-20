@@ -53,8 +53,8 @@ jobs:
 
       - name: Prepare PostgreSQL fixture
         run: |
-          mise exec -- just db-up
-          test_url=$(mise exec -- just db-test-url)
+          mise run db-up
+          test_url=$(mise run db-test-url)
           echo "::add-mask::$test_url"
           printf 'TEST_DATABASE_URL=%s\n' "$test_url" >> "$GITHUB_ENV"
 
@@ -63,7 +63,7 @@ jobs:
 
       - name: Stop PostgreSQL fixture
         if: always()
-        run: mise exec -- just db-down
+        run: mise run db-down
 
   web:
     runs-on: ubuntu-latest
@@ -115,8 +115,8 @@ jobs:
 
       - name: Prepare PostgreSQL fixture
         run: |
-          mise exec -- just db-up
-          db_url=$(mise exec -- just db-url)
+          mise run db-up
+          db_url=$(mise run db-url)
           echo "::add-mask::$db_url"
           printf 'DATABASE_URL=%s\n' "$db_url" >> "$GITHUB_ENV"
 
@@ -127,7 +127,7 @@ jobs:
         run: mise exec -- cargo build -p sidereal-server --manifest-path server/Cargo.toml
 
       # A bare runner lacks the shared libraries Chromium links against.
-      # `just e2e` installs the browser without touching the system, so the
+      # The `e2e` task installs the browser without touching the system, so the
       # package set is installed here where root is available.
       - name: Install Chromium and its system libraries
         working-directory: web
@@ -136,11 +136,11 @@ jobs:
           mise exec -- pnpm exec playwright install --with-deps chromium
 
       - name: End-to-end gate
-        run: mise exec -- just e2e
+        run: mise run e2e
 
       - name: Stop PostgreSQL fixture
         if: always()
-        run: mise exec -- just db-down
+        run: mise run db-down
 
       # The HTML report carries the failure screenshot, diff and console log,
       # which is the whole reason to bother uploading it.
