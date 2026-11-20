@@ -10,12 +10,19 @@ required_platforms='linux-x64 linux-arm64 macos-arm64'
 # Rust records the stable channel, so the lock has no platform tables for it.
 exceptions='rust'
 
-fail() { echo "check-mise-lock-platforms: FAILED: $*" >&2; exit 1; }
+# On GitHub Actions, each failure is also an annotation, so it shows on the pull request.
+annotate=0
+[ "${GITHUB_ACTIONS:-}" != true ] || annotate=1
+fail() {
+    echo "check-mise-lock-platforms: FAILED: $*" >&2
+    [ "$annotate" -eq 0 ] || echo "::error::check-mise-lock-platforms: $*" >&2
+    exit 1
+}
 [ -f "$lock" ] || fail "$lock is not a file"
 
 # Exit 2 means no tool entry: a layout this script cannot read must not pass.
 status=0
-awk -v required="$required_platforms" -v exceptions="$exceptions" '
+awk -v required="$required_platforms" -v exceptions="$exceptions" -v annotate="$annotate" '
     function unquote(name) {
         if (name ~ /^".*"$/) name = substr(name, 2, length(name) - 2)
         return name
@@ -47,6 +54,7 @@ awk -v required="$required_platforms" -v exceptions="$exceptions" '
                 if (!((tool[t], platforms[p]) in has)) missing = missing " " platforms[p]
             if (missing != "") {
                 print "check-mise-lock-platforms: FAILED: " tool[t] " lacks" missing
+                if (annotate) print "::error::check-mise-lock-platforms: " tool[t] " lacks" missing
                 failed = 1
             }
         }
