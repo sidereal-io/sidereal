@@ -1,0 +1,40 @@
+<!-- Plain language: Make each record link identify the decision so a reader can find its rationale. Keep this manifest separate from the records themselves. -->
+
+# ADR Review Manifest
+
+- Status: completed
+- Review date: 2026-11-20
+
+## Review Summary
+
+ADR review completed for this change. It needs no new record.
+
+The design's decisions (D-1 to D-6 in `design.md`) are cheap to reverse and readable from `mise.toml`, the scripts and the specs: what each task runs, how `scripts/dev.sh` stops its two processes, where `just` is removed, and how CI and the docs call the tasks.
+
+The largest choice is that mise tasks replace `just`. ADR-016 chose mise as the tool manager and lists "a task runner" among the pinned tools, but it does not decide which runner. That choice still needs no record, for two reasons:
+
+- **It is cheap to reverse.** Every task runs one command or one POSIX `sh` script that works without mise. Another runner could call the same commands, and the task names would not change.
+- **Its reason is visible in the code.** One tool installs and runs everything, and `mise.toml` holds both the tools and the tasks.
+
+## In-Force ADRs Reviewed
+
+- [ADR-016: Development Environment with mise](../../../docs/decisions/ADR-016-development-environment-with-mise.md). Read in full. This change follows it: one `mise.toml` names the tools and now runs every command, and the plain pin files stay for contributors who use neither mise nor Nix.
+- Checked for relevance by title and scope, and searched for `just`, `justfile`, "recipe" and "task runner"; none bears on contributor commands:
+  [ADR-001](../../../docs/decisions/ADR-001-plugin-boundary.md),
+  [ADR-002](../../../docs/decisions/ADR-002-core-domain-pack-split.md),
+  [ADR-003](../../../docs/decisions/ADR-003-asset-identity-and-content-revisions.md),
+  [ADR-004](../../../docs/decisions/ADR-004-database-engine-and-schema.md),
+  [ADR-005](../../../docs/decisions/ADR-005-visual-design-system.md),
+  [ADR-006](../../../docs/decisions/ADR-006-rule-engine-deferral.md),
+  [ADR-007](../../../docs/decisions/ADR-007-security-and-plugin-trust.md),
+  [ADR-008](../../../docs/decisions/ADR-008-facet-schema-and-write-authority.md),
+  [ADR-009](../../../docs/decisions/ADR-009-backend-language.md),
+  [ADR-010](../../../docs/decisions/ADR-010-migration-strategy.md),
+  [ADR-011](../../../docs/decisions/ADR-011-storage-tree-layout.md),
+  [ADR-014](../../../docs/decisions/ADR-014-managed-storage-identity.md),
+  [ADR-015](../../../docs/decisions/ADR-015-opaque-database-sessions.md).
+- Not in force: ADR-012 is Proposed, and ADR-013 is superseded by ADR-016.
+
+## New Durable ADRs Created
+
+- None - no major durable architectural decisions were introduced.
