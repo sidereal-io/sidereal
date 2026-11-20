@@ -44,3 +44,14 @@ run = "(cd server && cargo fmt --check && cargo clippy --all-targets -- -D warni
 [tasks.check-web]
 description = "Web checks: install from the lockfile, then types, lint, format, DESIGN.md lint, token drift, unit tests"
 run = "(cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test)"
+
+# A run list, not depends: mise starts dependencies in parallel, and the
+# gate must run its parts in order and stop at the first failure.
+[tasks.check]
+description = "The gate to pass before every pull request"
+run = [
+  { task = "check-compose" },
+  { task = "check-openspec" },
+  { task = "check-server" },
+  { task = "check-web" },
+]
