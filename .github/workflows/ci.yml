@@ -21,8 +21,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # --locked fails on a stale lock, where a plain install would resolve
+      # a fresh release.
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
+
+      # Docker and jq come from the runner.
       - name: Compose configuration checks (no daemon required)
-        run: sh scripts/compose-config-check.sh
+        run: mise exec -- just check-compose
 
   server:
     runs-on: ubuntu-latest
