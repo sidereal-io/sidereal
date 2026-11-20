@@ -32,3 +32,7 @@ idiomatic_version_file_enable_tools = ["node"]
 [tasks.check-compose]
 description = "Compose configuration checks (Compose CLI and jq; no daemon)"
 run = "sh scripts/compose-config-check.sh"
+
+[tasks.check-openspec]
+description = "OpenSpec checks: strict validation of every spec and active change; warnings fail it"
+run = "OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive"
