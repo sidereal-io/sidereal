@@ -67,8 +67,8 @@ is no separate install step.
 
 Playwright owns its browser rather than using one your system provides, so
 the versions cannot drift: bump `@playwright/test` in `package.json` and
-Playwright fetches the matching browser. On NixOS that download cannot run, because the browser
-expects a system dynamic loader. Point `PLAYWRIGHT_BROWSERS_PATH` at the
+Playwright fetches the matching browser. On NixOS that download cannot run,
+because the browser expects a system dynamic loader. Point `PLAYWRIGHT_BROWSERS_PATH` at the
 browsers from nixpkgs when their version matches the npm package, or run the
 suite from a non-NixOS host or container.
 
