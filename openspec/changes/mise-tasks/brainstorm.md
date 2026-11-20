@@ -29,4 +29,5 @@
 - Added: the `ci`, `compose-instance`, `web-shell` and `dev-environment` specs change as well as `dev-commands` (D11), because each names a `just` command that will no longer exist.
 - Added: `CONTRIBUTING.md` lists the command or script behind each task for contributors with neither mise nor Nix (D4).
 
-Confirmed by user: no
+lets-go confirmed this ledger under the user's standing instruction to stop in the brainstorm only when a question has no recommendation; the user did not read it in person.
+Confirmed by user: yes
