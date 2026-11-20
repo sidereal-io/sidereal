@@ -26,7 +26,7 @@ Run every command from the repo root. `design.md` D-1 gives each task's body and
 
 ## 5. The whole change passes [depends-on: 2, 3, 4]
 
-- [ ] 5.1 [medium] With the fixture up, `mise run check` exits 0, and no file outside OpenSpec's change folders, the main specs and the decision records names a `just` command (verify: `TEST_DATABASE_URL=$(mise run db-test-url) mise run check && ! git grep -nE 'just (db-|dev|server|web|e2e|instance-verify|external-db-verify|check|--)|`just`|casey/just|justfile' -- ':!openspec/changes' ':!openspec/specs' ':!docs/decisions'`)
+- [x] 5.1 [medium] With the fixture up, `mise run check` exits 0, and no file outside OpenSpec's change folders, the main specs and the decision records names a `just` command (verify: `TEST_DATABASE_URL=$(mise run db-test-url) mise run check && ! git grep -nE 'just (db-|dev|server|web|e2e|instance-verify|external-db-verify|check|--)|`just`|casey/just|justfile' -- ':!openspec/changes' ':!openspec/specs' ':!docs/decisions'`) (✓ verify command passed: `mise run check` exited 0, and the search found no `just` command)
 - [ ] 5.2 [easy] Every job of the `ci`, `mise` and `nix` workflows passes on this change's pull request after the branch is pushed (verify: `gh pr checks mise-tasks`)
 
 ## Deviations Ledger
