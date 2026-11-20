@@ -270,6 +270,26 @@ fixture certificates: mise does not install it, so install it from your system's
 package manager.
 See [server setup](server/README.md) for container-free test prerequisites.
 
+### Moving from the Nix shell
+
+The repo no longer has a Nix shell or an `.envrc`. If you used them, do this
+once, in the repo root:
+
+1. Delete `.direnv/`. direnv unloads the old shell by itself once `.envrc` is
+   gone. To clear direnv's record of approved folders too, run `direnv prune`;
+   this is optional.
+2. If you kept settings in `.envrc.local`, move them to `mise.local.toml`, as
+   TOML under an `[env]` table. For example, `export RUST_LOG=debug` becomes:
+
+   ```toml
+   [env]
+   RUST_LOG = "debug"
+   ```
+
+   Git still ignores `.envrc.local`, so you can delete it when you are done.
+3. Follow [With mise](#with-mise). mise is also in Nixpkgs, so you can install
+   it with Nix if you prefer.
+
 ### Where versions are set
 
 Change a version only where the table below says it is set.
