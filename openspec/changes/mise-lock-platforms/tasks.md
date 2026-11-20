@@ -1,0 +1,29 @@
+<!-- Plain language: Each task must make sense to an agent and reviewer without the planning conversation. Name an observable outcome, its location when needed, and how to verify it. Preserve checkbox syntax and tags. -->
+
+<!-- Decisions D1 to D4 are in brainstorm.md. The specs are in specs/dev-environment/spec.md. The approach is in design.md (Decisions 1 to 6).
+     The script is POSIX sh plus awk, like scripts/compose-config-check.sh: no python3, yq or TOML parser.
+     It takes an optional lock path, default mise.lock at the repo root. Write test copies of the lock to .workspace/, never edit the committed mise.lock.
+     Each platform table in mise.lock ends at the next blank line, so `sed '/^\[tools.X."platforms.P"\]$/,/^$/d'` removes one table. -->
+
+## 1. The lock platform check
+
+- [ ] 1.1 [medium] `scripts/check-mise-lock-platforms.sh` exists, is executable (git mode 100755), and exits 0 on the committed `mise.lock`, where every `[[tools.*]]` entry except `[[tools.rust]]` has `linux-x64`, `linux-arm64` and `macos-arm64` tables. Run at the repo root with no argument, it reads `mise.lock` there; with one argument, it reads that file. The required platforms and the exception list (`rust`) are one variable each (design Decisions 2 and 3) (verify: `scripts/check-mise-lock-platforms.sh && test "$(git ls-files -s scripts/check-mise-lock-platforms.sh | cut -c1-6)" = 100755`)
+- [ ] 1.2 [easy] The script exits non-zero with a `check-mise-lock-platforms: FAILED:` message when the file is missing or holds no `[[tools.*]]` entry, so a layout it cannot read never passes (design Decision 5) (verify: `! scripts/check-mise-lock-platforms.sh /dev/null && ! scripts/check-mise-lock-platforms.sh .workspace/no-such.lock`)
+- [ ] 1.3 [medium] When one tool lacks one supported platform, the script exits non-zero and its output names the tool and the platform: with `[tools.just."platforms.macos-arm64"]` removed, the output holds a line naming `just` and `macos-arm64`. Names written quoted in the lock, such as `"github:Fission-AI/OpenSpec"`, are reported without their quotes (verify: `mkdir -p .workspace && sed '/^\[tools.just."platforms.macos-arm64"\]$/,/^$/d' mise.lock > .workspace/lock-just.toml && ! scripts/check-mise-lock-platforms.sh .workspace/lock-just.toml > .workspace/out-just.txt 2>&1 && grep 'just' .workspace/out-just.txt | grep -q 'macos-arm64'`)
+- [ ] 1.4 [medium] One run reports every gap, not only the first: with `[tools.gh."platforms.linux-arm64"]` and `[tools.pnpm."platforms.linux-x64"]` removed, the output names `gh` with `linux-arm64` and `pnpm` with `linux-x64` (design Decision 4) (verify: `sed -e '/^\[tools.gh."platforms.linux-arm64"\]$/,/^$/d' -e '/^\[tools.pnpm."platforms.linux-x64"\]$/,/^$/d' mise.lock > .workspace/lock-two.toml && ! scripts/check-mise-lock-platforms.sh .workspace/lock-two.toml > .workspace/out-two.txt 2>&1 && grep 'gh' .workspace/out-two.txt | grep -q 'linux-arm64' && grep 'pnpm' .workspace/out-two.txt | grep -q 'linux-x64'`)
+- [ ] 1.5 [easy] A tool entry with no platform tables fails with all three platforms named: with a `[[tools.example]]` entry that has only a `version` line appended, the output names `example` with `linux-x64`, `linux-arm64` and `macos-arm64` (D2) (verify: `{ cat mise.lock; printf '\n[[tools.example]]\nversion = "1.0.0"\n'; } > .workspace/lock-new.toml && ! scripts/check-mise-lock-platforms.sh .workspace/lock-new.toml > .workspace/out-new.txt 2>&1 && grep 'example' .workspace/out-new.txt | grep 'linux-x64' | grep 'linux-arm64' | grep -q 'macos-arm64'`)
+- [ ] 1.6 [easy] The script requires no other platform: with every `windows-x64` table removed, it exits 0 (verify: `sed '/^\[tools\..*"platforms.windows-x64"\]$/,/^$/d' mise.lock > .workspace/lock-nowin.toml && ! grep -q windows-x64 .workspace/lock-nowin.toml && scripts/check-mise-lock-platforms.sh .workspace/lock-nowin.toml`)
+- [ ] 1.7 [easy] When `GITHUB_ACTIONS` is `true`, each failure line is also printed as a GitHub `::error::` annotation, so it shows on the pull request (design Decision 4) (verify: `sed '/^\[tools.just."platforms.macos-arm64"\]$/,/^$/d' mise.lock > .workspace/lock-gha.toml && GITHUB_ACTIONS=true scripts/check-mise-lock-platforms.sh .workspace/lock-gha.toml 2>&1 | grep '^::error::' | grep 'just' | grep -q 'macos-arm64'`)
+
+## 2. Wiring and docs [depends-on: 1]
+
+- [ ] 2.1 [easy] The `mise-check` job in `.github/workflows/mise.yml` runs `scripts/check-mise-lock-platforms.sh` in a step named for the lock platforms, after checkout and before the install step (design Decision 6). The workflow's `paths` filter already covers `mise.lock`; leave it alone (verify: `awk '/scripts\/check-mise-lock-platforms.sh/{s=NR} /jdx\/mise-action/{i=NR} END{exit !(s && i && s < i)}' .github/workflows/mise.yml`)
+- [ ] 2.2 [easy] `CONTRIBUTING.md` says, beside the existing sentence that `mise.lock` pins each tool's exact release and checksum, that the lock must cover Linux x64, Linux arm64 and macOS arm64, that the `mise` workflow fails when it does not, and that `scripts/check-mise-lock-platforms.sh` runs the same check by hand. Name no Rust release number (verify: `grep -q 'scripts/check-mise-lock-platforms.sh' CONTRIBUTING.md`)
+
+## 3. Integration [depends-on: 2]
+
+- [ ] 3.1 [medium] The full gate passes, and after a push the mise check passes on this change's pull request, which changes `.github/workflows/mise.yml` and so triggers it. Its job log shows the lock platform step (verify: `mise exec -- just check && gh pr checks mise-lock-platforms | grep -qE '^mise check\s+pass'`)
+
+## Deviations Ledger
+
+<!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
