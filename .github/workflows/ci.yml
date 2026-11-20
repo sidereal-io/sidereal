@@ -67,11 +67,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: Web gate
-        run: nix develop --command just check-web
+        run: mise exec -- just check-web
 
   openspec:
     runs-on: ubuntu-latest
@@ -79,11 +81,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: OpenSpec gate
-        run: nix develop --command just check-openspec
+        run: mise exec -- just check-openspec
 
   # End-to-end gate. Kept out of `check` because it boots the server and a
   # browser, so it runs on its own runner instead of competing with the
