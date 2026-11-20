@@ -26,3 +26,9 @@ enter = "lets sync"
 # Off by default; set here so .nvmrc applies whatever a contributor's
 # global config says.
 idiomatic_version_file_enable_tools = ["node"]
+
+# The gate. Up to about six lines inline; a longer body goes in a POSIX sh
+# script under scripts/ or server/scripts/.
+[tasks.check-compose]
+description = "Compose configuration checks (Compose CLI and jq; no daemon)"
+run = "sh scripts/compose-config-check.sh"

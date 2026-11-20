@@ -4,7 +4,7 @@ Run every command from the repo root. `design.md` D-2 gives each task body exact
 
 ## 1. The gate as mise tasks
 
-- [ ] 1.1 [easy] `mise run check-compose` runs `sh scripts/compose-config-check.sh` and passes on an unchanged checkout. Add the task, with a `description`, to `mise.toml` (verify: `mise run check-compose`)
+- [x] 1.1 [easy] `mise run check-compose` runs `sh scripts/compose-config-check.sh` and passes on an unchanged checkout. Add the task, with a `description`, to `mise.toml` (verify: `mise run check-compose`) (✓ `mise run check-compose` passed)
 - [ ] 1.2 [easy] `mise run check-openspec` runs `OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive`, passes without waiting for input, and leaves the tree unchanged (verify: `mise run check-openspec < /dev/null && test -z "$(git status --porcelain -- openspec)"`)
 - [ ] 1.3 [easy] `mise run check-server` runs the format check, clippy with warnings denied, and `cargo test` in `server/`, then `server/scripts/check-arch.sh` from the repo root, with `cd` scoped inside a subshell (verify: `TEST_DATABASE_URL=$(mise exec -- just db-test-url) mise run check-server`)
 - [ ] 1.4 [easy] `mise run check-web` installs from `web/pnpm-lock.yaml` and runs the six web checks, leaving every tracked file unchanged (verify: `mise run check-web && git diff --exit-code -- web`)
