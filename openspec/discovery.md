@@ -215,7 +215,7 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    from the one the skills were generated from. The project accepts this gap and
    does not plan to close it — partial.
 4. **Work & check** — `just dev` runs the server and web shell together, and
-   `just check` gates the Compose files, OpenSpec, the Rust workspace and `web/`
+   `mise run check` gates the Compose files, OpenSpec, the Rust workspace and `web/`
    with pinned tools, including the token drift check — supported.
 5. **Open PR** — CI runs the same checks inside the pinned shell, plus an
    end-to-end browser check — supported.

@@ -5,7 +5,7 @@ context: |
   (axum, cargo workspace in server/) and a React 19 + Vite + TypeScript web
   interface (pnpm, in web/) on PostgreSQL. AGENTS.md holds the durable constraints:
   the one-way dependency direction between plugin-abi, core, packs/astro and server;
-  domain logic in packs, never in core; PostgreSQL only; and `just check` as the gate.
+  domain logic in packs, never in core; PostgreSQL only; and `mise run check` as the gate.
 
   openspec/discovery.md holds personas and journeys. UI work in `web/` follows
   DESIGN.md at the repo root (ADR-005): it is the source of truth for every token

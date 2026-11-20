@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The root `justfile` is the one place to run the server and the web shell for development, and to run the checks every pull request must pass.
+The root `justfile` runs the server, the web shell and the database fixture for development. The tasks in `mise.toml` run the gate: the checks every pull request must pass.
 
 ## Requirements
 
