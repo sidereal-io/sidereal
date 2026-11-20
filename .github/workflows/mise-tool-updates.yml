@@ -1,0 +1,26 @@
+name: mise tool updates
+
+# Dependabot does not read mise.toml, so this workflow moves the mise pins
+# once a week and opens one pull request with the result. GitHub runs
+# scheduled and workflow_dispatch workflows from the default branch only.
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+# A manual run and a scheduled run must not push to the branch at once.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    # Installing Rust takes a few minutes; a stuck download must not hold
+    # the concurrency group.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
