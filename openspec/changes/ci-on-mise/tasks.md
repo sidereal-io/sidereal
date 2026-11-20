@@ -22,8 +22,10 @@ These tasks touch only `AGENTS.md` and `CONTRIBUTING.md`, and change only the se
 
 - [x] 3.1 [easy] The local gate passes on the branch, including strict validation of this change (verify: `mise exec -- just check`) (✓ `mise exec -- just check` passed, with this worktree's fixture from `just db-up` and `TEST_DATABASE_URL` set)
 - [x] 3.2 [medium] In a scratch copy of the repo under `.workspace/`, adding a tool to `mise.toml` without updating `mise.lock` makes the install that every job runs fail. Delete the copy afterwards; nothing from it is committed (verify: `git worktree remove --force .workspace/stale-lock 2>/dev/null; git worktree prune 2>/dev/null; rm -rf .workspace/stale-lock && git worktree add -q --detach .workspace/stale-lock && sed -i 's/^\[tools\]$/[tools]\njq = "1"/' .workspace/stale-lock/mise.toml && (cd .workspace/stale-lock && mise trust -q && ! mise install --locked); s=$?; git worktree remove --force .workspace/stale-lock; test "$s" -eq 0`) (✓ verify command passed; `mise install --locked` failed with "jq@1 is not in the lockfile")
-- [ ] 3.3 [medium] After the branch is pushed, every job of the `ci` workflow passes on pull request #511: `compose`, `server`, `web`, `openspec`, `e2e` and `lets-spec` (verify: `gh pr checks 511`)
+- [x] 3.3 [medium] After the branch is pushed, every job of the `ci` workflow passes on pull request #511: `compose`, `server`, `web`, `openspec`, `e2e` and `lets-spec` (verify: `gh pr checks 511`) (✓ all six jobs passed in run 44674380624 at 13f32ab, the last commit that changed more than tasks.md)
 
 ## Deviations Ledger
 
 <!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
+
+- 2026-11-19, task 3.3: the evidence is the `ci` run at 13f32ab, not at the branch head. The commits after it change only tasks.md, and ticking 3.3 starts a new run, so no run can include its own tick. `lets-review-build` sees the head's checks.
