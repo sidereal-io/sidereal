@@ -44,7 +44,7 @@ Every job in `.github/workflows/ci.yml` SHALL install the tools its checks use f
 
 ### Requirement: Every CI job runs its tool commands through mise
 
-Every step in `.github/workflows/ci.yml` SHALL run each command that needs a tool from `mise.lock` as `mise exec -- <command>`. A step that caches cargo's build output SHALL run its own Rust commands through mise, so it installs no Rust of its own.
+Every step in `.github/workflows/ci.yml` SHALL run each command that needs a tool from `mise.lock` through mise: as `mise exec -- <command>`, or inside a mise task that the step runs as `mise run <task>`. A step that caches cargo's build output SHALL run its own Rust commands through mise, so it installs no Rust of its own.
 
 #### Scenario: Every tool command runs through mise
 
@@ -57,9 +57,9 @@ Every step in `.github/workflows/ci.yml` SHALL run each command that needs a too
 - **THEN** the output is at least one line
 - **AND** every line of the output is `mise exec -- {0}`
 
-### Requirement: Every CI job runs its checks as one recipe
+### Requirement: Every CI job runs its checks as one task
 
-Every job in `.github/workflows/ci.yml` SHALL run its checks as one `just` recipe, and SHALL run no check that the recipe does not run. The `lets-spec` and `e2e` jobs are exempt from this requirement only. They still install their tools from `mise.lock` and run them through mise.
+Every job in `.github/workflows/ci.yml` SHALL run its checks as one mise task, and SHALL run no check that the task does not run. The `lets-spec` and `e2e` jobs are exempt from this requirement only. They still install their tools from `mise.lock` and run them through mise.
 
 #### Scenario: A check in the recipe fails
 
@@ -68,7 +68,7 @@ Every job in `.github/workflows/ci.yml` SHALL run its checks as one `just` recip
 
 ### Requirement: The lets-spec job checks the Let's Spec files
 
-The `lets-spec` job SHALL run `mise exec -- lets sync --check` instead of a `just` recipe. It checks the files that Let's Spec writes, not the project's code, and `just check` does not run it.
+The `lets-spec` job SHALL run `mise exec -- lets sync --check` instead of a mise task. It checks the files that Let's Spec writes, not the project's code, and `mise run check` does not run it.
 
 #### Scenario: The lets-spec job runs one check step
 
@@ -90,34 +90,34 @@ The `e2e` job SHALL run these steps in order: start the database fixture, build 
 - **THEN** a line containing `mise exec -- cargo build -p sidereal-server` comes before a line containing `mise exec -- pnpm exec playwright install --with-deps chromium`
 - **AND** that line comes before the line `mise exec -- just e2e`
 
-### Requirement: Each CI job runs its own check recipe
+### Requirement: Each CI job runs its own check task
 
-The `compose` job's recipe is `check-compose`. The `server` job's recipe is `check-server`. The `web` job's recipe is `check-web`. The `openspec` job's recipe is `check-openspec`. Each job SHALL run its recipe as `mise exec -- just <recipe>`. `just check` SHALL run `check-compose`, then `check-openspec`, then `check-server`, then `check-web`, so a contributor and CI run the same gates.
+The `compose` job's task is `check-compose`. The `server` job's task is `check-server`. The `web` job's task is `check-web`. The `openspec` job's task is `check-openspec`. Each job SHALL run its task as `mise run <task>`. `mise run check` SHALL run `check-compose`, then `check-openspec`, then `check-server`, then `check-web`, so a contributor and CI run the same gates.
 
 #### Scenario: The compose job has one check step
 
 - **WHEN** a reviewer runs `yq '.jobs.compose.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
-- **THEN** the output is exactly one line: `mise exec -- just check-compose`
+- **THEN** the output is exactly one line: `mise run check-compose`
 
 #### Scenario: The server job has one check step
 
-- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep 'just check-'`
-- **THEN** the output is exactly one line: `mise exec -- just check-server`
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep 'check-'`
+- **THEN** the output is exactly one line: `mise run check-server`
 
 #### Scenario: The web job has one check step
 
 - **WHEN** a reviewer runs `yq '.jobs.web.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
-- **THEN** the output is exactly one line: `mise exec -- just check-web`
+- **THEN** the output is exactly one line: `mise run check-web`
 
 #### Scenario: The openspec job has one check step
 
 - **WHEN** a reviewer runs `yq '.jobs.openspec.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
-- **THEN** the output is exactly one line: `mise exec -- just check-openspec`
+- **THEN** the output is exactly one line: `mise run check-openspec`
 
 #### Scenario: The local gate runs the same recipe
 
-- **WHEN** a contributor runs `just --show check`
-- **THEN** the output contains the line `check: check-compose check-openspec check-server check-web`
+- **WHEN** a reviewer runs `mise tasks info check --json | jq -r '.run[].task'` at the repo root
+- **THEN** the output is exactly four lines, in this order: `check-compose`, `check-openspec`, `check-server`, `check-web`
 
 ### Requirement: The server checks run when server code changes
 
@@ -176,7 +176,7 @@ The `server` job's checks are the Rust format check, clippy with warnings denied
 
 A CI job named `web` SHALL run the web checks. The job lives in the workflow file `.github/workflows/ci.yml`. It SHALL run on every pull request, and on every push to `main`, that triggers that workflow. The same files trigger the `server` job.
 
-The checks are the six checks of `just check-web`: the type check, the lint, the format check, the `DESIGN.md` lint, the token drift check, and the unit tests of the web shell in `web/`. The job SHALL fail when any check fails.
+The checks are the six checks of `mise run check-web`: the type check, the lint, the format check, the `DESIGN.md` lint, the token drift check, and the unit tests of the web shell in `web/`. The job SHALL fail when any check fails.
 
 #### Scenario: A pull request changes web code
 
@@ -535,7 +535,7 @@ After enabling auto-merge, the workflow SHALL compare the PR head against the PR
 
 A CI job named `openspec` SHALL run the OpenSpec checks. The job lives in the workflow file `.github/workflows/ci.yml`. It SHALL run on every pull request, and on every push to `main`, that triggers that workflow.
 
-The checks are those of `just check-openspec`: strict validation of every spec and every active change. The job SHALL fail when validation reports an error or a warning.
+The checks are those of `mise run check-openspec`: strict validation of every spec and every active change. The job SHALL fail when validation reports an error or a warning.
 
 #### Scenario: A pull request changes only a spec
 

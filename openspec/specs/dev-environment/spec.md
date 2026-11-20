@@ -165,23 +165,25 @@ The environment SHALL NOT require Nix for building or checking the repo. For a c
 
 #### Scenario: A contributor without Nix runs the checks
 
-- **WHEN** a contributor without Nix installs Rust through rustup and installs Node through a version manager reading `.nvmrc`
+- **GIVEN** a contributor with neither Nix nor mise, who installs the tools by hand as `CONTRIBUTING.md` says, and prepares the PostgreSQL fixture
+- **WHEN** the contributor installs Rust through rustup and installs Node through a version manager reading `.nvmrc`
 - **THEN** rustup selects the channel in `server/rust-toolchain.toml`
 - **AND** the version manager selects Node major version 26
-- **AND** `just check` exits with status 0, given that `just` is installed
+- **AND** each of the four gate commands that `CONTRIBUTING.md` lists, for Compose, OpenSpec, the server and the web shell, exits with status 0 when run in that order from the repo root
 
 #### Scenario: The environment does not load application settings
 
 - **WHEN** a contributor enters the repo directory with the development shell turned on
 - **THEN** no variable defined only in `.env` is set in the contributor's shell
 
-### Requirement: The repo checks pass inside the shell
+### Requirement: The repo checks pass through mise
 
-The repo's existing gate SHALL pass inside the development shell. The gate is `just check`: `cargo fmt --check`, clippy with warnings denied, `cargo test`, and the dependency-direction lint.
+The repo's gate SHALL pass when a contributor runs it through mise. The gate is `mise run check`: the Compose configuration checks, the OpenSpec checks, the server checks, and the web checks. The Nix development shell does not provide mise, so a contributor on the Nix route also runs the gate through mise.
 
 #### Scenario: A contributor runs the gate in the shell
 
-- **WHEN** a contributor runs `nix develop --command just check` on a commit whose checks pass outside Nix
+- **GIVEN** a prepared PostgreSQL fixture, with `TEST_DATABASE_URL` set to the URL `just db-test-url` prints
+- **WHEN** a contributor runs `mise run check` at the repo root, on a commit whose `ci` workflow passes
 - **THEN** the command exits with status 0
 
 ### Requirement: The flake check builds the shell
