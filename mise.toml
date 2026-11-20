@@ -36,3 +36,7 @@ run = "sh scripts/compose-config-check.sh"
 [tasks.check-openspec]
 description = "OpenSpec checks: strict validation of every spec and active change; warnings fail it"
 run = "OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive"
+
+[tasks.check-server]
+description = "Server checks: format, clippy (warnings denied), tests, dependency-direction lint"
+run = "(cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) && server/scripts/check-arch.sh"
