@@ -44,7 +44,7 @@ The web shell's home screen SHALL show exactly one of three health states:
 - **healthy**, when the last check got status 200 and a JSON body whose `status` field is `"ok"`;
 - **unreachable**, when the last check got any other result, including a network error, another status, a body that is not that JSON, or no answer within 5 seconds.
 
-The screen SHALL show the state's name as visible text. The screen SHALL NOT show any text taken from the server's response.
+The screen SHALL show the state's name as visible text.
 
 #### Scenario: The server is running
 
@@ -56,18 +56,22 @@ The screen SHALL show the state's name as visible text. The screen SHALL NOT sho
 - **WHEN** nothing listens on the server's port and a user opens the web shell's home page
 - **THEN** the page shows the text `unreachable` within 5 seconds
 
+#### Scenario: The server does not answer
+
+- **WHEN** a stub on the server's port accepts connections to `GET /healthz` but never answers
+- **AND** a user opens the web shell's home page
+- **THEN** the page shows the text `unreachable` within 10 seconds
+
+### Requirement: The home screen shows no text from the health response
+
+The home screen SHALL NOT show any text taken from the server's response.
+
 #### Scenario: The server answers with an unexpected body
 
 - **WHEN** a stub on the server's port answers `GET /healthz` with status 200 and the body `{"status":"<b>degraded</b>"}`
 - **AND** a user opens the web shell's home page
 - **THEN** the page shows the text `unreachable`
 - **AND** the page text does not contain `degraded`
-
-#### Scenario: The server does not answer
-
-- **WHEN** a stub on the server's port accepts connections to `GET /healthz` but never answers
-- **AND** a user opens the web shell's home page
-- **THEN** the page shows the text `unreachable` within 10 seconds
 
 ### Requirement: The home screen keeps checking while it is open
 
@@ -227,7 +231,7 @@ The health screen SHALL take its page background, its text color, and its font f
 
 ### Requirement: The home screen shows the access state
 
-The home screen SHALL show an access section beside the health status. The section SHALL show exactly one of three views. It shows the claim form while `GET /api/claim` answers open. It shows the sign-in form while the claim is closed and `GET /api/session` answers 401. It shows the signed-in user's username and a button labelled `Sign out` while `GET /api/session` answers 200. Before the first answers arrive it SHALL show none of the three. When `GET /api/claim` or `GET /api/session` fails with a network error or a status the section does not expect, it SHALL show the text `Something went wrong` and no form. Each form SHALL have a username field, a password field and one submit button, labelled `Claim` or `Sign in`. A submitted claim that succeeds SHALL show the sign-in form. A sign-in that succeeds SHALL show the username. A sign-out SHALL show the sign-in form. A claim or sign-in the server refuses SHALL show the text `Invalid username or password` for a 400 or 401 and `Something went wrong` otherwise, except as the next sentences say for a 429, and SHALL NOT show any text taken from the server's response. A sign-in answered 429 SHALL show `Too many failed sign-ins. Try again in N seconds.` when `Retry-After` holds a whole number of seconds under 60, and `Too many failed sign-ins. Try again in N minutes.` when it holds 60 or more, with N the seconds divided by 60 and rounded up. When N is 1 the unit SHALL be `second` or `minute`. When `Retry-After` is missing or is not a whole number of seconds, it SHALL show `Too many failed sign-ins. Try again later.` After a 429 the sign-in form SHALL stay on screen and usable.
+The home screen SHALL show an access section beside the health status. The section SHALL show exactly one of three views. It shows the claim form while `GET /api/claim` answers open. It shows the sign-in form while the claim is closed and `GET /api/session` answers 401. It shows the signed-in user's username and a button labelled `Sign out` while `GET /api/session` answers 200. Before the first answers arrive it SHALL show none of the three.
 
 #### Scenario: Unclaimed instance
 
@@ -244,20 +248,41 @@ The home screen SHALL show an access section beside the health status. The secti
 - **WHEN** `GET /api/session` answers `{"username":"sam","role":"admin"}` and a user opens the home page
 - **THEN** the page shows the text `sam` and a `Sign out` button and no form
 
+### Requirement: The access section shows an error when it cannot read the state
+
+When `GET /api/claim` or `GET /api/session` fails with a network error or a status the section does not expect, the access section SHALL show the text `Something went wrong` and no form.
+
 #### Scenario: The server is unavailable
 
 - **WHEN** `GET /api/claim` answers 503 and a user opens the home page
 - **THEN** the page shows the text `Something went wrong` and no `Claim`, `Sign in` or `Sign out` button
+
+### Requirement: The access forms move between views
+
+Each access form SHALL have a username field, a password field and one submit button, labelled `Claim` or `Sign in`. A submitted claim that succeeds SHALL show the sign-in form. A sign-in that succeeds SHALL show the username. A sign-out SHALL show the sign-in form.
 
 #### Scenario: Claim succeeds
 
 - **WHEN** the page shows the claim form and the user submits it and `POST /api/claim` answers 201
 - **THEN** the page shows the sign-in form
 
+#### Scenario: Sign-out
+
+- **WHEN** the page shows `sam` and the user presses `Sign out` and `DELETE /api/session` answers 204
+- **THEN** the page shows the sign-in form
+
+### Requirement: A refused claim or sign-in shows a fixed message
+
+A claim or sign-in the server refuses SHALL show the text `Invalid username or password` for a 400 or 401 and `Something went wrong` otherwise, except as the requirement "A limited sign-in shows the wait" says for a 429, and SHALL NOT show any text taken from the server's response.
+
 #### Scenario: Sign-in fails
 
 - **WHEN** the page shows the sign-in form and the user submits it and `POST /api/session` answers 401 with `{"error":"<b>nope</b>"}`
 - **THEN** the page shows the text `Invalid username or password`, still shows the sign-in form, and does not contain `nope`
+
+### Requirement: A limited sign-in shows the wait
+
+A sign-in answered 429 SHALL show `Too many failed sign-ins. Try again in N seconds.` when `Retry-After` holds a whole number of seconds under 60, and `Too many failed sign-ins. Try again in N minutes.` when it holds 60 or more, with N the seconds divided by 60 and rounded up. When N is 1 the unit SHALL be `second` or `minute`.
 
 #### Scenario: Sign-in is limited for seconds
 
@@ -279,15 +304,14 @@ The home screen SHALL show an access section beside the health status. The secti
 - **WHEN** the page shows the sign-in form and the user submits it and `POST /api/session` answers 429 with `Retry-After: 1`
 - **THEN** the page shows the text `Too many failed sign-ins. Try again in 1 second.`
 
+### Requirement: A limited sign-in with no usable wait says to try later
+
+When `Retry-After` is missing or is not a whole number of seconds, a sign-in answered 429 SHALL show `Too many failed sign-ins. Try again later.` After a 429 the sign-in form SHALL stay on screen and usable.
+
 #### Scenario: A limit with no usable wait
 
 - **WHEN** the page shows the sign-in form and the user submits it and `POST /api/session` answers 429 with no `Retry-After` header
 - **THEN** the page shows the text `Too many failed sign-ins. Try again later.` and still shows the sign-in form
-
-#### Scenario: Sign-out
-
-- **WHEN** the page shows `sam` and the user presses `Sign out` and `DELETE /api/session` answers 204
-- **THEN** the page shows the sign-in form
 
 ### Requirement: The access section uses the design tokens
 
@@ -300,7 +324,7 @@ The access section SHALL take every color, size, radius and font from the token 
 
 ### Requirement: The access section has unit tests
 
-The access section SHALL have unit tests that run with no server, with `fetch` and `WebSocket` replaced by stubs, covering the unclaimed, signed-out, signed-in and unavailable states and the claim, failed sign-in, limited sign-in and sign-out transitions. The limited sign-in tests SHALL cover a wait in seconds, a wait in minutes, and a 429 with no usable `Retry-After`. They SHALL also cover the socket: opening it on sign-in, closing it on sign-out, and a silent socket. They SHALL cover a 1008 close, and a close that is not 1008 followed by a 401 and by a 200. `pnpm test` in `web/` SHALL run them.
+The access section SHALL have unit tests that run with no server, with `fetch` and `WebSocket` replaced by stubs, covering the unclaimed, signed-out, signed-in and unavailable states and the claim, failed sign-in, limited sign-in and sign-out transitions. `pnpm test` in `web/` SHALL run them.
 
 #### Scenario: The tests run with no server
 
@@ -311,6 +335,10 @@ The access section SHALL have unit tests that run with no server, with `fetch` a
 
 - **WHEN** a contributor makes the signed-in state render the sign-in form and runs `pnpm test`
 - **THEN** at least one access test fails
+
+### Requirement: The access tests cover limited sign-ins and the socket
+
+The limited sign-in tests SHALL cover a wait in seconds, a wait in minutes, and a 429 with no usable `Retry-After`. The access tests SHALL also cover the socket: opening it on sign-in, closing it on sign-out, and a silent socket. They SHALL cover a 1008 close, and a close that is not 1008 followed by a 401 and by a 200.
 
 #### Scenario: The close handling breaks
 
