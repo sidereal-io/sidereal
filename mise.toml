@@ -55,3 +55,46 @@ run = [
   { task = "check-server" },
   { task = "check-web" },
 ]
+
+# Development tasks. Each body is one command that runs without mise, so
+# CONTRIBUTING.md can list it for contributors on the hand-install route.
+
+[tasks.db-up]
+description = "Start this worktree's loopback PostgreSQL fixture and wait for initialization"
+run = "sh server/scripts/db-fixture.sh up"
+
+[tasks.db-down]
+description = "Stop this worktree's database fixture, retaining its volume"
+run = "sh server/scripts/db-fixture.sh down"
+
+[tasks.db-clean]
+description = "Delete only this worktree's fixture containers and database volume"
+run = "sh server/scripts/db-fixture.sh clean"
+
+# quiet: the URL is then the only output on either stream.
+[tasks.db-url]
+description = "Print the fixture runtime URL; override SIDEREAL_DB_PORT if needed"
+run = "sh server/scripts/db-fixture.sh url"
+quiet = true
+
+[tasks.db-test-url]
+description = "Print the separate CREATEDB fixture test URL"
+run = "sh server/scripts/db-fixture.sh test-url"
+quiet = true
+
+[tasks.db-test-clean]
+description = "Remove killed-test leftovers only from this worktree's fixture"
+run = "sh server/scripts/db-fixture.sh orphan-clean"
+
+[tasks.db-tls]
+description = "Generate local fixture certificates without requiring Docker"
+run = "sh server/scripts/db-tls.sh"
+
+# Needs Docker, and takes minutes, so `mise run check` does not run it.
+[tasks.instance-verify]
+description = "Build the app image, start a disposable Compose instance, check it, and remove it"
+run = "sh scripts/instance-verify.sh"
+
+[tasks.external-db-verify]
+description = "Check TLS startup and recreation against a separate disposable PostgreSQL service"
+run = "sh scripts/external-db-verify.sh"
