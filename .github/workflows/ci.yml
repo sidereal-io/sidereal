@@ -38,28 +38,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
+      # Runs after the install: it calls cargo and rustc to build its key,
+      # and must use mise's Rust.
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
-          cmd-format: nix develop -c {0}
+          cmd-format: mise exec -- {0}
 
       - name: Prepare PostgreSQL fixture
         run: |
-          nix develop --command just db-up
-          test_url=$(nix develop --command just db-test-url)
+          mise exec -- just db-up
+          test_url=$(mise exec -- just db-test-url)
           echo "::add-mask::$test_url"
           printf 'TEST_DATABASE_URL=%s\n' "$test_url" >> "$GITHUB_ENV"
 
       - name: Server gate
-        run: nix develop --command just check-server
+        run: mise exec -- just check-server
 
       - name: Stop PostgreSQL fixture
         if: always()
-        run: nix develop --command just db-down
+        run: mise exec -- just db-down
 
   web:
     runs-on: ubuntu-latest
