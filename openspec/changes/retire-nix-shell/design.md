@@ -82,10 +82,9 @@ Rename `CONTRIBUTING.md`'s "Without Nix" section to "Without mise", so its ancho
 
 Add a short subsection, "Moving from the Nix shell", at the end of the routes, before "Where versions are set". It lists, in order:
 
-1. run `direnv revoke` in the repo root, so direnv stops loading `.envrc`;
-2. delete `.direnv/`;
-3. move any settings in `.envrc.local` to `mise.local.toml`;
-4. follow [With mise](#with-mise). mise is also in Nixpkgs, so a Nix user can install it from there.
+1. delete `.direnv/`, and optionally run `direnv prune` to clear direnv's allow cache; direnv unloads automatically once `.envrc` is gone;
+2. move any settings in `.envrc.local` to `mise.local.toml` as TOML under an `[env]` table;
+3. follow [With mise](#with-mise). mise is also in Nixpkgs, so a Nix user can install it from there.
 
 `.direnv/` and `.envrc.local` stay in `.gitignore` (D5). Their comment changes to say they are leftovers from the retired Nix route.
 
@@ -104,7 +103,7 @@ OpenSpec 2.1.1 refuses a MODIFIED block that drops a scenario the main spec has.
 | `dev-environment`: "Nix stays optional" | "Contributors can work without mise", and "mise loads no application settings" |
 | `dev-environment`: "Both routes use one Let's Spec release" | "The committed skills match the pinned Let's Spec release" |
 
-Two further requirements are new: "The repo has no Nix route" and "Leftover Nix-route files stay out of git". They state the D18 acceptance and D5 as checks that outlive this change. Requirements that keep all their scenarios use MODIFIED.
+Two further requirements are new: "The repo has no Nix route" and "Leftover Nix-route files stay out of git". They state the D18 acceptance and D5 as checks that outlive this change. Requirements that keep all their scenarios use MODIFIED. Because the other ADDED requirements carry surviving scenarios from the main spec rather than new code, their conditions (`channel = "stable"`, `.nvmrc`, mise ignoring `.env`, and `lets sync --check`) are already satisfied in the baseline and verified by `AGENTS.md` and the repo checks.
 
 - Alternative: RENAMED plus MODIFIED. Rejected: the MODIFIED block would still have to carry the dropped scenarios.
 
@@ -145,7 +144,7 @@ After the change, `git grep -n -i -E 'nix|flake|direnv|envrc'` may still find:
 
 ## Risks / Trade-offs
 
-- [A contributor on the Nix shell pulls and direnv errors on the missing `.envrc` or flake] → The move note says to run `direnv revoke` first. The pull request description repeats it.
+- [A contributor on the Nix shell pulls and direnv unloads or reports missing .envrc] → The move note says to delete `.direnv/` and optionally run `direnv prune`. The pull request description repeats it.
 - [A stale link to `#without-nix` or `#with-nix` remains] → A task greps for both anchors across the repo, outside the history, and expects no match.
 - [Deleting `nix.yml` leaves a stale required check] → D4 checked the ruleset: `flake check` is not required. CI on the pull request confirms that the required checks report.
 - [An edit to `AGENTS.md` touches the rules block by accident] → `lets sync --check` fails in the gate and in CI.
