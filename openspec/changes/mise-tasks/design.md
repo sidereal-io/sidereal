@@ -67,15 +67,16 @@
 
 `scripts/dev.sh server` replaces itself with `cargo run -p sidereal-server --manifest-path server/Cargo.toml`. `scripts/dev.sh web` changes to `web/`, runs `pnpm install --frozen-lockfile --reporter=append-only`, then replaces itself with `pnpm dev`. With no argument, the script:
 
-1. Starts `sh scripts/dev.sh server` and `sh scripts/dev.sh web` in the background, and records both process IDs.
-2. Traps INT, TERM and HUP. The trap stops both process trees and exits with status 130 for INT, or 143 for TERM and HUP.
-3. Checks every second, with `kill -0`, whether both are still running. When one has exited, it reads that one's status with `wait`.
-4. Stops the other process tree, waits for it, and exits with the first one's status. A non-zero status therefore means that the one that exited first failed.
+1. Starts `sh scripts/dev.sh server` and `sh scripts/dev.sh web` in the background, each as the leader of a new session. It uses the `setsid` command, or perl's `POSIX::setsid` where there is no `setsid` command, as on macOS. Each worker runs under a small `sh -c` wrapper, which appends the line `<worker> <status>` to an events file when the worker exits. The script records both leaders' process IDs. Each ID is also the ID of that worker's process group.
+2. Traps INT, TERM and HUP. The trap stops both process groups and exits with status 130 for INT, or 143 for TERM and HUP.
+3. Checks the events file every second. Its first line names the worker that exited first, even when both exited between two checks.
+4. Stops both process groups, waits for them, and exits with the first worker's status. When that status is 0 and the events file already holds the other worker's line with a non-zero status, it exits with that status instead. A failure therefore never comes out as status 0.
 
-To stop a process tree, the script lists every process with `ps -A -o pid= -o ppid=`, finds the descendants of the recorded ID, and sends them and the recorded process SIGTERM. Both Linux and macOS support those `ps` options.
+To stop a process group, the script sends SIGTERM to the whole group with `kill -TERM -<id>`, waits up to 4 seconds while `kill -0 -<id>` still finds a member, then sends SIGKILL. A group lasts while any of its processes is alive, even after its leader has exited. So stopping it also reaches a child that was reparented away from its worker, such as a child of a worker that has already exited. A process that starts a session of its own leaves the group, and the script does not follow it.
 
-- **Why not job-control process groups (`set -m` and `kill -- -<pgid>`):** `dash` turns job control off without a terminal, and CI and agents can run the script with no terminal attached. Walking the process tree works with or without one.
-- **Why polling instead of a named pipe:** a one-second poll is simple to get right with traps, and the specs allow 5 seconds to free the ports and 10 seconds to exit after a failed start.
+- **Why a session per worker, not job control (`set -m`):** `dash` turns job control off without a terminal, and CI and agents can run the script with no terminal attached. `setsid` works with or without one. A new session, rather than only a new group, keeps the worker out of the terminal's job control, so the terminal does not stop Vite or cargo as a background job. The terminal sends Ctrl-C only to the script, and the script's trap stops both groups.
+- **Rejected: walking the process tree with `ps -A -o pid= -o ppid=`.** It finds descendants through their current parent, so it misses a child that was reparented after its worker exited. A review of this change found such a child left running.
+- **Why an events file and a poll, not a named pipe:** the file keeps the order in which the workers exited, whatever the poll interval. A one-second poll is simple to get right with traps: a signal interrupts the foreground `sleep`, and the trap runs. The specs allow 5 seconds to free the ports and 10 seconds to exit after a failed start.
 - **Rejected: mise's own parallel run.** It keeps the other task alive when one exits with status 0, and it needs mise, which a contributor on the hand-install route does not have.
 
 ### D-3. `just` leaves every route
@@ -108,7 +109,7 @@ No decision here needs its own record. mise was chosen as the tool manager in AD
 
 ## Risks / Trade-offs
 
-- [`scripts/dev.sh` leaves a process behind, such as Vite's Node child, after Ctrl-C or a failed start] → The tree walk in D-2 stops descendants, not only the recorded process. The "Ctrl-C stops the whole stack" and "The web shell fails to start" scenarios check ports 5000 and 5173 and the process list. Run them under both `dash` and `bash --posix`.
+- [`scripts/dev.sh` leaves a process behind, such as Vite's Node child, after Ctrl-C or a failed start] → Each worker's process group in D-2 holds every process it started, even after the worker exits. `sh scripts/dev-supervisor-check.sh` checks the exit status and the cleanup with stub workers, under `dash` and `bash --posix`, through `setsid` and through the perl fallback. The "Ctrl-C stops the whole stack" and "The web shell fails to start" scenarios check ports 5000 and 5173 and the process list with the real stack.
 - [A trap does not run while the script waits] → The script waits in `sleep 1`, a foreground command that a signal interrupts, not in a blocking read. Running the Ctrl-C scenario under `dash` tests this.
 - [`raw = true` changes how mise handles Ctrl-C] → The scenarios run through `mise run dev`, not only through the script. If `raw` stops mise from passing the signal on, drop `raw` and run the "terminal keeps earlier output" scenario again to confirm that mise adds no screen-clearing sequence.
 - [The commands in `CONTRIBUTING.md` drift from `mise.toml`] → The "listed commands match the tasks" scenario compares them, and the docs task verifies it.

@@ -107,8 +107,9 @@ The repo SHALL have no root `justfile`. `mise.toml` SHALL name no `just` tool, a
 
 - **GIVEN** a prepared compatible database and configured `DATABASE_URL`
 - **WHEN** `mise run dev` is running and the contributor presses Ctrl-C
-- **THEN** `mise run dev` exits
+- **THEN** `mise run dev` exits with status 130
 - **AND** within 5 seconds nothing listens on port 5000 or port 5173
+- **AND** nothing that `mise run dev` started is still running, including a process whose parent exited before the interrupt
 
 #### Scenario: The terminal keeps earlier output
 
@@ -123,6 +124,22 @@ The repo SHALL have no root `justfile`. `mise.toml` SHALL name no `just` tool, a
 - **WHEN** another process listens on port 5173, and a contributor runs `mise run dev`
 - **THEN** `mise run dev` exits with a non-zero status within 10 seconds
 - **AND** nothing that `mise run dev` started is still running
+
+#### Scenario: The web shell fails just before the server stops
+
+- **WHEN** the web shell exits with status 23, and the server exits with status 0 less than a second later
+- **THEN** `mise run dev` exits with status 23
+
+#### Scenario: The web shell fails just after the server stops
+
+- **WHEN** the server exits with status 0, and the web shell exits with status 23 less than a second later
+- **THEN** `mise run dev` exits with status 23
+
+#### Scenario: A service exits and leaves a child running
+
+- **WHEN** the web shell starts a child process and then exits with status 23, while the server keeps running
+- **THEN** `mise run dev` exits with status 23
+- **AND** the web shell's child process is no longer running
 
 ### Requirement: Root tasks report fixture connection settings
 
