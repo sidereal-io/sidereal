@@ -40,3 +40,7 @@ run = "OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive"
 [tasks.check-server]
 description = "Server checks: format, clippy (warnings denied), tests, dependency-direction lint"
 run = "(cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) && server/scripts/check-arch.sh"
+
+[tasks.check-web]
+description = "Web checks: install from the lockfile, then types, lint, format, DESIGN.md lint, token drift, unit tests"
+run = "(cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test)"
