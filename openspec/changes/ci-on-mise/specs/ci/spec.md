@@ -32,6 +32,11 @@ Every job in `.github/workflows/ci.yml` SHALL install the tools its checks use f
 - **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("uses")) | .uses | sub("@.*", "")' .github/workflows/ci.yml`
 - **THEN** the output is exactly four lines, in this order: `actions/checkout`, `jdx/mise-action`, `Swatinem/rust-cache`, and `actions/upload-artifact`
 
+#### Scenario: Every job sets locked installation
+
+- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "jdx/mise-action*") | .with.install_args' .github/workflows/ci.yml | sort -u`
+- **THEN** the output is exactly one line: `--locked`
+
 #### Scenario: A stale lock fails the job
 
 - **WHEN** a pull request adds a tool to `mise.toml` and does not change `mise.lock`
