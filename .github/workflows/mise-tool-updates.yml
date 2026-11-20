@@ -13,6 +13,12 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
+# The default token only reads. The App token below is the one writer, and
+# it does not ask for workflows: write, so this branch cannot change a
+# workflow file.
+permissions:
+  contents: read
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -50,6 +56,8 @@ jobs:
         with:
           client-id: ${{ vars.DEPENDABOT_MERGE_APP_CLIENT_ID }}
           private-key: ${{ secrets.DEPENDABOT_MERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       # One fixed branch keeps one pull request open: a later run updates it.
       # A clean working tree opens nothing.
