@@ -307,7 +307,7 @@ Change a version only where the table below says it is set.
 
 Never write a Rust release number in a build file or a document. The `stable` channel decides it, and rustup picks the release.
 
-Dependabot proposes updates to these pins every week: `server/Cargo.lock` and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec and Rust alone. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
+Dependabot proposes updates to these pins every week: `server/Cargo.lock` and the packages in `web/`. Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec and Rust alone. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
 
 **Product versions** are Sidereal's own version numbers.
 
