@@ -11,9 +11,9 @@
 
     # Pinned to a release tag, so mise.toml can name the same release and
     # an update cannot land on an untagged commit. It stays pinned until
-    # the Nix route goes. Its own nixpkgs pins the OpenSpec CLI the
-    # release's openspec-* skills were generated from, so it does not
-    # follow ours.
+    # the Nix route goes. It does not follow our nixpkgs, which keeps its
+    # bundle as the release built it. The shell's `openspec` comes from
+    # nix/openspec.nix instead, ahead of the bundle's older copy.
     lets-spec.url = "github:sidereal-io/lets-spec/v0.8.0";
   };
 
@@ -25,6 +25,7 @@
         ./nix/devshell.nix
         ./nix/toolchains.nix
         ./nix/lets-spec.nix
+        ./nix/openspec.nix
       ];
 
       # Every module below gets a `pkgs` with the rust-overlay applied, so
