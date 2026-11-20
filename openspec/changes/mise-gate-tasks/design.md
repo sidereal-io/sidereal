@@ -58,11 +58,11 @@ All four bodies fit the six-line rule from the ledger (D2), so no new script is 
 |---|---|
 | `check-compose` | `run = "sh scripts/compose-config-check.sh"` |
 | `check-openspec` | `run = "OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive"` |
-| `check-server` | `run = ["cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test", "server/scripts/check-arch.sh"]` |
-| `check-web` | `run = "cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test"` |
+| `check-server` | `run = "(cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) && server/scripts/check-arch.sh"` |
+| `check-web` | `run = "(cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test)"` |
 
-- **Why the bodies keep `cd` and inline variables** instead of mise's `dir` and `env` keys: each body is then a command a contributor can paste into a POSIX shell at the repo root. `CONTRIBUTING.md` lists these same four commands for the hand-install route (D8), so the text there matches `mise.toml` exactly.
-- Every task runs from the repo root, which is mise's default for a task in the root `mise.toml`. Each `run` entry starts a new shell, so `check-server`'s second entry runs from the repo root, as the recipe's second line does. The same mise trial confirmed this.
+- **Why the bodies use subshells `(...)` for `cd`:** wrapping directory changes in subshells ensures compound commands preserve the repository root working directory when a contributor runs them sequentially in an interactive POSIX shell. `CONTRIBUTING.md` lists these same four commands for the hand-install route (D8), so the text there matches `mise.toml` exactly.
+- Every task runs from the repo root, which is mise's default for a task in the root `mise.toml`.
 
 ### D-3. CI calls `mise run <task>` directly
 
@@ -72,7 +72,7 @@ The `ci` spec's grep for tool commands outside `mise exec --` looks for `cargo`,
 
 ### D-4. The hand-install route lists the four commands
 
-`CONTRIBUTING.md`'s hand-install steps gain a numbered list of the four commands from D-2, in gate order, with one line each on what it checks. No `scripts/check.sh` is added (ledger D8), so the order lives only in `mise.toml` and in that list.
+`CONTRIBUTING.md`'s hand-install steps gain a numbered list of the four commands from D-2, in gate order, with one line each on what it checks. No `scripts/check.sh` is added (ledger D8), so the order lives only in `mise.toml` and in that list. Under `### With Nix`, it also documents how Nix contributors run checks (running the four gate commands in the shell, or `mise run check` on the host) until issue #502 removes the Nix route.
 
 ### D-5. Purpose of the `dev-commands` spec
 
