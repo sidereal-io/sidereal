@@ -16,8 +16,41 @@ fail() { echo "check-mise-lock-platforms: FAILED: $*" >&2; exit 1; }
 # Exit 2 means no tool entry: a layout this script cannot read must not pass.
 status=0
 awk -v required="$required_platforms" -v exceptions="$exceptions" '
-    /^\[\[tools\..+\]\]$/ { tools++ }
-    END { if (!tools) exit 2 }
-' "$lock" || status=$?
+    function unquote(name) {
+        if (name ~ /^".*"$/) name = substr(name, 2, length(name) - 2)
+        return name
+    }
+    /^\[\[tools\..+\]\]$/ {
+        name = $0
+        sub(/^\[\[tools\./, "", name)
+        sub(/\]\]$/, "", name)
+        tool[++tools] = unquote(name)
+        next
+    }
+    /^\[tools\..+\."platforms\.[^"]+"\]$/ {
+        name = $0
+        sub(/^\[tools\./, "", name)
+        sub(/"\]$/, "", name)
+        match(name, /\."platforms\.[^"]+$/)
+        platform = substr(name, RSTART + length(".\"platforms."))
+        has[unquote(substr(name, 1, RSTART - 1)), platform] = 1
+    }
+    END {
+        if (!tools) exit 2
+        split(exceptions, excepted)
+        for (i in excepted) skip[excepted[i]] = 1
+        n = split(required, platforms)
+        for (t = 1; t <= tools; t++) {
+            if (tool[t] in skip) continue
+            missing = ""
+            for (p = 1; p <= n; p++)
+                if (!((tool[t], platforms[p]) in has)) missing = missing " " platforms[p]
+            if (missing != "") {
+                print "check-mise-lock-platforms: FAILED: " tool[t] " lacks" missing
+                exit 1
+            }
+        }
+    }
+' "$lock" >&2 || status=$?
 [ "$status" -ne 2 ] || fail "$lock holds no [[tools.*]] entry"
 exit "$status"
