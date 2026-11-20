@@ -105,6 +105,10 @@ description = "Run the server and web shell together; Ctrl-C stops both"
 run = "sh scripts/dev.sh"
 raw = true
 
+[tasks.e2e]
+description = "Run the Playwright end-to-end suite; the database fixture must be up"
+run = "sh scripts/e2e.sh"
+
 [tasks.db-tls]
 description = "Generate local fixture certificates without requiring Docker"
 run = "sh server/scripts/db-tls.sh"
