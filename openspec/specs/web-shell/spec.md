@@ -143,7 +143,7 @@ The web shell's dev server SHALL listen on port 5173 and on loopback addresses o
 
 #### Scenario: Port 5173 is taken
 
-- **WHEN** another process listens on port 5173, and a contributor runs `mise run web`
+- **WHEN** another process listens on port 5173, and a contributor runs `just web`
 - **THEN** the command exits with a non-zero status
 - **AND** the web shell's dev server listens on no port
 
