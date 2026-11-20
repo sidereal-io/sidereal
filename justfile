@@ -40,27 +40,7 @@ server:
 web:
     cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm dev
 
-# The gate to pass before every PR: Compose configuration, OpenSpec, server, then web.
-check: check-compose check-openspec check-server check-web
-
-# Check Compose installation wiring; needs the Compose CLI and jq, no daemon.
-check-compose:
-    @sh scripts/compose-config-check.sh
-
-# OpenSpec gate: strict validation of every spec and active change. Warnings fail it.
-check-openspec:
-    OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive
-
-# Server gate: format, lint (deny warnings), tests, dependency-direction lint.
-check-server:
-    cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-    server/scripts/check-arch.sh
-
-# Web gate: install from the lockfile, then type check, lint, format, DESIGN.md lint, token drift, tests.
-check-web:
-    cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test
-
-# Needs Docker, and takes minutes, so `check` does not run it.
+# Needs Docker, and takes minutes, so `mise run check` does not run it.
 # Build the app image, start a disposable Compose instance, check it, and remove it.
 instance-verify:
     @sh scripts/instance-verify.sh
