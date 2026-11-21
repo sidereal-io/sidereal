@@ -28,8 +28,8 @@ Source execution SHALL create no Asset.
 `POST /api/assets` SHALL accept one multipart file field named `file`, with a
 nonempty display filename. Malformed multipart data, no file, an empty
 filename, or more than one field SHALL return 400 and create no Asset. A
-successful first upload SHALL return 201 with an `asset` object using the same
-entry fields as the library list.
+successful first upload SHALL return 201 with an `asset` object using the same entry fields as
+the library list.
 
 #### Scenario: One PNG
 - **WHEN** Nova sends one recognized PNG below the limit
@@ -38,6 +38,21 @@ entry fields as the library list.
 #### Scenario: More than one file
 - **WHEN** a request contains two file fields
 - **THEN** the response is 400 and neither file creates an Asset
+
+### Requirement: Upload data ends at the closing delimiter
+
+An upload's multipart data SHALL end at its closing delimiter. A body that
+ends or fails before the closing delimiter SHALL return 400 and create no
+Asset. Bytes after the closing delimiter are an epilogue: upload SHALL ignore
+them, as RFC 2046 says.
+
+#### Scenario: Body cut off before the closing delimiter
+- **WHEN** a request holds a complete recognized PNG part, but the body ends before the closing delimiter
+- **THEN** the response is 400, no Asset or version is committed, and the object store's file list is unchanged
+
+#### Scenario: Epilogue after the closing delimiter
+- **WHEN** a request holds one recognized PNG part and its closing delimiter, followed by other bytes
+- **THEN** the response is 201 and the Asset's original is the PNG's bytes
 
 ### Requirement: Upload enforces a 100 MiB size limit
 

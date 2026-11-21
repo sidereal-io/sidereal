@@ -24,8 +24,9 @@ server or web shell, and SHALL ignore an inherited `DATABASE_URL` and
 ### Requirement: The end-to-end suite removes its stack and refuses a stack it cannot make
 
 When a `mise run e2e` run ends, whether its tests pass or fail, it SHALL stop
-the server it started, remove the storage folder it made, and drop the
-database it made, attempting each step even when an earlier one failed. When
+whichever server it started is running, remove the run folder it made, which
+holds the storage folder, and drop the database it made, attempting each step
+even when an earlier one failed. When
 the tests pass but cleanup fails, the run SHALL exit with a non-zero status
 and name what it left behind. When it cannot make the database or the folder,
 it SHALL exit with a non-zero status before any browser test runs.
@@ -34,7 +35,13 @@ it SHALL exit with a non-zero status before any browser test runs.
 
 - **WHEN** a browser test fails during `mise run e2e`
 - **THEN** the command exits with a non-zero status
-- **AND** afterwards the fixture holds no database that the run created, and the run's storage folder no longer exists
+- **AND** afterwards the fixture holds no database that the run created, and the run's folder no longer exists
+
+#### Scenario: The run is interrupted during a restart
+
+- **WHEN** a `mise run e2e` run receives `SIGINT` while it is restarting its server
+- **THEN** afterwards no server that the run started is running
+- **AND** the run's folder no longer exists, and the fixture holds no database that the run created
 
 #### Scenario: The throwaway database cannot be made
 
@@ -46,7 +53,17 @@ it SHALL exit with a non-zero status before any browser test runs.
 When anything already accepts connections on a port that `mise run e2e`
 needs, it SHALL exit with a non-zero status before any browser test runs. It
 SHALL send HTTP requests to its server only after the server it started has
-reported that it is listening on the chosen port.
+reported that it is listening on the chosen port and is still running.
+
+#### Scenario: The server exits without reporting that it listens
+
+- **WHEN** the runner's readiness wait watches a child that exits without printing `sidereal-server listening on`
+- **THEN** the wait fails, and the runner sends no HTTP request to the chosen port
+
+#### Scenario: The server reports another port
+
+- **WHEN** the runner's readiness wait watches a running child that prints `sidereal-server listening on` with a port other than the chosen one
+- **THEN** the wait does not succeed, and the runner sends no HTTP request to the chosen port
 
 #### Scenario: Another process holds the server port
 
@@ -54,3 +71,17 @@ reported that it is listening on the chosen port.
 - **WHEN** a contributor runs `mise run e2e`
 - **THEN** the command exits with a non-zero status before Playwright starts any browser test
 - **AND** the other process receives no HTTP request from the run
+
+### Requirement: The end-to-end runner owns and restarts its server
+
+A `mise run e2e` run SHALL be the only owner of the servers it starts: each
+one, including a server started for a restart, SHALL be the run's own child
+process. A browser test SHALL ask the run to restart its server by sending it
+`SIGUSR1`. The run's storage folder SHALL hold nothing but what the server
+writes there.
+
+#### Scenario: A browser test restarts the server
+
+- **WHEN** a browser test sends `SIGUSR1` to the run during `mise run e2e`
+- **THEN** the run stops its server, starts a new one as its own child with the same database and storage folder, and reports it ready only after the new server's listening line
+- **AND** the storage folder holds no process or log file of the run

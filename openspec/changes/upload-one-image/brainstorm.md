@@ -28,6 +28,8 @@ Story of Size M.
 | D15 | What about a bind mount that puts `STORAGE_ROOT` inside `WEB_ROOT`? | Treat it like a symbolic link written into `WEB_ROOT`. Keep D11's startup check. `docs/install.md` warns that no mount or link may expose `STORAGE_ROOT` inside `WEB_ROOT`, and the spec names the case as outside the check. | User (plan review round 2, finding 1) |
 | D16 | Does fetching an original re-hash its bytes? | No. The spec says retrieval returns the bytes stored at the version's hash path. Detecting a damaged or replaced file belongs to the later verify-and-repair feature. A missing or unreadable file still gets 503. | User (plan review round 2, finding 9) |
 | D17 | How do the browser tests share the one throwaway stack? | The e2e suite runs with one worker everywhere. The upload journey runs serially with no retries. | User (plan review round 2, finding 5) |
+| D18 | Which `WEB_ROOT` does the file server use? | Startup resolves `WEB_ROOT` once, with symbolic links followed, and uses that one folder for the overlap check, the `index.html` check and the file server. A `WEB_ROOT` link that is repointed after startup takes effect only after a restart. | User (plan review round 3, finding 1) |
+| D19 | Where does an upload's multipart data end? | At the closing delimiter, which ends validation. Bytes after it are an epilogue (RFC 2046) and are ignored. A body that ends or fails before the closing delimiter gets 400 and commits nothing. | User (plan review round 3, finding 2) |
 
 ## Changes from the story
 

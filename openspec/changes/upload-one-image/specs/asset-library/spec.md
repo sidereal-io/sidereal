@@ -50,26 +50,39 @@ objects. A database failure SHALL return 503 rather than an empty library.
 media type and the bytes stored at the current version's hash path. While the
 object is intact, these are the exact uploaded bytes. Retrieval SHALL NOT
 re-hash them; finding a damaged or replaced object is left to a later
-verify-and-repair feature. Unknown Asset ids SHALL return 404. A missing or
-unreadable object, or unavailable storage, SHALL return a clear 503 and leave
-the Asset and its version unchanged.
+verify-and-repair feature. Unknown Asset ids SHALL return 404.
 
 #### Scenario: Original is a JPEG despite its filename
 - **WHEN** Nova retrieves an accepted JPEG whose name ends in `.png`
 - **THEN** the response body is the uploaded bytes and its Content-Type is `image/jpeg`
 
-#### Scenario: Original is missing
-- **WHEN** an Asset exists but its original object is missing or unreadable
-- **THEN** original retrieval returns 503 and the Asset and version remain unchanged
-
 #### Scenario: Unknown Asset
 - **WHEN** an administrator requests an original for an id not in the library
 - **THEN** the response is 404 and contains no file bytes
 
+### Requirement: A failed original read never looks complete
+
+When storage is unavailable, or the object is missing, cannot be opened or is
+not a regular file, retrieval SHALL find this before the response starts,
+return a clear 503 and leave the Asset and its version unchanged. When a read
+fails after the response has started, the server SHALL abort the response
+before its end, so that the client never receives a complete body, and SHALL
+log the failure.
+
+#### Scenario: Original is missing
+- **WHEN** an Asset exists but its original object is missing, cannot be opened or is not a regular file
+- **THEN** original retrieval returns 503 and the Asset and version remain unchanged
+
+#### Scenario: Read fails during the transfer
+- **WHEN** reading an original fails after some of its bytes have been sent
+- **THEN** the client sees a failed transfer, not a complete 200 body
+- **AND** the Asset and version remain unchanged
+
 ### Requirement: Original responses are private and never sniffed
 
-Every original response SHALL send `X-Content-Type-Options: nosniff` and
-`Cache-Control: no-store`.
+Every original response that carries file bytes (status 200) SHALL send
+`X-Content-Type-Options: nosniff` and `Cache-Control: no-store`. The session
+guard's 401 responses carry no file bytes and keep their existing headers.
 
 #### Scenario: Original response headers
 - **WHEN** Nova retrieves the original of an accepted PNG

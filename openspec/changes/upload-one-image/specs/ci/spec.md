@@ -24,3 +24,13 @@ The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-u
 
 - **WHEN** a reviewer runs `yq '.jobs.server.steps[], .jobs.e2e.steps[] | select(.run == "mise run db-down") | .if' .github/workflows/ci.yml`
 - **THEN** the output is exactly two lines, each `always()`
+
+### Requirement: The e2e job builds the server before the end-to-end gate
+
+The `e2e` job SHALL run these steps in order: start the database fixture, build the server, install Chromium with its system libraries, run `mise run e2e`, and stop the fixture. Building first keeps compiling out of the end-to-end runner's 300-second wait for the server's listening line. Chromium's system libraries need root, which the `e2e` task does not have, so they install in their own step.
+
+#### Scenario: The server is built before the browser and the gate
+
+- **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml`
+- **THEN** a line containing `mise exec -- cargo build -p sidereal-server` comes before a line containing `mise exec -- pnpm exec playwright install --with-deps chromium`
+- **AND** that line comes before the line `mise run e2e`

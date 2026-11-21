@@ -79,15 +79,22 @@ A refused operation SHALL NOT alter or disclose files outside managed storage.
 
 ### Requirement: An existing object is re-hashed before reuse
 
-Before reusing an existing object, ingest SHALL read the whole object and
-compute its BLAKE3 hash. It SHALL reuse the object only when its hash and size
-match the candidate's. Otherwise ingest SHALL refuse with a storage failure,
-commit no Asset or version, and leave the object unchanged.
+Before reusing an existing object, ingest SHALL compare the object's size
+with the candidate's, and refuse without hashing when they differ. For a
+same-size object, it SHALL compute the object's BLAKE3 hash, reading no more
+than the candidate's size plus one byte. It SHALL reuse the object only when
+its hash and size match the candidate's. Otherwise ingest SHALL refuse with a
+storage failure, commit no Asset or version, and leave the object unchanged.
 
 #### Scenario: Existing object does not match its hash
-- **WHEN** an accepted upload's hash path holds a regular file whose bytes no longer hash to that path, including a file of the same size
+- **WHEN** an accepted upload's hash path holds a regular file of the same size whose bytes no longer hash to that path
 - **THEN** the upload returns 503 and no Asset or version is committed
 - **AND** the existing file's bytes, size and modification time are unchanged
+
+#### Scenario: Existing object is much larger than the candidate
+- **WHEN** an accepted upload's hash path holds a regular file far larger than the candidate
+- **THEN** the upload returns 503 and no Asset or version is committed
+- **AND** ingest reads none of that file's bytes, and the file is unchanged
 
 ### Requirement: Ingest uses the storage root that passed pairing
 
@@ -133,15 +140,32 @@ and before serving HTTP, with a message that names `STORAGE_ROOT` and
 - **WHEN** `STORAGE_ROOT` and `WEB_ROOT` resolve to folders where neither holds the other
 - **THEN** startup continues to storage pairing as before
 
+### Requirement: The server serves the web root it checked
+
+Startup SHALL resolve `WEB_ROOT` once, with symbolic links followed. The
+overlap check, the `index.html` check and the web-file fallback SHALL all use
+that resolved folder, not the configured path. A `WEB_ROOT` symbolic link
+repointed after startup SHALL change nothing that is served until the server
+restarts.
+
+#### Scenario: Web root link repointed after startup
+- **GIVEN** `WEB_ROOT` is a symbolic link to a built web folder, and the server has started with a separate `STORAGE_ROOT`
+- **WHEN** the link is repointed at the folder that holds `STORAGE_ROOT`, and a caller with no session requests a stored object's path through the web-file fallback
+- **THEN** the response contains no bytes of the object
+- **AND** `GET /` still returns the `index.html` of the folder the link named at startup
+
 ### Requirement: The installation guide covers what the overlap check cannot see
 
 The startup overlap check compares resolved paths only. A symbolic link
 created inside `WEB_ROOT`, and a bind mount or other mount that exposes the
 storage folder inside `WEB_ROOT`, are outside it. The installation guide SHALL
 state that the two folders must not overlap, and that no mount or link may
-expose `STORAGE_ROOT` inside `WEB_ROOT`.
+expose `STORAGE_ROOT` inside `WEB_ROOT`. It SHALL also say that the server
+resolves `WEB_ROOT` at startup, so a repointed `WEB_ROOT` link takes effect
+only after a restart.
 
 #### Scenario: The installation guide warns about mounts and links
 - **WHEN** a reviewer reads the section of `docs/install.md` on running the server outside the image
 - **THEN** it says that `STORAGE_ROOT` and `WEB_ROOT` must not overlap
 - **AND** it says that no mount or symbolic link may expose `STORAGE_ROOT` inside `WEB_ROOT`
+- **AND** it says that a repointed `WEB_ROOT` link takes effect only after the server restarts

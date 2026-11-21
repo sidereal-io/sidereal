@@ -59,7 +59,12 @@ upload's Asset outcome.
     `server/scripts/db-fixture.sh` that run `psql` inside the fixture
     container, as `orphan-clean` already does. The `sidereal_test_` prefix
     means `orphan-clean` also removes a database a killed run leaves behind.
-  - It creates a temporary `STORAGE_ROOT` with `mktemp -d`.
+  - It makes one run folder with `mktemp -d`. The run folder holds an empty
+    `storage/` subfolder, which is the run's `STORAGE_ROOT`, plus the process
+    files and one log for each server start (`server-1.log`, `server-2.log`,
+    and so on). Nothing else is ever written into `storage/`: pairing refuses
+    an unpaired root that holds other files (`core/src/database/pairing.rs`,
+    rule 5).
   - It ignores an inherited `DATABASE_URL` and `STORAGE_ROOT`, so it can never
     point the server at a contributor's data.
   - It picks a server port and a Vite port from the checkout, the way
@@ -69,18 +74,27 @@ upload's Asset outcome.
   - Before it starts anything, the script refuses to run, with a non-zero
     exit, if anything already accepts connections on either chosen port.
   - The script, not Playwright's `webServer`, starts the built server in the
-    background with `PORT`, `DATABASE_URL` and `STORAGE_ROOT` set, and keeps
-    its process id in the run's temporary folder. This lets the browser test
-    restart it. The test calls a restart helper that the script provides; the
-    helper stops that process id and starts the server again with the same
-    settings.
+    background with `PORT`, `DATABASE_URL` and `STORAGE_ROOT` set. The script
+    is the only owner of server processes: every server it starts, the first
+    and each replacement, is its own child. It runs Playwright as a background
+    child and `wait`s on it, so it can handle signals while the tests run.
+  - The browser test asks for a restart by sending `SIGUSR1` to the script.
+    The script passes its own process id, from `$$`, to the test as
+    `SIDEREAL_E2E_RUNNER_PID`. On `SIGUSR1` the script stops the current
+    server and waits for it to exit. It starts the next one with the same
+    settings and a new log, and waits for that log's listening line, as the
+    next item says. Then it writes `ready-<n>` in the run folder, where `<n>`
+    counts the restarts. The test waits for that file before it reloads.
   - The script trusts the server only after positive evidence that its own
     child bound the port. The server initializes the database before it binds
     (`server/src/main.rs`), so another process on that port could answer
     `/healthz` first. The script therefore waits until the child it started
     prints `sidereal-server listening on` with the chosen port, and checks
-    that the child is still running. Only then does it probe `/healthz`. The
-    restart helper waits the same way.
+    that the child is still running. Only then does it probe `/healthz`. A
+    restart waits the same way. The wait is a shell function that a test can
+    run on its own, with a stub child, so it can be tested with no timing
+    race. It waits at most 300 seconds, as `web/playwright.config.ts` allows
+    the server today.
   - `web/playwright.config.ts` reads the two port settings, starts only Vite,
     with `reuseExistingServer: false`, `--port <web port> --strictPort` and
     `SIDEREAL_DEV_PROXY_TARGET` set to the server's address. A port that is
@@ -95,8 +109,8 @@ upload's Asset outcome.
     `SIDEREAL_DEV_PROXY_TARGET` when it is set, and to `http://localhost:5000`
     otherwise, so `mise run dev` and `mise run web` keep their behaviour.
   - A `trap` cleans up on every exit, pass or fail, in this order. It stops
-    the server it started and waits for it to exit. It removes the storage
-    folder. It drops the database with the policy of
+    whichever server is running at that moment, including one that a restart
+    has just started, and waits for it to exit. It removes the run folder. It drops the database with the policy of
     `core/src/database/test_support.rs`: up to three rounds, each trying
     `DROP DATABASE ... WITH (FORCE)` and falling back to a plain
     `DROP DATABASE` when PostgreSQL refuses the forced drop with `42501`.
@@ -106,10 +120,13 @@ upload's Asset outcome.
     orphan-clean` still removes a database left behind.
   - If the database or folder cannot be created, the script exits non-zero
     before starting anything.
-  - The restart step stops and starts only the server that this run started,
+  - A restart stops and starts only the server that this run started,
     against the same database and storage folder.
   - The CI `e2e` job no longer exports `DATABASE_URL` from `mise run db-url`,
-    because the script makes its own database.
+    because the script makes its own database. The job still builds the
+    server first, so compiling stays out of the runner's 300-second wait for
+    the listening line. Verify commands that read the workflow use Mike
+    Farah's `yq` v4, run as `mise exec yq -- yq`; this change does not pin it.
 
 ## Scrutiny Tier & Blast Radius
 
@@ -227,9 +244,15 @@ The existing libc dependency supports descriptor-relative operations.
 
 The HTTP adapter streams one multipart field to core staging in bounded
 chunks and counts actual file bytes. Do not buffer a 100 MiB request in RAM.
-After the field completes, finish parsing the entire multipart request and
-refuse any extra field or malformed trailing data before executing or committing
-an upload. Set the route's transport limit above 100 MiB to allow bounded
+After the field completes, the handler keeps reading parts until the closing
+delimiter, and refuses any extra field before executing or committing an
+upload. The closing delimiter ends validation (D19). Bytes after it are a
+multipart epilogue, which RFC 2046 says to ignore; the handler does not read
+them. axum 0.8's multipart reader stops at the closing delimiter in the same
+way. The file is complete at that point, so a later error in the rest of the
+body does not change the outcome, just as a lost response after commit does
+not. A body that ends or fails before the closing delimiter is malformed: it
+gets 400 and commits nothing. Set the route's transport limit above 100 MiB to allow bounded
 multipart overhead (1 MiB); enforce the exact 100 MiB file cap separately.
 An overlong or malformed multipart envelope gets a clear client error. Leave
 the body limits of access endpoints unchanged.
@@ -243,14 +266,17 @@ exists-then-rename sequence is insufficient.
 
 When an object already exists at the hash path, whether it was there before
 or another request just published it, ingest opens it without following
-links and checks that it is a regular file. It then reads the whole object,
-computes its BLAKE3 hash, and compares hash and size with the candidate's
-(D12). Only a match lets ingest sync the object and reuse it. A mismatch is
+links and checks that it is a regular file. It first compares the open
+object's size with the candidate's, and refuses on a mismatch without
+hashing. Only a same-size object is read and hashed with BLAKE3, and the read
+stops as soon as the object has given more bytes than the candidate holds, in
+case the file grows meanwhile (D12). Only a matching hash and size let ingest
+sync the object and reuse it. A mismatch is
 a storage failure: the response is 503, no Asset or version is committed,
 and ingest leaves the existing object as it is, never overwriting, renaming
 or deleting it. Reconciling a damaged object belongs to the later
-verify-and-repair feature. Re-hashing costs one extra read of at most
-100 MiB, only when bytes repeat.
+verify-and-repair feature. Re-hashing costs one extra read of at most the
+candidate's size, never more than 100 MiB, only when bytes repeat.
 
 Before committing, every upload syncs the whole directory chain, in this
 order: the second prefix directory (`store/{h[0:2]}/{h[2:4]}`, which holds
@@ -291,6 +317,15 @@ check uses the resolved `STORAGE_ROOT` from decision 3. It runs in
 `config.rs` after both settings are read and before the database is touched
 or HTTP is served. Its message names both `STORAGE_ROOT` and `WEB_ROOT`.
 
+Startup also resolves `WEB_ROOT` once, with symbolic links followed (D18).
+That one resolved folder is used for the overlap check, the `index.html`
+check, `ServeFile` and `ServeDir`. Today `config.rs` keeps the configured
+path, and `ServeDir` follows it again on every request (`main.rs`,
+`with_web_root` in `lib.rs`). If `WEB_ROOT` were itself a link, someone who
+repointed it after startup at a folder holding the store would expose
+originals. With the resolved folder, a repointed `WEB_ROOT` link takes
+effect only after a restart, which runs the check again.
+
 Two cases are outside the check (D11, D15): a symbolic link that someone
 writes inside `WEB_ROOT`, and a bind mount that exposes the storage folder
 inside `WEB_ROOT`. Resolving paths cannot see a bind mount, and making one
@@ -308,8 +343,15 @@ The API uses these shapes:
 - `<entry>`: `id`, `kind`, `name`, `current_version_id`, `original_url`.
 - `GET /api/assets/{id}/original`: stream the file resolved from the persisted
   current version's hash, with the pack-recognized Content-Type, nosniff and
-  no-store headers. Invalid or unknown ids get 404. A missing or unreadable
-  object gets 503.
+  no-store headers on every 200. Invalid or unknown ids get 404. Guard-made
+  401s carry no file bytes and keep their existing headers.
+
+A 503 is for a failure found before the response starts: the object is
+missing, cannot be opened, or is not a regular file, or storage is not
+configured. A read that fails after the headers are sent cannot change the
+200. The server then aborts the response before its end, so the client sees
+a failed transfer and never a complete body, and it logs the failure. The
+browser shows the display error.
 
 GET does not re-hash the object it streams (D16). It returns the bytes
 stored at the version's hash path. Re-hashing up to 100 MiB on every view
@@ -421,7 +463,9 @@ serving HTTP and retains the existing storage UUID pairing. No new deployment
 setting is required; the e2e and dev-proxy settings are for contributors only.
 `tmp/` and `store/` appear on first upload, not at pairing. An installation
 whose `STORAGE_ROOT` overlaps its `WEB_ROOT` stops at startup after the
-upgrade and must move one of them; `docs/install.md` says so.
+upgrade and must move one of them; `docs/install.md` says so. A deployment
+that repoints a `WEB_ROOT` link to switch web builds must restart the server
+for the new build to be served; `docs/install.md` says that too.
 
 Migrations remain forward-only. An old binary must refuse the newer schema.
 Prefer a forward fix. To restore a pre-change installation, stop the server

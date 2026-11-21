@@ -37,7 +37,8 @@ later import and processing stories need this foundation.
   durability, and containment of ingest and original-byte reads. Re-hash an
   existing object before reuse, resolve `STORAGE_ROOT` once and bind ingest
   to the root that passed pairing, and refuse to start when storage and the
-  web root overlap (D11, D12, D15). Existing pairing and marker-only startup
+  web root overlap. Resolve `WEB_ROOT` once and serve that resolved folder
+  (D11, D12, D15, D18). Existing pairing and marker-only startup
   requirements remain intact.
 - `postgres-foundation`: Migration 4 makes four migration records and adds the
   `assets` and `asset_versions` tables.
@@ -53,8 +54,10 @@ later import and processing stories need this foundation.
   end-to-end runner only.
 - `dev-commands`: `mise run e2e` runs on its own throwaway database, storage
   folder, server and web shell, refuses a port that is already in use, and
-  removes them afterward (D10, D17).
-- `ci`: The `e2e` job no longer passes a database URL to `mise run e2e`.
+  removes them afterward (D10, D17). The runner owns every server it starts
+  and restarts it when a browser test sends it `SIGUSR1`.
+- `ci`: The `e2e` job no longer passes a database URL to `mise run e2e`, and
+  builds the server first to keep compiling out of the runner's wait.
 
 ## Impact
 
@@ -69,7 +72,8 @@ later import and processing stories need this foundation.
 - Rust workspace manifests, lockfile and architecture lint: add the pack and
   hash dependency; enforce pack isolation for both packs.
 - `server/crates/server` config: refuse overlapping `STORAGE_ROOT` and
-  `WEB_ROOT`; `docs/install.md` says so.
+  `WEB_ROOT`, and serve the `WEB_ROOT` resolved at startup; `docs/install.md`
+  says so.
 - `web/src`: add the library within the existing signed-in view. Preserve
   health checks, access forms, sign-out and event-socket behavior.
 - `DESIGN.md`, `web/scripts/tokens.ts` and `web/src/styles/tokens.css`: six

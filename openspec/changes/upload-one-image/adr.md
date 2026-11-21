@@ -31,6 +31,13 @@ verify-and-repair keeps ADR-011's promise where it already sits, at publication
 and reuse. Resolving `STORAGE_ROOT` once keeps ADR-014's pairing on one folder.
 Running the browser suite with one worker is test configuration.
 
+The revisions after plan review round 3 (D18, D19) add no fork either.
+Serving the `WEB_ROOT` resolved at startup keeps ADR-007's trust boundary on
+the folder the overlap check compared. Ending multipart validation at the
+closing delimiter follows RFC 2046 and is an implementation choice. Runner
+process ownership and the reuse size check are test tooling and an
+ADR-011 integrity detail.
+
 ADR-012 remains Proposed and unused. ADR-013 is superseded by ADR-016; the
 plan follows the latter. No existing record was changed.
 

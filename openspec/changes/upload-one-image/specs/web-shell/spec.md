@@ -2,7 +2,7 @@
 
 ### Requirement: The web shell reaches the server through its own origin
 
-In development, the web shell SHALL request the server's health at `/healthz` and the access routes and the events socket under `/api` on its own origin. The web shell's dev server SHALL forward `/healthz` and `/api` to the server at `http://localhost:5000`, WebSocket upgrades under `/api` included, and SHALL keep the browser's `Host` header. The server therefore needs no cross-origin settings for the web shell.
+In development, the web shell SHALL request the server's health at `/healthz` and the access routes and the events socket under `/api` on its own origin. Its dev server SHALL forward `/healthz` and `/api`, WebSocket upgrades included, to `http://localhost:5000`, or to `SIDEREAL_DEV_PROXY_TARGET` when the end-to-end runner sets it, and SHALL keep the browser's `Host` header. The server needs no cross-origin settings for the web shell.
 
 #### Scenario: The browser asks the web shell's origin
 
@@ -26,6 +26,13 @@ In development, the web shell SHALL request the server's health at `/healthz` an
 - **WHEN** the server and the web shell are both running and Sam is signed in at `http://localhost:5173`
 - **AND** the page opens a WebSocket to `ws://localhost:5173/api/events`
 - **THEN** the upgrade answers 101 and the socket receives `{"type":"heartbeat"}` within 35 seconds
+
+#### Scenario: The end-to-end runner names another server
+
+- **GIVEN** nothing listens on port 5000
+- **WHEN** a tester starts the server with `PORT=5901` and the web shell with `SIDEREAL_DEV_PROXY_TARGET=http://localhost:5901` and `--port 5902`
+- **AND** runs `curl -s http://localhost:5902/healthz`
+- **THEN** the output is `{"status":"ok"}`
 
 ### Requirement: The web shell's dev server stays on this machine
 
@@ -57,15 +64,3 @@ The access section SHALL take every color, size, radius and font from the token 
 
 - **WHEN** a reviewer runs `grep -cE 'var\(--sr-(violet-600|white|obsidian-100|obsidian-400|obsidian-800)\)' web/src/Access.css`
 - **THEN** the output is `0`
-
-## ADDED Requirements
-
-### Requirement: The end-to-end runner can point the dev server at its own server
-
-When `SIDEREAL_DEV_PROXY_TARGET` is set, the web shell's dev server SHALL forward `/healthz` and `/api` to that address instead of `http://localhost:5000`, with the same WebSocket and `Host` behaviour. Only the end-to-end runner sets it.
-
-#### Scenario: The end-to-end runner names another server
-
-- **WHEN** a tester starts the server with `PORT=5901` and the web shell with `SIDEREAL_DEV_PROXY_TARGET=http://localhost:5901` and `--port 5902`
-- **AND** runs `curl -s http://localhost:5902/healthz`
-- **THEN** the output is `{"status":"ok"}`
