@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Access from "./Access.tsx";
+import accessCss from "./Access.css?raw";
 import "./styles/tokens.css";
 import { stubWebSocket, type FakeWebSocket } from "./testing/fakeWebSocket.ts";
 
@@ -37,15 +38,19 @@ const signedOut: Record<string, Answer> = {
   "GET /api/session": [401, { error: "unauthenticated" }],
 };
 
-// jsdom applies stylesheets but does not resolve var(), so follow one var()
-// to its value on :root, as a browser would.
+// jsdom applies stylesheets but does not resolve var(), so follow each var()
+// to its value on :root, as a browser would. A semantic token is var() of a
+// primitive, so the chain can be more than one step long.
 function computed(element: Element, property: string): string {
-  const value = getComputedStyle(element).getPropertyValue(property).trim();
-  const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
-  if (!token) return value;
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue(token)
-    .trim();
+  let value = getComputedStyle(element).getPropertyValue(property).trim();
+  for (let step = 0; step < 10; step++) {
+    const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
+    if (!token) return value;
+    value = getComputedStyle(document.documentElement)
+      .getPropertyValue(token)
+      .trim();
+  }
+  throw new Error(`${property} does not resolve to a value`);
 }
 
 // The rgb() form a browser reports for a color.
@@ -267,6 +272,14 @@ describe("Access", () => {
     render(<Access />);
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     await screen.findByRole("button", { name: "Sign in" });
+  });
+
+  it("uses no primitive whose role has a semantic token", () => {
+    expect(
+      accessCss.match(
+        /var\(--sr-(violet-600|white|obsidian-100|obsidian-400|obsidian-800)\)/g,
+      ),
+    ).toBeNull();
   });
 
   it("styles the submit button from the tokens", async () => {

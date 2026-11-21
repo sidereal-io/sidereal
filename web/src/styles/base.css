@@ -6,6 +6,6 @@
 body {
   margin: 0;
   background-color: var(--sr-obsidian-950);
-  color: var(--sr-obsidian-100);
+  color: var(--sr-color-text-body);
   font-family: var(--sr-font-family-sans);
 }

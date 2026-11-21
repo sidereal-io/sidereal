@@ -83,8 +83,22 @@ generated from it, so never edit that file by hand.
 4. Commit `DESIGN.md` and `src/styles/tokens.css` together.
 
 If `pnpm tokens` refuses a token, its message names the token and says what is
-wrong. Semantic and component tokens are refused until the generator can
-resolve references.
+wrong.
+
+A semantic token, under `x-sidereal.semantic`, names one primitive. Its value
+must be exactly `{<group>.<key>}`, such as `"{colors.violet-600}"` or
+`"{font-size.font-size-14}"`, where the group is `colors`, `rounded`,
+`spacing`, or a group under `x-sidereal`. The generator writes it as `var()` of
+that primitive: `--sr-color-action-primary: var(--sr-violet-600);`. It still
+refuses:
+
+- a raw value, such as `"#7C3AED"`;
+- a reference to a primitive that does not exist, or to another semantic token;
+- any text before or after the reference, such as `"{colors.violet-600}; }"`;
+- every component token, under `components`.
+
+The Penpot export (`pnpm tokens:penpot`) carries primitives only, so it leaves
+semantic tokens out.
 
 When you change a color, update its rows in the table under `### Contrast` in
 `DESIGN.md`. The contrast test checks every ratio in that table.

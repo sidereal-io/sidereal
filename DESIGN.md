@@ -3,8 +3,8 @@ version: alpha
 name: Sidereal
 description: >-
   Dark, instrument-like interface for an astrophotography system of record.
-  Tokens here are Tier 1 primitives only; semantic and component tokens are
-  added when a component first needs them.
+  Tokens here are Tier 1 primitives and the Tier 2 semantic tokens that
+  components need so far; more are added when a component first needs them.
 colors:
   obsidian-950: "#0B0A0F"
   obsidian-900: "#121118"
@@ -77,7 +77,13 @@ x-sidereal:
   size:
     size-32: 32px
     size-1280: 1280px
-  semantic: {}
+  semantic:
+    color-action-primary: "{colors.violet-600}"
+    color-text-on-action: "{colors.white}"
+    color-text-body: "{colors.obsidian-100}"
+    color-text-secondary: "{colors.obsidian-400}"
+    color-border-hairline: "{colors.obsidian-800}"
+    color-focus-ring: "{colors.violet-500}"
 components: {}
 ---
 
@@ -122,21 +128,21 @@ Tokens come in three tiers: **primitives, semantic tokens, and component tokens*
 
 The palette has one tinted neutral family, two violets for interaction, three
 data colors, a success green, and white. The usage table below is guidance for
-the first components; each row becomes a semantic token when a component first
-needs it.
+components. A row that names a semantic token has one, and components use that
+token. Each other row becomes a semantic token when a component first needs it.
 
 | When a component needs… | Use | Rule |
 |---|---|---|
 | The page background | `obsidian-950` | |
 | A raised panel, card, or table row | `obsidian-900` | |
 | A popover, dialog, or menu | `obsidian-850` | Edge it with `obsidian-700`. |
-| A hairline border | `obsidian-800` | Always `border-width-1`. |
-| Body text | `obsidian-100` | A warm off-white, easier on the eye than pure white. |
-| Secondary text | `obsidian-400` | |
+| A hairline border | `color-border-hairline` (`obsidian-800`) | Always `border-width-1`. |
+| Body text | `color-text-body` (`obsidian-100`) | A warm off-white, easier on the eye than pure white. |
+| Secondary text | `color-text-secondary` (`obsidian-400`) | |
 | Muted text that must still be read: placeholders, metadata keys, timestamps | `obsidian-500` | |
 | Disabled text and decorative separators | `obsidian-600` | Never for text a person needs to read. |
-| A filled primary action with a text label | `violet-600`, label `white` | One primary action per view. |
-| A focus ring, selection outline, or live-work glow | `violet-500` | No text on top of it. |
+| A filled primary action with a text label | `color-action-primary` (`violet-600`), label `color-text-on-action` (`white`) | One primary action per view. |
+| A focus ring, selection outline, or live-work glow | `color-focus-ring` (`violet-500`) for a focus ring; `violet-500` for the others | No text on top of it. |
 | Telemetry values: temperature, connection, focal length | `cyan-500` | Data only, never an action. |
 | Exposure and calibration notices | `amber-500` | Data only, never an action. |
 | Status: success, warning, error, info | `emerald-400`, `amber-500`, `red-500`, `cyan-500` | Show a status only inside a badge. Outside badges, `amber-500` and `cyan-500` carry only the data uses above. |
@@ -278,9 +284,9 @@ token; see [How tokens grow](#how-tokens-grow).
 
 ## How tokens grow
 
-Tokens come in three tiers. Each tier builds on the one below it. Only Tier 1
-exists today; Tiers 2 and 3 grow one token at a time, when a component first
-needs them.
+Tokens come in three tiers. Each tier builds on the one below it. Tier 1 is
+complete for the palette and scales above. Tiers 2 and 3 grow one token at a
+time, when a component first needs them.
 
 | Tier | Holds | Name structure | Examples |
 |---|---|---|---|
