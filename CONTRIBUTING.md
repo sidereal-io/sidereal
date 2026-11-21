@@ -336,7 +336,7 @@ When you change one of these, change both routes in the same pull request.
 
 Never write a Rust release number in a build file or a document. The channel decides it, with `flake.lock` on the Nix route and rustup on the mise route.
 
-Dependabot proposes updates to these pins every week: `flake.lock`, `server/Cargo.lock`, and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec, Rust and `flake.nix` alone. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
+Dependabot proposes updates to these pins every week: `flake.lock`, `server/Cargo.lock`, and the packages in `web/`. See [Reviewing a pin update](#reviewing-a-pin-update). Dependabot does not read `mise.toml`. Instead, the weekly `mise-tool-updates.yml` workflow opens one pull request that moves Node, pnpm and `gh` within their major versions, and Let's Spec to its newest release, in `mise.toml` and `mise.lock`. It leaves OpenSpec, Rust and `flake.nix` alone. The pull request changes only `mise.toml`, `mise.lock` and the files `lets sync` writes: `scripts/apply-mise-tool-update.sh` refuses any other file before the workflow opens it. See [Dependency updates](docs/dependency-updates.md#weekly-mise-tool-updates).
 
 **Product versions** are Sidereal's own version numbers.
 
