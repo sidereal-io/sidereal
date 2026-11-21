@@ -57,25 +57,6 @@ Every step in `.github/workflows/ci.yml` SHALL run each command that needs a too
 - **THEN** the output is at least one line
 - **AND** every line of the output is `mise exec -- {0}`
 
-### Requirement: CI runs the database fixture through its mise tasks
-
-The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-up`, and SHALL stop it with `mise run db-down` in a step that runs even when an earlier step failed. The `server` job SHALL read its test URL from `mise run db-test-url`, and the `e2e` job SHALL read its runtime URL from `mise run db-url`.
-
-#### Scenario: The server job uses the fixture tasks
-
-- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+'`
-- **THEN** the output is exactly three lines, in this order: `mise run db-up`, `mise run db-test-url`, `mise run db-down`
-
-#### Scenario: The e2e job uses the fixture tasks
-
-- **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+'`
-- **THEN** the output is exactly three lines, in this order: `mise run db-up`, `mise run db-url`, `mise run db-down`
-
-#### Scenario: The fixture stops after a failure
-
-- **WHEN** a reviewer runs `yq '.jobs.server.steps[], .jobs.e2e.steps[] | select(.run == "mise run db-down") | .if' .github/workflows/ci.yml`
-- **THEN** the output is exactly two lines, each `always()`
-
 ### Requirement: Every CI job runs its checks as one task
 
 Every job in `.github/workflows/ci.yml` SHALL run its checks as one mise task, and SHALL run no check that the task does not run. The `lets-spec` and `e2e` jobs are exempt from this requirement only. They still install their tools from `mise.lock` and run them through mise.
@@ -589,3 +570,21 @@ The checks are those of `mise run check-openspec`: strict validation of every sp
 - **WHEN** a reviewer runs `grep -o 'secrets\.[A-Z_]*' .github/workflows/mise-tool-updates.yml | sort -u`
 - **THEN** the output is exactly one line: `secrets.DEPENDABOT_MERGE_APP_PRIVATE_KEY`
 
+### Requirement: CI runs the database fixture through its mise tasks
+
+The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-up`, and SHALL stop it with `mise run db-down` in a step that runs even when an earlier step failed. The `server` job SHALL read its test URL from `mise run db-test-url`, and the `e2e` job SHALL read its runtime URL from `mise run db-url`.
+
+#### Scenario: The server job uses the fixture tasks
+
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+'`
+- **THEN** the output is exactly three lines, in this order: `mise run db-up`, `mise run db-test-url`, `mise run db-down`
+
+#### Scenario: The e2e job uses the fixture tasks
+
+- **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -oE 'mise run db-[a-z-]+'`
+- **THEN** the output is exactly three lines, in this order: `mise run db-up`, `mise run db-url`, `mise run db-down`
+
+#### Scenario: The fixture stops after a failure
+
+- **WHEN** a reviewer runs `yq '.jobs.server.steps[], .jobs.e2e.steps[] | select(.run == "mise run db-down") | .if' .github/workflows/ci.yml`
+- **THEN** the output is exactly two lines, each `always()`

@@ -6,78 +6,6 @@ The tasks in `mise.toml` run the server, the web shell and the database fixture 
 
 ## Requirements
 
-### Requirement: mise tasks run the development commands
-
-`mise.toml` SHALL define fourteen development tasks, for the database fixture, the server and the web shell, the end-to-end suite, and the disposable deployment checks. A contributor runs each one as `mise run <task>` from the repo root.
-
-Each task SHALL have a description, which `mise tasks ls` prints.
-
-#### Scenario: The development tasks exist
-
-- **WHEN** a reviewer runs `mise tasks ls --no-header` at the repo root
-- **THEN** the output includes `db-up`, `db-down`, `db-clean`, `db-url`, `db-test-url`, `db-test-clean`, `db-tls`, `db-schema`, `server`, `web`, `dev`, `e2e`, `instance-verify` and `external-db-verify`
-
-#### Scenario: Every task says what it does
-
-- **WHEN** a reviewer runs `mise tasks ls --json | jq -r '.[] | select((.description // "") == "") | .name'` at the repo root
-- **THEN** the output is empty
-
-### Requirement: The development tasks run without mise
-
-Each development task SHALL run one shell command line, or one POSIX `sh` script, that works without mise on `PATH`, once the tools it needs are installed. No script that a task runs SHALL start `mise` or `just`. `CONTRIBUTING.md` SHALL list, for each development task, the command or script that the task runs, for contributors with neither mise nor Nix.
-
-#### Scenario: The listed commands match the tasks
-
-- **WHEN** a reviewer compares the command that `CONTRIBUTING.md` lists for each development task with the output of `mise tasks info <task> --json | jq -r '.run[]'`
-- **THEN** each pair is the same command
-
-#### Scenario: A contributor without mise runs the stack
-
-- **GIVEN** a shell with no `mise` and no `just` on `PATH`, the hand-installed tools that `CONTRIBUTING.md` lists, a prepared PostgreSQL fixture, and `DATABASE_URL` set to the fixture's runtime URL
-- **WHEN** the contributor runs, from the repo root, the command that `CONTRIBUTING.md` lists for `dev`
-- **AND** opens `http://localhost:5173` once the server has built
-- **THEN** the page shows `healthy`
-
-#### Scenario: A contributor without mise runs the end-to-end suite
-
-- **GIVEN** a shell with no `mise` and no `just` on `PATH`, the hand-installed tools that `CONTRIBUTING.md` lists, a prepared PostgreSQL fixture, and no `DATABASE_URL` set
-- **WHEN** the contributor runs, from the repo root, the command that `CONTRIBUTING.md` lists for `e2e`
-- **THEN** the command exits with status 0
-
-### Requirement: No justfile and no v0.10.x tasks
-
-The repo SHALL have no root `justfile`. `mise.toml` SHALL name no `just` tool, and `mise.lock` SHALL pin no `just` release. No mise task SHALL run or check the v0.10.x app, whose commands live on the `v0.x` branch.
-
-#### Scenario: The justfile is gone
-
-- **WHEN** a reviewer runs `git ls-files justfile Justfile .justfile` at the repo root
-- **THEN** the output is empty
-
-#### Scenario: mise installs no just
-
-- **WHEN** a reviewer runs `mise ls --current --json | jq 'has("just")'` at the repo root
-- **THEN** the output is `false`
-- **AND** `mise.lock` has no `[[tools.just]]` entry
-
-#### Scenario: A contributor runs an old v0 command
-
-- **WHEN** a contributor runs `mise run v0-dev` or `mise run v0-frontend` at the repo root
-- **THEN** the command exits with a non-zero status
-
-#### Scenario: A reviewer reads the task names
-
-- **WHEN** a reviewer runs `mise tasks ls --no-header` at the repo root
-- **THEN** no task name starts with `v0` or `v2`
-
-### Requirement: mise.toml defines the gate tasks
-
-`mise.toml` SHALL define the gate as five tasks: `check-compose`, `check-openspec`, `check-server`, `check-web` and `check`. A contributor runs each one as `mise run <task>`.
-
-#### Scenario: The five tasks exist
-
-- **WHEN** a reviewer runs `mise tasks ls --no-header` at the repo root
-- **THEN** the output includes `check-compose`, `check-openspec`, `check-server`, `check-web` and `check`
-
 ### Requirement: The web shell runs on its own
 
 `mise run web` SHALL install the web shell's dependencies from `web/pnpm-lock.yaml`, then start the web shell's dev server. It SHALL NOT change `web/pnpm-lock.yaml`. It SHALL stop with an error when the lockfile does not match `web/package.json`.
@@ -195,8 +123,9 @@ The unit tests SHALL include the contrast test for `DESIGN.md`.
 
 - **GIVEN** a prepared compatible database and configured `DATABASE_URL`
 - **WHEN** `mise run dev` is running and the contributor presses Ctrl-C
-- **THEN** `mise run dev` exits
+- **THEN** `mise run dev` exits with status 130
 - **AND** within 5 seconds nothing listens on port 5000 or port 5173
+- **AND** nothing that `mise run dev` started is still running, including a process whose parent exited before the interrupt
 
 #### Scenario: The terminal keeps earlier output
 
@@ -211,6 +140,22 @@ The unit tests SHALL include the contrast test for `DESIGN.md`.
 - **WHEN** another process listens on port 5173, and a contributor runs `mise run dev`
 - **THEN** `mise run dev` exits with a non-zero status within 10 seconds
 - **AND** nothing that `mise run dev` started is still running
+
+#### Scenario: The web shell fails just before the server stops
+
+- **WHEN** the web shell exits with status 23, and the server exits with status 0 less than a second later
+- **THEN** `mise run dev` exits with status 23
+
+#### Scenario: The web shell fails just after the server stops
+
+- **WHEN** the server exits with status 0, and the web shell exits with status 23 less than a second later
+- **THEN** `mise run dev` exits with status 23
+
+#### Scenario: A service exits and leaves a child running
+
+- **WHEN** the web shell starts a child process and then exits with status 23, while the server keeps running
+- **THEN** `mise run dev` exits with status 23
+- **AND** the web shell's child process is no longer running
 
 ### Requirement: Root tasks report fixture connection settings
 
@@ -424,3 +369,75 @@ Only one run of `mise run instance-verify` SHALL work on a checkout at a time. A
 - **GIVEN** a prepared PostgreSQL fixture, with `TEST_DATABASE_URL` set to the URL `mise run db-test-url` prints
 - **WHEN** a contributor runs `mise run check` at the repo root on an unchanged checkout
 - **THEN** the command exits with status 0
+
+### Requirement: mise tasks run the development commands
+
+`mise.toml` SHALL define fourteen development tasks, for the database fixture, the server and the web shell, the end-to-end suite, and the disposable deployment checks. A contributor runs each one as `mise run <task>` from the repo root.
+
+Each task SHALL have a description, which `mise tasks ls` prints.
+
+#### Scenario: The development tasks exist
+
+- **WHEN** a reviewer runs `mise tasks ls --no-header` at the repo root
+- **THEN** the output includes `db-up`, `db-down`, `db-clean`, `db-url`, `db-test-url`, `db-test-clean`, `db-tls`, `db-schema`, `server`, `web`, `dev`, `e2e`, `instance-verify` and `external-db-verify`
+
+#### Scenario: Every task says what it does
+
+- **WHEN** a reviewer runs `mise tasks ls --json | jq -r '.[] | select((.description // "") == "") | .name'` at the repo root
+- **THEN** the output is empty
+
+### Requirement: The development tasks run without mise
+
+Each development task SHALL run one shell command line, or one POSIX `sh` script, that works without mise on `PATH`, once the tools it needs are installed. No script that a task runs SHALL start `mise` or `just`. `CONTRIBUTING.md` SHALL list, for each development task, the command or script that the task runs, for contributors with neither mise nor Nix.
+
+#### Scenario: The listed commands match the tasks
+
+- **WHEN** a reviewer compares the command that `CONTRIBUTING.md` lists for each development task with the output of `mise tasks info <task> --json | jq -r '.run[]'`
+- **THEN** each pair is the same command
+
+#### Scenario: A contributor without mise runs the stack
+
+- **GIVEN** a shell with no `mise` and no `just` on `PATH`, the hand-installed tools that `CONTRIBUTING.md` lists, a prepared PostgreSQL fixture, and `DATABASE_URL` set to the fixture's runtime URL
+- **WHEN** the contributor runs, from the repo root, the command that `CONTRIBUTING.md` lists for `dev`
+- **AND** opens `http://localhost:5173` once the server has built
+- **THEN** the page shows `healthy`
+
+#### Scenario: A contributor without mise runs the end-to-end suite
+
+- **GIVEN** a shell with no `mise` and no `just` on `PATH`, the hand-installed tools that `CONTRIBUTING.md` lists, a prepared PostgreSQL fixture, and no `DATABASE_URL` set
+- **WHEN** the contributor runs, from the repo root, the command that `CONTRIBUTING.md` lists for `e2e`
+- **THEN** the command exits with status 0
+
+### Requirement: No justfile and no v0.10.x tasks
+
+The repo SHALL have no root `justfile`. `mise.toml` SHALL name no `just` tool, and `mise.lock` SHALL pin no `just` release. No mise task SHALL run or check the v0.10.x app, whose commands live on the `v0.x` branch.
+
+#### Scenario: The justfile is gone
+
+- **WHEN** a reviewer runs `git ls-files justfile Justfile .justfile` at the repo root
+- **THEN** the output is empty
+
+#### Scenario: mise installs no just
+
+- **WHEN** a reviewer runs `mise ls --current --json | jq 'has("just")'` at the repo root
+- **THEN** the output is `false`
+- **AND** `mise.lock` has no `[[tools.just]]` entry
+
+#### Scenario: A contributor runs an old v0 command
+
+- **WHEN** a contributor runs `mise run v0-dev` or `mise run v0-frontend` at the repo root
+- **THEN** the command exits with a non-zero status
+
+#### Scenario: A reviewer reads the task names
+
+- **WHEN** a reviewer runs `mise tasks ls --no-header` at the repo root
+- **THEN** no task name starts with `v0` or `v2`
+
+### Requirement: mise.toml defines the gate tasks
+
+`mise.toml` SHALL define the gate as five tasks: `check-compose`, `check-openspec`, `check-server`, `check-web` and `check`. A contributor runs each one as `mise run <task>`.
+
+#### Scenario: The five tasks exist
+
+- **WHEN** a reviewer runs `mise tasks ls --no-header` at the repo root
+- **THEN** the output includes `check-compose`, `check-openspec`, `check-server`, `check-web` and `check`
