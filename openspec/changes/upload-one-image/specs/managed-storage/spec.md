@@ -15,15 +15,20 @@ directories when first needed.
 ### Requirement: Ingest publishes durable objects before library records
 
 Ingest SHALL sync the complete staged file, atomically publish it at
-`store/{h[0:2]}/{h[2:4]}/{h}` where `h` is the lowercase hexadecimal hash, and
-sync the containing directory and newly created ancestor entries before
-committing any Asset or version. Failure of any required write, sync or
-publication SHALL prevent the database commit.
+`store/{h[0:2]}/{h[2:4]}/{h}` (`h` is the lowercase hexadecimal hash), and sync
+the full directory chain before committing any Asset or version. The chain is
+the hash directory, both prefix directories, `store` and the root. Each ingest
+SHALL sync the whole chain itself, whoever created it. A failed write, sync or
+publication SHALL prevent the commit.
 
 #### Scenario: First successful ingest
 - **WHEN** Nova uploads a new recognized image into paired storage
 - **THEN** its original exists at the BLAKE3-derived path with identical bytes before the Asset commit
-- **AND** file and directory sync have completed before that commit
+- **AND** the file and every directory in the full chain have been synced before that commit
+
+#### Scenario: Two hashes share a new prefix directory
+- **WHEN** ingest A creates a prefix directory and has not yet synced it, and ingest B publishes a different hash under the same prefix
+- **THEN** ingest B syncs that prefix directory and the rest of the full chain itself before its commit
 
 #### Scenario: Publication fails
 - **WHEN** a write, sync or atomic publication fails during ingest
@@ -37,13 +42,14 @@ publication SHALL prevent the database commit.
 ### Requirement: Matching content shares one stored object
 
 When a regular object already exists at the candidate's hash path, ingest
-SHALL reuse that object without overwriting it. Concurrent ingests of matching
-bytes SHALL retain one complete object at that path. This requirement concerns
-byte storage only; finding an existing logical Asset is deferred to the
-Asset-deduplication change. Stored objects SHALL NOT be reclaimed by this slice.
+SHALL reuse that object without overwriting it, once its bytes pass the check
+below. Concurrent ingests of matching bytes SHALL retain one complete object
+at that path. This requirement concerns byte storage only. What a repeat
+upload does to the library is left to the Asset-deduplication change. Stored
+objects SHALL NOT be reclaimed by this slice.
 
 #### Scenario: Matching bytes arrive again
-- **WHEN** another accepted upload has the hash of an existing object
+- **WHEN** another accepted upload has the hash of an existing object whose bytes still match that hash
 - **THEN** ingest reuses that object without changing it or creating another stored copy
 
 #### Scenario: Concurrent matching bytes
@@ -70,3 +76,52 @@ A refused operation SHALL NOT alter or disclose files outside managed storage.
 #### Scenario: Staging directory is unsafe
 - **WHEN** `tmp` is a symlink or the proposed staging entry is already present or a special file
 - **THEN** ingest does not follow or overwrite that entry and commits no Asset through it
+
+### Requirement: An existing object is re-hashed before reuse
+
+Before reusing an existing object, ingest SHALL read the whole object and
+compute its BLAKE3 hash. It SHALL reuse the object only when its hash and size
+match the candidate's. Otherwise ingest SHALL refuse with a storage failure,
+commit no Asset or version, and leave the object unchanged.
+
+#### Scenario: Existing object does not match its hash
+- **WHEN** an accepted upload's hash path holds a regular file whose bytes no longer hash to that path, including a file of the same size
+- **THEN** the upload returns 503 and no Asset or version is committed
+- **AND** the existing file's bytes, size and modification time are unchanged
+
+### Requirement: Ingest uses the storage root that passed pairing
+
+The object store SHALL open the storage root once and keep that open folder
+for every ingest and original read. Before it accepts work, it SHALL read the
+marker through that open folder and refuse to start when the marker's UUID
+differs from the UUID the database paired with.
+
+#### Scenario: Root replaced after pairing
+- **WHEN** the folder at `STORAGE_ROOT` is replaced by another folder with a different marker after pairing succeeds and before the object store starts
+- **THEN** startup fails before serving HTTP, with a message that names `STORAGE_ROOT`
+- **AND** neither folder gains `tmp`, `store` or any object
+
+### Requirement: Managed storage stays outside the web root
+
+When both `STORAGE_ROOT` and `WEB_ROOT` are set, startup SHALL resolve both
+paths with symbolic links followed. It SHALL refuse to start when they are the
+same folder or one holds the other. It SHALL refuse before any database write
+and before serving HTTP, with a message that names `STORAGE_ROOT` and
+`WEB_ROOT`. A symbolic link created inside `WEB_ROOT` after startup is outside
+this check.
+
+#### Scenario: Storage inside the web root
+- **WHEN** `STORAGE_ROOT` is a folder inside `WEB_ROOT`
+- **THEN** startup exits unsuccessfully before database writes, and its message names `STORAGE_ROOT` and `WEB_ROOT`
+
+#### Scenario: Web root inside storage
+- **WHEN** `WEB_ROOT` is a folder inside `STORAGE_ROOT`
+- **THEN** startup exits unsuccessfully before database writes, and its message names `STORAGE_ROOT` and `WEB_ROOT`
+
+#### Scenario: Same folder through a symbolic link
+- **WHEN** `STORAGE_ROOT` is a symbolic link that resolves to `WEB_ROOT`
+- **THEN** startup exits unsuccessfully before database writes, and its message names `STORAGE_ROOT` and `WEB_ROOT`
+
+#### Scenario: Separate folders
+- **WHEN** `STORAGE_ROOT` and `WEB_ROOT` resolve to folders where neither holds the other
+- **THEN** startup continues to storage pairing as before

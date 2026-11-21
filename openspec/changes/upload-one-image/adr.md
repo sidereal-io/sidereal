@@ -18,6 +18,12 @@ durable architectural fork:
 - API composition retains ADR-007 and ADR-015 access checks.
 - The library uses ADR-005 without a new UI stack or token system.
 
+The revisions after plan review round 1 (D10–D14) add no fork either. The
+web-root overlap refusal and the re-hash before reuse enforce ADR-007's
+trust boundary and ADR-011's integrity promise. Semantic tokens follow
+ADR-005 and DESIGN.md's own tier rules. The isolated e2e stack is test
+tooling within ADR-016's mise tasks.
+
 ADR-012 remains Proposed and unused. ADR-013 is superseded by ADR-016; the
 plan follows the latter. No existing record was changed.
 

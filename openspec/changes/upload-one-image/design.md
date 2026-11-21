@@ -28,6 +28,13 @@ sweep abandoned files, reclaim objects, decode images on upload, or introduce
 a new UI framework. The Proposed scripting ADR is not a prerequisite for this
 built-in Rust Source.
 
+What uploading the same bytes again does to the library is not specified by
+this change. Story #522 owns it: whether a repeat upload finds the existing
+Asset, and what the response says. This change specifies only that matching
+bytes share one stored object (D6, D8, D14). It adds no requirement, scenario
+or interim exception for repeat uploads, and tests must not assert a repeat
+upload's Asset outcome.
+
 ## Test Seams
 
 - **Primary test seam:** server HTTP integration tests with a real throwaway
@@ -42,17 +49,51 @@ built-in Rust Source.
   Reuse `TestDatabase` from core's database test support. Run database tests
   with `TEST_DATABASE_URL` pointing to the repository fixture's test role.
 - One end-to-end browser scenario in `web/e2e/upload.spec.ts` demonstrates
-  sign-in, upload and actual image rendering against disposable data. Reuse
-  the existing Playwright runner; require isolated database/storage and fresh
-  server processes so it cannot alter a contributor's library. The Rust process
-  test owns restart and byte-equality assertions, not a browser mock.
+  claim, sign-in, upload, actual image rendering, and the library after a
+  server restart. The Rust process test owns byte-equality and identity
+  assertions across restart; the browser test asserts what Nova sees.
+- **Isolated browser stack (D10).** `mise run e2e` always runs its own
+  throwaway stack and never reuses a running `mise run dev`:
+  - `scripts/e2e.sh` creates a new database named `sidereal_test_e2e_<random>`
+    through the fixture's test role, with new subcommands of
+    `server/scripts/db-fixture.sh` that run `psql` inside the fixture
+    container, as `orphan-clean` already does. The `sidereal_test_` prefix
+    means `orphan-clean` also removes a database a killed run leaves behind.
+  - It creates a temporary `STORAGE_ROOT` with `mktemp -d`.
+  - It ignores an inherited `DATABASE_URL` and `STORAGE_ROOT`, so it can never
+    point the server at a contributor's data.
+  - It picks a server port and a Vite port from the checkout, the way
+    `db-fixture.sh` picks the database port, so neither is 5000 or 5173 and
+    two checkouts do not collide. It passes them to Playwright through
+    `SIDEREAL_E2E_SERVER_PORT` and `SIDEREAL_E2E_WEB_PORT`.
+  - The script, not Playwright's `webServer`, starts the built server in the
+    background with `PORT`, `DATABASE_URL` and `STORAGE_ROOT` set, keeps its
+    process id in the run's temporary folder, and waits for `/healthz`. This
+    lets the browser test restart it. The test calls a restart helper that the
+    script provides; the helper stops that process id and starts the server
+    again with the same settings.
+  - `web/playwright.config.ts` reads the two port settings, starts only Vite,
+    with `reuseExistingServer: false`, `--port <web port> --strictPort` and
+    `SIDEREAL_DEV_PROXY_TARGET` set to the server's address. A port that is
+    already taken stops the run.
+  - `web/vite.config.ts` forwards `/healthz` and `/api` to
+    `SIDEREAL_DEV_PROXY_TARGET` when it is set, and to `http://localhost:5000`
+    otherwise, so `mise run dev` and `mise run web` keep their behaviour.
+  - A `trap` drops the database and removes the storage folder on every exit,
+    pass or fail. If the database or folder cannot be created, the script
+    exits non-zero before starting anything.
+  - The restart step stops and starts only the server that this run started,
+    against the same database and storage folder.
+  - The CI `e2e` job no longer exports `DATABASE_URL` from `mise run db-url`,
+    because the script makes its own database.
 
 ## Scrutiny Tier & Blast Radius
 
 - **Tier:** high
 - **Blast radius:** the public Source contract, both first-party packs, core
   persistence and filesystem boundaries, server composition and guarded API,
-  and the signed-in UI. Durable data and access checks are involved.
+  startup configuration checks, the signed-in UI, the token generator, and
+  the e2e runner and its CI job. Durable data and access checks are involved.
 
 ## Decisions
 
@@ -115,6 +156,14 @@ fresh database, upgrade from migration 3, and rejection of inconsistent
 current-version references. The existing migration checks must still reject
 a newer schema with an older binary.
 
+Migration 4 changes what existing specs and tests count. The
+`postgres-foundation` delta moves first startup and concurrent startup from
+three to four migration records and adds `assets` and `asset_versions` to the
+application tables. The `security-events` delta stops naming the full table
+list: "Nothing is stored" compares the table list before and after the acts.
+Update `server/crates/core/src/database/startup/tests.rs` and the security
+event test to match.
+
 Alternative: a single table would erase the identity/version distinction.
 Unique hashes on versions would prevent multiple versions sharing bytes.
 Both alternatives contradict accepted decisions; no new data-model fork is
@@ -125,6 +174,12 @@ Asset on repeated bytes; storage sharing is independent of that lookup.
 
 Add an object-store service beside the existing StorageRoot pairing code,
 constructed only from the root that passed startup pairing and probes.
+The service opens the root directory once, with `O_DIRECTORY | O_NOFOLLOW`,
+and keeps that descriptor for its lifetime. It then reads the marker through
+that descriptor and refuses to start if the marker's UUID differs from the
+UUID that pairing committed. Every later operation resolves relative to that
+descriptor. A root that is swapped for another folder between pairing and
+service construction therefore stops startup instead of receiving uploads.
 Create `tmp/` and `store/` lazily at first ingest, preserving the existing
 marker-only first-start scenario. Resolve operations relative to held root
 and directory handles, with no-follow directory traversal and regular-file
@@ -146,16 +201,24 @@ and the selected Source reads its signature through the context. Flush and
 sync the accepted file before publication. Use an atomic rename that refuses
 to replace an existing entry, with a platform-supported no-replace operation;
 an unsupported primitive fails closed. A plain overwriting rename or
-exists-then-rename sequence is insufficient. On a concurrent existing-object
-result, open the winner without following links, check that it is regular and
-has the expected size, and sync it before adoption. An unexpected size is a
-storage failure, not permission to overwrite. Full integrity verification of
-preexisting objects remains the later verify/repair feature.
+exists-then-rename sequence is insufficient.
 
-Sync the leaf hash directory and each new ancestor entry, through `store/`
-and the root, before committing. This includes the existing-object race:
-ensure the adopted object and its directory chain are durable even if the
-winning request has not yet finished syncing. Reject a filesystem boundary
+When an object already exists at the hash path, whether it was there before
+or another request just published it, ingest opens it without following
+links and checks that it is a regular file. It then reads the whole object,
+computes its BLAKE3 hash, and compares hash and size with the candidate's
+(D12). Only a match lets ingest sync the object and reuse it. A mismatch is
+a storage failure: the response is 503, no Asset or version is committed,
+and ingest leaves the existing object as it is, never overwriting, renaming
+or deleting it. Reconciling a damaged object belongs to the later
+verify-and-repair feature. Re-hashing costs one extra read of at most
+100 MiB, only when bytes repeat.
+
+Before committing, every upload syncs the whole directory chain: the leaf
+hash directory, both prefix directories, `store/` and the root. It does this
+whether this request created the directories or another request did. A
+request cannot know whether another request that created a prefix directory
+has synced it yet, so it never relies on that. Reject a filesystem boundary
 between staging and store; do not fall back to a non-atomic cross-device copy.
 Only then insert the Asset and version through core's database service.
 
@@ -178,6 +241,18 @@ optional object-store service and the Registry from main into HTTP composition;
 keep the existing database-only test constructors usable. Add the Asset routes
 inside the protected router before session and origin layers. Do not mount
 `STORAGE_ROOT` with ServeDir or add an authentication exemption.
+
+The public web-file fallback serves all of `WEB_ROOT` with no session
+(`server/src/lib.rs`, `with_web_root`). If managed storage sat inside
+`WEB_ROOT`, the fallback would serve originals to anyone. So startup refuses
+to run when `STORAGE_ROOT` and `WEB_ROOT` are the same folder, or one holds
+the other, after both are resolved with symbolic links followed (D11). The
+check runs in `config.rs` after both settings are read and before the
+database is touched or HTTP is served. Its message names both `STORAGE_ROOT`
+and `WEB_ROOT`. A symbolic link that someone later writes inside `WEB_ROOT`
+is not checked; `docs/install.md` already says that only trusted people may
+write to `WEB_ROOT`. A test at the production HTTP seam also requests a
+stored object's path through the fallback with no session and gets no bytes.
 
 The API uses these shapes:
 
@@ -215,16 +290,46 @@ responses. Image load errors retain the name and show the fixed display message.
 Use a gallery-family layout: uncropped originals at their natural ratio,
 square corners, filename in the mono face, a primary violet Upload control,
 and quiet sign-out/retry controls. Display status colors only in badges.
-Use existing spacing, type, color and radius tokens. Do not add thumbnails,
-preview generation, image transforms, zoom, sorting controls or a client router.
+Use the semantic color tokens below and existing spacing, type and radius
+tokens. Do not add thumbnails, preview generation, image transforms, zoom,
+sorting controls or a client router.
 
-**New semantic or component tokens: none.** Existing primitives cover this
-slice; DESIGN.md permits direct primitive use until a semantic role exists.
-Before building the new visual components, use `visual-options` as DESIGN.md
-requires, record the selected component treatment there, and verify it uses
-these existing tokens. That visual comparison can adjust presentation within
-this plan; a choice that changes scope or requires new token values returns
-to planning rather than silently expanding this task.
+**New semantic tokens (D13).** The Library is the first component to need
+these roles, and DESIGN.md says a semantic token is added when a component
+first needs its role, in the same pull request. Each one is an alias of an
+existing primitive, so no color value changes:
+
+| Token | Points to | Role |
+|---|---|---|
+| `color-action-primary` | `{colors.violet-600}` | The filled Upload and Sign-in buttons |
+| `color-text-on-action` | `{colors.white}` | The label on a primary action |
+| `color-text-body` | `{colors.obsidian-100}` | Body text and filenames |
+| `color-text-secondary` | `{colors.obsidian-400}` | Status and empty-library text |
+| `color-border-hairline` | `{colors.obsidian-800}` | Field and card borders |
+| `color-focus-ring` | `{colors.violet-500}` | Keyboard focus on Library controls |
+
+Add them to `x-sidereal.semantic` in DESIGN.md first. Today
+`web/scripts/tokens.ts` refuses every semantic token, and its error message
+says to add reference lookup in the same pull request. So this change teaches
+the generator to resolve a semantic token's reference to an existing
+primitive and write it as `--sr-<token>: var(--sr-<primitive>)`. It still
+refuses a semantic token whose value is a raw value or names no primitive,
+and it still refuses component tokens. Then run `pnpm tokens` in `web/`.
+The `design-tokens` delta records this. Penpot gets the tokens when an agent
+next copies them, as DESIGN.md says.
+
+DESIGN.md also says that once a semantic token exists, components use it
+instead of its primitive. So `web/src/Access.css` and `web/src/styles/base.css`
+switch from those primitives to these tokens where they serve these roles.
+The computed colors stay the same, and the `web-shell` delta restates the
+access section's token rule in semantic names.
+
+No component tokens are added. Before building the new visual components,
+use `visual-options` as DESIGN.md requires, record the selected component
+treatment there, and verify it uses these tokens. That visual comparison can
+adjust presentation within this plan. A choice that changes scope or needs
+token values beyond this table returns to planning rather than silently
+expanding the task.
 
 Alternative: a separate asset page and viewer would introduce the later
 viewing story early. Keeping the library inside the current access lifecycle
@@ -250,8 +355,11 @@ also makes session loss hide its data immediately.
 ## Migration & Rollback
 
 Deploy the server and built web together. Startup applies migration 4 before
-serving HTTP and retains the existing storage UUID pairing. No new environment
-variable is required. `tmp/` and `store/` appear on first upload, not at pairing.
+serving HTTP and retains the existing storage UUID pairing. No new deployment
+setting is required; the e2e and dev-proxy settings are for contributors only.
+`tmp/` and `store/` appear on first upload, not at pairing. An installation
+whose `STORAGE_ROOT` overlaps its `WEB_ROOT` stops at startup after the
+upgrade and must move one of them; `docs/install.md` says so.
 
 Migrations remain forward-only. An old binary must refuse the newer schema.
 Prefer a forward fix. To restore a pre-change installation, stop the server

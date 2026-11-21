@@ -34,8 +34,22 @@ later import and processing stories need this foundation.
 ### Modified Capabilities
 
 - `managed-storage`: Add safe staged object publication and reuse, commit-last
-  durability, and containment of ingest and original-byte reads. Existing
-  pairing and marker-only startup requirements remain intact.
+  durability, and containment of ingest and original-byte reads. Re-hash an
+  existing object before reuse, bind ingest to the root that passed pairing,
+  and refuse to start when storage and the web root overlap (D11, D12).
+  Existing pairing and marker-only startup requirements remain intact.
+- `postgres-foundation`: Migration 4 makes four migration records and adds the
+  `assets` and `asset_versions` tables.
+- `security-events`: The "nothing is stored" check compares the table list
+  before and after, instead of naming every table.
+- `design-tokens`: The generator writes semantic tokens as aliases of
+  primitives, so the Library can add the semantic tokens it needs (D13).
+- `web-shell`: The access section uses the new semantic tokens. The dev server
+  can forward to another server address and listen on another port, for the
+  end-to-end runner only.
+- `dev-commands`: `mise run e2e` runs on its own throwaway database, storage
+  folder, server and web shell, and removes them afterward (D10).
+- `ci`: The `e2e` job no longer passes a database URL to `mise run e2e`.
 
 ## Impact
 
@@ -49,7 +63,13 @@ later import and processing stories need this foundation.
   original-byte access into the existing session and origin guards.
 - Rust workspace manifests, lockfile and architecture lint: add the pack and
   hash dependency; enforce pack isolation for both packs.
+- `server/crates/server` config: refuse overlapping `STORAGE_ROOT` and
+  `WEB_ROOT`; `docs/install.md` says so.
 - `web/src`: add the library within the existing signed-in view. Preserve
   health checks, access forms, sign-out and event-socket behavior.
+- `DESIGN.md`, `web/scripts/tokens.ts` and `web/src/styles/tokens.css`: six
+  semantic color tokens and the generator support they need.
+- `scripts/e2e.sh`, `server/scripts/db-fixture.sh`, `web/playwright.config.ts`,
+  `web/vite.config.ts` and `.github/workflows/ci.yml`: the isolated e2e stack.
 - Tests cover storage faults, protected APIs, browser display failures and
   persistence across a server restart. No deployment setting is added.
