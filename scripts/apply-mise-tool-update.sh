@@ -9,8 +9,14 @@
 set -eu
 [ $# -eq 1 ] || { echo "usage: apply-mise-tool-update.sh PATCH" >&2; exit 2; }
 patch=$1
+case $patch in
+  /*) ;;
+  *) patch=$(pwd)/$patch ;;
+esac
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 cd "$root"
+
+[ -f "$patch" ] || { echo "apply-mise-tool-update: patch file not found: $patch" >&2; exit 1; }
 
 # The update job leaves an empty patch when nothing changed.
 [ -s "$patch" ] || exit 0
