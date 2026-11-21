@@ -38,8 +38,8 @@ Invariants for the `server/` Rust workspace — honor them in every server chang
   ([ADR-004](docs/decisions/ADR-004-database-engine-and-schema.md)).
 - **Rust follows the latest stable release.** `server/rust-toolchain.toml` names the
   `stable` channel, and `flake.lock` decides the exact release in the Nix shell and
-  CI. `mise.toml` names the same channel, and on the mise route rustup decides the
-  release. Never put a Rust release number in a build file or doc. **`just check`**
+  the `nix` workflow. `mise.toml` names the same channel, and in the `ci` workflow
+  and on the mise route rustup decides the release. Never put a Rust release number in a build file or doc. **`just check`**
   is the gate — green before every PR. It runs `check-compose` (Compose config checks
   with no daemon), then `check-openspec` (strict `openspec validate` of every spec and
   active change; a warning fails it), then `check-server` (`cargo fmt --check` +

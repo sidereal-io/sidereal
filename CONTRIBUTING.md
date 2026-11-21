@@ -185,9 +185,9 @@ branch's hook without asking. After you read the branch's changes, run
    which names the `stable` channel, and uses the latest stable Rust release you
    have installed. Run `rustup update` to move to a newer release.
 
-   CI can be up to about two weeks behind the latest stable release, because it
-   takes Rust from `flake.lock`. To see CI's release, open the "Tool versions"
-   step in the log of the most recent `nix` flake check run.
+   The `ci` workflow installs Rust's `stable` channel through mise when each
+   job runs, so it uses the latest stable release, as you do after
+   `rustup update`.
 2. Install a Node version manager (nvm, fnm, or similar) that reads `.nvmrc`,
    and run its "use" command in the repo root to select Node 26.
 3. Install pnpm 12 once. The web app in `web/` uses it:
@@ -242,7 +242,7 @@ When you change one of these, change both routes in the same pull request.
 |---|---|---|
 | OpenSSL | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install OpenSSL when using system tools |
 | PostgreSQL | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI. `compose.yml` holds a copy for the Compose instance. Change both together; `just instance-verify` fails when they differ |
-| Rust | `server/rust-toolchain.toml`, and `mise.toml` with `mise.lock` | Both files name the `stable` channel, and the `mise` workflow fails when they differ. In the Nix shell and the `ci` and `nix` workflows, `flake.lock` decides the exact release. With mise, `mise.lock` records the channel and rustup decides the release. With your own tools, rustup uses the latest stable release you have installed |
+| Rust | `server/rust-toolchain.toml`, and `mise.toml` with `mise.lock` | Both files name the `stable` channel, and the `mise` workflow fails when they differ. In the Nix shell and the `nix` workflow, `flake.lock` decides the exact release. In the `ci` workflow and with mise, `mise.lock` records the channel and rustup decides the release. With your own tools, rustup uses the latest stable release you have installed |
 | Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step. mise reads `.nvmrc`, and `mise.lock` pins the exact release. The root `Dockerfile` names the same major version for the image's web build |
 | pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12. `mise.toml` names pnpm 12, and `mise.lock` pins the release |
 | `just` | `flake.lock`, and `mise.toml` with `mise.lock` | Exact release in each lock. `mise.toml` names major version 1 |

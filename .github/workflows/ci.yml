@@ -21,8 +21,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
+      # --locked fails on a stale lock, where a plain install would resolve
+      # a fresh release.
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
+
+      # Docker and jq come from the runner.
       - name: Compose configuration checks (no daemon required)
-        run: sh scripts/compose-config-check.sh
+        run: mise exec -- just check-compose
 
   server:
     runs-on: ubuntu-latest
@@ -30,28 +38,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
+      # Runs after the install: it calls cargo and rustc to build its key,
+      # and must use mise's Rust.
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
-          cmd-format: nix develop -c {0}
+          cmd-format: mise exec -- {0}
 
       - name: Prepare PostgreSQL fixture
         run: |
-          nix develop --command just db-up
-          test_url=$(nix develop --command just db-test-url)
+          mise exec -- just db-up
+          test_url=$(mise exec -- just db-test-url)
           echo "::add-mask::$test_url"
           printf 'TEST_DATABASE_URL=%s\n' "$test_url" >> "$GITHUB_ENV"
 
       - name: Server gate
-        run: nix develop --command just check-server
+        run: mise exec -- just check-server
 
       - name: Stop PostgreSQL fixture
         if: always()
-        run: nix develop --command just db-down
+        run: mise exec -- just db-down
 
   web:
     runs-on: ubuntu-latest
@@ -59,11 +71,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: Web gate
-        run: nix develop --command just check-web
+        run: mise exec -- just check-web
 
   openspec:
     runs-on: ubuntu-latest
@@ -71,11 +85,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: OpenSpec gate
-        run: nix develop --command just check-openspec
+        run: mise exec -- just check-openspec
 
   # End-to-end gate. Kept out of `check` because it boots the server and a
   # browser, so it runs on its own runner instead of competing with the
@@ -86,19 +102,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
-          cmd-format: nix develop -c {0}
+          cmd-format: mise exec -- {0}
 
       - name: Prepare PostgreSQL fixture
         run: |
-          nix develop --command just db-up
-          db_url=$(nix develop --command just db-url)
+          mise exec -- just db-up
+          db_url=$(mise exec -- just db-url)
           echo "::add-mask::$db_url"
           printf 'DATABASE_URL=%s\n' "$db_url" >> "$GITHUB_ENV"
 
@@ -106,7 +124,7 @@ jobs:
       # within the 300s startup timeout. Build first so a cold cache cannot
       # spend that window on rustc.
       - name: Build the server
-        run: nix develop --command cargo build -p sidereal-server --manifest-path server/Cargo.toml
+        run: mise exec -- cargo build -p sidereal-server --manifest-path server/Cargo.toml
 
       # A bare runner lacks the shared libraries Chromium links against.
       # `just e2e` installs the browser without touching the system, so the
@@ -114,15 +132,15 @@ jobs:
       - name: Install Chromium and its system libraries
         working-directory: web
         run: |
-          nix develop --command pnpm install --frozen-lockfile --reporter=append-only
-          nix develop --command pnpm exec playwright install --with-deps chromium
+          mise exec -- pnpm install --frozen-lockfile --reporter=append-only
+          mise exec -- pnpm exec playwright install --with-deps chromium
 
       - name: End-to-end gate
-        run: nix develop --command just e2e
+        run: mise exec -- just e2e
 
       - name: Stop PostgreSQL fixture
         if: always()
-        run: nix develop --command just db-down
+        run: mise exec -- just db-down
 
       # The HTML report carries the failure screenshot, diff and console log,
       # which is the whole reason to bother uploading it.
@@ -135,15 +153,18 @@ jobs:
           retention-days: 7
 
   # The skills, schemas and rules block that lets sync writes must match the
-  # release flake.lock pins. The dev shell's hook skips the sync when CI is set.
+  # release mise.toml names. mise exec runs no enter hook, so nothing syncs
+  # the files before the check compares them.
   lets-spec:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
 
       - name: Check the Let's Spec files
-        run: nix develop --command lets sync --check
+        run: mise exec -- lets sync --check
