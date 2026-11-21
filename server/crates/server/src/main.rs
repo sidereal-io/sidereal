@@ -1,6 +1,9 @@
 //! Check the web and storage roots, then initialize PostgreSQL and pair
 //! storage, before binding any HTTP listener.
-use sidereal_core::database::{initialize, initialize_with_storage};
+use sidereal_core::{
+    database::{initialize, initialize_with_storage},
+    storage::objects::ObjectStore,
+};
 use sidereal_server::{
     access::{
         relay,
@@ -36,9 +39,21 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         config.startup_timeout,
         config.migration_timeout,
     );
-    let database = match &storage {
-        Some(storage) => initialize_with_storage(options, startup, migration, storage).await?,
-        None => initialize(options, startup, migration).await?,
+    let (database, _objects) = match &storage {
+        Some(storage) => {
+            let (database, paired) =
+                initialize_with_storage(options, startup, migration, storage).await?;
+            // The store opens the folder pairing checked and confirms its
+            // marker again, so a folder swapped in meanwhile stops startup.
+            match ObjectStore::open(storage, paired) {
+                Ok(objects) => (database, Some(objects)),
+                Err(error) => {
+                    database.close().await;
+                    return Err(error.into());
+                }
+            }
+        }
+        None => (initialize(options, startup, migration).await?, None),
     };
     if relay(&database, Log::default()).await.is_err() {
         database.close().await;

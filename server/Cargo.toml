@@ -46,6 +46,8 @@ argon2 = "0.6"
 base64ct = { version = "1", features = ["alloc"] }
 rand = "0.10"
 sha2 = "0.11"
+# Content addresses for stored objects (ADR-011).
+blake3 = "1"
 # Test client for the events socket; the same library axum's `ws` feature uses.
 tokio-tungstenite = "0.30"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }

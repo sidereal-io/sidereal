@@ -40,7 +40,11 @@ fn decide(paired: Option<Uuid>, marker: Marker, contents: Contents) -> Action {
     }
 }
 
-pub(super) async fn pair(conn: &mut PgConnection, root: &StorageRoot) -> Result<(), StartupError> {
+/// Pair `root` with the database and answer the storage UUID they share.
+pub(super) async fn pair(
+    conn: &mut PgConnection,
+    root: &StorageRoot,
+) -> Result<Uuid, StartupError> {
     pair_with(conn, root, StorageRoot::create_marker).await
 }
 
@@ -49,33 +53,33 @@ async fn pair_with(
     conn: &mut PgConnection,
     root: &StorageRoot,
     create: impl Fn(&StorageRoot, Uuid) -> Result<Created, StorageError>,
-) -> Result<(), StartupError> {
+) -> Result<Uuid, StartupError> {
     let paired: Option<Uuid> =
         sqlx::query_scalar("SELECT storage_id FROM public.sidereal_metadata")
             .fetch_one(&mut *conn)
             .await
             .map_err(DatabaseError::from)?;
-    if paired.is_some() {
+    let id = if let Some(id) = paired {
         match decide(paired, root.marker()?, Contents::Other) {
-            Action::Continue => {}
+            Action::Continue => id,
             Action::Refuse(problem) => return Err(root.error(problem).into()),
             Action::Create | Action::Adopt(_) => {
                 unreachable!("a paired database is never re-paired")
             }
         }
     } else {
-        unpaired(conn, root, create).await?;
-    }
+        unpaired(conn, root, create).await?
+    };
     // The UUID is committed or confirmed; a probe failure leaves it in place.
     root.probe()?;
-    Ok(())
+    Ok(id)
 }
 
 async fn unpaired(
     conn: &mut PgConnection,
     root: &StorageRoot,
     create: impl Fn(&StorageRoot, Uuid) -> Result<Created, StorageError>,
-) -> Result<(), StartupError> {
+) -> Result<Uuid, StartupError> {
     for _ in 0..ATTEMPTS {
         let marker = root.marker()?;
         match decide(None, marker, root.contents()?) {
@@ -100,7 +104,11 @@ async fn unpaired(
 
 /// Persist the synced marker's UUID. A denied update leaves a marker-only
 /// store that the next start adopts once permissions are corrected.
-async fn record(conn: &mut PgConnection, root: &StorageRoot, id: Uuid) -> Result<(), StartupError> {
+async fn record(
+    conn: &mut PgConnection,
+    root: &StorageRoot,
+    id: Uuid,
+) -> Result<Uuid, StartupError> {
     let updated =
         sqlx::query("UPDATE public.sidereal_metadata SET storage_id = $1 WHERE storage_id IS NULL")
             .bind(id)
@@ -108,7 +116,7 @@ async fn record(conn: &mut PgConnection, root: &StorageRoot, id: Uuid) -> Result
             .await
             .map_err(DatabaseError::from)?;
     if updated.rows_affected() == 1 {
-        Ok(())
+        Ok(id)
     } else {
         Err(root.error(Problem::Contended).into())
     }

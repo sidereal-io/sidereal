@@ -167,13 +167,15 @@ pub async fn initialize(
 }
 
 /// Initialize the database, then pair `storage` with it and check storage
-/// access before the startup lock is released.
+/// access before the startup lock is released. Answers the storage UUID
+/// that pairing committed, which the object store checks again.
 pub async fn initialize_with_storage(
     options: PgConnectOptions,
     startup: Duration,
     migration: Duration,
     storage: &StorageRoot,
-) -> Result<Database, StartupError> {
+) -> Result<(Database, uuid::Uuid), StartupError> {
+    let mut paired = None;
     locked(
         &options,
         startup,
@@ -181,10 +183,14 @@ pub async fn initialize_with_storage(
         &MIGRATOR,
         &baselines(),
         None,
-        async |conn: &mut PgConnection| pairing::pair(conn, storage).await,
+        async |conn: &mut PgConnection| {
+            paired = Some(pairing::pair(conn, storage).await?);
+            Ok::<_, StartupError>(())
+        },
     )
     .await?;
-    Ok(Database::new(options, startup))
+    let paired = paired.expect("pairing ran under the startup lock");
+    Ok((Database::new(options, startup), paired))
 }
 
 impl Database {

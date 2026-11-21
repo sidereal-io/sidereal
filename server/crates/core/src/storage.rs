@@ -24,21 +24,27 @@ pub struct StorageRoot {
 
 impl StorageRoot {
     /// Accept only an absolute path to an existing directory. Never creates it.
+    ///
+    /// The path is resolved once, with symbolic links followed, and every
+    /// later use (pairing, the web-root overlap check and the object store)
+    /// uses that resolved folder.
     pub fn new(path: &Path) -> Result<Self, StorageError> {
         let error = |problem| StorageError::new(path, problem);
         if !path.is_absolute() {
             return Err(error(Problem::NotAbsolute));
         }
         match std::fs::metadata(path) {
-            Ok(metadata) if metadata.is_dir() => Ok(Self {
-                path: path.to_owned(),
-            }),
-            Ok(_) => Err(error(Problem::NotDirectory)),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Err(error(Problem::Missing)),
-            Err(e) => Err(error(Problem::Io(Operation::InspectRoot, e.kind()))),
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => return Err(error(Problem::NotDirectory)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(error(Problem::Missing)),
+            Err(e) => return Err(error(Problem::Io(Operation::InspectRoot, e.kind()))),
         }
+        let resolved = std::fs::canonicalize(path)
+            .map_err(|e| error(Problem::Io(Operation::InspectRoot, e.kind())))?;
+        Ok(Self { path: resolved })
     }
 
+    /// The resolved folder.
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -278,7 +284,7 @@ pub struct StorageError {
 }
 
 impl StorageError {
-    fn new(path: &Path, problem: Problem) -> Self {
+    pub(crate) fn new(path: &Path, problem: Problem) -> Self {
         Self {
             path: path.to_owned(),
             problem,
@@ -302,6 +308,38 @@ pub enum Problem {
     MismatchedMarker,
     Occupied,
     Contended,
+    /// The folder no longer holds the marker that pairing committed.
+    Replaced,
+    /// A managed entry is a symbolic link or not the expected file type.
+    Unsafe(Entry),
+    /// An existing object's bytes do not match its content address.
+    ObjectMismatch,
+    /// Staging and the store are on different filesystems.
+    CrossDevice,
+    /// The filesystem cannot publish without replacing an existing entry.
+    NoReplaceUnsupported,
+}
+
+/// A managed entry inside the storage root.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Entry {
+    Tmp,
+    Staging,
+    Store,
+    Prefix,
+    Object,
+}
+
+impl fmt::Display for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Tmp => "the tmp folder",
+            Self::Staging => "a staging file",
+            Self::Store => "the store folder",
+            Self::Prefix => "a store prefix folder",
+            Self::Object => "a stored object",
+        })
+    }
 }
 
 /// The filesystem step that failed.
@@ -318,6 +356,16 @@ pub enum Operation {
     WriteProbe,
     SyncProbe,
     DeleteProbe,
+    OpenRoot,
+    OpenDirectory,
+    CreateStaging,
+    WriteStaging,
+    ReadStaging,
+    SyncStaging,
+    PublishObject,
+    ReadObject,
+    SyncObject,
+    RemoveStaging,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -344,6 +392,16 @@ impl fmt::Display for Operation {
             Self::WriteProbe => "write an access probe file",
             Self::SyncProbe => "sync an access probe file",
             Self::DeleteProbe => "delete an access probe file",
+            Self::OpenRoot => "open the storage directory",
+            Self::OpenDirectory => "open a managed folder",
+            Self::CreateStaging => "create a staging file",
+            Self::WriteStaging => "write a staging file",
+            Self::ReadStaging => "read a staging file",
+            Self::SyncStaging => "sync a staging file",
+            Self::PublishObject => "publish a stored object",
+            Self::ReadObject => "read a stored object",
+            Self::SyncObject => "sync a stored object",
+            Self::RemoveStaging => "remove a staging file",
         })
     }
 }
@@ -379,7 +437,11 @@ impl fmt::Display for StorageError {
             Problem::Io(operation, kind) => {
                 write!(f, "cannot {operation} ({kind}); ")?;
                 f.write_str(match operation {
-                    Operation::SyncMarker | Operation::SyncDirectory | Operation::SyncProbe => "use storage that supports reliable file and directory sync, then restart",
+                    Operation::SyncMarker
+                    | Operation::SyncDirectory
+                    | Operation::SyncProbe
+                    | Operation::SyncStaging
+                    | Operation::SyncObject => "use storage that supports reliable file and directory sync, then restart",
                     _ => "grant the server's user access to this directory, then restart; ownership and permissions were not changed",
                 })
             }
@@ -399,11 +461,29 @@ impl fmt::Display for StorageError {
             Problem::Contended => f.write_str(
                 "storage changed while startup was pairing it; stop other servers that use this directory, then restart",
             ),
+            Problem::Replaced => f.write_str(
+                "STORAGE_ROOT no longer holds the storage marker that was paired at startup; another folder took its place; mount the storage that belongs to this database, then restart",
+            ),
+            Problem::Unsafe(entry) => write!(
+                f,
+                "{entry} is a symbolic link or not the expected file type; managed storage never follows or replaces it; remove the entry or restore it from a backup",
+            ),
+            Problem::ObjectMismatch => f.write_str(
+                "a stored object does not match its content address; it was left unchanged; restore it from a backup",
+            ),
+            Problem::CrossDevice => f.write_str(
+                "the tmp and store folders are on different filesystems; keep the whole storage directory on one filesystem",
+            ),
+            Problem::NoReplaceUnsupported => f.write_str(
+                "this filesystem cannot publish a file without replacing an existing one; use a local Linux filesystem such as ext4 or XFS",
+            ),
         }
     }
 }
 
 impl std::error::Error for StorageError {}
+
+pub mod objects;
 
 #[cfg(test)]
 pub(crate) mod tests;
