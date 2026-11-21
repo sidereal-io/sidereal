@@ -15,17 +15,16 @@ The development shell SHALL provide these tools on `PATH`:
 - Rust at a stable release, with `rustfmt` and `clippy`;
 - Node at major version 26;
 - pnpm at major version 12;
-- `just`;
 - the `openspec` CLI.
 
 #### Scenario: A contributor checks tool versions in the shell
 
-- **WHEN** a contributor runs `nix develop --command sh -c 'rustc --version; node --version; pnpm --version; just --version; openspec --version'` at the repo root
+- **WHEN** a contributor runs `nix develop --command sh -c 'rustc --version; node --version; pnpm --version; openspec --version'` at the repo root
 - **THEN** `rustc --version` output starts with `rustc 1.`
 - **AND** the `rustc --version` output contains neither `beta` nor `nightly`
 - **AND** `node --version` output starts with `v26.`
 - **AND** `pnpm --version` output starts with `12.`
-- **AND** the `just` and `openspec` commands each exit with status 0
+- **AND** the `openspec` command exits with status 0
 
 #### Scenario: Formatting and lint tools come with Rust
 
@@ -182,7 +181,7 @@ The repo's gate SHALL pass when a contributor runs it through mise. The gate is 
 
 #### Scenario: A contributor runs the gate in the shell
 
-- **GIVEN** a prepared PostgreSQL fixture, with `TEST_DATABASE_URL` set to the URL `just db-test-url` prints
+- **GIVEN** a prepared PostgreSQL fixture, with `TEST_DATABASE_URL` set to the URL `mise run db-test-url` prints
 - **WHEN** a contributor runs `mise run check` at the repo root, on a commit whose `ci` workflow passes
 - **THEN** the command exits with status 0
 
@@ -209,197 +208,15 @@ The flake SHALL define a development shell for `x86_64-linux`, `aarch64-linux` a
 - **WHEN** a contributor runs `nix flake show --json --all-systems`
 - **THEN** the output contains `devShells.x86_64-linux.default`, `devShells.aarch64-linux.default` and `devShells.aarch64-darwin.default`
 
-### Requirement: The skills command gives the same skills on every machine
-
-Running `just skills` SHALL generate the OpenSpec skills from settings the repo defines. For a given CLI version, the result SHALL NOT depend on the contributor's global OpenSpec config, or on generated files left from an earlier run. The command SHALL generate these 8 workflows, as skills only: `propose`, `explore`, `continue`, `apply`, `update`, `sync`, `archive` and `verify`. The generated skills SHALL use only the generic `/openspec-<name>` form to name other skills.
-
-#### Scenario: Two machines with different global configs agree
-
-- **WHEN** a tester runs `just skills` in two clones of one commit, with the same `openspec` version
-- **AND** the two runs use different global OpenSpec configs, for example one with the `core` profile and one with `delivery` set to `both`
-- **THEN** `diff -r .agents/skills` between the two clones reports no difference
-
-#### Scenario: The expected workflows are generated
-
-- **WHEN** a contributor runs `just skills`
-- **THEN** `.agents/skills` contains exactly these generated folders: `openspec-propose`, `openspec-explore`, `openspec-continue-change`, `openspec-apply-change`, `openspec-update-change`, `openspec-sync-specs`, `openspec-archive-change` and `openspec-verify-change`
-- **AND** the run creates or changes no file outside `.agents/skills`
-
-#### Scenario: A stale Codex marker is left in the clone
-
-- **WHEN** `.agents/skills/.openspec-target` contains `codex`, and a contributor runs `just skills`
-- **THEN** no file under `.agents/skills` contains the text `$openspec-`
-- **AND** the generated skills match those from a clone that never had the marker
-
-#### Scenario: A workflow is removed from the repo settings
-
-- **WHEN** a maintainer removes `verify` from the workflow list in `.config/openspec/config.json` and runs `just skills`
-- **THEN** `.agents/skills/openspec-verify-change` no longer exists
-
-### Requirement: The skills command leaves the contributor's own config alone
-
-`just skills` SHALL NOT read or change the contributor's global OpenSpec config. It SHALL redirect the CLI to the repo's settings for its own run only, so the contributor's shell keeps its environment. It SHALL run the CLI with usage telemetry turned off. It SHALL NOT delete or write any file outside the repo.
-
-#### Scenario: The global config file is unchanged
-
-- **WHEN** a contributor records a checksum of `~/.config/openspec/config.json`, then runs `just skills`
-- **THEN** the checksum of that file is unchanged
-
-#### Scenario: The shell environment is unchanged
-
-- **WHEN** a contributor runs `just skills` in an interactive shell
-- **THEN** `XDG_CONFIG_HOME` and `OPENSPEC_TELEMETRY` in that shell keep the values they had before the run
-
-#### Scenario: An agent folder links outside the repo
-
-- **WHEN** `.agents` is a symbolic link to a directory outside the repo, and a contributor runs `just skills`
-- **THEN** the command exits with a non-zero status
-- **AND** no file in the link's target directory changes
-
-#### Scenario: The CLI does not write to the repo's settings
-
-- **WHEN** a contributor runs `just skills`
-- **THEN** `git diff --exit-code .config/openspec/config.json` exits with status 0
-
-### Requirement: The Nix shell provides the OpenSpec CLI
-
-The Nix development shell SHALL provide the `openspec` CLI. `just skills` SHALL stop before changing any file when `openspec` is not on `PATH`, and its error message SHALL name the command that installs it. Every generated `SKILL.md` SHALL record the CLI version that generated it.
-
-#### Scenario: The CLI is missing
-
-- **WHEN** a contributor without `openspec` on `PATH` runs `just skills`
-- **THEN** the command exits with a non-zero status
-- **AND** its error message names `npm install -g @fission-ai/openspec`
-- **AND** `git status --porcelain` shows the same output as before the run
-
-#### Scenario: Generated skills record the CLI version
-
-- **WHEN** a contributor runs `just skills`
-- **THEN** every generated `SKILL.md` has `generatedBy` equal to the output of `openspec --version`
-
-#### Scenario: The Nix shell provides the CLI
-
-- **WHEN** a contributor runs `nix develop --command just skills`
-- **THEN** the command exits with status 0
-
-### Requirement: Git tracks authored skills and the skill settings
-
-Git SHALL track the skills people write and the skill settings in `.config/openspec/config.json`. Git SHALL NOT track generated skills or the `.openspec-target` marker. The prefix `openspec-` SHALL be reserved for generated skills. `just skills` SHALL NOT change any skill whose folder name lacks that prefix.
-
-#### Scenario: Generating skills leaves git clean
-
-- **WHEN** a contributor runs `just skills` on a clean checkout
-- **THEN** `git status --porcelain` prints nothing
-
-#### Scenario: No generated skill is tracked
-
-- **WHEN** a reviewer runs `git ls-files .agents/skills`
-- **THEN** no path in the output starts with `.agents/skills/openspec-`
-- **AND** the output does not include `.agents/skills/.openspec-target`
-
-#### Scenario: The skill settings are tracked
-
-- **WHEN** a reviewer runs `git ls-files .config/openspec`
-- **THEN** the output is `.config/openspec/config.json`
-
-#### Scenario: Authored skills survive generation
-
-- **WHEN** a contributor runs `just skills`
-- **THEN** every file under `.agents/skills/peer-code-review`, `.agents/skills/grill-me`, `.agents/skills/peer-plan-review` and `.agents/skills/discovery` is unchanged, byte for byte
-
-#### Scenario: Running the command twice changes nothing
-
-- **WHEN** a contributor runs `just skills` twice in a row
-- **THEN** no file under `.agents/skills` differs between the two results
-
 ### Requirement: Every supported agent sees the same skills
 
-Claude Code SHALL see the same skill set as agents that read `.agents/skills`. That set SHALL include both the generated and the authored skills. The repo SHALL keep one copy of each skill.
+Claude Code SHALL see the same skill set as agents that read `.agents/skills`. That set SHALL include both the skills Let's Spec writes and the skills people write in this repo. The repo SHALL keep one copy of each skill.
 
 #### Scenario: Claude sees the generated and authored skills
 
-- **WHEN** a contributor runs `just skills`
-- **THEN** `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/peer-code-review/SKILL.md` both exist
+- **WHEN** a reviewer reads a clean checkout
+- **THEN** `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/visual-options/SKILL.md` both exist
 - **AND** `.claude/skills` resolves to the same directory as `.agents/skills`
-
-### Requirement: Skills work without Nix
-
-A contributor without Nix SHALL be able to generate the skills with `just` and an `openspec` CLI installed through npm. With the same CLI version, the result SHALL match the result inside the Nix shell.
-
-#### Scenario: A contributor without Nix generates skills
-
-- **WHEN** a contributor without Nix installs `just` and `openspec` through npm, then runs `just skills`
-- **THEN** the command exits with status 0
-- **AND** `.agents/skills` contains the 8 generated folders
-- **AND** no file under `.agents/skills` contains the text `$openspec-`
-
-#### Scenario: The same CLI version gives the same skills
-
-- **WHEN** a contributor without Nix installs the `openspec` version that the Nix shell provides, then runs `just skills`
-- **THEN** `diff -r .agents/skills` against a run inside the Nix shell reports no difference
-
-### Requirement: Loading the shell refreshes stale skills
-
-When the Nix development shell loads, it SHALL regenerate the OpenSpec skills if they are stale. The skills are stale when any of these is true:
-
-- no successful `just skills` run has recorded what it generated;
-- the `openspec` version differs from the version that generated them;
-- `.config/openspec/config.json` or `scripts/skills.sh` differs from the version used to generate them;
-- a generated skill folder from that run is missing.
-
-#### Scenario: A fresh clone gets its skills
-
-- **WHEN** a contributor with Nix and direnv clones the repo, runs `direnv allow`, and enters the repo directory
-- **THEN** `.agents/skills` contains the 8 generated `openspec-*` folders
-- **AND** `git status --porcelain` prints nothing
-
-#### Scenario: The skill settings changed
-
-- **WHEN** a maintainer removes `verify` from the workflow list in `.config/openspec/config.json`
-- **AND** the shell loads again
-- **THEN** `.agents/skills/openspec-verify-change` no longer exists
-
-#### Scenario: The CLI version changed
-
-- **WHEN** the shell loads with an `openspec` whose version differs from the `generatedBy` value in the generated skills
-- **THEN** every generated `SKILL.md` has `generatedBy` equal to the output of `openspec --version`
-
-#### Scenario: A generated skill folder was deleted
-
-- **WHEN** a contributor deletes `.agents/skills/openspec-explore`, then the shell loads again
-- **THEN** `.agents/skills/openspec-explore/SKILL.md` exists
-
-### Requirement: Loading the shell leaves current skills alone
-
-When none of the staleness conditions is true, loading the shell SHALL NOT change any file under `.agents/skills`. Running `just skills` by hand SHALL keep working as before.
-
-#### Scenario: Nothing changed since the last refresh
-
-- **WHEN** a tester records the modification time of every file under `.agents/skills`, leaves the repo directory, and enters it again
-- **THEN** every modification time is unchanged
-
-### Requirement: Refreshing skills never blocks the shell
-
-A failed refresh SHALL NOT stop the development shell from loading. A successful refresh, or a skipped one, SHALL print nothing. A failed refresh SHALL print one warning line to standard error. The line SHALL name `just skills` as the way to retry. The hook SHALL run `just enter` only when the repo's `justfile` defines an `enter` recipe, and SHALL print nothing when it does not.
-
-#### Scenario: The refresh fails
-
-- **WHEN** the skills are stale, and `openspec` on `PATH` is a stub that exits with status 1
-- **AND** a tester runs `nix develop --command true` in the repo directory
-- **THEN** the command exits with status 0
-- **AND** standard error contains exactly one line that names `just skills`
-
-#### Scenario: The refresh succeeds
-
-- **WHEN** the skills are stale, and a tester runs `nix develop --command true` in the repo directory
-- **THEN** the command exits with status 0
-- **AND** the hook writes nothing to standard output or standard error
-
-#### Scenario: The repo has no enter recipe
-
-- **WHEN** a tester removes the `enter` recipe from the `justfile`, then runs `nix develop --command true`
-- **THEN** the command exits with status 0
-- **AND** the hook writes nothing to standard output or standard error
 
 ### Requirement: The shell keeps the OpenSpec CLI offline
 
@@ -415,16 +232,6 @@ The development shell SHALL set `OPENSPEC_NO_UPDATE_CHECK=1`, so no `openspec` c
 - **WHEN** the skills are stale, and a tester loads the shell with no network access, for example inside `unshare --net --map-root-user` on Linux
 - **THEN** the refresh completes, and `.agents/skills` contains the 8 generated `openspec-*` folders
 - **AND** the refresh opens no network connection
-
-### Requirement: Contributors without Nix can opt in to the refresh
-
-A contributor without Nix SHALL be able to get the same refresh by running `just enter` from `.envrc.local`. Without that opt-in, the environment SHALL keep its current behavior for contributors without Nix.
-
-#### Scenario: A contributor without Nix opts in
-
-- **WHEN** a contributor without Nix, with `just` and `openspec` installed, writes `just enter` in `.envrc.local`
-- **AND** deletes `.agents/skills/openspec-explore`, then enters the repo directory
-- **THEN** `.agents/skills/openspec-explore/SKILL.md` exists
 
 ### Requirement: Dependabot proposes Nix pin updates every week
 
@@ -537,12 +344,12 @@ The flake check SHALL use no repository secret. Its workflow SHALL grant the job
 
 ### Requirement: The flake check reports the shell's tool versions
 
-After the shell builds, the flake check SHALL run `rustc --version`, `openspec --version`, `node --version`, `pnpm --version`, and `just --version` inside the shell. A reviewer SHALL be able to read their output in the job log. The flake check SHALL fail when any of the five commands fails.
+After the shell builds, the flake check SHALL run `rustc --version`, `lets --version`, `openspec --version`, `node --version`, and `pnpm --version` inside the shell. A reviewer SHALL be able to read their output in the job log. The flake check SHALL fail when any of the five commands fails.
 
 #### Scenario: A reviewer checks what a pin update changed
 
 - **WHEN** the flake check passes on a pull request
-- **THEN** the job log contains the output of `rustc --version`, `openspec --version`, `node --version`, `pnpm --version`, and `just --version`, each run inside the development shell
+- **THEN** the job log contains the output of `rustc --version`, `lets --version`, `openspec --version`, `node --version`, and `pnpm --version`, each run inside the development shell
 
 #### Scenario: A pin update breaks a tool
 
@@ -605,18 +412,17 @@ A contributor with mise SHALL get these tools, after running `mise trust` and `m
 - Rust at a stable release, with `rustfmt` and `clippy`;
 - Node at the major version `.nvmrc` names;
 - pnpm at major version 12;
-- `just`;
 - `gh`, at 2.102.0 or later;
 - the `openspec` CLI;
 - the `lets` command from Let's Spec.
 
 #### Scenario: A contributor checks tool versions through mise
 
-- **WHEN** a contributor runs `mise exec -- sh -c 'rustc --version; node --version; pnpm --version; just --version; gh --version; openspec --version; lets --version'` at the repo root
+- **WHEN** a contributor runs `mise exec -- sh -c 'rustc --version; node --version; pnpm --version; gh --version; openspec --version; lets --version'` at the repo root
 - **THEN** `rustc --version` output starts with `rustc 1.` and contains neither `beta` nor `nightly`
 - **AND** `node --version` output starts with `v26.`
 - **AND** `pnpm --version` output starts with `12.`
-- **AND** the `just`, `gh`, `openspec` and `lets` commands each exit with status 0
+- **AND** the `gh`, `openspec` and `lets` commands each exit with status 0
 
 #### Scenario: Formatting and lint tools come with Rust
 
@@ -662,7 +468,7 @@ On the mise route, the Rust release SHALL be the newest stable release rustup kn
 
 #### Scenario: The lock covers the supported systems
 
-- **WHEN** a reviewer reads the `[[tools.node]]`, `[[tools.pnpm]]`, `[[tools.just]]`, `[[tools.gh]]`, `[[tools."github:Fission-AI/OpenSpec"]]` and `[[tools."github:sidereal-io/lets-spec"]]` entries in `mise.lock`
+- **WHEN** a reviewer reads the `[[tools.node]]`, `[[tools.pnpm]]`, `[[tools.gh]]`, `[[tools."github:Fission-AI/OpenSpec"]]` and `[[tools."github:sidereal-io/lets-spec"]]` entries in `mise.lock`
 - **THEN** each entry has a `platforms.linux-x64`, a `platforms.linux-arm64` and a `platforms.macos-arm64` table
 - **AND** each of those tables has a `url` and a `checksum`
 
@@ -754,7 +560,7 @@ The mise check SHALL install the tools from `mise.lock`. It SHALL fail when an i
 
 #### Scenario: A pull request breaks the lock
 
-- **WHEN** a pull request changes the `checksum` of the `linux-x64` entry for `just` in `mise.lock` to a wrong value
+- **WHEN** a pull request changes the `checksum` of the `linux-x64` entry for `pnpm` in `mise.lock` to a wrong value
 - **THEN** the mise check on that pull request fails
 
 #### Scenario: A pull request does not touch the mise route
@@ -779,16 +585,16 @@ The mise check SHALL fail when the Rust channel in `mise.toml` differs from the 
 
 ### Requirement: The mise check reports the tool versions
 
-After the install, the mise check SHALL run `rustc --version`, `node --version`, `pnpm --version`, `just --version`, `gh --version`, `openspec --version` and `lets --version` through mise. A reviewer SHALL be able to read their output in the job log. The mise check SHALL fail when any of the seven commands fails.
+After the install, the mise check SHALL run `rustc --version`, `node --version`, `pnpm --version`, `gh --version`, `openspec --version` and `lets --version` through mise. A reviewer SHALL be able to read their output in the job log. The mise check SHALL fail when any of the six commands fails.
 
 #### Scenario: A reviewer checks what a pin update changed
 
 - **WHEN** the mise check passes on a pull request
-- **THEN** the job log contains the output of each of the seven commands
+- **THEN** the job log contains the output of each of the six commands
 
 #### Scenario: A pin update breaks a tool
 
-- **WHEN** `openspec --version` exits with a non-zero status through mise, and the other six commands succeed
+- **WHEN** `openspec --version` exits with a non-zero status through mise, and the other five commands succeed
 - **THEN** the mise check fails
 
 ### Requirement: The mise check runs without secrets
@@ -852,9 +658,9 @@ The mise check SHALL fail when a `[[tools.*]]` entry in `mise.lock` lacks any of
 
 #### Scenario: A tool lacks a supported platform
 
-- **WHEN** a pull request removes the `[tools.just."platforms.macos-arm64"]` table from `mise.lock`
+- **WHEN** a pull request removes the `[tools.pnpm."platforms.macos-arm64"]` table from `mise.lock`
 - **THEN** the mise check on that pull request fails
-- **AND** its log names the tool `just` and the platform `macos-arm64`
+- **AND** its log names the tool `pnpm` and the platform `macos-arm64`
 
 ### Requirement: Contributors can run the lock platform check by hand
 
