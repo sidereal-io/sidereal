@@ -76,7 +76,8 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
                 // Content-Length is checked before the body is read; the
                 // extractor limit covers a body without one.
                 .layer::<_, Infallible>(DefaultBodyLimit::max(TRANSPORT_LIMIT))
-                .layer::<_, Infallible>(RequestBodyLimitLayer::new(TRANSPORT_LIMIT)),
+                .layer::<_, Infallible>(RequestBodyLimitLayer::new(TRANSPORT_LIMIT))
+                .get(list),
         )
         .with_state(Assets {
             database,
@@ -94,6 +95,29 @@ fn entry(record: &AssetRecord) -> Value {
         "current_version_id": record.current_version_id.to_string(),
         "original_url": format!("/api/assets/{}/original", record.id),
     })
+}
+
+/// Every committed Asset. A database failure is 503, never an empty list.
+async fn list(State(assets): State<Assets>) -> Response {
+    match assets.database.assets().await {
+        Ok(records) => {
+            let entries: Vec<Value> = records.iter().map(entry).collect();
+            Json(json!({ "assets": entries })).into_response()
+        }
+        Err(error) => {
+            assets.log.line(&format!("library listing failed: {error}"));
+            unavailable()
+        }
+    }
+}
+
+/// The fixed answer for a library read the database could not serve.
+fn unavailable() -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({ "error": "the library is unavailable; try again later" })),
+    )
+        .into_response()
 }
 
 /// Every refusal an upload can get, each with a fixed message.

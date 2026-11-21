@@ -606,3 +606,130 @@ mod upload {
         assert!(!instance.storage().join("tmp").exists());
     }
 }
+
+impl Instance {
+    async fn get(&self, uri: &str, cookie: Option<&str>) -> Response {
+        let mut request = Request::get(uri);
+        if let Some(cookie) = cookie {
+            request = request.header(header::COOKIE, cookie);
+        }
+        self.send(request.body(Body::empty()).unwrap()).await
+    }
+
+    async fn list(&self) -> Response {
+        self.get("/api/assets", Some(&self.cookie)).await
+    }
+
+    async fn execute(&self, sql: &str) {
+        let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_owned()))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+    }
+
+    /// The administrator's cookie, after `sql` changed its session.
+    async fn with_session(&self, sql: &str) -> &str {
+        self.execute(sql).await;
+        &self.cookie
+    }
+}
+
+async fn body_text(response: Response) -> String {
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    String::from_utf8(bytes.to_vec()).unwrap()
+}
+
+/// Ways a request can lack a valid session: none, expired, revoked.
+const INVALID_SESSIONS: [(&str, Option<&str>); 3] = [
+    ("absent", None),
+    (
+        "expired",
+        Some("UPDATE public.sessions SET expires_at = now() - interval '1 second'"),
+    ),
+    ("revoked", Some("DELETE FROM public.sessions")),
+];
+
+mod list {
+    use super::*;
+
+    #[tokio::test]
+    async fn list_of_an_empty_library_is_an_empty_array() {
+        let instance = Instance::new().await;
+        let response = instance.list().await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(body_text(response).await, r#"{"assets":[]}"#);
+    }
+
+    #[tokio::test]
+    async fn list_after_upload_shows_the_committed_entry() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.jpg", JPEG).await).await["asset"].clone();
+        let response = instance.list().await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["assets"],
+            serde_json::json!([uploaded])
+        );
+    }
+
+    #[tokio::test]
+    async fn list_puts_older_uploads_first() {
+        let instance = Instance::new().await;
+        instance.upload("first.png", PNG).await;
+        instance.upload("second.jpg", JPEG).await;
+        let names: Vec<_> = json(instance.list().await).await["assets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["name"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(names, ["first.png", "second.jpg"]);
+    }
+
+    #[tokio::test]
+    async fn list_ignores_staging_files_and_unreferenced_objects() {
+        let instance = Instance::new().await;
+        instance.upload("nebula.png", PNG).await;
+        let stray = instance
+            .storage()
+            .join("tmp/00000000-0000-4000-8000-000000000000");
+        std::fs::write(&stray, b"left by a crash").unwrap();
+        let hash = "0".repeat(64);
+        let orphan = instance.storage().join(format!("store/00/00/{hash}"));
+        std::fs::create_dir_all(orphan.parent().unwrap()).unwrap();
+        std::fs::write(&orphan, b"published, never committed").unwrap();
+        let assets = json(instance.list().await).await["assets"].clone();
+        assert_eq!(assets.as_array().unwrap().len(), 1);
+        assert_eq!(assets[0]["name"], "nebula.png");
+    }
+
+    #[tokio::test]
+    async fn list_answers_503_when_the_database_fails_after_the_session_check() {
+        let instance = Instance::new().await;
+        instance
+            .execute("ALTER TABLE public.assets RENAME TO assets_moved")
+            .await;
+        let response = instance.list().await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(!body_text(response).await.contains("assets"));
+    }
+
+    #[tokio::test]
+    async fn list_without_a_valid_session_answers_401_with_no_metadata() {
+        for (case, sql) in INVALID_SESSIONS {
+            let instance = Instance::new().await;
+            instance.upload("nebula.png", PNG).await;
+            let cookie = match sql {
+                Some(sql) => Some(instance.with_session(sql).await),
+                None => None,
+            };
+            let response = instance.get("/api/assets", cookie).await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{case}");
+            let body = body_text(response).await;
+            assert!(!body.contains("nebula"), "{case}: {body}");
+        }
+    }
+}
