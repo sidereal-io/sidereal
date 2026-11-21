@@ -1,0 +1,10 @@
+[package]
+name = "sidereal-pack-bad"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Both edges are forbidden: a pack depends on neither core nor another pack.
+[dependencies]
+sidereal-core = { path = "../../core" }
+sidereal-pack-other = { path = "../other" }

@@ -17,6 +17,7 @@ path = "src/bin/siderealctl.rs"
 [dependencies]
 sidereal-core = { workspace = true }
 sidereal-pack-astro = { workspace = true }
+sidereal-pack-image = { workspace = true }
 axum = { workspace = true }
 libc = { workspace = true }
 tokio = { workspace = true }
