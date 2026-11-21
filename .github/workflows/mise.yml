@@ -8,6 +8,7 @@ on:
       - 'server/rust-toolchain.toml'
       - '.nvmrc'
       - '.github/workflows/mise.yml'
+      - 'scripts/check-mise-lock-platforms.sh'
 
 # A newer commit supersedes checks for the same pull request.
 concurrency:
@@ -24,6 +25,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      # Runs before the install: it needs no tool from mise, and it names a
+      # missing platform more clearly than a failed install would.
+      - name: mise.lock covers the supported platforms
+        run: scripts/check-mise-lock-platforms.sh
 
       # --locked fails on a stale lock or a wrong checksum, where a plain
       # install would resolve a fresh release. No cache: a restored install
