@@ -50,7 +50,7 @@ No automated suite runs the update script, and `mise run check` does not run it:
 
 `scripts/update-mise-tools.sh` runs, with `set -eu`, so the first failing step stops it:
 
-1. `mise upgrade --exclude rust` moves Node, pnpm and `gh` within their ranges. `--exclude rust` keeps rustup from updating the toolchain, which the lock does not record anyway.
+1. `mise upgrade --local --exclude rust` moves Node, pnpm and `gh` within their ranges. `--local` limits the upgrade to the tools this repo's config names, so a hand run leaves a contributor's global tools alone. `--exclude rust` keeps rustup from updating the toolchain, which the lock does not record anyway.
 2. `mise upgrade --bump github:sidereal-io/lets-spec` moves Let's Spec and rewrites its line in `mise.toml` (D1). OpenSpec is not named, and its exact pin keeps step 1 from moving it.
 3. `mise lock` fills in every platform already in the lock. `mise upgrade` may record only the current platform for a new release.
 4. `mise exec -- lets sync` writes the files for the new Let's Spec release.
