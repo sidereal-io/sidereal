@@ -451,6 +451,47 @@ impl ObjectStore {
     }
 }
 
+impl ObjectStore {
+    /// Open the stored object for `hash` to read it, answering the open file
+    /// and its size. No symbolic link is followed and nothing other than a
+    /// regular file is opened, so a FIFO is refused at once instead of
+    /// blocking. The bytes are not hashed again.
+    pub fn open_object(&self, hash: &str) -> Result<(File, u64), StorageError> {
+        if hash.len() != 64
+            || !hash
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(self.error(Problem::Unsafe(Entry::Object)));
+        }
+        let refused = |entry| {
+            move |e: io::Error| {
+                if e.kind() != io::ErrorKind::NotFound && is_refused_entry(&e) {
+                    self.error(Problem::Unsafe(entry))
+                } else {
+                    self.io(Operation::ReadObject)(e)
+                }
+            }
+        };
+        let store = open_folder_at(self.root(), STORE).map_err(refused(Entry::Store))?;
+        let first = open_folder_at(store.as_fd(), &hash[..2]).map_err(refused(Entry::Prefix))?;
+        let second = open_folder_at(first.as_fd(), &hash[2..4]).map_err(refused(Entry::Prefix))?;
+        let found = stat_at(second.as_fd(), hash).map_err(self.io(Operation::ReadObject))?;
+        if found.st_mode & libc::S_IFMT != libc::S_IFREG {
+            return Err(self.error(Problem::Unsafe(Entry::Object)));
+        }
+        let file = open_file_at(second.as_fd(), hash).map_err(refused(Entry::Object))?;
+        let opened = file.metadata().map_err(self.io(Operation::ReadObject))?;
+        {
+            use std::os::unix::fs::MetadataExt;
+            if !opened.is_file() || opened.ino() != found.st_ino as u64 {
+                return Err(self.error(Problem::Unsafe(Entry::Object)));
+            }
+        }
+        Ok((file, opened.len()))
+    }
+}
+
 fn device(fd: BorrowedFd<'_>) -> io::Result<libc::dev_t> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `fd` is open and `stat` has room for one `struct stat`.

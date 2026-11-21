@@ -7,10 +7,14 @@
 //! reaches a client; the operational log names the cause.
 use crate::access::Log;
 use axum::{
-    extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, State},
-    http::StatusCode,
+    body::{Body, Bytes},
+    extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, State},
+    http::{
+        header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS},
+        StatusCode,
+    },
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -25,6 +29,7 @@ use sidereal_pack_image::{ImagePack, MANUAL_UPLOAD};
 use sidereal_plugin_abi::{Pack, Registry};
 use std::{
     convert::Infallible,
+    io::Read,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -39,12 +44,16 @@ pub const TRANSPORT_LIMIT: usize = 105_906_176;
 /// Staged writes go to disk in chunks of about this size.
 const WRITE_CHUNK: usize = 1024 * 1024;
 
+/// Turns an opened object into the reader an original is streamed from.
+pub type OriginalReader = Arc<dyn Fn(std::fs::File) -> Box<dyn Read + Send> + Send + Sync>;
+
 /// What the Asset routes work with: the object store, when the server has
 /// managed storage, and the Registry of every compiled-in pack.
 #[derive(Clone)]
 pub struct Library {
     objects: Option<ObjectStore>,
     registry: Arc<Registry>,
+    reader: OriginalReader,
 }
 
 impl Library {
@@ -56,7 +65,15 @@ impl Library {
         Self {
             objects,
             registry: Arc::new(registry),
+            reader: Arc::new(|file| Box::new(file)),
         }
+    }
+
+    /// Read originals through `reader`, so a test can make a read fail
+    /// after the response has started.
+    #[doc(hidden)]
+    pub fn with_original_reader(self, reader: OriginalReader) -> Self {
+        Self { reader, ..self }
     }
 }
 
@@ -79,6 +96,7 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
                 .layer::<_, Infallible>(RequestBodyLimitLayer::new(TRANSPORT_LIMIT))
                 .get(list),
         )
+        .route("/api/assets/{id}/original", get(original))
         .with_state(Assets {
             database,
             library,
@@ -109,6 +127,76 @@ async fn list(State(assets): State<Assets>) -> Response {
             unavailable()
         }
     }
+}
+
+/// The bytes stored at the current version's hash path. Every failure found
+/// before the response starts is 503; a read that fails later ends the body
+/// early, so the client never receives a complete 200.
+async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
+    let not_found =
+        || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
+    let Some(objects) = assets.library.objects.clone() else {
+        return unavailable();
+    };
+    let Ok(id) = uuid::Uuid::try_parse(&id) else {
+        return not_found();
+    };
+    let record = match assets.database.asset(id).await {
+        Ok(Some(record)) => record,
+        Ok(None) => return not_found(),
+        Err(error) => {
+            assets.log.line(&format!("original lookup failed: {error}"));
+            return unavailable();
+        }
+    };
+    let hash = record.version.content_hash.clone();
+    let opened = tokio::task::spawn_blocking(move || objects.open_object(&hash)).await;
+    let (file, size) = match opened {
+        Ok(Ok(opened)) => opened,
+        Ok(Err(error)) => {
+            assets
+                .log
+                .line(&format!("original unavailable for asset {id}: {error}"));
+            return unavailable();
+        }
+        Err(_) => return unavailable(),
+    };
+    let reader = (assets.library.reader)(file);
+    let log = assets.log.clone();
+    let chunks = futures_util::stream::unfold(Some(reader), move |reader| {
+        let log = log.clone();
+        async move {
+            let mut reader = reader?;
+            let read = tokio::task::spawn_blocking(move || {
+                let mut buf = vec![0; 64 * 1024];
+                let read = reader.read(&mut buf);
+                (reader, buf, read)
+            })
+            .await;
+            match read {
+                Ok((_, _, Ok(0))) => None,
+                Ok((reader, mut buf, Ok(n))) => {
+                    buf.truncate(n);
+                    Some((Ok(Bytes::from(buf)), Some(reader)))
+                }
+                Ok((_, _, Err(error))) => {
+                    log.line(&format!("original read failed for asset {id}: {error}"));
+                    Some((Err(error), None))
+                }
+                Err(_) => Some((Err(std::io::Error::other("the read task stopped")), None)),
+            }
+        }
+    });
+    (
+        [
+            (CONTENT_TYPE, record.version.media_type.clone()),
+            (CONTENT_LENGTH, size.to_string()),
+            (X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
+            (CACHE_CONTROL, "no-store".to_owned()),
+        ],
+        Body::from_stream(chunks),
+    )
+        .into_response()
 }
 
 /// The fixed answer for a library read the database could not serve.

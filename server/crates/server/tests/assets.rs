@@ -733,3 +733,251 @@ mod list {
         }
     }
 }
+
+mod original {
+    use super::*;
+    use std::{
+        io::Read,
+        os::unix::fs::{symlink, PermissionsExt},
+        sync::Arc,
+        time::Instant,
+    };
+
+    impl Instance {
+        /// Upload `bytes` and answer the new Asset's id and object path.
+        async fn uploaded(&self, name: &str, bytes: &[u8]) -> (String, PathBuf) {
+            let response = self.upload(name, bytes).await;
+            assert_eq!(response.status(), StatusCode::CREATED);
+            let id = json(response).await["asset"]["id"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let path = self
+                .store_files()
+                .into_iter()
+                .find(|(_, stored)| stored == bytes)
+                .unwrap()
+                .0;
+            (id, path)
+        }
+
+        async fn original(&self, id: &str) -> Response {
+            self.get(&format!("/api/assets/{id}/original"), Some(&self.cookie))
+                .await
+        }
+
+        async fn library_rows(&self) -> String {
+            let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+            sqlx::query_scalar(
+                "SELECT (SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY id), '[]') FROM public.assets a)::text \
+                 || (SELECT coalesce(jsonb_agg(to_jsonb(v) ORDER BY id), '[]') FROM public.asset_versions v)::text",
+            )
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+        }
+    }
+
+    async fn bytes(response: Response) -> Vec<u8> {
+        axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap()
+            .to_vec()
+    }
+
+    /// Answer 503 with no file bytes, and change no library row.
+    async fn assert_unavailable(instance: &Instance, id: &str) {
+        let before = instance.library_rows().await;
+        let start = Instant::now();
+        let response = instance.original(id).await;
+        assert!(start.elapsed() < Duration::from_secs(5));
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = bytes(response).await;
+        assert!(
+            !body.windows(4).any(|w| w == &PNG[..4]),
+            "file bytes in the body"
+        );
+        assert_eq!(instance.library_rows().await, before);
+    }
+
+    #[tokio::test]
+    async fn original_of_a_png_returns_its_exact_bytes_as_image_png() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let response = instance.original(&id).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+        assert_eq!(bytes(response).await, PNG);
+    }
+
+    #[tokio::test]
+    async fn original_responses_are_private_and_never_sniffed() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let response = instance.original(&id).await;
+        assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    }
+
+    #[tokio::test]
+    async fn original_of_a_jpeg_named_png_is_image_jpeg() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", JPEG).await;
+        let response = instance.original(&id).await;
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/jpeg");
+        assert_eq!(bytes(response).await, JPEG);
+    }
+
+    #[tokio::test]
+    async fn original_of_an_unknown_id_answers_404_with_no_bytes() {
+        let instance = Instance::new().await;
+        instance.uploaded("nebula.png", PNG).await;
+        for id in ["00000000-0000-4000-8000-000000000000", "not-an-id"] {
+            let response = instance.original(id).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{id}");
+            let body = bytes(response).await;
+            assert!(!body.windows(4).any(|w| w == &PNG[..4]), "{id}");
+        }
+    }
+
+    #[tokio::test]
+    async fn original_of_a_missing_object_answers_503() {
+        let instance = Instance::new().await;
+        let (id, path) = instance.uploaded("nebula.png", PNG).await;
+        std::fs::remove_file(path).unwrap();
+        assert_unavailable(&instance, &id).await;
+    }
+
+    #[tokio::test]
+    async fn original_of_an_unopenable_object_answers_503() {
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        if unsafe { libc::geteuid() } == 0 {
+            return; // root reads files whatever their mode
+        }
+        let instance = Instance::new().await;
+        let (id, path) = instance.uploaded("nebula.png", PNG).await;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert_unavailable(&instance, &id).await;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn original_of_a_folder_at_the_object_path_answers_503() {
+        let instance = Instance::new().await;
+        let (id, path) = instance.uploaded("nebula.png", PNG).await;
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert_unavailable(&instance, &id).await;
+    }
+
+    #[tokio::test]
+    async fn original_of_a_fifo_with_no_writer_answers_503_promptly() {
+        let instance = Instance::new().await;
+        let (id, path) = instance.uploaded("nebula.png", PNG).await;
+        std::fs::remove_file(&path).unwrap();
+        let c = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+        assert_unavailable(&instance, &id).await;
+    }
+
+    #[tokio::test]
+    async fn original_through_a_symlinked_object_answers_503() {
+        let instance = Instance::new().await;
+        let (id, path) = instance.uploaded("nebula.png", PNG).await;
+        let outside = Dir::new();
+        std::fs::write(outside.0.join("copy"), PNG).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        symlink(outside.0.join("copy"), &path).unwrap();
+        assert_unavailable(&instance, &id).await;
+    }
+
+    #[tokio::test]
+    async fn original_through_a_symlinked_prefix_folder_answers_503() {
+        let instance = Instance::new().await;
+        let (id, path) = instance.uploaded("nebula.png", PNG).await;
+        let prefix = path.parent().unwrap().to_owned();
+        let outside = Dir::new();
+        std::fs::rename(&prefix, outside.0.join("moved")).unwrap();
+        symlink(outside.0.join("moved"), &prefix).unwrap();
+        assert_unavailable(&instance, &id).await;
+    }
+
+    #[tokio::test]
+    async fn original_without_storage_answers_503() {
+        let instance = Instance::without_storage().await;
+        let response = instance
+            .original("00000000-0000-4000-8000-000000000000")
+            .await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    /// A reader that gives its first bytes, then fails.
+    struct FailsAfter(Vec<u8>);
+    impl Read for FailsAfter {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.is_empty() {
+                return Err(std::io::Error::other("injected read failure"));
+            }
+            let n = buf.len().min(self.0.len());
+            buf[..n].copy_from_slice(&self.0[..n]);
+            self.0.drain(..n);
+            Ok(n)
+        }
+    }
+
+    #[tokio::test]
+    async fn original_whose_read_fails_midway_is_a_failed_transfer() {
+        let db = TestDatabase::new();
+        let storage = Dir::new();
+        let root = StorageRoot::new(&storage.0).unwrap();
+        let (database, paired) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
+                .await
+                .unwrap();
+        let objects = ObjectStore::open(&root, paired).unwrap();
+        let library = Library::new(Some(objects)).with_original_reader(Arc::new(|_file| {
+            Box::new(FailsAfter(PNG[..20].to_vec())) as Box<dyn Read + Send>
+        }));
+        let app = app_with_library(
+            database,
+            AllowedOrigins::default(),
+            Tuning::default(),
+            library,
+        );
+        let instance = Instance::signed_in(db, Some(storage), app).await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let before = instance.library_rows().await;
+        let response = instance.original(&id).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .is_err());
+        assert_eq!(instance.library_rows().await, before);
+    }
+
+    #[tokio::test]
+    async fn original_without_a_valid_session_answers_the_guards_401() {
+        for (case, sql) in INVALID_SESSIONS {
+            let instance = Instance::new().await;
+            let (id, _) = instance.uploaded("nebula.png", PNG).await;
+            let cookie = match sql {
+                Some(sql) => Some(instance.with_session(sql).await.to_owned()),
+                None => None,
+            };
+            let original = instance
+                .get(&format!("/api/assets/{id}/original"), cookie.as_deref())
+                .await;
+            let session = instance.get("/api/session", cookie.as_deref()).await;
+            assert_eq!(original.status(), StatusCode::UNAUTHORIZED, "{case}");
+            let names = |response: &Response| {
+                let mut names: Vec<_> = response.headers().keys().map(|k| k.to_string()).collect();
+                names.sort();
+                names
+            };
+            assert_eq!(names(&original), names(&session), "{case}");
+            assert!(original.headers().get("x-content-type-options").is_none());
+            assert_eq!(bytes(original).await, bytes(session).await, "{case}");
+        }
+    }
+}
