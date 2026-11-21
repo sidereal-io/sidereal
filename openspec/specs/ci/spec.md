@@ -551,25 +551,6 @@ The checks are those of `mise run check-openspec`: strict validation of every sp
 - **WHEN** a pull request adds a requirement with no scenario to a delta spec in an active change under `openspec/changes/`
 - **THEN** the `openspec` job fails on that pull request
 
-### Requirement: The tool update workflow grants only the token access it needs
-
-`mise-tool-updates.yml` SHALL grant its jobs `contents: read` and no other permission. Its only write access SHALL come from a GitHub App token that asks for `contents: write` and `pull-requests: write`, and for no other permission. The only repository secret it SHALL refer to is `DEPENDABOT_MERGE_APP_PRIVATE_KEY`.
-
-#### Scenario: The workflow's own token can only read
-
-- **WHEN** a reviewer runs `yq '[.permissions, .jobs[].permissions] | map(select(. != null))' .github/workflows/mise-tool-updates.yml`
-- **THEN** the output lists only `contents: read`
-
-#### Scenario: The App token asks for two permissions
-
-- **WHEN** a reviewer runs `yq '.jobs[].steps[] | select(.uses == "actions/create-github-app-token*") | .with | with_entries(select(.key | test("^permission-")))' .github/workflows/mise-tool-updates.yml`
-- **THEN** the output is exactly two entries: `permission-contents: write` and `permission-pull-requests: write`
-
-#### Scenario: The workflow uses one secret
-
-- **WHEN** a reviewer runs `grep -o 'secrets\.[A-Z_]*' .github/workflows/mise-tool-updates.yml | sort -u`
-- **THEN** the output is exactly one line: `secrets.DEPENDABOT_MERGE_APP_PRIVATE_KEY`
-
 ### Requirement: CI runs the database fixture through its mise tasks
 
 The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-up`, and SHALL stop it with `mise run db-down` in a step that runs even when an earlier step failed. The `server` job SHALL read its test URL from `mise run db-test-url`, and the `e2e` job SHALL read its runtime URL from `mise run db-url`.
