@@ -99,7 +99,8 @@
 
 Stage status checked against the code on 2026-10-02; the self-host journey and the
 library journey's sign-in stage re-checked on 2026-10-26; the contributor journey
-re-checked on 2026-11-19. Status describes the server
+re-checked on 2026-11-19; the library, self-host and plugin journeys re-checked on 2026-11-21.
+Status describes the server
 in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -110,22 +111,20 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
   Sign in ─► Point at ─► Ingest   ─► Read     ─► See it   ─► Group    ─► Match    ─► Plate    ─► Trace    ─► Find &
              folder                  metadata                sessions    calibr.     solve       lineage     publish
      │          │           │           │           │           │           │           │           │           │
-    gap        gap         gap         gap         gap         gap         gap         gap         gap         gap
+supported      gap         gap         gap         gap         gap         gap         gap         gap         gap
 ```
 
-0. **Sign in** — Nova signs in to the private instance before anything else — gap
-   ([#447](https://github.com/sidereal-io/sidereal/issues/447)).
+0. **Sign in** — Nova signs in to the private instance before anything else — supported.
 1. **Point at a folder** — Sidereal watches a folder for new files — gap
-   ([#281](https://github.com/sidereal-io/sidereal/issues/281)).
+   ([#358](https://github.com/sidereal-io/sidereal/issues/358)). Until then, Nova uploads files from the browser ([#521](https://github.com/sidereal-io/sidereal/issues/521), [#531](https://github.com/sidereal-io/sidereal/issues/531)).
 2. **Ingest** — copy each file, hash it with BLAKE3, skip duplicates, and record an
    immutable version — gap: no schema and no store yet
-   ([#278](https://github.com/sidereal-io/sidereal/issues/278)).
-3. **Read metadata** — size, format, and dimensions as facets — gap
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-   [#280](https://github.com/sidereal-io/sidereal/issues/280)). FITS and XISF header
-   reading has no story yet.
+   ([#521](https://github.com/sidereal-io/sidereal/issues/521), [#522](https://github.com/sidereal-io/sidereal/issues/522), [#523](https://github.com/sidereal-io/sidereal/issues/523), [#526](https://github.com/sidereal-io/sidereal/issues/526)).
+3. **Read metadata** — size, format, and dimensions as facets, with the
+   processing state visible — gap ([#524](https://github.com/sidereal-io/sidereal/issues/524), [#525](https://github.com/sidereal-io/sidereal/issues/525), [#527](https://github.com/sidereal-io/sidereal/issues/527)). FITS and XISF header reading has
+   no story yet ([#357](https://github.com/sidereal-io/sidereal/issues/357)).
 4. **See it** — the asset appears in the browser as it lands — gap: the web shell shows no assets yet
-   ([#282](https://github.com/sidereal-io/sidereal/issues/282)). The v0.10.x
+   ([#521](https://github.com/sidereal-io/sidereal/issues/521), [#526](https://github.com/sidereal-io/sidereal/issues/526), [#528](https://github.com/sidereal-io/sidereal/issues/528), [#530](https://github.com/sidereal-io/sidereal/issues/530)). The v0.10.x
    gallery shows Immich images only.
 5. **Group into sessions** — frames sorted by type, target, filter, and equipment —
    gap.
@@ -133,8 +132,7 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    camera, temperature, gain, and exposure — gap.
 7. **Plate solve** — gap on `main`. v0.10.x solves Immich images through Astrometry.net.
 8. **Trace lineage** — which lights and masters produced a stack — gap
-   ([#286](https://github.com/sidereal-io/sidereal/issues/286) exposes the scaffolding
-   tables).
+   ([#368](https://github.com/sidereal-io/sidereal/issues/368)). The first lineage link, a preview to its source, comes with [#526](https://github.com/sidereal-io/sidereal/issues/526).
 9. **Find & publish** — search by target, filter, or equipment, and publish to Immich,
    Astrobin, or a static gallery — gap on `main`. v0.10.x browses and filters Immich
    images.
@@ -145,7 +143,7 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
   Install ─► Configure ─► Claim ─► Sign in ─► Recover ─► Protect  ─► Detect & ─► Back up & ─► Upgrade from
   (1 cmd)                 admin     & out      access     originals   repair      restore      v0.10.x
      │          │           │          │          │           │           │           │            │
- supported  supported      gap        gap        gap         gap         gap         gap          gap
+ supported  supported  supported  supported  supported     gap         gap         gap          gap
 ```
 
 1. **Install** — `compose.yml` and `.env` bring up the app and PostgreSQL together, and
@@ -154,15 +152,13 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
    existing PostgreSQL service through a Compose override — supported. Watched folders
    are a gap owned by [#358](https://github.com/sidereal-io/sidereal/issues/358).
 3. **Claim administrator** — the first visitor to an unclaimed instance creates the
-   sole administrator, or the operator does it from the box with `siderealctl` — gap: the
-   server has no users and serves no claim screen ([#447](https://github.com/sidereal-io/sidereal/issues/447), [#449](https://github.com/sidereal-io/sidereal/issues/449)).
+   sole administrator, or the operator does it from the box with `siderealctl` — supported.
 4. **Sign in and out** — a session in a secure cookie, revoked on sign-out or expiry;
-   every other caller is refused — gap: no sessions, no middleware, no cookie
-   ([#447](https://github.com/sidereal-io/sidereal/issues/447), [#448](https://github.com/sidereal-io/sidereal/issues/448), [#450](https://github.com/sidereal-io/sidereal/issues/450), [#451](https://github.com/sidereal-io/sidereal/issues/451), [#452](https://github.com/sidereal-io/sidereal/issues/452)).
+   every other caller is refused — supported.
 5. **Recover access** — reset a lost administrator password from the box, signing out
-   every session — gap: the app image has no `siderealctl` ([#449](https://github.com/sidereal-io/sidereal/issues/449), [#453](https://github.com/sidereal-io/sidereal/issues/453)).
+   every session — supported.
 6. **Protect originals** — ingest copies and never moves, renames, or deletes files in
-   the watched folder — gap ([#356](https://github.com/sidereal-io/sidereal/issues/356)).
+   the watched folder — gap ([#521](https://github.com/sidereal-io/sidereal/issues/521), [#523](https://github.com/sidereal-io/sidereal/issues/523)).
 7. **Detect & repair** — a corrupted stored file is found, and the user can adopt,
    restore, or ignore it — gap ([#371](https://github.com/sidereal-io/sidereal/issues/371)).
 8. **Back up & restore** — a documented, verified backup of both the database and the
@@ -181,18 +177,17 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 1. **Code to the contract** — implement a Source or Operator against `plugin-abi` —
    partial: the traits in `server/crates/plugin-abi/src/lib.rs` carry only an id
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279),
-   [#281](https://github.com/sidereal-io/sidereal/issues/281)). The embedded-script
+   ([#521](https://github.com/sidereal-io/sidereal/issues/521), [#524](https://github.com/sidereal-io/sidereal/issues/524)). The embedded-script
    profile has no story yet.
 2. **Read bytes & emit facets** — through `AssetContext`: byte access, `emit_facet`,
-   `log`, `is_cancelled` — gap ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
-3. **Declare grants** — a manifest names the facets the plugin may write — gap.
+   `log`, `is_cancelled` — gap ([#524](https://github.com/sidereal-io/sidereal/issues/524)).
+3. **Declare grants** — a manifest names the facets the plugin may write — gap
+   ([#524](https://github.com/sidereal-io/sidereal/issues/524)).
 4. **Register** — `Pack::register` adds the plugin to the `Registry` — supported.
 5. **Run via the executor** — the executor dispatches the plugin and validates its
-   outcome — gap ([#279](https://github.com/sidereal-io/sidereal/issues/279)).
+   outcome — gap ([#524](https://github.com/sidereal-io/sidereal/issues/524), [#527](https://github.com/sidereal-io/sidereal/issues/527)).
 6. **Back door refused** — a direct store write or forged facet is rejected — gap
-   ([#279](https://github.com/sidereal-io/sidereal/issues/279); proven in CI by
-   [#283](https://github.com/sidereal-io/sidereal/issues/283)).
+   ([#524](https://github.com/sidereal-io/sidereal/issues/524); proven in CI by [#529](https://github.com/sidereal-io/sidereal/issues/529)).
 7. **Pass conformance** — the plugin passes the shared conformance suite — gap.
 
 ### People who build Sidereal
