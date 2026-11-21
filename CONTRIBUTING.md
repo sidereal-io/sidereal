@@ -273,6 +273,10 @@ from your system's package manager:
   certificates with `openssl`, before it starts Compose. Without `openssl`, it
   stops with no error message. `db-tls` and `external-db-verify` need
   `openssl` too.
+- **`dev`,** which runs the server and the web shell together: `setsid`, or
+  `perl` where there is no `setsid` command. Most Linux systems have `setsid`,
+  from util-linux, and macOS has `perl`. Without either, `dev` stops with an
+  error that names them. `server` and `web` on their own need neither.
 
 See [server setup](server/README.md) for container-free test prerequisites.
 
