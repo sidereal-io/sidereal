@@ -23,19 +23,27 @@ Source execution SHALL create no Asset.
 - **WHEN** the selected Source returns a refusal
 - **THEN** no Asset or Asset version is committed
 
-### Requirement: Upload accepts exactly one bounded image
+### Requirement: Upload accepts exactly one file
 
 `POST /api/assets` SHALL accept one multipart file field named `file`, with a
-nonempty display filename. A file of at most 104,857,600 bytes (100 MiB) SHALL
-be eligible for acceptance. A larger file SHALL return 413 with a clear
-100 MiB limit message and create no Asset. Malformed multipart data, no file,
-an empty filename, or more than one field SHALL return 400 and create no Asset.
-A successful first upload SHALL return 201 with an `asset` object using the
-same entry fields as the library list.
+nonempty display filename. Malformed multipart data, no file, an empty
+filename, or more than one field SHALL return 400 and create no Asset. A
+successful first upload SHALL return 201 with an `asset` object using the same
+entry fields as the library list.
 
 #### Scenario: One PNG
 - **WHEN** Nova sends one recognized PNG below the limit
 - **THEN** the response is 201 and identifies the committed Asset and original URL
+
+#### Scenario: More than one file
+- **WHEN** a request contains two file fields
+- **THEN** the response is 400 and neither file creates an Asset
+
+### Requirement: Upload enforces a 100 MiB size limit
+
+A file of at most 104,857,600 bytes (100 MiB) SHALL be eligible for
+acceptance. A larger file SHALL return 413 with a clear 100 MiB limit message
+and create no Asset, whether or not the request states its length.
 
 #### Scenario: Exact size boundary
 - **WHEN** Nova sends a recognized image of exactly 104,857,600 bytes
@@ -44,10 +52,6 @@ same entry fields as the library list.
 #### Scenario: One byte above the limit
 - **WHEN** Nova sends a file of 104,857,601 bytes, including a streamed request without Content-Length
 - **THEN** the response is 413 with the limit message and no Asset or version is created
-
-#### Scenario: More than one file
-- **WHEN** a request contains two file fields
-- **THEN** the response is 400 and neither file creates an Asset
 
 ### Requirement: Image recognition uses the bytes
 
@@ -105,27 +109,38 @@ health, username, sign-out and event-socket behavior and follow DESIGN.md.
 - **WHEN** the library contains an image whose display name includes HTML markup
 - **THEN** the name appears as literal text and executes no markup
 
-### Requirement: Library failures are visible and recoverable
+### Requirement: Library states are distinct
 
 The library SHALL distinguish loading, empty, loaded and failed-list states.
-Upload refusals SHALL show a clear message for unsupported format, excessive
-size, invalid input or unavailable service, without claiming success. A failed
-image load SHALL keep its name visible and show `This image could not be displayed.`
-The user SHALL be able to retry a failed list request or select another file
-after a refused upload. Signing out or losing the session SHALL hide library
-data; late responses SHALL NOT restore it.
-
-#### Scenario: Image cannot render
-- **WHEN** an accepted image fails to load or decode in the browser
-- **THEN** its name remains visible beside `This image could not be displayed.`
+The user SHALL be able to retry a failed list request.
 
 #### Scenario: Failed listing is not an empty library
 - **WHEN** the list request fails or returns an invalid body
 - **THEN** the view shows a library error and retry control, not the empty-library message
 
+### Requirement: Upload refusals are clear and recoverable
+
+Upload refusals SHALL show a clear message for unsupported format, excessive
+size, invalid input or unavailable service, without claiming success. The user
+SHALL be able to select another file after a refused upload.
+
 #### Scenario: Upload is refused
 - **WHEN** upload returns 413 or 415
 - **THEN** Nova sees the relevant limit or supported-format message and can select another file
+
+### Requirement: An image that cannot display keeps its name
+
+A failed image load SHALL keep its name visible and show
+`This image could not be displayed.`
+
+#### Scenario: Image cannot render
+- **WHEN** an accepted image fails to load or decode in the browser
+- **THEN** its name remains visible beside `This image could not be displayed.`
+
+### Requirement: Ending the session hides library data
+
+Signing out or losing the session SHALL hide library data. Responses that
+arrive later SHALL NOT restore it.
 
 #### Scenario: Session ends with work pending
 - **WHEN** Nova signs out or the session ends while a library request is pending

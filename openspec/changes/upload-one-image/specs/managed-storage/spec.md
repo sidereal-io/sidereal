@@ -1,16 +1,24 @@
 ## ADDED Requirements
 
-### Requirement: Ingest publishes durable objects before library records
+### Requirement: Ingest stages candidate bytes inside paired storage
 
 Ingest SHALL copy candidate bytes into a unique `tmp/{uuid}` within the paired
 storage root, compute their BLAKE3 hash and size, and have the Source recognize
-the format. It SHALL sync the complete file, atomically publish it at
+the format. Staging and store SHALL be on the same filesystem. Startup SHALL
+still leave a newly paired empty root with only its marker; ingest creates its
+directories when first needed.
+
+#### Scenario: Newly paired root
+- **WHEN** the server starts with a newly paired empty storage root
+- **THEN** the root holds only its marker until the first ingest creates `tmp` and `store`
+
+### Requirement: Ingest publishes durable objects before library records
+
+Ingest SHALL sync the complete staged file, atomically publish it at
 `store/{h[0:2]}/{h[2:4]}/{h}` where `h` is the lowercase hexadecimal hash, and
 sync the containing directory and newly created ancestor entries before
-committing any Asset or version. Staging and store SHALL be on the same
-filesystem. Failure of any required write, sync or publication SHALL prevent
-the database commit. Startup SHALL still leave a newly paired empty root with
-only its marker; ingest creates its directories when first needed.
+committing any Asset or version. Failure of any required write, sync or
+publication SHALL prevent the database commit.
 
 #### Scenario: First successful ingest
 - **WHEN** Nova uploads a new recognized image into paired storage
