@@ -307,9 +307,16 @@ once, in the repo root:
    and puts it ahead of the tools it installs. To check, run
    `mise env --paths`: the folder is on the first line.
 
-   Git still ignores `.envrc.local`, so you can delete it when you are done.
-4. Follow [With mise](#with-mise). mise is also in Nixpkgs, so you can install
-   it with Nix if you prefer.
+   If you will install the tools by hand, as [Without mise](#without-mise)
+   says, nothing loads `.envrc.local` any more. Export its settings in your
+   shell before you run the scripts, for example `export RUST_LOG=debug`. When
+   the file holds only `export` lines, `. ./.envrc.local` does this for the
+   current shell.
+
+   Git still ignores `.envrc.local`, so you can keep it or delete it.
+4. Follow [With mise](#with-mise), or [Without mise](#without-mise) to install
+   the tools by hand. mise is also in Nixpkgs, so you can install it with Nix
+   if you prefer.
 
 ### Where versions are set
 
