@@ -23,10 +23,12 @@ server or web shell, and SHALL ignore an inherited `DATABASE_URL` and
 
 ### Requirement: The end-to-end suite removes its stack and refuses a stack it cannot make
 
-When a `mise run e2e` run ends, whether its tests pass or fail, it SHALL drop
-the database it made and remove the storage folder it made. When it cannot
-make the database or the folder, or a port it needs is taken, it SHALL exit
-with a non-zero status before any browser test runs.
+When a `mise run e2e` run ends, whether its tests pass or fail, it SHALL stop
+the server it started, remove the storage folder it made, and drop the
+database it made, attempting each step even when an earlier one failed. When
+the tests pass but cleanup fails, the run SHALL exit with a non-zero status
+and name what it left behind. When it cannot make the database or the folder,
+it SHALL exit with a non-zero status before any browser test runs.
 
 #### Scenario: The run cleans up after a failure
 
@@ -38,3 +40,17 @@ with a non-zero status before any browser test runs.
 
 - **WHEN** the database fixture is not running and a contributor runs `mise run e2e`
 - **THEN** the command exits with a non-zero status before Playwright starts any browser test
+
+### Requirement: The end-to-end suite talks only to the server it started
+
+When anything already accepts connections on a port that `mise run e2e`
+needs, it SHALL exit with a non-zero status before any browser test runs. It
+SHALL send HTTP requests to its server only after the server it started has
+reported that it is listening on the chosen port.
+
+#### Scenario: Another process holds the server port
+
+- **GIVEN** another process already accepts connections on the server port that `mise run e2e` chooses for this checkout
+- **WHEN** a contributor runs `mise run e2e`
+- **THEN** the command exits with a non-zero status before Playwright starts any browser test
+- **AND** the other process receives no HTTP request from the run

@@ -49,7 +49,7 @@ Each property's name SHALL be `--`, then the value of `x-sidereal.css-prefix`, t
 
 The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds any token it cannot write. These are:
 
-- a semantic token whose value is not a `{<group>.<key>}` reference to a primitive;
+- a semantic token whose value is not exactly `{<group>.<key>}`, naming an existing primitive, with nothing before or after it;
 - any entry under `components`;
 - any entry under `typography`, or a `colors`, `rounded`, or `spacing` key that is not a map;
 - two tokens with the same key, in any groups.
@@ -71,6 +71,14 @@ Its error message SHALL name the token.
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `color-action-primary`
 
+#### Scenario: A semantic value with text after its reference
+
+- **WHEN** a tester changes `color-action-primary` under `x-sidereal.semantic` in `DESIGN.md` to `"{colors.violet-600}; } body {"`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `color-action-primary`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
 #### Scenario: A component token
 
 - **WHEN** a tester adds `button-primary-hover: { backgroundColor: "{colors.violet-500}" }` under `components` in `DESIGN.md`
@@ -84,6 +92,32 @@ Its error message SHALL name the token.
 - **AND** runs the generator
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `spacing-4`
+
+### Requirement: The generator refuses a key or value that could escape its CSS
+
+The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds any of these:
+
+- a key that holds anything other than lowercase letters, digits, and hyphens;
+- an `x-sidereal.css-prefix` that is missing, or holds anything other than lowercase letters;
+- a primitive value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`.
+
+Its error message SHALL name the token.
+
+#### Scenario: A value that would escape its property
+
+- **WHEN** a tester changes `size-1280` under `x-sidereal.size` in `DESIGN.md` to `"1px; } body { background: url(https://x.invalid) }"`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `size-1280`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+#### Scenario: A prefix that would escape its block
+
+- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `"sr; } body { color: red } /*"`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `css-prefix`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
 
 ### Requirement: Stylesheets use only tokens that exist
 

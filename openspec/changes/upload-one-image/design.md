@@ -66,22 +66,46 @@ upload's Asset outcome.
     `db-fixture.sh` picks the database port, so neither is 5000 or 5173 and
     two checkouts do not collide. It passes them to Playwright through
     `SIDEREAL_E2E_SERVER_PORT` and `SIDEREAL_E2E_WEB_PORT`.
+  - Before it starts anything, the script refuses to run, with a non-zero
+    exit, if anything already accepts connections on either chosen port.
   - The script, not Playwright's `webServer`, starts the built server in the
-    background with `PORT`, `DATABASE_URL` and `STORAGE_ROOT` set, keeps its
-    process id in the run's temporary folder, and waits for `/healthz`. This
-    lets the browser test restart it. The test calls a restart helper that the
-    script provides; the helper stops that process id and starts the server
-    again with the same settings.
+    background with `PORT`, `DATABASE_URL` and `STORAGE_ROOT` set, and keeps
+    its process id in the run's temporary folder. This lets the browser test
+    restart it. The test calls a restart helper that the script provides; the
+    helper stops that process id and starts the server again with the same
+    settings.
+  - The script trusts the server only after positive evidence that its own
+    child bound the port. The server initializes the database before it binds
+    (`server/src/main.rs`), so another process on that port could answer
+    `/healthz` first. The script therefore waits until the child it started
+    prints `sidereal-server listening on` with the chosen port, and checks
+    that the child is still running. Only then does it probe `/healthz`. The
+    restart helper waits the same way.
   - `web/playwright.config.ts` reads the two port settings, starts only Vite,
     with `reuseExistingServer: false`, `--port <web port> --strictPort` and
     `SIDEREAL_DEV_PROXY_TARGET` set to the server's address. A port that is
     already taken stops the run.
+  - The suite runs with one worker everywhere, locally and on CI, and with
+    `fullyParallel` off, so no test runs during the upload journey's server
+    restart (D17). The upload journey is marked serial and has no retries:
+    a retry would find the instance already claimed. A failure fails the run
+    once, with the first attempt's trace, so `trace` is `retain-on-failure`
+    instead of `on-first-retry`.
   - `web/vite.config.ts` forwards `/healthz` and `/api` to
     `SIDEREAL_DEV_PROXY_TARGET` when it is set, and to `http://localhost:5000`
     otherwise, so `mise run dev` and `mise run web` keep their behaviour.
-  - A `trap` drops the database and removes the storage folder on every exit,
-    pass or fail. If the database or folder cannot be created, the script
-    exits non-zero before starting anything.
+  - A `trap` cleans up on every exit, pass or fail, in this order. It stops
+    the server it started and waits for it to exit. It removes the storage
+    folder. It drops the database with the policy of
+    `core/src/database/test_support.rs`: up to three rounds, each trying
+    `DROP DATABASE ... WITH (FORCE)` and falling back to a plain
+    `DROP DATABASE` when PostgreSQL refuses the forced drop with `42501`.
+    Each step runs even if an earlier one failed. The run's exit status is
+    the test result, except when the tests passed and cleanup failed: then
+    the run exits non-zero and names what it left behind. `db-fixture.sh
+    orphan-clean` still removes a database left behind.
+  - If the database or folder cannot be created, the script exits non-zero
+    before starting anything.
   - The restart step stops and starts only the server that this run started,
     against the same database and storage folder.
   - The CI `e2e` job no longer exports `DATABASE_URL` from `mise run db-url`,
@@ -160,9 +184,15 @@ Migration 4 changes what existing specs and tests count. The
 `postgres-foundation` delta moves first startup and concurrent startup from
 three to four migration records and adds `assets` and `asset_versions` to the
 application tables. The `security-events` delta stops naming the full table
-list: "Nothing is stored" compares the table list before and after the acts.
-Update `server/crates/core/src/database/startup/tests.rs` and the security
-event test to match.
+list: "Nothing is stored" compares the table list before and after the acts,
+and checks that only `users` and `sessions` change rows. It gets its own test
+that performs all five acts. Update
+`server/crates/core/src/database/startup/tests.rs` to match.
+
+The deployment verifier counts migrations too: `scripts/instance-verify.sh`
+asserts three successful migrations. It moves to four, with its message, and
+the `compose-instance` delta moves that requirement's count to four as well
+(the main spec still says two, from before the access migration).
 
 Alternative: a single table would erase the identity/version distinction.
 Unique hashes on versions would prevent multiple versions sharing bytes.
@@ -172,10 +202,18 @@ Asset on repeated bytes; storage sharing is independent of that lookup.
 
 ### 3. Stage a bounded stream and publish without replacing objects
 
+Startup resolves `STORAGE_ROOT` once, with symbolic links followed, whether
+or not `WEB_ROOT` is set. Pairing, the web-root overlap check and the object
+store all use that resolved path. A `STORAGE_ROOT` that is a symbolic link to
+a valid folder therefore keeps working, as `StorageRoot::new`
+(`core/src/storage.rs`) allows today.
+
 Add an object-store service beside the existing StorageRoot pairing code,
-constructed only from the root that passed startup pairing and probes.
-The service opens the root directory once, with `O_DIRECTORY | O_NOFOLLOW`,
-and keeps that descriptor for its lifetime. It then reads the marker through
+constructed only from the resolved root that passed startup pairing and
+probes. The service opens that root directory once, with `O_DIRECTORY`, and
+keeps that descriptor for its lifetime. The root itself is already resolved,
+so it is opened without `O_NOFOLLOW`; every component below it still refuses
+symbolic links. It then reads the marker through
 that descriptor and refuses to start if the marker's UUID differs from the
 UUID that pairing committed. Every later operation resolves relative to that
 descriptor. A root that is swapped for another folder between pairing and
@@ -214,8 +252,10 @@ or deleting it. Reconciling a damaged object belongs to the later
 verify-and-repair feature. Re-hashing costs one extra read of at most
 100 MiB, only when bytes repeat.
 
-Before committing, every upload syncs the whole directory chain: the leaf
-hash directory, both prefix directories, `store/` and the root. It does this
+Before committing, every upload syncs the whole directory chain, in this
+order: the second prefix directory (`store/{h[0:2]}/{h[2:4]}`, which holds
+the object file), the first prefix directory (`store/{h[0:2]}`), `store/`
+and the root. The full hash names the object file, not a directory. It does this
 whether this request created the directories or another request did. A
 request cannot know whether another request that created a prefix directory
 has synced it yet, so it never relies on that. Reject a filesystem boundary
@@ -247,12 +287,18 @@ The public web-file fallback serves all of `WEB_ROOT` with no session
 `WEB_ROOT`, the fallback would serve originals to anyone. So startup refuses
 to run when `STORAGE_ROOT` and `WEB_ROOT` are the same folder, or one holds
 the other, after both are resolved with symbolic links followed (D11). The
-check runs in `config.rs` after both settings are read and before the
-database is touched or HTTP is served. Its message names both `STORAGE_ROOT`
-and `WEB_ROOT`. A symbolic link that someone later writes inside `WEB_ROOT`
-is not checked; `docs/install.md` already says that only trusted people may
-write to `WEB_ROOT`. A test at the production HTTP seam also requests a
-stored object's path through the fallback with no session and gets no bytes.
+check uses the resolved `STORAGE_ROOT` from decision 3. It runs in
+`config.rs` after both settings are read and before the database is touched
+or HTTP is served. Its message names both `STORAGE_ROOT` and `WEB_ROOT`.
+
+Two cases are outside the check (D11, D15): a symbolic link that someone
+writes inside `WEB_ROOT`, and a bind mount that exposes the storage folder
+inside `WEB_ROOT`. Resolving paths cannot see a bind mount, and making one
+needs the same trust as writing into `WEB_ROOT`. `docs/install.md` already
+says that only trusted people may write to `WEB_ROOT`; it gains a sentence
+that no mount or link may expose `STORAGE_ROOT` inside `WEB_ROOT`. A test at
+the production HTTP seam also requests a stored object's path through the
+fallback with no session and gets no bytes.
 
 The API uses these shapes:
 
@@ -262,7 +308,14 @@ The API uses these shapes:
 - `<entry>`: `id`, `kind`, `name`, `current_version_id`, `original_url`.
 - `GET /api/assets/{id}/original`: stream the file resolved from the persisted
   current version's hash, with the pack-recognized Content-Type, nosniff and
-  no-store headers. Invalid or unknown ids get 404.
+  no-store headers. Invalid or unknown ids get 404. A missing or unreadable
+  object gets 503.
+
+GET does not re-hash the object it streams (D16). It returns the bytes
+stored at the version's hash path. Re-hashing up to 100 MiB on every view
+would cost a full read per view, and a mismatch found mid-stream cannot undo
+a 200 that has already been sent. Detecting a damaged or replaced object
+belongs to the later verify-and-repair feature.
 
 Use fixed JSON error messages for 400 malformed upload, 413 size limit,
 415 unsupported format and 503 persistence/storage failures. Keep guard-owned
@@ -315,6 +368,15 @@ the generator to resolve a semantic token's reference to an existing
 primitive and write it as `--sr-<token>: var(--sr-<primitive>)`. It still
 refuses a semantic token whose value is a raw value or names no primitive,
 and it still refuses component tokens. Then run `pnpm tokens` in `web/`.
+
+The generator's escape-safety rule refuses any value that holds `{` or `}`,
+so as written it refuses every reference. The `design-tokens` delta narrows
+that value rule to primitives. A semantic value must match exactly
+`{<group>.<key>}`, where the key holds only lowercase letters, digits and
+hyphens, and must name an existing primitive. The generator never writes the
+raw text of a semantic value, only the resolved `var(--<prefix>-<key>)`. So a
+semantic value with extra text, such as `"{colors.violet-600}; } body {"`,
+is refused.
 The `design-tokens` delta records this. Penpot gets the tokens when an agent
 next copies them, as DESIGN.md says.
 

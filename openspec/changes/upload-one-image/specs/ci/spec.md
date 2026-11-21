@@ -16,8 +16,9 @@ The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-u
 
 #### Scenario: The e2e job sets no database URL
 
-- **WHEN** a reviewer runs `yq '.jobs.e2e.steps[] | select(has("run")) | .run' .github/workflows/ci.yml | grep -c 'DATABASE_URL'`
-- **THEN** the output is `0`
+- **WHEN** a reviewer runs `yq '[(.env, .jobs.e2e.env, .jobs.e2e.steps[].env) | select(. != null) | keys | .[] | select(. == "DATABASE_URL")] | length' .github/workflows/ci.yml`
+- **THEN** it exits with status 0 and prints `0`, because no workflow, job or step environment block that the `e2e` job uses sets `DATABASE_URL`
+- **AND** `yq '[.jobs.e2e.steps[] | select(has("run")) | .run | select(test("DATABASE_URL"))] | length' .github/workflows/ci.yml` exits with status 0 and prints `0`, because no run command of the `e2e` job names it
 
 #### Scenario: The fixture stops after a failure
 

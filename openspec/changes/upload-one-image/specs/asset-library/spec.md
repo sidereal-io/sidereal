@@ -46,24 +46,34 @@ objects. A database failure SHALL return 503 rather than an empty library.
 
 ### Requirement: Original retrieval returns stored bytes
 
-`GET /api/assets/{id}/original` SHALL return the current version's exact bytes
-with status 200 and the recognized image media type, using `image/png` or
-`image/jpeg` for this upload slice. It SHALL send `X-Content-Type-Options:
-nosniff` and `Cache-Control: no-store`. Unknown Asset ids SHALL return 404.
-An unavailable object or unavailable configured storage SHALL produce a clear
-503 error, without silently changing the Asset or its version.
+`GET /api/assets/{id}/original` SHALL return status 200, the recognized
+media type and the bytes stored at the current version's hash path. While the
+object is intact, these are the exact uploaded bytes. Retrieval SHALL NOT
+re-hash them; finding a damaged or replaced object is left to a later
+verify-and-repair feature. Unknown Asset ids SHALL return 404. A missing or
+unreadable object, or unavailable storage, SHALL return a clear 503 and leave
+the Asset and its version unchanged.
 
 #### Scenario: Original is a JPEG despite its filename
 - **WHEN** Nova retrieves an accepted JPEG whose name ends in `.png`
 - **THEN** the response body is the uploaded bytes and its Content-Type is `image/jpeg`
 
 #### Scenario: Original is missing
-- **WHEN** an Asset exists but its original object is unavailable
+- **WHEN** an Asset exists but its original object is missing or unreadable
 - **THEN** original retrieval returns 503 and the Asset and version remain unchanged
 
 #### Scenario: Unknown Asset
 - **WHEN** an administrator requests an original for an id not in the library
 - **THEN** the response is 404 and contains no file bytes
+
+### Requirement: Original responses are private and never sniffed
+
+Every original response SHALL send `X-Content-Type-Options: nosniff` and
+`Cache-Control: no-store`.
+
+#### Scenario: Original response headers
+- **WHEN** Nova retrieves the original of an accepted PNG
+- **THEN** the response has Content-Type `image/png`, `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`
 
 ### Requirement: All library data requires an administrator session
 

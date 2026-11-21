@@ -11,3 +11,4 @@ A `security event:` line SHALL be written only once its act has taken effect, an
 #### Scenario: Nothing is stored
 - **WHEN** Sam claims, signs in, fails a sign-in, signs out, and resets the password from the box
 - **THEN** the database's list of application tables is the same after these acts as before them
+- **AND** every application table other than `users` and `sessions` holds the same rows after these acts as before them

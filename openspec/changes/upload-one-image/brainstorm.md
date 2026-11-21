@@ -25,6 +25,9 @@ Story of Size M.
 | D12 | Is an existing stored object checked before reuse? | Yes. Upload re-hashes it before reuse. On a mismatch it answers 503, commits nothing, and leaves the file unchanged. | User (plan review round 1, finding 3) |
 | D13 | Does the Library add semantic tokens? | Yes: `color-action-primary`, `color-text-on-action`, `color-text-body`, `color-text-secondary`, `color-border-hairline` and `color-focus-ring`, each pointing at an existing primitive. Access's Sign-in button switches to `color-action-primary`. Edit DESIGN.md first, then run `pnpm tokens` in the same change. | User (plan review round 1, finding 8) |
 | D14 | What does uploading the same bytes again do in this change? | Leave it unspecified. #522 owns what uploading the same bytes again does. Add no requirement, scenario or temporary exception for it here; the design's non-goals name #522 as the owner. | User (plan review round 1, finding 9) |
+| D15 | What about a bind mount that puts `STORAGE_ROOT` inside `WEB_ROOT`? | Treat it like a symbolic link written into `WEB_ROOT`. Keep D11's startup check. `docs/install.md` warns that no mount or link may expose `STORAGE_ROOT` inside `WEB_ROOT`, and the spec names the case as outside the check. | User (plan review round 2, finding 1) |
+| D16 | Does fetching an original re-hash its bytes? | No. The spec says retrieval returns the bytes stored at the version's hash path. Detecting a damaged or replaced file belongs to the later verify-and-repair feature. A missing or unreadable file still gets 503. | User (plan review round 2, finding 9) |
+| D17 | How do the browser tests share the one throwaway stack? | The e2e suite runs with one worker everywhere. The upload journey runs serially with no retries. | User (plan review round 2, finding 5) |
 
 ## Changes from the story
 

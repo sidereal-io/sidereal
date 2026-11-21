@@ -24,6 +24,13 @@ trust boundary and ADR-011's integrity promise. Semantic tokens follow
 ADR-005 and DESIGN.md's own tier rules. The isolated e2e stack is test
 tooling within ADR-016's mise tasks.
 
+The revisions after plan review round 2 (D15–D17) add no fork either.
+Treating a bind mount like a symbolic link keeps ADR-007's trust boundary at
+the people who may write to `WEB_ROOT`. Leaving integrity checks on read to
+verify-and-repair keeps ADR-011's promise where it already sits, at publication
+and reuse. Resolving `STORAGE_ROOT` once keeps ADR-014's pairing on one folder.
+Running the browser suite with one worker is test configuration.
+
 ADR-012 remains Proposed and unused. ADR-013 is superseded by ADR-016; the
 plan follows the latter. No existing record was changed.
 

@@ -14,12 +14,12 @@ directories when first needed.
 
 ### Requirement: Ingest publishes durable objects before library records
 
-Ingest SHALL sync the complete staged file, atomically publish it at
-`store/{h[0:2]}/{h[2:4]}/{h}` (`h` is the lowercase hexadecimal hash), and sync
-the full directory chain before committing any Asset or version. The chain is
-the hash directory, both prefix directories, `store` and the root. Each ingest
-SHALL sync the whole chain itself, whoever created it. A failed write, sync or
-publication SHALL prevent the commit.
+Ingest SHALL sync the staged file, atomically publish it at
+`store/{h[0:2]}/{h[2:4]}/{h}` (`h` is the lowercase hex hash), and sync the
+directory chain before committing any Asset or version. The chain is, in
+order, `store/{h[0:2]}/{h[2:4]}`, `store/{h[0:2]}`, `store` and the root.
+Each ingest SHALL sync the whole chain itself, whoever created it. A failed
+write, sync or publication SHALL prevent the commit.
 
 #### Scenario: First successful ingest
 - **WHEN** Nova uploads a new recognized image into paired storage
@@ -91,10 +91,18 @@ commit no Asset or version, and leave the object unchanged.
 
 ### Requirement: Ingest uses the storage root that passed pairing
 
-The object store SHALL open the storage root once and keep that open folder
-for every ingest and original read. Before it accepts work, it SHALL read the
-marker through that open folder and refuse to start when the marker's UUID
-differs from the UUID the database paired with.
+Startup SHALL resolve `STORAGE_ROOT` once, with symbolic links followed,
+whether or not `WEB_ROOT` is set. Pairing, the web-root overlap check and the
+object store SHALL all use that resolved folder. The object store SHALL open
+the resolved folder once and keep that open folder for every ingest and
+original read. Before it accepts work, it SHALL read the marker through that
+open folder and refuse to start when the marker's UUID differs from the UUID
+the database paired with.
+
+#### Scenario: Storage root is a symbolic link
+- **WHEN** `STORAGE_ROOT` is a symbolic link to a valid folder and `WEB_ROOT` is unset
+- **THEN** the server starts, pairs that folder, and accepts an upload whose object appears under the link's target
+- **AND** after a restart with the same settings, the pairing UUID is unchanged and the uploaded original is still returned
 
 #### Scenario: Root replaced after pairing
 - **WHEN** the folder at `STORAGE_ROOT` is replaced by another folder with a different marker after pairing succeeds and before the object store starts
@@ -107,8 +115,7 @@ When both `STORAGE_ROOT` and `WEB_ROOT` are set, startup SHALL resolve both
 paths with symbolic links followed. It SHALL refuse to start when they are the
 same folder or one holds the other. It SHALL refuse before any database write
 and before serving HTTP, with a message that names `STORAGE_ROOT` and
-`WEB_ROOT`. A symbolic link created inside `WEB_ROOT` after startup is outside
-this check.
+`WEB_ROOT`.
 
 #### Scenario: Storage inside the web root
 - **WHEN** `STORAGE_ROOT` is a folder inside `WEB_ROOT`
@@ -125,3 +132,16 @@ this check.
 #### Scenario: Separate folders
 - **WHEN** `STORAGE_ROOT` and `WEB_ROOT` resolve to folders where neither holds the other
 - **THEN** startup continues to storage pairing as before
+
+### Requirement: The installation guide covers what the overlap check cannot see
+
+The startup overlap check compares resolved paths only. A symbolic link
+created inside `WEB_ROOT`, and a bind mount or other mount that exposes the
+storage folder inside `WEB_ROOT`, are outside it. The installation guide SHALL
+state that the two folders must not overlap, and that no mount or link may
+expose `STORAGE_ROOT` inside `WEB_ROOT`.
+
+#### Scenario: The installation guide warns about mounts and links
+- **WHEN** a reviewer reads the section of `docs/install.md` on running the server outside the image
+- **THEN** it says that `STORAGE_ROOT` and `WEB_ROOT` must not overlap
+- **AND** it says that no mount or symbolic link may expose `STORAGE_ROOT` inside `WEB_ROOT`
