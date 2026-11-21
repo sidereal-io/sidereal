@@ -5,9 +5,6 @@ on:
     paths:
       - 'mise.toml'
       - 'mise.lock'
-      # The npm dependency lock: a deleted or edited file here leaves
-      # mise.lock unchanged.
-      - '.mise/**'
       - 'server/rust-toolchain.toml'
       - '.nvmrc'
       - '.github/workflows/mise.yml'
@@ -28,10 +25,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # --locked fails on a stale lock, a missing npm sidecar or a wrong
-      # checksum, where a plain install would resolve a fresh release. No
-      # cache: its key ignores .mise/, and a restored install skips the
-      # sidecar and checksum checks.
+      # --locked fails on a stale lock or a wrong checksum, where a plain
+      # install would resolve a fresh release. No cache: a restored install
+      # skips the checksum check.
       - name: Install tools from mise.lock
         uses: jdx/mise-action@v5
         with:

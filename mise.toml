@@ -9,9 +9,9 @@ rust = { version = "stable", components = "rustfmt,clippy" }
 pnpm = "12"
 just = "1"
 gh = "2"
-# These two move together: each Let's Spec release names the OpenSpec CLI
-# its skills were generated from.
-"npm:@fission-ai/openspec" = "1.13.2"
+# Pinned on its own until a Let's Spec release names OpenSpec 2. Until
+# then, don't take this version from the Let's Spec release notes.
+"github:Fission-AI/OpenSpec" = "2.1.1"
 "github:sidereal-io/lets-spec" = "0.8.0"
 
 [env]

@@ -49,6 +49,53 @@ url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_windows_
 url_api = "https://api.github.com/repos/cli/cli/releases/assets/740719168"
 provenance = "github-attestations"
 
+[[tools."github:Fission-AI/OpenSpec"]]
+version = "2.1.1"
+backend = "github:Fission-AI/OpenSpec"
+specifiers = ["2.1.1"]
+
+[tools."github:Fission-AI/OpenSpec"."platforms.linux-arm64"]
+checksum = "sha256:b7ab16e4138e88df2d2ddc13e687bf20f6fe22751db68492d48e00d77b0183da"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536168"
+provenance = "github-attestations"
+
+[tools."github:Fission-AI/OpenSpec"."platforms.linux-arm64-musl"]
+checksum = "sha256:72a71557234560139f015bfd0d2da1e6b107ed66bfe7f95bb7ba6221d98e0778"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-linux-arm64-musl.tar.gz"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536169"
+provenance = "github-attestations"
+
+[tools."github:Fission-AI/OpenSpec"."platforms.linux-x64"]
+checksum = "sha256:22f0c7c96cc14138becb42aa98e589050c94cda793cbefd7e7ac2d7dee78b6d5"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-linux-x64.tar.gz"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536335"
+provenance = "github-attestations"
+
+[tools."github:Fission-AI/OpenSpec"."platforms.linux-x64-musl"]
+checksum = "sha256:3643c8e7d1dd3cded3406928e22abf489456ec863bfc2aef7855e294711c32f3"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-linux-x64-musl.tar.gz"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536171"
+provenance = "github-attestations"
+
+[tools."github:Fission-AI/OpenSpec"."platforms.macos-arm64"]
+checksum = "sha256:0cd2c6a5b31e8d28b97a3f5a644c533dd0dcb5510162efe2bdeeb67877a41d83"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-darwin-arm64.tar.gz"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536170"
+provenance = "github-attestations"
+
+[tools."github:Fission-AI/OpenSpec"."platforms.macos-x64"]
+checksum = "sha256:c43c02b56dee3c13cbf30cdf1313c5aeb577accf4d1ffb322b22e09b18709b63"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-darwin-x64.tar.gz"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536172"
+provenance = "github-attestations"
+
+[tools."github:Fission-AI/OpenSpec"."platforms.windows-x64"]
+checksum = "sha256:d0596470784b9edf4f015b0763d071908f379913fcef524a5cba5d7ec0fc7943"
+url = "https://github.com/Fission-AI/OpenSpec/releases/download/v2.1.1/openspec-windows-x64.zip"
+url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/769536345"
+provenance = "github-attestations"
+
 [[tools."github:sidereal-io/lets-spec"]]
 version = "0.8.0"
 backend = "github:sidereal-io/lets-spec"
@@ -161,12 +208,6 @@ url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-darwin-x64.tar.gz"
 [tools.node."platforms.windows-x64"]
 checksum = "sha256:50efaf01a08c520b4bbe499c09a8c5a5c370002c419c0d9da2c6815d3066a453"
 url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-win-x64.zip"
-
-[[tools."npm:@fission-ai/openspec"]]
-version = "1.13.2"
-aube = { path = ".mise/locks/npm-fission-ai-openspec/1.13.2", digest = "sha256:c7293cb74954eda6aa5803fd2acd855295bbc27a015cb4b8e24cf36f1926cc89" }
-backend = "npm:@fission-ai/openspec"
-specifiers = ["1.13.2"]
 
 [[tools.pnpm]]
 version = "12.9.0"

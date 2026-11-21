@@ -161,8 +161,9 @@ These rules add to the Let's Spec block above.
   lists where each tool version and product version is set. Until the Nix route
   goes, `flake.lock` and `mise.lock` both pin some tools; change those together.
 - **Update Let's Spec on both routes.** Change the release tag in `flake.nix`, and
-  in `mise.toml` both the Let's Spec version and the `openspec` version its release
-  notes name. Run `nix flake update lets-spec` and `mise lock`, enter the dev shell
+  the Let's Spec version in `mise.toml`. Leave OpenSpec alone: it is pinned on its
+  own, in `nix/openspec.nix` and `mise.toml`, until a Let's Spec release names
+  OpenSpec 2. Run `nix flake update lets-spec` and `mise lock`, enter the dev shell
   so `lets sync` runs, and commit what it wrote in the same pull request as both
   locks. Dependabot does not move Let's Spec: the flake input names a tag.
 - **`main` does not release yet.** v0.10.x releases are tagged from `v0.x`. A later
