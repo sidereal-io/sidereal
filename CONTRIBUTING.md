@@ -318,6 +318,16 @@ once, in the repo root:
    the tools by hand. mise is also in Nixpkgs, so you can install it with Nix
    if you prefer.
 
+   On NixOS, the Linux x64 Node, pnpm and OpenSpec binaries that `mise.lock`
+   pins ask for the program loader `/lib64/ld-linux-x86-64.so.2`. A plain
+   NixOS system has no file there, so mise installs these tools but they fail
+   to start. Two routes give them that loader: set
+   `programs.nix-ld.enable = true;` in your NixOS configuration, or run mise
+   inside an FHS environment, such as one built with `buildFHSEnv`. The
+   project does not test on NixOS, so neither route is verified. The browser
+   for the end-to-end tests has the same need: see
+   [End-to-end tests](web/README.md#end-to-end-tests).
+
 ### Where versions are set
 
 Change a version only where the table below says it is set.
