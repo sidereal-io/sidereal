@@ -73,7 +73,11 @@ upload's Asset outcome.
     `SIDEREAL_E2E_SERVER_PORT` and `SIDEREAL_E2E_WEB_PORT`.
   - Before it starts anything, the script refuses to run, with a non-zero
     exit, if anything already accepts connections on either chosen port.
-  - The script, not Playwright's `webServer`, starts the built server in the
+  - Before it starts anything, the script runs `cargo build -p sidereal-server
+    --manifest-path server/Cargo.toml`, so a fresh checkout has a binary. On
+    CI the job's earlier build step makes this a no-op.
+  - The script, not Playwright's `webServer`, starts
+    `server/target/debug/sidereal-server` in the
     background with `PORT`, `DATABASE_URL` and `STORAGE_ROOT` set. The script
     is the only owner of server processes: every server it starts, the first
     and each replacement, is its own child. It runs Playwright as a background
@@ -85,6 +89,9 @@ upload's Asset outcome.
     settings and a new log, and waits for that log's listening line, as the
     next item says. Then it writes `ready-<n>` in the run folder, where `<n>`
     counts the restarts. The test waits for that file before it reloads.
+    A trapped signal makes POSIX `wait` return early, so after a restart the
+    script waits again on the same Playwright child. Only that child's exit
+    ends the test run.
   - The script trusts the server only after positive evidence that its own
     child bound the port. The server initializes the database before it binds
     (`server/src/main.rs`), so another process on that port could answer
@@ -109,6 +116,8 @@ upload's Asset outcome.
     `SIDEREAL_DEV_PROXY_TARGET` when it is set, and to `http://localhost:5000`
     otherwise, so `mise run dev` and `mise run web` keep their behaviour.
   - A `trap` cleans up on every exit, pass or fail, in this order. It stops
+    Playwright's process tree, Vite and Chromium included, and reaps the
+    Playwright child, as `scripts/dev.sh` cleans up its descendants. It stops
     whichever server is running at that moment, including one that a restart
     has just started, and waits for it to exit. It removes the run folder. It drops the database with the policy of
     `core/src/database/test_support.rs`: up to three rounds, each trying
@@ -254,6 +263,9 @@ body does not change the outcome, just as a lost response after commit does
 not. A body that ends or fails before the closing delimiter is malformed: it
 gets 400 and commits nothing. Set the route's transport limit above 100 MiB to allow bounded
 multipart overhead (1 MiB); enforce the exact 100 MiB file cap separately.
+The transport limit counts the whole body, epilogue included, so a request
+whose epilogue pushes it past 101 MiB gets 413. The `image-upload` spec
+states this bound. Browsers send no epilogue, so no real upload meets it.
 An overlong or malformed multipart envelope gets a clear client error. Leave
 the body limits of access endpoints unchanged.
 
@@ -265,8 +277,10 @@ an unsupported primitive fails closed. A plain overwriting rename or
 exists-then-rename sequence is insufficient.
 
 When an object already exists at the hash path, whether it was there before
-or another request just published it, ingest opens it without following
-links and checks that it is a regular file. It first compares the open
+or another request just published it, ingest opens it with
+`O_NOFOLLOW | O_NONBLOCK`, as `open_marker` in `core/src/storage.rs` does,
+and checks that the opened file is a regular file. A FIFO or other special
+file at the hash path is refused at once instead of blocking the open. It first compares the open
 object's size with the candidate's, and refuses on a mismatch without
 hashing. Only a same-size object is read and hashed with BLAKE3, and the read
 stops as soon as the object has given more bytes than the candidate holds, in
@@ -348,7 +362,8 @@ The API uses these shapes:
 
 A 503 is for a failure found before the response starts: the object is
 missing, cannot be opened, or is not a regular file, or storage is not
-configured. A read that fails after the headers are sent cannot change the
+configured. Retrieval opens the object with `O_NOFOLLOW | O_NONBLOCK` and
+checks the opened file, as ingest does, so a FIFO returns 503 promptly. A read that fails after the headers are sent cannot change the
 200. The server then aborts the response before its end, so the client sees
 a failed transfer and never a complete body, and it logs the failure. The
 browser shows the display error.
@@ -419,8 +434,11 @@ hyphens, and must name an existing primitive. The generator never writes the
 raw text of a semantic value, only the resolved `var(--<prefix>-<key>)`. So a
 semantic value with extra text, such as `"{colors.violet-600}; } body {"`,
 is refused.
-The `design-tokens` delta records this. Penpot gets the tokens when an agent
-next copies them, as DESIGN.md says.
+The `design-tokens` delta records this. The Penpot export
+(`web/scripts/penpot-tokens.ts`) carries primitives only, so it does not
+carry these six semantic tokens yet. Follow-up issue #533 teaches the exporter
+aliases; that goes beyond this story. `web/README.md` changes to show the
+accepted `{<group>.<key>}` form and the cases still refused.
 
 DESIGN.md also says that once a semantic token exists, components use it
 instead of its primitive. So `web/src/Access.css` and `web/src/styles/base.css`

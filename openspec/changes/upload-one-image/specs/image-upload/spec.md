@@ -44,14 +44,16 @@ the library list.
 An upload's multipart data SHALL end at its closing delimiter. A body that
 ends or fails before the closing delimiter SHALL return 400 and create no
 Asset. Bytes after the closing delimiter are an epilogue: upload SHALL ignore
-them, as RFC 2046 says.
+them, as RFC 2046 says. The whole request body, epilogue included, SHALL fit
+the route's transport limit of 101 MiB (105,906,176 bytes). A larger body
+SHALL return 413 and create no Asset.
 
 #### Scenario: Body cut off before the closing delimiter
 - **WHEN** a request holds a complete recognized PNG part, but the body ends before the closing delimiter
 - **THEN** the response is 400, no Asset or version is committed, and the object store's file list is unchanged
 
 #### Scenario: Epilogue after the closing delimiter
-- **WHEN** a request holds one recognized PNG part and its closing delimiter, followed by other bytes
+- **WHEN** a request holds one recognized PNG part and its closing delimiter, followed by a small epilogue that keeps the body within the transport limit
 - **THEN** the response is 201 and the Asset's original is the PNG's bytes
 
 ### Requirement: Upload enforces a 100 MiB size limit
