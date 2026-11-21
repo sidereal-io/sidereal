@@ -388,7 +388,7 @@ Each task SHALL have a description, which `mise tasks ls` prints.
 
 ### Requirement: The development tasks run without mise
 
-Each development task SHALL run one shell command line, or one POSIX `sh` script, that works without mise on `PATH`, once the tools it needs are installed. No script that a task runs SHALL start `mise` or `just`. `CONTRIBUTING.md` SHALL list, for each development task, the command or script that the task runs, for contributors with neither mise nor Nix.
+Each development task SHALL run one shell command line, or one POSIX `sh` script, that works without mise on `PATH`, once the tools it needs are installed. No script that a task runs SHALL start `mise` or `just`. `CONTRIBUTING.md` SHALL list, for each development task, the command or script that the task runs, for contributors without mise.
 
 #### Scenario: The listed commands match the tasks
 
