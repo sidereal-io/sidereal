@@ -27,11 +27,27 @@ use uuid::Uuid;
 pub const MAX_UPLOAD_BYTES: u64 = 104_857_600;
 
 const TMP: &str = "tmp";
+const STORE: &str = "store";
 
 /// One filesystem step that a test can fail or pause.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Step {
     WriteStaging,
+    SyncStaging,
+    Publish,
+    SyncObject,
+    SyncDirectory(Level),
+}
+
+/// A folder in the chain that publication syncs, deepest first.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Level {
+    /// `store/{h[0:2]}/{h[2:4]}`, which holds the object.
+    SecondPrefix,
+    /// `store/{h[0:2]}`.
+    FirstPrefix,
+    Store,
+    Root,
 }
 
 /// Runs before each [`Step`]; an error fails that step.
@@ -196,6 +212,7 @@ impl ObjectStore {
                 tmp,
                 name: name.to_owned(),
                 file: File::from(file),
+                published: false,
             }),
             size: 0,
         })
@@ -208,10 +225,15 @@ struct Temporary {
     tmp: OwnedFd,
     name: String,
     file: File,
+    /// Set once the file has been renamed into the store.
+    published: bool,
 }
 
 impl Drop for Temporary {
     fn drop(&mut self) {
+        if self.published {
+            return;
+        }
         let c = name_cstring(&self.name);
         // SAFETY: `tmp` is an open directory and `c` a NUL-terminated name.
         // Only the name this request created exclusively is removed.
@@ -319,6 +341,185 @@ impl Staged {
     pub fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
         self.temporary.file.read_at(buf, offset)
     }
+}
+
+/// What publication did with a staged candidate.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Published {
+    pub hash: String,
+    pub size: u64,
+    /// A matching object was already stored, and this ingest reused it.
+    pub reused: bool,
+}
+
+impl ObjectStore {
+    /// Make a staged candidate a durable object at
+    /// `store/{h[0:2]}/{h[2:4]}/{h}`, never replacing an existing entry.
+    ///
+    /// The staged file is synced before it is published. An existing object
+    /// is reused only when its size and BLAKE3 hash match. Every call then
+    /// syncs the whole folder chain itself, deepest first, whoever created
+    /// it. An object is never removed, even when a later step fails.
+    pub fn publish(&self, mut staged: Staged) -> Result<Published, StorageError> {
+        let hash = staged.hash.clone();
+        let size = staged.size;
+        self.step(Step::SyncStaging)
+            .and_then(|()| staged.temporary.file.sync_all())
+            .map_err(self.io(Operation::SyncStaging))?;
+        let store = self.folder(self.root(), STORE, Entry::Store)?;
+        let first = self.folder(store.as_fd(), &hash[..2], Entry::Prefix)?;
+        let second = self.folder(first.as_fd(), &hash[2..4], Entry::Prefix)?;
+        if device(staged.temporary.tmp.as_fd()).map_err(self.io(Operation::OpenDirectory))?
+            != device(second.as_fd()).map_err(self.io(Operation::OpenDirectory))?
+        {
+            return Err(self.error(Problem::CrossDevice));
+        }
+        let renamed = self.step(Step::Publish).and_then(|()| {
+            rename_no_replace(
+                staged.temporary.tmp.as_fd(),
+                &staged.temporary.name,
+                second.as_fd(),
+                &hash,
+            )
+        });
+        let reused = match renamed {
+            Ok(()) => {
+                staged.temporary.published = true;
+                false
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                self.reuse(second.as_fd(), &hash, size)?;
+                true
+            }
+            Err(e) if matches!(e.raw_os_error(), Some(libc::EINVAL | libc::ENOSYS)) => {
+                return Err(self.error(Problem::NoReplaceUnsupported))
+            }
+            Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
+                return Err(self.error(Problem::CrossDevice))
+            }
+            Err(e) => return Err(self.io(Operation::PublishObject)(e)),
+        };
+        drop(staged);
+        for (level, folder) in [
+            (Level::SecondPrefix, second.as_fd()),
+            (Level::FirstPrefix, first.as_fd()),
+            (Level::Store, store.as_fd()),
+            (Level::Root, self.root()),
+        ] {
+            self.step(Step::SyncDirectory(level))
+                .and_then(|()| sync_folder(folder))
+                .map_err(self.io(Operation::SyncDirectory))?;
+        }
+        Ok(Published { hash, size, reused })
+    }
+
+    /// Check that the object already at `hash` holds exactly the candidate's
+    /// bytes, then sync it. Its size is compared before any byte is read, and
+    /// the read stops one byte past the candidate's size.
+    fn reuse(&self, folder: BorrowedFd<'_>, hash: &str, size: u64) -> Result<(), StorageError> {
+        let unsafe_object = || self.error(Problem::Unsafe(Entry::Object));
+        let found = stat_at(folder, hash).map_err(self.io(Operation::ReadObject))?;
+        if found.st_mode & libc::S_IFMT != libc::S_IFREG {
+            return Err(unsafe_object());
+        }
+        if found.st_size as u64 != size {
+            return Err(self.error(Problem::ObjectMismatch));
+        }
+        let mut file = open_file_at(folder, hash).map_err(|e| {
+            if is_refused_entry(&e) {
+                unsafe_object()
+            } else {
+                self.io(Operation::ReadObject)(e)
+            }
+        })?;
+        let opened = file.metadata().map_err(self.io(Operation::ReadObject))?;
+        {
+            use std::os::unix::fs::MetadataExt;
+            if !opened.is_file() || opened.ino() != found.st_ino as u64 || opened.len() != size {
+                return Err(unsafe_object());
+            }
+        }
+        let mut hasher = blake3::Hasher::new();
+        let read = io::copy(&mut (&mut file).take(size + 1), &mut hasher)
+            .map_err(self.io(Operation::ReadObject))?;
+        if read != size || hasher.finalize().to_hex().as_str() != hash {
+            return Err(self.error(Problem::ObjectMismatch));
+        }
+        self.step(Step::SyncObject)
+            .and_then(|()| file.sync_all())
+            .map_err(self.io(Operation::SyncObject))
+    }
+}
+
+fn device(fd: BorrowedFd<'_>) -> io::Result<libc::dev_t> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `fd` is open and `stat` has room for one `struct stat`.
+    if unsafe { libc::fstat(fd.as_raw_fd(), stat.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstat succeeded and filled `stat`.
+    Ok(unsafe { stat.assume_init() }.st_dev)
+}
+
+/// Inspect an entry without following a symbolic link or opening it.
+fn stat_at(folder: BorrowedFd<'_>, name: &str) -> io::Result<libc::stat> {
+    let c = name_cstring(name);
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `folder` is an open directory, `c` NUL-terminated, and `stat`
+    // has room for one `struct stat`.
+    if unsafe {
+        libc::fstatat(
+            folder.as_raw_fd(),
+            c.as_ptr(),
+            stat.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    } != 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstatat succeeded and filled `stat`.
+    Ok(unsafe { stat.assume_init() })
+}
+
+fn sync_folder(folder: BorrowedFd<'_>) -> io::Result<()> {
+    // SAFETY: `folder` is an open directory descriptor.
+    if unsafe { libc::fsync(folder.as_raw_fd()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Rename that fails with `AlreadyExists` instead of replacing an entry.
+#[cfg(target_os = "linux")]
+fn rename_no_replace(
+    from_folder: BorrowedFd<'_>,
+    from: &str,
+    to_folder: BorrowedFd<'_>,
+    to: &str,
+) -> io::Result<()> {
+    let (from, to) = (name_cstring(from), name_cstring(to));
+    // SAFETY: both folders are open directories and both names NUL-terminated.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            from_folder.as_raw_fd(),
+            from.as_ptr(),
+            to_folder.as_raw_fd(),
+            to.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// No supported no-replace rename here: publication fails closed.
+#[cfg(not(target_os = "linux"))]
+fn rename_no_replace(_: BorrowedFd<'_>, _: &str, _: BorrowedFd<'_>, _: &str) -> io::Result<()> {
+    Err(io::Error::from_raw_os_error(libc::ENOSYS))
 }
 
 fn path_cstring(path: &Path) -> CString {

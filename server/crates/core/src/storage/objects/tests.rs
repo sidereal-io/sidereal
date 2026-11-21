@@ -260,3 +260,400 @@ mod ingest_staging {
             .is_symlink());
     }
 }
+
+/// Where an object with this hash lives under `root`.
+fn object_path(root: &Path, hash: &str) -> PathBuf {
+    root.join("store")
+        .join(&hash[..2])
+        .join(&hash[2..4])
+        .join(hash)
+}
+
+/// A store whose hook records every step it runs.
+fn recording(temp: &TempRoot, id: Uuid) -> (ObjectStore, Arc<std::sync::Mutex<Vec<Step>>>) {
+    let steps = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = steps.clone();
+    let hook: Hook = Arc::new(move |step| {
+        log.lock().unwrap().push(step);
+        Ok(())
+    });
+    (
+        ObjectStore::open_with(&temp.root(), id, Some(hook)).unwrap(),
+        steps,
+    )
+}
+
+/// A store whose hook fails `failing` and runs every other step.
+fn failing_at(temp: &TempRoot, id: Uuid, failing: Step) -> ObjectStore {
+    let hook: Hook = Arc::new(move |step| {
+        if step == failing {
+            Err(io::Error::other("injected"))
+        } else {
+            Ok(())
+        }
+    });
+    ObjectStore::open_with(&temp.root(), id, Some(hook)).unwrap()
+}
+
+fn store_files(temp: &TempRoot) -> Vec<PathBuf> {
+    fn walk(path: &Path, files: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(path) else {
+            return;
+        };
+        for entry in entries {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                walk(&entry.path(), files);
+            } else {
+                files.push(entry.path());
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(&temp.path.join("store"), &mut files);
+    files.sort();
+    files
+}
+
+/// Size, modification time and bytes, to show a file did not change.
+fn fingerprint(path: &Path) -> (u64, std::time::SystemTime, Vec<u8>) {
+    let metadata = std::fs::metadata(path).unwrap();
+    (
+        metadata.len(),
+        metadata.modified().unwrap(),
+        std::fs::read(path).unwrap(),
+    )
+}
+
+mod object_publication {
+    use super::*;
+    use std::{
+        os::unix::fs::{FileTypeExt, MetadataExt},
+        sync::{mpsc, Barrier},
+        time::{Duration, Instant},
+    };
+
+    const ABC: &str = "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85";
+
+    #[test]
+    fn a_published_object_lives_at_its_blake3_path_with_identical_bytes() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        store.publish(staged(&store, b"abc")).unwrap();
+        assert_eq!(std::fs::read(object_path(&temp.path, ABC)).unwrap(), b"abc");
+    }
+
+    #[test]
+    fn the_first_publication_creates_store() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        store.publish(staged(&store, b"abc")).unwrap();
+        assert_eq!(names(&temp.path), [MARKER, "store", "tmp"]);
+    }
+
+    #[test]
+    fn publication_leaves_no_staging_file() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        store.publish(staged(&store, b"abc")).unwrap();
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn publication_syncs_the_file_then_the_folder_chain_deepest_first() {
+        let temp = TempRoot::new();
+        let id = Uuid::new_v4();
+        temp.root().create_marker(id).unwrap();
+        let (store, steps) = recording(&temp, id);
+        let staged = staged(&store, b"abc");
+        steps.lock().unwrap().clear();
+        store.publish(staged).unwrap();
+        assert_eq!(
+            *steps.lock().unwrap(),
+            [
+                Step::SyncStaging,
+                Step::Publish,
+                Step::SyncDirectory(Level::SecondPrefix),
+                Step::SyncDirectory(Level::FirstPrefix),
+                Step::SyncDirectory(Level::Store),
+                Step::SyncDirectory(Level::Root),
+            ]
+        );
+    }
+
+    /// Two inputs whose hashes share their first four hex digits.
+    fn same_prefix() -> (Vec<u8>, Vec<u8>) {
+        let first = b"0".to_vec();
+        let prefix = blake3::hash(&first).to_hex()[..4].to_owned();
+        let second = (1u64..)
+            .map(|i| i.to_string().into_bytes())
+            .find(|bytes| blake3::hash(bytes).to_hex()[..4] == prefix)
+            .unwrap();
+        (first, second)
+    }
+
+    #[test]
+    fn a_second_hash_under_a_new_prefix_syncs_the_chain_itself() {
+        let temp = TempRoot::new();
+        let id = Uuid::new_v4();
+        temp.root().create_marker(id).unwrap();
+        let (a_bytes, b_bytes) = same_prefix();
+        let (paused_tx, paused_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let release_rx = std::sync::Mutex::new(release_rx);
+        let hook: Hook = Arc::new(move |step| {
+            if step == Step::SyncDirectory(Level::SecondPrefix) {
+                paused_tx.send(()).unwrap();
+                release_rx.lock().unwrap().recv().unwrap();
+            }
+            Ok(())
+        });
+        let a = ObjectStore::open_with(&temp.root(), id, Some(hook)).unwrap();
+        let a_staged = staged(&a, &a_bytes);
+        let publisher = std::thread::spawn(move || a.publish(a_staged));
+        paused_rx.recv().unwrap();
+
+        let (b, steps) = recording(&temp, id);
+        let b_staged = staged(&b, &b_bytes);
+        steps.lock().unwrap().clear();
+        b.publish(b_staged).unwrap();
+        let directories: Vec<_> = steps
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|step| matches!(step, Step::SyncDirectory(_)))
+            .collect();
+        assert_eq!(
+            directories,
+            [
+                Step::SyncDirectory(Level::SecondPrefix),
+                Step::SyncDirectory(Level::FirstPrefix),
+                Step::SyncDirectory(Level::Store),
+                Step::SyncDirectory(Level::Root),
+            ]
+        );
+        release_tx.send(()).unwrap();
+        publisher.join().unwrap().unwrap();
+    }
+
+    #[test]
+    fn matching_bytes_published_again_reuse_the_object_unchanged() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        store.publish(staged(&store, b"abc")).unwrap();
+        let path = object_path(&temp.path, ABC);
+        let (inode, before) = (std::fs::metadata(&path).unwrap().ino(), fingerprint(&path));
+        let published = store.publish(staged(&store, b"abc")).unwrap();
+        assert!(published.reused);
+        assert_eq!(std::fs::metadata(&path).unwrap().ino(), inode);
+        assert_eq!(fingerprint(&path), before);
+        assert_eq!(store_files(&temp), [path]);
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn concurrent_matching_publications_keep_one_complete_object() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let bytes: Vec<u8> = (0..4 * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+        let barrier = Arc::new(Barrier::new(4));
+        let publishers: Vec<_> = (0..4)
+            .map(|_| {
+                let (store, bytes, barrier) = (store.clone(), bytes.clone(), barrier.clone());
+                std::thread::spawn(move || {
+                    let staged = staged(&store, &bytes);
+                    barrier.wait();
+                    store.publish(staged).map(|p| p.hash)
+                })
+            })
+            .collect();
+        let hashes: Vec<_> = publishers
+            .into_iter()
+            .map(|p| p.join().unwrap().unwrap())
+            .collect();
+        assert!(hashes.iter().all(|h| *h == hashes[0]));
+        let files = store_files(&temp);
+        assert_eq!(files, [object_path(&temp.path, &hashes[0])]);
+        assert_eq!(std::fs::read(&files[0]).unwrap(), bytes);
+    }
+
+    #[test]
+    fn a_same_size_object_with_changed_bytes_is_refused_unchanged() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let path = object_path(&temp.path, ABC);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"xyz").unwrap();
+        let before = fingerprint(&path);
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::ObjectMismatch
+        );
+        assert_eq!(fingerprint(&path), before);
+    }
+
+    #[test]
+    fn a_much_larger_object_is_refused_without_reading_it() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let path = object_path(&temp.path, ABC);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Sparse, so it costs no disk; reading it would take far too long.
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(1 << 40).unwrap();
+        drop(file);
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let start = Instant::now();
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::ObjectMismatch
+        );
+        assert!(start.elapsed() < Duration::from_secs(5));
+        let metadata = std::fs::metadata(&path).unwrap();
+        assert_eq!(
+            (metadata.len(), metadata.modified().unwrap()),
+            (1 << 40, modified)
+        );
+    }
+
+    #[test]
+    fn a_symlink_at_the_object_path_is_refused_without_touching_its_target() {
+        let temp = TempRoot::new();
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("target"), b"abc").unwrap();
+        let (store, _) = store(&temp);
+        let path = object_path(&temp.path, ABC);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        symlink(outside.path.join("target"), &path).unwrap();
+        let before = fingerprint(&outside.path.join("target"));
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Unsafe(Entry::Object)
+        );
+        assert_eq!(fingerprint(&outside.path.join("target")), before);
+        assert!(std::fs::symlink_metadata(&path)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[test]
+    fn a_symlinked_store_is_refused_without_touching_its_target() {
+        let temp = TempRoot::new();
+        let outside = TempRoot::new();
+        let (store, _) = store(&temp);
+        symlink(&outside.path, temp.path.join("store")).unwrap();
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Unsafe(Entry::Store)
+        );
+        assert!(names(&outside.path).is_empty());
+    }
+
+    #[test]
+    fn a_symlinked_prefix_folder_is_refused_without_touching_its_target() {
+        let temp = TempRoot::new();
+        let outside = TempRoot::new();
+        let (store, _) = store(&temp);
+        std::fs::create_dir_all(temp.path.join("store").join(&ABC[..2])).unwrap();
+        symlink(
+            &outside.path,
+            temp.path.join("store").join(&ABC[..2]).join(&ABC[2..4]),
+        )
+        .unwrap();
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Unsafe(Entry::Prefix)
+        );
+        assert!(names(&outside.path).is_empty());
+    }
+
+    #[test]
+    fn a_folder_at_the_object_path_is_refused() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        std::fs::create_dir_all(object_path(&temp.path, ABC)).unwrap();
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Unsafe(Entry::Object)
+        );
+    }
+
+    #[test]
+    fn a_fifo_with_no_writer_at_the_object_path_is_refused_promptly() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let path = object_path(&temp.path, ABC);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let c = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+        let staged = staged(&store, b"abc");
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || tx.send(store.publish(staged).map(|_| ())));
+        let outcome = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("publication blocked");
+        assert_eq!(problem(outcome), Problem::Unsafe(Entry::Object));
+        assert!(std::fs::symlink_metadata(&path)
+            .unwrap()
+            .file_type()
+            .is_fifo());
+    }
+
+    #[test]
+    fn a_failed_file_sync_publishes_nothing() {
+        let temp = TempRoot::new();
+        let id = Uuid::new_v4();
+        temp.root().create_marker(id).unwrap();
+        let store = failing_at(&temp, id, Step::SyncStaging);
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Io(Operation::SyncStaging, io::ErrorKind::Other)
+        );
+        assert!(store_files(&temp).is_empty());
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn a_failed_publish_step_publishes_nothing() {
+        let temp = TempRoot::new();
+        let id = Uuid::new_v4();
+        temp.root().create_marker(id).unwrap();
+        let store = failing_at(&temp, id, Step::Publish);
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Io(Operation::PublishObject, io::ErrorKind::Other)
+        );
+        assert!(store_files(&temp).is_empty());
+    }
+
+    #[test]
+    fn a_failed_folder_sync_fails_publication_and_keeps_the_object() {
+        let temp = TempRoot::new();
+        let id = Uuid::new_v4();
+        temp.root().create_marker(id).unwrap();
+        let store = failing_at(&temp, id, Step::SyncDirectory(Level::Store));
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Io(Operation::SyncDirectory, io::ErrorKind::Other)
+        );
+        assert_eq!(std::fs::read(object_path(&temp.path, ABC)).unwrap(), b"abc");
+    }
+
+    #[test]
+    fn a_failed_reuse_sync_fails_publication_and_keeps_the_object() {
+        let temp = TempRoot::new();
+        let id = Uuid::new_v4();
+        temp.root().create_marker(id).unwrap();
+        let (store, _) = recording(&temp, id);
+        store.publish(staged(&store, b"abc")).unwrap();
+        let store = failing_at(&temp, id, Step::SyncObject);
+        assert_eq!(
+            problem(store.publish(staged(&store, b"abc"))),
+            Problem::Io(Operation::SyncObject, io::ErrorKind::Other)
+        );
+        assert_eq!(std::fs::read(object_path(&temp.path, ABC)).unwrap(), b"abc");
+    }
+}
