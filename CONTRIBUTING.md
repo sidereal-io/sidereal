@@ -285,10 +285,13 @@ See [server setup](server/README.md) for container-free test prerequisites.
 The repo no longer has a Nix shell or an `.envrc`. If you used them, do this
 once, in the repo root:
 
-1. Delete `.direnv/`. direnv unloads the old shell by itself once `.envrc` is
+1. If you opened the shell with `nix develop`, without direnv, leave it first:
+   run `exit`, or open a new terminal. Deleting `.direnv/` does not end that
+   shell, and its tool and library paths would stay ahead of mise's.
+2. Delete `.direnv/`. direnv unloads the old shell by itself once `.envrc` is
    gone. To clear direnv's record of approved folders too, run `direnv prune`;
    this is optional.
-2. If you kept settings in `.envrc.local`, move them to `mise.local.toml`, as
+3. If you kept settings in `.envrc.local`, move them to `mise.local.toml`, as
    TOML under an `[env]` table. For example, `export RUST_LOG=debug` becomes:
 
    ```toml
@@ -297,7 +300,7 @@ once, in the repo root:
    ```
 
    Git still ignores `.envrc.local`, so you can delete it when you are done.
-3. Follow [With mise](#with-mise). mise is also in Nixpkgs, so you can install
+4. Follow [With mise](#with-mise). mise is also in Nixpkgs, so you can install
    it with Nix if you prefer.
 
 ### Where versions are set
