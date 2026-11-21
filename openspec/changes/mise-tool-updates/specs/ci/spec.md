@@ -39,7 +39,7 @@
 
 - **WHEN** a reviewer reads the steps of the `publish` job in `.github/workflows/mise-tool-updates.yml`
 - **THEN** no step uses `jdx/mise-action`
-- **AND** no step's `run` text contains `mise`
+- **AND** no step's `run` text invokes a `mise` command (such as `mise run`, `mise exec`, `mise install`, `mise upgrade` or `mise lock`)
 - **AND** no expression in the job refers to `needs.update`
 
 ### Requirement: The tool update workflow publishes only the files an update may change
