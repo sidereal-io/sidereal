@@ -8,8 +8,8 @@ See [architecture](../docs/architecture.md) and [ADR-002](../docs/decisions/ADR-
 ## Prepare development and tests
 
 Install rustup with the stable toolchain, a C linker, Node.js, OpenSSL, and Docker Engine
-or Docker Desktop with Compose v2 or newer. The optional [Nix shell](../CONTRIBUTING.md#development-environment)
-provides the build tools; Docker runs separately.
+or Docker Desktop with Compose v2 or newer. [mise](../CONTRIBUTING.md#with-mise) installs
+Rust and Node; the C linker, OpenSSL and Docker come from your system.
 
 From the repository root:
 
@@ -21,7 +21,7 @@ mise run server
 ```
 
 Without mise, run the command behind each task instead, as
-[`CONTRIBUTING.md`](../CONTRIBUTING.md#without-nix) lists them.
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#without-mise) lists them.
 
 The fixture binds only to loopback. Its Compose project, named volume, and default
 port derive from the checkout path. Set `SIDEREAL_DB_PORT` before every task when

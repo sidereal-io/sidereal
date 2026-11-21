@@ -2,53 +2,11 @@
 
 ## Purpose
 
-The development environment gives every contributor and AI agent the same pinned tools for this repo. It turns on automatically when Nix is installed. It stays optional, so contributors without Nix can still build and check the repo. It also generates the same agent skills on every machine, from settings tracked in the repo.
+The development environment uses mise to give every contributor and AI agent the same pinned tools for this repo. mise stays optional: the plain pin files let a contributor install the tools by hand and still build and check the repo. The environment also generates the same agent skills on every machine, from settings tracked in the repo.
 
-Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). mise does not provide it, so a reviewer installs it first.
 
 ## Requirements
-
-### Requirement: The shell provides the pinned toolchain
-
-The development shell SHALL provide these tools on `PATH`:
-
-- Rust at a stable release, with `rustfmt` and `clippy`;
-- Node at major version 26;
-- pnpm at major version 12;
-- the `openspec` CLI.
-
-#### Scenario: A contributor checks tool versions in the shell
-
-- **WHEN** a contributor runs `nix develop --command sh -c 'rustc --version; node --version; pnpm --version; openspec --version'` at the repo root
-- **THEN** `rustc --version` output starts with `rustc 1.`
-- **AND** the `rustc --version` output contains neither `beta` nor `nightly`
-- **AND** `node --version` output starts with `v26.`
-- **AND** `pnpm --version` output starts with `12.`
-- **AND** the `openspec` command exits with status 0
-
-#### Scenario: Formatting and lint tools come with Rust
-
-- **WHEN** a contributor runs `nix develop --command sh -c 'cargo fmt --version && cargo clippy --version'`
-- **THEN** both commands exit with status 0
-
-### Requirement: Rust follows the latest stable release
-
-`server/rust-toolchain.toml` SHALL name the `stable` channel and no exact release. The development shell SHALL use the newest stable release that its locked inputs know. A new Rust release SHALL reach the development shell only through a change to `flake.lock`.
-
-#### Scenario: The toolchain file names the stable channel
-
-- **WHEN** a reviewer runs `grep -n '^channel' server/rust-toolchain.toml`
-- **THEN** the output is exactly one line, `channel = "stable"`, after its line number
-
-#### Scenario: A lock update brings a new Rust release
-
-- **WHEN** a pull request changes only `flake.lock`, and the new lock knows a newer stable Rust release than the old lock
-- **THEN** `nix develop --command rustc --version`, run on that pull request's commit, reports the newer release
-
-#### Scenario: The same lock gives the same Rust release
-
-- **WHEN** a tester runs `nix develop --command rustc --version` on one commit, on two days with different latest Rust releases
-- **THEN** both runs report the same release
 
 ### Requirement: No file names a Rust release
 
@@ -86,127 +44,15 @@ The repo SHALL name no Rust release number in its build files or its contributor
 - **WHEN** a reviewer runs `grep -nE '\b1\.[0-9]{2}(\.[0-9]+)?\b' AGENTS.md README.md server/README.md CONTRIBUTING.md`
 - **THEN** the search finds no match
 
-### Requirement: The lock file decides every tool version
-
-The development shell SHALL resolve every tool from inputs pinned in the committed `flake.lock`. The same commit SHALL produce the same shell on every machine of the same system type.
-
-#### Scenario: Two clones of one commit agree
-
-- **WHEN** a tester clones the same commit into two different directories on one machine
-- **AND** runs `nix eval --raw .#devShells.<system>.default.drvPath` in each clone
-- **THEN** both commands print an identical derivation path
-
-### Requirement: The environment verifies remote code before running it
-
-The environment SHALL verify every piece of remote code it fetches against a hash committed to the repo. This covers flake inputs and any script that `.envrc` loads. The environment SHALL refuse to use content whose hash does not match.
-
-#### Scenario: A fetched script does not match its hash
-
-- **WHEN** `.envrc` fetches a remote script whose content differs from the hash committed in `.envrc`
-- **THEN** direnv stops with an error and does not run the script
-
-#### Scenario: Every flake input is locked
-
-- **WHEN** a reviewer runs `nix flake metadata --json` at the repo root
-- **THEN** every input in the output has a `locked` entry with a `narHash`
-
-### Requirement: The shell turns on when you enter the repo
-
-For a contributor with Nix and direnv, entering the repo directory SHALL turn the development shell on after a one-time `direnv allow`. Leaving the directory SHALL restore the contributor's previous environment. The shell SHALL reload when a file that defines it changes. The shell SHALL also reload when a file that the skills are generated from changes: `.config/openspec/config.json` or `scripts/skills.sh`.
-
-#### Scenario: A contributor enters and leaves the repo
-
-- **WHEN** a contributor with Nix and direnv has run `direnv allow` once, then changes into the repo directory
-- **THEN** `rustc --version` reports the same release as `nix develop --command rustc --version`, without any further command
-- **AND** after the contributor changes to a directory outside the repo, `rustc --version` reports the same result as before they entered it
-
-#### Scenario: The Rust pin changes while the shell is active
-
-- **WHEN** a tester with the shell loaded changes `channel` in `server/rust-toolchain.toml` from `stable` to `1.97.1`, without leaving the repo directory
-- **AND** runs `direnv export bash` in the repo directory
-- **THEN** `rustc --version` in that shell reports 1.97.1, not the release from before the edit
-
-#### Scenario: The watch list covers the shell's files
-
-- **WHEN** a tester with the shell loaded runs `direnv status` in the repo directory
-- **THEN** the output lists `server/rust-toolchain.toml` and each file under `nix/` as watched
-- **AND** the output lists `.config/openspec/config.json` and `scripts/skills.sh` as watched
-
-### Requirement: Contributors can add their own direnv settings
-
-`.envrc` SHALL load a file named `.envrc.local` when it exists, whether or not Nix is installed. It SHALL load `.envrc.local` last, after the development shell, so the contributor's settings take precedence. Git SHALL ignore `.envrc.local`, so each contributor keeps their own settings out of commits.
-
-#### Scenario: A contributor adds a personal variable
-
-- **WHEN** a contributor writes `export SIDEREAL_TEST_VAR=1` in `.envrc.local` and enters the repo directory
-- **THEN** `SIDEREAL_TEST_VAR` equals `1` in the contributor's shell
-- **AND** the result is the same with Nix installed and without it
-
-#### Scenario: A personal setting overrides the development shell
-
-- **WHEN** a contributor with Nix writes `export PATH="$PWD/.local-bin:$PATH"` in `.envrc.local` and enters the repo directory
-- **THEN** the first entry of `PATH` in the contributor's shell is the repo's `.local-bin` directory
-
-#### Scenario: The personal file stays out of git
-
-- **WHEN** a contributor creates `.envrc.local` and runs `git status --porcelain`
-- **THEN** the output does not list `.envrc.local`
-
-### Requirement: Nix stays optional
-
-The environment SHALL NOT require Nix for building or checking the repo. For a contributor with direnv but without Nix, entering the repo SHALL produce no error. It SHALL change no environment variables except direnv's own `DIRENV_*` variables and any that the contributor's `.envrc.local` sets. The repo SHALL keep the pin files that tools outside Nix read: `server/rust-toolchain.toml` for rustup, and `.nvmrc` for Node version managers.
-
-#### Scenario: A contributor has direnv but not Nix
-
-- **WHEN** a contributor without Nix and without `.envrc.local` runs `direnv allow`, then enters the repo directory
-- **THEN** direnv reports no error
-- **AND** `env`, with lines starting `DIRENV_` removed, shows the same output as before the contributor entered the directory
-
-#### Scenario: A contributor without Nix runs the checks
-
-- **GIVEN** a contributor with neither Nix nor mise, who installs the tools by hand as `CONTRIBUTING.md` says, and prepares the PostgreSQL fixture
-- **WHEN** the contributor installs Rust through rustup and installs Node through a version manager reading `.nvmrc`
-- **THEN** rustup selects the channel in `server/rust-toolchain.toml`
-- **AND** the version manager selects Node major version 26
-- **AND** each of the four gate commands that `CONTRIBUTING.md` lists, for Compose, OpenSpec, the server and the web shell, exits with status 0 when run in that order from the repo root
-
-#### Scenario: The environment does not load application settings
-
-- **WHEN** a contributor enters the repo directory with the development shell turned on
-- **THEN** no variable defined only in `.env` is set in the contributor's shell
-
 ### Requirement: The repo checks pass through mise
 
-The repo's gate SHALL pass when a contributor runs it through mise. The gate is `mise run check`: the Compose configuration checks, the OpenSpec checks, the server checks, and the web checks. The Nix development shell does not provide mise, so a contributor on the Nix route also runs the gate through mise.
+The repo's gate SHALL pass when a contributor runs it through mise. The gate is `mise run check`: the Compose configuration checks, the OpenSpec checks, the server checks, and the web checks.
 
 #### Scenario: A contributor runs the gate in the shell
 
 - **GIVEN** a prepared PostgreSQL fixture, with `TEST_DATABASE_URL` set to the URL `mise run db-test-url` prints
 - **WHEN** a contributor runs `mise run check` at the repo root, on a commit whose `ci` workflow passes
 - **THEN** the command exits with status 0
-
-### Requirement: The flake check builds the shell
-
-`nix flake check` SHALL build the development shell. It SHALL fail when the shell cannot be built.
-
-#### Scenario: The shell definition is broken
-
-- **WHEN** a change makes the development shell impossible to build, and a reviewer runs `nix flake check`
-- **THEN** `nix flake check` exits with a non-zero status
-
-#### Scenario: The shell definition is sound
-
-- **WHEN** a reviewer runs `nix flake check` on a commit whose shell builds
-- **THEN** `nix flake check` exits with status 0
-
-### Requirement: The shell is defined for the supported systems
-
-The flake SHALL define a development shell for `x86_64-linux`, `aarch64-linux` and `aarch64-darwin`.
-
-#### Scenario: A contributor lists the development shells
-
-- **WHEN** a contributor runs `nix flake show --json --all-systems`
-- **THEN** the output contains `devShells.x86_64-linux.default`, `devShells.aarch64-linux.default` and `devShells.aarch64-darwin.default`
 
 ### Requirement: Every supported agent sees the same skills
 
@@ -217,38 +63,6 @@ Claude Code SHALL see the same skill set as agents that read `.agents/skills`. T
 - **WHEN** a reviewer reads a clean checkout
 - **THEN** `.claude/skills/openspec-propose/SKILL.md` and `.claude/skills/visual-options/SKILL.md` both exist
 - **AND** `.claude/skills` resolves to the same directory as `.agents/skills`
-
-### Requirement: The shell keeps the OpenSpec CLI offline
-
-The development shell SHALL set `OPENSPEC_NO_UPDATE_CHECK=1`, so no `openspec` command run in the shell checks the npm registry for a newer version. Refreshing the skills SHALL need no network access.
-
-#### Scenario: The shell turns off the update check
-
-- **WHEN** a tester runs `nix develop --command printenv OPENSPEC_NO_UPDATE_CHECK`
-- **THEN** the output is `1`
-
-#### Scenario: The refresh works without a network
-
-- **WHEN** the skills are stale, and a tester loads the shell with no network access, for example inside `unshare --net --map-root-user` on Linux
-- **THEN** the refresh completes, and `.agents/skills` contains the 8 generated `openspec-*` folders
-- **AND** the refresh opens no network connection
-
-### Requirement: Dependabot proposes Nix pin updates every week
-
-Dependabot SHALL check the inputs in `flake.lock` every week. When an input has a newer upstream commit, Dependabot SHALL open a pull request that updates it. The configuration SHALL ask Dependabot to group all Nix inputs into one pull request.
-
-#### Scenario: The configuration declares the Nix updates
-
-- **WHEN** a reviewer runs `yq '.updates[] | select(."package-ecosystem" == "nix")' .github/dependabot.yml`
-- **THEN** the output is exactly one entry
-- **AND** that entry has `directory` set to `/` and `schedule.interval` set to `weekly`
-- **AND** that entry has a group whose `patterns` list is `["*"]`
-
-#### Scenario: A flake input has a newer commit
-
-- **WHEN** Dependabot's weekly run finds a newer upstream commit for an input in `flake.lock`
-- **THEN** an open pull request from Dependabot changes `flake.lock`
-- **AND** that pull request changes no other file
 
 ### Requirement: Dependabot proposes Cargo updates every week
 
@@ -301,64 +115,9 @@ Dependabot SHALL check the packages in `web/package.json` and `web/pnpm-lock.yam
 - **WHEN** Dependabot's weekly run finds a TypeScript release with a higher major version than the one in `web/pnpm-lock.yaml`
 - **THEN** no open pull request from Dependabot changes the major version of `typescript` in `web/package.json`
 
-### Requirement: CI builds the shell on every pull request that changes it
-
-A CI job, the flake check, SHALL run `nix flake check` on every pull request that changes one of these files:
-
-- `flake.nix` or `flake.lock`;
-- any file under `nix/`;
-- `server/rust-toolchain.toml`;
-- the workflow file that defines the flake check.
-
-The flake check SHALL fail when the shell cannot be built.
-
-#### Scenario: A pull request breaks the shell
-
-- **WHEN** a pull request changes `flake.nix` so that the development shell cannot be built
-- **THEN** the flake check on that pull request fails
-
-#### Scenario: A pull request leaves the shell working
-
-- **WHEN** a pull request changes `flake.lock` and the development shell still builds
-- **THEN** the flake check on that pull request passes
-
-#### Scenario: A pull request does not touch the shell
-
-- **WHEN** a pull request changes none of the files in this requirement's list, including the flake check's own workflow file
-- **THEN** GitHub does not run the flake check on that pull request
-
-### Requirement: The flake check runs without secrets
-
-The flake check SHALL use no repository secret. Its workflow SHALL grant the job read-only access to repository contents and no other permission. A Dependabot pull request SHALL therefore run the check with no extra setup.
-
-#### Scenario: A reviewer inspects the workflow permissions
-
-- **WHEN** a reviewer reads the flake check workflow file
-- **THEN** its `permissions` block grants only `contents: read`
-- **AND** the file contains no reference to `secrets.`
-
-#### Scenario: Dependabot opens a Nix pin update
-
-- **WHEN** Dependabot opens a pull request that changes `flake.lock`
-- **THEN** the flake check runs on that pull request and reports pass or fail
-
-### Requirement: The flake check reports the shell's tool versions
-
-After the shell builds, the flake check SHALL run `rustc --version`, `lets --version`, `openspec --version`, `node --version`, and `pnpm --version` inside the shell. A reviewer SHALL be able to read their output in the job log. The flake check SHALL fail when any of the five commands fails.
-
-#### Scenario: A reviewer checks what a pin update changed
-
-- **WHEN** the flake check passes on a pull request
-- **THEN** the job log contains the output of `rustc --version`, `lets --version`, `openspec --version`, `node --version`, and `pnpm --version`, each run inside the development shell
-
-#### Scenario: A pin update breaks a tool
-
-- **WHEN** `openspec --version` exits with a non-zero status inside the shell, and the other four commands succeed
-- **THEN** the flake check fails
-
 ### Requirement: Contributors and CI name one Node version
 
-The repo SHALL state Node major version 26 wherever it names a Node version for contributors. `.nvmrc` SHALL contain the major version only, so Nix and Node version managers agree. A CI workflow that sets up Node outside the development shell SHALL read `.nvmrc` rather than hold its own copy of the version, so CI can never drift from it. The app image SHALL build the web shell with a Node base image of the major version that `.nvmrc` names.
+The repo SHALL state Node major version 26 wherever it names a Node version for contributors. `.nvmrc` SHALL contain the major version only, so mise and Node version managers agree. A CI workflow that sets up Node without mise SHALL read `.nvmrc` rather than hold its own copy of the version, so CI can never drift from it. The app image SHALL build the web shell with a Node base image of the major version that `.nvmrc` names.
 
 #### Scenario: A reviewer checks the documented Node version
 
@@ -489,26 +248,6 @@ On the mise route, the Rust release SHALL be the newest stable release rustup kn
 - **WHEN** a reviewer runs `git ls-files .mise` on a clean checkout
 - **THEN** the output is empty
 
-### Requirement: Both routes use one Let's Spec release
-
-The Nix shell and mise SHALL provide the same Let's Spec release and the same `openspec` CLI version. The flake input for Let's Spec SHALL name a release tag, not a branch. The committed skills, schemas and rules block SHALL be the ones that release's `lets sync` writes.
-
-#### Scenario: The flake input names a tag
-
-- **WHEN** a reviewer runs `nix flake metadata --json` at the repo root
-- **THEN** the `lets-spec` input's `original` entry has `ref` set to `v0.8.0`
-
-#### Scenario: The two routes report the same versions
-
-- **WHEN** a tester runs `lets --version` and `openspec --version`, once through `nix develop --command` and once through `mise exec --`, at the repo root
-- **THEN** the two `lets --version` outputs are identical
-- **AND** the two `openspec --version` outputs are identical
-
-#### Scenario: The committed copies match the release
-
-- **WHEN** a reviewer runs `mise exec -- lets sync --check` on a clean checkout
-- **THEN** the command exits with status 0
-
 ### Requirement: Entering the repo with mise refreshes the skills
 
 For a contributor who has run `mise activate` in their shell and trusted the repo's `mise.toml`, entering the repo directory SHALL run `lets sync`. When the committed copies already match the release, entering SHALL change no file. It SHALL print nothing from `lets sync` except the OpenSpec version warning that the requirement "Entering the repo warns while the skills lag OpenSpec 2" allows.
@@ -537,12 +276,18 @@ For a contributor who has run `mise activate` in their shell and trusted the rep
 
 ### Requirement: Contributors can add their own mise settings
 
-mise SHALL apply the settings in a file named `mise.local.toml` at the repo root when it exists, over those in `mise.toml`. Git SHALL ignore `mise.local.toml`.
+mise SHALL apply the settings in a file named `mise.local.toml` at the repo root when it exists, over those in `mise.toml`. A folder that the file adds to `PATH` SHALL come ahead of every folder that mise manages, as a folder prepended in `.envrc.local` did on the retired Nix route. Git SHALL ignore `mise.local.toml`.
 
 #### Scenario: A contributor adds a personal variable
 
 - **WHEN** a contributor writes `[env]` and `SIDEREAL_TEST_VAR = "1"` in `mise.local.toml`, then runs `mise exec -- printenv SIDEREAL_TEST_VAR` at the repo root
 - **THEN** the output is `1`
+
+#### Scenario: A personal setting puts a folder first on PATH
+
+- **GIVEN** a `.local-bin` directory at the repo root
+- **WHEN** a contributor writes `[env]` and `_.path = ".local-bin"` in `mise.local.toml`, then runs `mise env --paths` at the repo root
+- **THEN** the first line of the output is the absolute path of the repo's `.local-bin` directory
 
 #### Scenario: The personal file stays out of git
 
@@ -608,24 +353,9 @@ The mise check SHALL use no repository secret. Its workflow SHALL grant the job 
 - **THEN** its `permissions` block grants only `contents: read`
 - **AND** the file contains no reference to `secrets.`
 
-### Requirement: The Nix shell runs the pinned OpenSpec release
-
-The Nix development shell's `openspec` SHALL be an OpenSpec release binary from GitHub. The Nix files SHALL pin that release, and the hash of its download for each supported system. That copy SHALL come ahead on `PATH` of any other `openspec` the shell's packages carry.
-
-#### Scenario: The Nix shell runs the pinned release
-
-- **WHEN** a contributor runs `nix develop --command openspec --version` at the repo root
-- **THEN** the output is `2.1.1`
-
-#### Scenario: A download does not match its hash
-
-- **WHEN** a tester changes the hash the Nix files record for the `x86_64-linux` OpenSpec download to a wrong value, then runs `nix develop --command true` on an `x86_64-linux` machine
-- **THEN** the command exits with a non-zero status
-- **AND** its error output reports a hash mismatch
-
 ### Requirement: Entering the repo warns while the skills lag OpenSpec 2
 
-Until a Let's Spec release names OpenSpec 2, the `openspec-*` skills that `lets sync` writes come from OpenSpec 1.13.2. Until then, on a clean checkout, `lets sync` SHALL exit with status 0 and write to standard error only its warning that the OpenSpec CLI on `PATH` differs from that version. Entering the repo SHALL show this warning on both routes.
+Until a Let's Spec release names OpenSpec 2, the `openspec-*` skills that `lets sync` writes come from OpenSpec 1.13.2. Until then, on a clean checkout, `lets sync` SHALL exit with status 0 and write to standard error only its warning that the OpenSpec CLI on `PATH` differs from that version. Entering the repo with mise activated SHALL show this warning.
 
 #### Scenario: A contributor enters a clean checkout with mise
 
@@ -636,21 +366,6 @@ Until a Let's Spec release names OpenSpec 2, the `openspec-*` skills that `lets 
 #### Scenario: CI checks the committed copies
 
 - **WHEN** a reviewer runs `mise exec -- lets sync --check` on a clean checkout
-- **THEN** the command exits with status 0
-
-### Requirement: The flake check fails when the shell runs another OpenSpec release
-
-The flake check SHALL fail when `openspec --version` in the development shell prints a version other than the release the Nix files pin. The pinned release SHALL be named in one place in the Nix files.
-
-#### Scenario: Another copy of the CLI comes first
-
-- **WHEN** a tester changes the Nix files so that the Let's Spec bundle's `openspec` comes ahead of the pinned release on the shell's `PATH`, then runs `nix flake check`
-- **THEN** the command exits with a non-zero status
-- **AND** its error output names both versions
-
-#### Scenario: The shell runs the pinned release
-
-- **WHEN** a tester runs `nix flake check` on a clean checkout
 - **THEN** the command exits with status 0
 
 ### Requirement: The mise check fails when the lock misses a supported platform
@@ -804,3 +519,71 @@ When `mise lock` or `lets sync` fails during a run, the weekly workflow SHALL fa
 
 - **WHEN** a tester runs `mise exec -- scripts/update-mise-tools.sh` at the repo root, then `scripts/check-mise-lock-platforms.sh`
 - **THEN** both commands exit with status 0
+
+### Requirement: The repo has no Nix route
+
+The repo SHALL NOT define a Nix development shell or a direnv setup. It SHALL track no `flake.nix`, no `flake.lock`, no file under `nix/` and no `.envrc`. It SHALL have no workflow that runs `nix flake check`. `.github/dependabot.yml` SHALL have no entry for the `nix` package ecosystem.
+
+#### Scenario: No Nix file is tracked
+
+- **WHEN** a reviewer runs `git ls-files flake.nix flake.lock nix .envrc .github/workflows/nix.yml` at the repo root
+- **THEN** the output is empty
+
+#### Scenario: Dependabot has no Nix entry
+
+- **WHEN** a reviewer runs `yq '.updates[] | select(."package-ecosystem" == "nix")' .github/dependabot.yml`
+- **THEN** the output is empty
+
+### Requirement: Leftover Nix-route files stay out of git
+
+Git SHALL ignore `.direnv/` and `.envrc.local` at the repo root, so a contributor who used the retired Nix route cannot commit their direnv cache or personal settings by accident.
+
+#### Scenario: A former Nix user stages everything
+
+- **GIVEN** a checkout with a `.direnv/` directory and an `.envrc.local` file left from the Nix route
+- **WHEN** the contributor runs `git add -A`, then `git status --porcelain`
+- **THEN** the output lists neither `.direnv/` nor `.envrc.local`
+
+### Requirement: Contributors can work without mise
+
+The repo SHALL NOT require mise for building or checking it. The repo SHALL keep the pin files that tools other than mise read: `server/rust-toolchain.toml` for rustup, and `.nvmrc` for Node version managers.
+
+#### Scenario: A contributor without mise runs the checks
+
+- **GIVEN** a contributor without mise, who installs the tools by hand as `CONTRIBUTING.md` says, and prepares the PostgreSQL fixture
+- **WHEN** the contributor installs Rust through rustup and installs Node through a version manager reading `.nvmrc`
+- **THEN** rustup selects the channel in `server/rust-toolchain.toml`
+- **AND** the version manager selects Node major version 26
+- **AND** each of the four gate commands that `CONTRIBUTING.md` lists, for Compose, OpenSpec, the server and the web shell, exits with status 0 when run in that order from the repo root
+
+### Requirement: mise loads no application settings
+
+mise SHALL NOT load the variables in `.env` into a contributor's environment. `.env` holds the app's own settings, which can include secrets.
+
+#### Scenario: A variable is set only in .env
+
+- **WHEN** a tester adds `SIDEREAL_ENV_ONLY=1` to `.env`, then runs `mise exec -- printenv SIDEREAL_ENV_ONLY` at the repo root
+- **THEN** the command prints nothing and exits with a non-zero status
+
+### Requirement: The committed skills match the pinned Let's Spec release
+
+The committed skills, schemas and rules block SHALL be the ones that `lets sync` writes for the Let's Spec release that `mise.toml` names.
+
+#### Scenario: The committed copies match the release
+
+- **WHEN** a reviewer runs `mise exec -- lets sync --check` on a clean checkout
+- **THEN** the command exits with status 0
+
+### Requirement: Rust follows the stable channel
+
+`server/rust-toolchain.toml` SHALL name the `stable` channel and no exact release, so rustup installs the newest stable release it knows for a contributor without mise too.
+
+#### Scenario: The toolchain file names the stable channel
+
+- **WHEN** a reviewer runs `grep -n '^channel' server/rust-toolchain.toml`
+- **THEN** the output is exactly one line, `channel = "stable"`, after its line number
+
+#### Scenario: rustup without mise selects the stable channel
+
+- **WHEN** a contributor with rustup and without mise runs `rustup show active-toolchain` in `server/`
+- **THEN** the output starts with `stable-`

@@ -91,7 +91,8 @@ data/
 # Working state (plans, caches, scratch) — fully ignored
 .workspace/
 
-# Nix / direnv — flake.nix and flake.lock are committed, this state isn't
+# Leftovers from the retired Nix route: a direnv cache and personal settings,
+# which may hold secrets
 .direnv/
 .envrc.local
 

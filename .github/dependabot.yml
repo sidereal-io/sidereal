@@ -73,18 +73,6 @@ updates:
       - "dependencies"
       - "github-actions"
 
-  # main: Nix flake inputs
-  - package-ecosystem: "nix"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "04:00"
-    groups:
-      nix-inputs:
-        patterns:
-          - "*"
-
   # main: the Rust server
   - package-ecosystem: "cargo"
     directory: "/server"

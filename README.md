@@ -52,8 +52,8 @@ The server is a Rust cargo workspace in `server/`, and the web interface is a Re
 
 Pick one route. [`CONTRIBUTING.md`](CONTRIBUTING.md#-development-environment) has the steps for each.
 
-- **With Nix:** install Nix and direnv, then run `direnv allow` in the repo root. The pinned shell provides every tool.
-- **Without Nix:** install rustup, Node 26 (your version manager reads `.nvmrc`), and pnpm 12.
+- **[With mise](CONTRIBUTING.md#with-mise):** install and activate mise, then run `mise trust && mise install` in the repo root. mise installs every tool at its pinned release.
+- **[Without mise](CONTRIBUTING.md#without-mise):** install rustup, Node 26 (your version manager reads `.nvmrc`), and pnpm 12.
 
 ### Run it
 
@@ -61,7 +61,7 @@ Pick one route. [`CONTRIBUTING.md`](CONTRIBUTING.md#-development-environment) ha
 mise run dev
 ```
 
-Without mise, including inside the Nix shell, run `sh scripts/dev.sh` instead.
+Without mise, run `sh scripts/dev.sh` instead.
 
 This starts the server and the web interface together. Open `http://localhost:5173`. Today the page shows the server's health, because the first features are still being built.
 

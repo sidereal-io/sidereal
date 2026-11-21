@@ -59,8 +59,7 @@ The update script changes these pins:
 
 These stay manual: OpenSpec, which `mise.toml` pins on its own; Rust, which
 follows the `stable` channel; and major versions of Node, pnpm and `gh`. The
-script leaves `.nvmrc`, `server/rust-toolchain.toml` and `flake.nix` alone, so
-moving Let's Spec on the Nix route is still a manual step in `CONTRIBUTING.md`.
+script leaves `.nvmrc` and `server/rust-toolchain.toml` alone.
 
 When the script changes any file, the publish job commits it to the branch
 `automation/mise-tool-updates` and opens a pull request against `main`. If
@@ -131,8 +130,9 @@ Enable **Allow auto-merge** in the repository settings. In the rulesets for
 `main` and `v0.x`, enable each branch's required checks and **Require branches
 to be up to date before merging**. Leave **Require merge queue** disabled.
 
-The Nix workflow still uses path filters. Require only checks that run on every
-pull request; the auto-merge workflow never bypasses rules.
+The `mise` workflow uses path filters, so it does not run on every pull
+request. Require only checks that run on every pull request; the auto-merge
+workflow never bypasses rules.
 
 To pause automatic merging, disable **Dependabot auto-merge** in the Actions UI
 and cancel any existing auto-merge requests that should stop.
