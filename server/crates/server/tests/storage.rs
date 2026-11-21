@@ -203,3 +203,88 @@ async fn storage_pairs_before_serving_and_missing_markers_refuse() {
     assert!(empty.entries().is_empty());
     assert_eq!(stored_id(&db).await.as_deref(), Some(id.as_str()));
 }
+
+/// Run the server with `STORAGE_ROOT` and `WEB_ROOT` set to a failed exit,
+/// and check it never bound HTTP.
+fn refused_with_web_root(db: &TestDatabase, storage: &Path, web_root: &Path) -> String {
+    let port = free_port();
+    let Output { status, stderr, .. } = server(db, port, Some(storage))
+        .env("WEB_ROOT", web_root)
+        .output()
+        .unwrap();
+    assert!(!status.success());
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_err());
+    String::from_utf8_lossy(&stderr).into_owned()
+}
+
+/// A web folder that holds `index.html`.
+fn web_folder(path: &Path) {
+    std::fs::create_dir_all(path).unwrap();
+    std::fs::write(path.join("index.html"), "<!doctype html>").unwrap();
+}
+
+fn assert_overlap_refused(stderr: &str) {
+    assert!(stderr.contains("STORAGE_ROOT"), "{stderr}");
+    assert!(stderr.contains("WEB_ROOT"), "{stderr}");
+}
+
+#[tokio::test]
+async fn web_root_overlap_refuses_storage_inside_the_web_root() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-inside");
+    let web = dir.0.join("web");
+    web_folder(&web);
+    std::fs::create_dir(web.join("storage")).unwrap();
+    assert_overlap_refused(&refused_with_web_root(&db, &web.join("storage"), &web));
+    assert_eq!(application_tables(&db).await, 0);
+    assert!(std::fs::read_dir(web.join("storage"))
+        .unwrap()
+        .next()
+        .is_none());
+}
+
+#[tokio::test]
+async fn web_root_overlap_refuses_a_web_root_inside_storage() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-holds");
+    let storage = dir.0.join("storage");
+    web_folder(&storage.join("web"));
+    assert_overlap_refused(&refused_with_web_root(&db, &storage, &storage.join("web")));
+    assert_eq!(application_tables(&db).await, 0);
+}
+
+#[tokio::test]
+async fn web_root_overlap_refuses_storage_linked_to_the_web_root() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-link");
+    let web = dir.0.join("web");
+    web_folder(&web);
+    std::os::unix::fs::symlink(&web, dir.0.join("storage")).unwrap();
+    assert_overlap_refused(&refused_with_web_root(&db, &dir.0.join("storage"), &web));
+    assert_eq!(application_tables(&db).await, 0);
+}
+
+#[tokio::test]
+async fn web_root_overlap_lets_separate_folders_start() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-separate");
+    let (web, storage) = (dir.0.join("web"), dir.0.join("storage"));
+    web_folder(&web);
+    std::fs::create_dir(&storage).unwrap();
+    let port = free_port();
+    let mut child = Server(
+        server(&db, port, Some(&storage))
+            .env("WEB_ROOT", &web)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !get(port, "/readyz").is_some_and(|r| r.ends_with("{\"status\":\"ready\"}")) {
+        assert!(child.0.try_wait().unwrap().is_none(), "the server exited");
+        assert!(Instant::now() < deadline, "server never became ready");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(stored_id(&db).await.is_some());
+}

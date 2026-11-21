@@ -11,7 +11,7 @@ use sidereal_server::{
     },
     app_with_library,
     config::{
-        allowed_origins_from_env, storage_root_from_env, trusted_proxies_from_env,
+        allowed_origins_from_env, check_overlap, storage_root_from_env, trusted_proxies_from_env,
         web_root_from_env, DatabaseConfig,
     },
     with_trusted_proxies, with_web_root, Library, Log, Tuning,
@@ -29,8 +29,13 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // A start that cannot serve its web shell or reach its storage directory
     // must not change the database first.
+    // Both folders are resolved once, here, and only the resolved folders
+    // are used from now on.
     let web_root = web_root_from_env()?;
     let storage = storage_root_from_env()?;
+    if let (Some(storage), Some(web_root)) = (&storage, &web_root) {
+        check_overlap(storage, web_root)?;
+    }
     let allowed_origins = allowed_origins_from_env()?;
     let trusted_proxies = trusted_proxies_from_env()?;
     let config = DatabaseConfig::from_env()?;

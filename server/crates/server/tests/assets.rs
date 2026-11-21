@@ -981,3 +981,104 @@ mod original {
         }
     }
 }
+
+mod web_fallback {
+    use super::*;
+    use sidereal_server::{config::web_root, with_web_root};
+
+    const INDEX: &str = "<!doctype html><title>first build</title>";
+
+    /// A signed-in instance whose storage is `storage` and whose web shell
+    /// is served from `web`, resolved as startup resolves `WEB_ROOT`.
+    async fn serving(storage: &Path, web: &Path) -> Instance {
+        let db = TestDatabase::new();
+        let root = StorageRoot::new(storage).unwrap();
+        let web = web_root(Some(web.as_os_str())).unwrap().unwrap();
+        sidereal_server::config::check_overlap(&root, &web).unwrap();
+        let (database, paired) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
+                .await
+                .unwrap();
+        let objects = ObjectStore::open(&root, paired).unwrap();
+        let app = with_web_root(
+            app_with_library(
+                database,
+                AllowedOrigins::default(),
+                Tuning::default(),
+                Library::new(Some(objects)),
+            ),
+            Some(&web),
+        );
+        Instance::signed_in(db, None, app).await
+    }
+
+    fn holds_png(body: &[u8]) -> bool {
+        body.windows(PNG.len()).any(|w| w == PNG)
+    }
+
+    #[tokio::test]
+    async fn web_fallback_serves_no_stored_object_without_a_session() {
+        let parent = Dir::new();
+        let (web, storage) = (parent.0.join("web"), parent.0.join("storage"));
+        std::fs::create_dir_all(&web).unwrap();
+        std::fs::write(web.join("index.html"), INDEX).unwrap();
+        std::fs::create_dir_all(&storage).unwrap();
+        let instance = serving(&storage, &web).await;
+        assert_eq!(
+            instance.upload("nebula.png", PNG).await.status(),
+            StatusCode::CREATED
+        );
+        let (object, _) = files(&storage.join("store")).remove(0);
+        let relative = object
+            .strip_prefix(&storage)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        for uri in [format!("/{relative}"), format!("/../storage/{relative}")] {
+            let response = instance.get(&uri, None).await;
+            assert_ne!(response.status(), StatusCode::OK, "{uri}");
+            let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+                .await
+                .unwrap();
+            assert!(!holds_png(&body), "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn web_fallback_keeps_serving_the_web_root_resolved_at_startup() {
+        let parent = Dir::new();
+        let (build, data) = (parent.0.join("build"), parent.0.join("data"));
+        let storage = data.join("storage");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::write(build.join("index.html"), INDEX).unwrap();
+        std::fs::create_dir_all(&storage).unwrap();
+        let link = parent.0.join("current");
+        std::os::unix::fs::symlink(&build, &link).unwrap();
+        let instance = serving(&storage, &link).await;
+        assert_eq!(
+            instance.upload("nebula.png", PNG).await.status(),
+            StatusCode::CREATED
+        );
+
+        // Repoint the link at the folder that holds the store.
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(&data, &link).unwrap();
+
+        let (object, _) = files(&storage.join("store")).remove(0);
+        let relative = object
+            .strip_prefix(&data)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        let response = instance.get(&format!("/{relative}"), None).await;
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        assert!(!holds_png(&body));
+        let home = instance.get("/", None).await;
+        assert_eq!(home.status(), StatusCode::OK);
+        assert_eq!(body_text(home).await, INDEX);
+    }
+}
