@@ -116,11 +116,14 @@ updates, and `mise tool updates` opens the weekly mise tool update pull request.
 5. Generate a private key and upload its PEM contents as the repository's
    Actions secret `DEPENDABOT_MERGE_APP_PRIVATE_KEY`.
 
-The workflow uses `pull_request_target` to read the default branch's workflow and
-access these Actions credentials. It checks the PR author and repository,
-verifies Dependabot metadata, and never checks out or executes PR code. It
-creates an installation token scoped to this repository only for eligible
-updates. The token is revoked when the job finishes.
+`Dependabot auto-merge` uses `pull_request_target` to read the default branch's
+workflow and access these Actions credentials. It checks the PR author and
+repository, verifies Dependabot metadata, and never checks out or executes PR
+code. It creates an installation token scoped to this repository only for
+eligible updates. The token is revoked when the job finishes.
+[Weekly mise tool updates](#weekly-mise-tool-updates) isolates the App key in
+its publish job, requests narrower token permissions, and never runs updated
+tools on the runner that holds the key.
 
 ## Repository settings
 
