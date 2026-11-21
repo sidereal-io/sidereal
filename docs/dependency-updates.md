@@ -58,9 +58,9 @@ The update script changes these pins:
   `AGENTS.md` rules block for that release.
 
 These stay manual: OpenSpec, which `mise.toml` pins on its own; Rust, which
-follows the `stable` channel; and every major version. The script leaves
-`.nvmrc`, `server/rust-toolchain.toml` and `flake.nix` alone, so moving Let's
-Spec on the Nix route is still a manual step in `CONTRIBUTING.md`.
+follows the `stable` channel; and major versions of Node, pnpm and `gh`. The
+script leaves `.nvmrc`, `server/rust-toolchain.toml` and `flake.nix` alone, so
+moving Let's Spec on the Nix route is still a manual step in `CONTRIBUTING.md`.
 
 When the script changes any file, the publish job commits it to the branch
 `automation/mise-tool-updates` and opens a pull request against `main`. If

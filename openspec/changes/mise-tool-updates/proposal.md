@@ -7,7 +7,7 @@ Nothing updates the tools that `mise.toml` and `mise.lock` pin. Dependabot reads
 ## What Changes
 
 - A new scheduled workflow runs every Monday at 04:00 UTC, and on demand from the Actions tab (D4). It updates the mise pins, refreshes `mise.lock`, runs `lets sync`, and opens or updates one pull request against `main` when anything changed (D5).
-- The update moves every tool within the range `mise.toml` sets, so Node 26.x, pnpm 12.x and `gh` 2.x. It also moves Let's Spec to its newest release. OpenSpec stays at 2.1.1, Rust stays on the `stable` channel, and a major version change stays manual (D1).
+- The update moves every tool within the range `mise.toml` sets, so Node 26.x, pnpm 12.x and `gh` 2.x. It also moves Let's Spec to its newest release. OpenSpec stays at 2.1.1, Rust stays on the `stable` channel, and major versions of Node, pnpm and `gh` stay manual (D1).
 - The workflow opens the pull request with a token from the existing dependency-merge App, so the `ci` workflow runs on it. The token asks for `contents: write` and `pull-requests: write` only (D3).
 - The update and the publishing run in two jobs on separate runners. The update job holds no secret and a read-only token, and hands on only a patch. The publish job holds the App key, runs none of the updated tools, and applies the patch only when every changed path is one the update may change. A run started from a branch other than `main` does nothing and says why. These came from review of the pull request.
 - The workflow does not run the gate. CI runs it on the pull request, and a failure shows there. When `mise lock` or `lets sync` fails, the run fails and opens no pull request (D5).
