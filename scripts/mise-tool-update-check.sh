@@ -9,7 +9,7 @@
 # With no case named, it runs every case.
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
-all="allowed empty workflow config lookalike rename symlink dotdot garbage"
+all="allowed empty workflow config lookalike rename symlink dotdot garbage mode missing"
 
 fx=$(mktemp -d "${TMPDIR:-/tmp}/mise-tool-update-check.XXXXXX")
 trap 'rm -rf "$fx"' EXIT
@@ -177,6 +177,36 @@ case_garbage() {
   run_apply garbage
   if [ "$status" -eq 0 ]; then
     fail "the script accepted a file that holds no patch"
+  elif ! clean_tree; then
+    fail "the working tree changed"
+  else
+    echo "ok $case"
+  fi
+}
+
+case_mode() {
+  chmod +x "$repo/.agents/skills/a/SKILL.md"
+  make_patch mode
+  run_apply mode
+  if [ "$status" -ne 0 ]; then
+    fail "exit status $status"
+  else
+    g add -A
+    if [ "$(g write-tree)" != "$(cat "$fx/mode.tree")" ]; then
+      fail "the applied tree differs from the update's tree"
+    else
+      echo "ok $case"
+    fi
+  fi
+}
+
+case_missing() {
+  status=0
+  (cd "$repo" && ./scripts/apply-mise-tool-update.sh "$fx/nonexistent.patch" >"$fx/out" 2>&1) || status=$?
+  if [ "$status" -eq 0 ]; then
+    fail "the script accepted a missing patch file"
+  elif ! grep -qF "patch file not found" "$fx/out"; then
+    fail "the output does not report patch file not found"
   elif ! clean_tree; then
     fail "the working tree changed"
   else
