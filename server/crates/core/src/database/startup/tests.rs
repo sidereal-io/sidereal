@@ -117,7 +117,7 @@ async fn upgrade_preserves_the_original_migration_and_metadata() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!(migrations, 3);
+    assert_eq!(migrations, 4);
 }
 
 async fn successful_records(conn: &mut PgConnection) -> i64 {
@@ -135,19 +135,26 @@ async fn application_tables(conn: &mut PgConnection) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn first_startup_holds_the_access_tables() {
+async fn first_startup_holds_four_migrations_and_the_asset_tables() {
     let db = TestDatabase::new();
     init(&db).await.unwrap();
     let mut conn = connection(&db).await;
-    assert_eq!(successful_records(&mut conn).await, 3);
+    assert_eq!(successful_records(&mut conn).await, 4);
     assert_eq!(
         application_tables(&mut conn).await,
-        ["_sqlx_migrations", "sessions", "sidereal_metadata", "users"]
+        [
+            "_sqlx_migrations",
+            "asset_versions",
+            "assets",
+            "sessions",
+            "sidereal_metadata",
+            "users"
+        ]
     );
 }
 
 #[tokio::test]
-async fn concurrent_startup_applies_three_records_once() {
+async fn concurrent_startup_applies_four_records_once() {
     let db = TestDatabase::new();
     let (first, second) = tokio::join!(init(&db), init(&db));
     first.unwrap();
@@ -157,7 +164,7 @@ async fn concurrent_startup_applies_three_records_once() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!((total, successful_records(&mut conn).await), (3, 3));
+    assert_eq!((total, successful_records(&mut conn).await), (4, 4));
 }
 
 #[tokio::test]
@@ -181,7 +188,7 @@ async fn upgrade_adds_empty_access_tables() {
         upgraded.as_array().unwrap()[..2],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 3);
+    assert_eq!(successful_records(&mut conn).await, 4);
     let rows: i64 = sqlx::query_scalar(
         "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions)",
     )
@@ -189,6 +196,148 @@ async fn upgrade_adds_empty_access_tables() {
     .await
     .unwrap();
     assert_eq!(rows, 0);
+}
+
+const SAM: &str = "INSERT INTO public.users (username, password_hash, role, created_at) VALUES ('sam', 'hash', 'admin', '2026-01-01T00:00:00Z')";
+const USERS: &str =
+    "SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY id), '[]')::text FROM public.users u";
+const ASSET_ROWS: &str =
+    "SELECT (SELECT count(*) FROM public.assets) + (SELECT count(*) FROM public.asset_versions)";
+
+#[tokio::test]
+async fn asset_schema_upgrade_from_three_keeps_a_claimed_user() {
+    let db = TestDatabase::new();
+    initialize_with(
+        &db.options,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+        &prefix(3),
+        &baselines(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut conn = connection(&db).await;
+    conn.execute(SAM).await.unwrap();
+    let users: String = sqlx::query_scalar(USERS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    let original: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    init(&db).await.unwrap();
+    let upgraded: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    assert_eq!(
+        upgraded.as_array().unwrap()[..3],
+        original.as_array().unwrap()[..]
+    );
+    assert_eq!(successful_records(&mut conn).await, 4);
+    let rows: i64 = sqlx::query_scalar(ASSET_ROWS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0);
+    let after: String = sqlx::query_scalar(USERS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(users, after);
+}
+
+const ASSET_A: &str = "00000000-0000-4000-8000-00000000000a";
+const ASSET_B: &str = "00000000-0000-4000-8000-00000000000b";
+const VERSION_A: &str = "00000000-0000-4000-8000-0000000000a1";
+const VERSION_B: &str = "00000000-0000-4000-8000-0000000000b1";
+const HASH: &str = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262";
+
+/// Insert one Asset and one version in a transaction, as ingest does.
+async fn insert_pair(
+    conn: &mut PgConnection,
+    asset: &str,
+    current: &str,
+    version: &str,
+    owner: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = conn.begin().await?;
+    sqlx::query("INSERT INTO public.assets (id, kind, name, current_version_id) VALUES ($1::uuid, 'image', 'nebula.png', $2::uuid)")
+        .bind(asset)
+        .bind(current)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO public.asset_versions (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) VALUES ($1::uuid, $2::uuid, $3, 4, 'image/png', 'image.manual-upload', '0.1.0', now())")
+        .bind(version)
+        .bind(owner)
+        .bind(HASH)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
+}
+
+#[tokio::test]
+async fn asset_schema_accepts_an_asset_whose_current_version_is_its_own() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    insert_pair(&mut conn, ASSET_A, VERSION_A, VERSION_A, ASSET_A)
+        .await
+        .unwrap();
+    let revision: i64 = sqlx::query_scalar("SELECT revision FROM public.assets")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(revision, 0);
+}
+
+#[tokio::test]
+async fn asset_schema_refuses_a_current_version_that_does_not_exist() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    assert!(
+        insert_pair(&mut conn, ASSET_A, VERSION_B, VERSION_A, ASSET_A)
+            .await
+            .is_err()
+    );
+    let rows: i64 = sqlx::query_scalar(ASSET_ROWS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0);
+}
+
+#[tokio::test]
+async fn asset_schema_refuses_a_current_version_of_another_asset() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    insert_pair(&mut conn, ASSET_A, VERSION_A, VERSION_A, ASSET_A)
+        .await
+        .unwrap();
+    let mut tx = conn.begin().await.unwrap();
+    sqlx::query("INSERT INTO public.assets (id, kind, name, current_version_id) VALUES ($1::uuid, 'image', 'other.png', $2::uuid)")
+        .bind(ASSET_B)
+        .bind(VERSION_A)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    assert!(tx.commit().await.is_err());
+    let assets: i64 = sqlx::query_scalar("SELECT count(*) FROM public.assets")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(assets, 1);
+}
+
+#[tokio::test]
+async fn asset_schema_lets_two_versions_share_one_hash() {
+    let db = TestDatabase::new();
+    init(&db).await.unwrap();
+    let mut conn = connection(&db).await;
+    insert_pair(&mut conn, ASSET_A, VERSION_A, VERSION_A, ASSET_A)
+        .await
+        .unwrap();
+    insert_pair(&mut conn, ASSET_B, VERSION_B, VERSION_B, ASSET_B)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
