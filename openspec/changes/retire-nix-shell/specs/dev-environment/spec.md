@@ -72,6 +72,26 @@ The committed skills, schemas and rules block SHALL be the ones that `lets sync`
 
 ## MODIFIED Requirements
 
+### Requirement: Contributors can add their own mise settings
+
+mise SHALL apply the settings in a file named `mise.local.toml` at the repo root when it exists, over those in `mise.toml`. A folder that the file adds to `PATH` SHALL come ahead of every folder that mise manages, as a folder prepended in `.envrc.local` did on the retired Nix route. Git SHALL ignore `mise.local.toml`.
+
+#### Scenario: A contributor adds a personal variable
+
+- **WHEN** a contributor writes `[env]` and `SIDEREAL_TEST_VAR = "1"` in `mise.local.toml`, then runs `mise exec -- printenv SIDEREAL_TEST_VAR` at the repo root
+- **THEN** the output is `1`
+
+#### Scenario: A personal setting puts a folder first on PATH
+
+- **GIVEN** a `.local-bin` directory at the repo root
+- **WHEN** a contributor writes `[env]` and `_.path = ".local-bin"` in `mise.local.toml`, then runs `mise env --paths` at the repo root
+- **THEN** the first line of the output is the absolute path of the repo's `.local-bin` directory
+
+#### Scenario: The personal file stays out of git
+
+- **WHEN** a contributor creates `mise.local.toml` and runs `git status --porcelain`
+- **THEN** the output does not list `mise.local.toml`
+
 ### Requirement: The repo checks pass through mise
 
 The repo's gate SHALL pass when a contributor runs it through mise. The gate is `mise run check`: the Compose configuration checks, the OpenSpec checks, the server checks, and the web checks.

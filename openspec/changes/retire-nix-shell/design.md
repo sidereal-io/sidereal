@@ -26,7 +26,11 @@ Every CI job and every development task already runs through mise. The Nix route
 
 `openspec/discovery.md` also names the Nix route. It stays as it is (D17).
 
-OpenSSL is not pinned on the mise route. `server/scripts/db-tls.sh` and `scripts/external-db-verify.sh` call `openssl` from the host.
+OpenSSL is not pinned on the mise route. `server/scripts/db-tls.sh` and `scripts/external-db-verify.sh` call `openssl` from the host. `db-up` (`server/scripts/db-fixture.sh up`) runs `db-tls.sh` before it starts Compose, so a fresh fixture needs `openssl` too. With no `openssl` on `PATH` and no certificates yet, `db-up` exits with status 127 and prints nothing, because `db-tls.sh` sends the error to a log it then deletes. The Nix shell supplied `openssl`, so its users never saw this.
+
+`scripts/dev.sh`, from `mise-tool-updates`, runs the `dev` task. It starts each worker in its own process group with `setsid`, or with `perl` where there is no `setsid` command (macOS). mise installs neither.
+
+The Linux x64 Node, pnpm and OpenSpec binaries that `mise.lock` pins ask for the program loader `/lib64/ld-linux-x86-64.so.2` (`readelf -l` shows it; `gh` is static). A plain NixOS host has no file at that path, so the tools install but do not start. The retired shell used Nixpkgs' pnpm and patched OpenSpec's loader, so this did not arise there.
 
 The disk on the development machine has about 9 GB free. Nothing in this change builds anything new.
 
@@ -82,15 +86,24 @@ Rename `CONTRIBUTING.md`'s "Without Nix" section to "Without mise", so its ancho
 
 Add a short subsection, "Moving from the Nix shell", at the end of the routes, before "Where versions are set". It lists, in order:
 
-1. delete `.direnv/`, and optionally run `direnv prune` to clear direnv's allow cache; direnv unloads automatically once `.envrc` is gone;
-2. move any settings in `.envrc.local` to `mise.local.toml` as TOML under an `[env]` table;
-3. follow [With mise](#with-mise). mise is also in Nixpkgs, so a Nix user can install it from there.
+1. leave a shell opened with `nix develop`, without direnv: run `exit` or open a new terminal. Deleting `.direnv/` does not end that shell, and its tool and library paths would stay ahead of mise's;
+2. delete `.direnv/`, and optionally run `direnv prune` to clear direnv's allow cache; direnv unloads automatically once `.envrc` is gone;
+3. move any settings in `.envrc.local` to `mise.local.toml` as TOML under an `[env]` table. A line that put a folder first on `PATH` becomes mise's `_.path` setting, which mise resolves against the folder that holds the file; `mise env --paths` lists it first. A contributor who will install the tools by hand has nothing that loads `.envrc.local` any more, so they export those settings in their shell before they run the scripts;
+4. follow [With mise](#with-mise). mise is also in Nixpkgs, so a Nix user can install it from there. On NixOS, read the loader warning first (see "Warn NixOS users about the loader").
 
 `.direnv/` and `.envrc.local` stay in `.gitignore` (D5). Their comment changes to say they are leftovers from the retired Nix route.
 
-### List OpenSSL as a system prerequisite, not a pinned tool
+### List OpenSSL as a fixture prerequisite, not a pinned tool
 
-Remove the OpenSSL row from "Where versions are set": no file sets its version any more. Name OpenSSL instead in the paragraph after the "Without mise" steps that lists what the gate and the tasks need from the system. It already names Docker. Say there that `db-tls` and `external-db-verify` need `openssl` on `PATH`, on both routes (D13).
+Remove the OpenSSL row from "Where versions are set": no file sets its version any more. Name OpenSSL instead beside Docker and Compose, wherever the guide says what the fixture needs: the `mise run db-up` line under "Development Commands", and the paragraph after the "Without mise" steps that lists what the gate and the tasks need from the system. Say there that `db-up` makes the fixture's certificates with `openssl` the first time, and that `db-tls` and `external-db-verify` need it too, on both routes (D13). The same paragraph says that `dev` needs `setsid` or `perl`, since mise installs neither.
+
+- Alternative: make `db-tls.sh` print a clear error when `openssl` is missing. Left out: the review asked for documentation, and the script belongs to the fixture, not to this change.
+
+### Warn NixOS users about the loader
+
+In "Moving from the Nix shell", beside the note that mise is in Nixpkgs, say that the pinned Linux x64 Node, pnpm and OpenSpec binaries ask for `/lib64/ld-linux-x86-64.so.2`. Name two routes that give a NixOS host that loader: `programs.nix-ld.enable = true;` in the system configuration, or running mise inside an FHS environment such as one made with `buildFHSEnv`. Say plainly that the project does not test on NixOS, so neither route is verified.
+
+- Alternative: pin Nixpkgs builds of these tools for NixOS. Rejected: it brings back a Nix route, which this change retires.
 
 ### Keep the spec renames as REMOVED plus ADDED
 
@@ -145,6 +158,9 @@ After the change, `git grep -n -i -E 'nix|flake|direnv|envrc'` may still find:
 ## Risks / Trade-offs
 
 - [A contributor on the Nix shell pulls and direnv unloads or reports missing .envrc] → The move note says to delete `.direnv/` and optionally run `direnv prune`. The pull request description repeats it.
+- [A contributor stays in a `nix develop` shell and carries its paths into mise] → The move note's first step says to leave that shell or open a new terminal.
+- [A NixOS contributor installs mise from Nixpkgs and the tools do not start] → The move note names the loader and two routes, and says the project does not test them.
+- [A fresh fixture fails on a machine without OpenSSL, with no message] → The guide lists OpenSSL beside Docker and Compose on both routes.
 - [A stale link to `#without-nix` or `#with-nix` remains] → A task greps for both anchors across the repo, outside the history, and expects no match.
 - [Deleting `nix.yml` leaves a stale required check] → D4 checked the ruleset: `flake check` is not required. CI on the pull request confirms that the required checks report.
 - [An edit to `AGENTS.md` touches the rules block by accident] → `lets sync --check` fails in the gate and in CI.
