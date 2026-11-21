@@ -184,7 +184,9 @@ case_garbage() {
   fi
 }
 
-for case in ${*:-$all}; do
+# shellcheck disable=SC2086 # $all is a fixed list of case names
+[ $# -gt 0 ] || set -- $all
+for case in "$@"; do
   case " $all " in
     *" $case "*) g reset -q --hard; g clean -qfd; : >"$fx/out"; "case_$case" ;;
     *) echo "mise-tool-update-check: no case named $case" >&2; exit 2 ;;
