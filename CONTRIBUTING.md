@@ -68,7 +68,7 @@ export TEST_DATABASE_URL=$(mise run db-test-url)
 mise run dev            # Run the server and the web interface together; Ctrl-C stops both
 mise run server         # Run the server only
 mise run web            # Run the web interface only
-mise run e2e            # Run the Playwright end-to-end suite (the fixture must be up)
+mise run e2e            # Run the Playwright end-to-end suite on its own throwaway stack (the fixture must be up)
 mise run db-schema      # Regenerate the normalized schema descriptions
 mise run db-down        # Stop the fixture, keeping its data
 mise run db-clean       # Delete the fixture's containers and data
