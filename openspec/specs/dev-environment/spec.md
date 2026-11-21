@@ -425,6 +425,22 @@ The workflow `.github/workflows/mise-tool-updates.yml` SHALL run every Monday at
 - **THEN** the run finishes successfully
 - **AND** the run opens no pull request
 
+### Requirement: The weekly workflow runs only from main
+
+A run of `.github/workflows/mise-tool-updates.yml` SHALL update tools only when it runs from the `main` branch. A run started from any other branch SHALL fail before it checks out the repository, with an error that names that branch and says the workflow runs only from `main`, and SHALL open, update or push to no pull request.
+
+#### Scenario: Someone starts the workflow from another branch
+
+- **WHEN** an operator starts the workflow from the Actions tab on the branch `feature`
+- **THEN** the run fails
+- **AND** its log says the workflow runs only from `main` and names `refs/heads/feature`
+- **AND** the run opens no pull request
+
+#### Scenario: The workflow runs from main
+
+- **WHEN** a run of the workflow starts from `main`
+- **THEN** the branch check passes and the update runs
+
 ### Requirement: The weekly workflow keeps one update pull request
 
 At most one pull request from the weekly workflow SHALL be open at a time. When one is already open and a run changes files, the run SHALL update that pull request instead of opening another.
