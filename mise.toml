@@ -26,3 +26,32 @@ enter = "lets sync"
 # Off by default; set here so .nvmrc applies whatever a contributor's
 # global config says.
 idiomatic_version_file_enable_tools = ["node"]
+
+# The gate. Up to about six lines inline; a longer body goes in a POSIX sh
+# script under scripts/ or server/scripts/.
+[tasks.check-compose]
+description = "Compose configuration checks (Compose CLI and jq; no daemon)"
+run = "sh scripts/compose-config-check.sh"
+
+[tasks.check-openspec]
+description = "OpenSpec checks: strict validation of every spec and active change; warnings fail it"
+run = "OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive"
+
+[tasks.check-server]
+description = "Server checks: format, clippy (warnings denied), tests, dependency-direction lint"
+run = "(cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) && server/scripts/check-arch.sh"
+
+[tasks.check-web]
+description = "Web checks: install from the lockfile, then types, lint, format, DESIGN.md lint, token drift, unit tests"
+run = "(cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test)"
+
+# A run list, not depends: mise starts dependencies in parallel, and the
+# gate must run its parts in order and stop at the first failure.
+[tasks.check]
+description = "The gate to pass before every pull request"
+run = [
+  { task = "check-compose" },
+  { task = "check-openspec" },
+  { task = "check-server" },
+  { task = "check-web" },
+]

@@ -159,13 +159,13 @@ The unit tests SHALL fail when a stylesheet or TypeScript file under `web/src/` 
 
 #### Scenario: The prefix changed, but the stylesheets did not
 
-- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `foo`, runs the generator, and runs `just check-web`
+- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `foo`, runs the generator, and runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 - **AND** its output contains `--sr-obsidian-950`
 
 #### Scenario: A token in use was removed
 
-- **WHEN** a tester removes `obsidian-100` from `DESIGN.md`, runs the generator, and runs `just check-web`
+- **WHEN** a tester removes `obsidian-100` from `DESIGN.md`, runs the generator, and runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 - **AND** its output contains `--sr-obsidian-100`
 
@@ -176,7 +176,7 @@ The token drift check SHALL compare `web/src/styles/tokens.css` with the output 
 #### Scenario: DESIGN.md changed, but the token file did not
 
 - **WHEN** a tester changes `obsidian-950` to `#0C0B10` in `DESIGN.md`, without running the generator
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 - **AND** its output names the command that regenerates the token file
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
@@ -184,12 +184,12 @@ The token drift check SHALL compare `web/src/styles/tokens.css` with the output 
 #### Scenario: The token file was edited by hand
 
 - **WHEN** a tester changes the value of `--sr-obsidian-950` in `web/src/styles/tokens.css`
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 
 #### Scenario: The token file was regenerated
 
-- **WHEN** a tester changes `obsidian-950` in `DESIGN.md`, runs the generator, and runs `just check-web`
+- **WHEN** a tester changes `obsidian-950` in `DESIGN.md`, runs the generator, and runs `mise run check-web`
 - **THEN** the token drift check passes
 
 ### Requirement: The web gate lints DESIGN.md
@@ -206,20 +206,20 @@ When a known warning stops appearing, the gate SHALL still pass.
 
 #### Scenario: DESIGN.md has only the known warnings
 
-- **WHEN** a contributor runs `just check-web` on an unchanged checkout
+- **WHEN** a contributor runs `mise run check-web` on an unchanged checkout
 - **THEN** the linter step passes
 
 #### Scenario: A new warning appears
 
 - **WHEN** a tester adds a top-level key `x-other` with the entry `thing-4: 4px` to `DESIGN.md`'s front matter
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 - **AND** its output contains `x-other`
 
 #### Scenario: A color value is not a color
 
 - **WHEN** a tester changes `obsidian-950` to `"#GGGGGG"` in `DESIGN.md`
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 
 ### Requirement: The web gate checks DESIGN.md's contrast claims
@@ -230,7 +230,7 @@ A cell that holds `—` claims nothing, and the test SHALL skip it.
 
 #### Scenario: The table is correct
 
-- **WHEN** a contributor runs `just check-web` on an unchanged checkout
+- **WHEN** a contributor runs `mise run check-web` on an unchanged checkout
 - **THEN** the contrast test passes
 
 ### Requirement: A contrast claim matches the computed ratio
@@ -244,19 +244,19 @@ The contrast test SHALL fail when:
 #### Scenario: A color changed, but its claims did not
 
 - **WHEN** a tester changes `obsidian-500` to `#6F6B7C` in `DESIGN.md`
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 
 #### Scenario: A claimed ratio is wrong
 
 - **WHEN** a tester changes the `obsidian-400` cell on `obsidian-950` from `7.2` to `7.5`
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 
 #### Scenario: A failing pair is not marked
 
 - **WHEN** a tester removes `(fails)` from the `obsidian-600` cell on `obsidian-950`
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 
 ### Requirement: A contrast table the test cannot read fails the test
@@ -272,12 +272,12 @@ The test SHALL read a row that leaves out its outer pipes, as Markdown allows, a
 #### Scenario: A cell holds no claim the test can read
 
 - **WHEN** a tester changes the `obsidian-500` cell on `obsidian-850` from `4.5` to `TBD`
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 
 #### Scenario: The table has no rows
 
 - **WHEN** a tester deletes every row of the contrast table in `DESIGN.md` and keeps its header
-- **AND** runs `just check-web`
+- **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
 

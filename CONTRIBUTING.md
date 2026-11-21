@@ -15,7 +15,7 @@ Thank you for your interest in contributing to Sidereal! We welcome contribution
    ```bash
    git checkout -b feature/your-feature-name
    ```
-5. **Make** your changes, and run `just check`
+5. **Make** your changes, and run `mise run check`
 6. **Submit** a pull request
 
 ### Fixing the running v0.10.x app
@@ -57,7 +57,9 @@ We welcome several types of contributions:
 
 ## 🛠️ Development Commands
 
-The root `justfile` runs everything. `just --list` describes every recipe.
+The root `justfile` runs the server, the web interface and the database fixture.
+The tasks in `mise.toml` run the gate. `just --list` describes every recipe, and
+`mise tasks` describes every task.
 
 ```bash
 just db-up          # Start the isolated PostgreSQL fixture (Docker + Compose required)
@@ -66,16 +68,24 @@ export TEST_DATABASE_URL=$(just db-test-url)
 just dev            # Run the server and the web interface together
 just server         # Run the server only
 just web            # Run the web interface only
-just check          # The gate to pass before every pull request
-just check-compose  # Compose configuration checks (Compose CLI + jq; no daemon)
-just check-openspec # OpenSpec checks: strict validation of every spec and active change
-just check-server   # Server checks: format, clippy, tests, dependency-direction lint
-just check-web      # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
+mise run check           # The gate to pass before every pull request
+mise run check-compose   # Compose configuration checks (Compose CLI + jq; no daemon)
+mise run check-openspec  # OpenSpec checks: strict validation of every spec and active change
+mise run check-server    # Server checks: format, clippy, tests, dependency-direction lint
+mise run check-web       # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 just instance-verify  # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
 just external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
 ```
 
-`just check-compose` compares the resolved app services, checks the external entry's
+`mise run check` runs its four parts one at a time, in the order above, and stops
+at the first one that fails. Without mise, run the same four commands by hand: see
+step 6 of [Without Nix](#without-nix).
+
+When you add or change a gate task, keep a body of up to about six lines inline in
+`mise.toml`. Put a longer body in a POSIX `sh` script under `scripts/` or
+`server/scripts/`, and make the task run that script, as `check-compose` does.
+
+`mise run check-compose` compares the resolved app services, checks the external entry's
 services and volumes, and verifies URL requirements and mount settings. It needs
 Docker Compose and `jq`, but no running Docker daemon. CI runs it on every pull request.
 
@@ -129,6 +139,12 @@ If you cloned before the Rust workspace moved from `backend/` to `server/`, run
 4. Nothing to run for the agent skills. The shell runs `lets sync` when it
    loads, which keeps them at the pinned Let's Spec release. See
    [Agent skills](#agent-skills).
+5. To run the gate, pick one of these. The Nix shell has no mise, so
+   `mise run check` does not work inside it until the Nix route goes.
+   - Inside the shell, run the four gate commands from step 6 of
+     [Without Nix](#without-nix), in that order.
+   - If you also installed mise, run `mise run check` in a terminal that has
+     not loaded the Nix shell.
 
 Nix sees only files tracked by git. A new file under `nix/` stays invisible to
 the shell until you run `git add` on it.
@@ -215,9 +231,42 @@ branch's hook without asking. After you read the branch's changes, run
    The agent skills, schemas and rules are committed, so you have them without
    running anything. Only the Nix shell and mise keep them up to date: see
    [Agent skills](#agent-skills).
+6. Run the gate. These are the four commands that `mise run check` runs. Run
+   them from the repo root, in this order, and stop at the first one that
+   fails. The server checks need the PostgreSQL fixture and
+   `TEST_DATABASE_URL`, as the next paragraph says.
 
-Every route passes the same `just check` gate. Prepare the PostgreSQL fixture and export
-`DATABASE_URL` and `TEST_DATABASE_URL` using the commands above. Docker Engine or
+   1. Compose configuration checks. They need the Compose CLI and `jq`, but no
+      running Docker daemon:
+
+      ```
+      sh scripts/compose-config-check.sh
+      ```
+   2. OpenSpec checks: strict validation of every spec and active change. A
+      warning fails them:
+
+      ```
+      OPENSPEC_TELEMETRY=0 openspec validate --all --strict --no-interactive
+      ```
+   3. Server checks: format, clippy with warnings denied, tests, and the
+      dependency-direction lint:
+
+      ```
+      (cd server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test) && server/scripts/check-arch.sh
+      ```
+   4. Web checks: install from the lockfile, then types, lint, format,
+      `DESIGN.md` lint, token drift and unit tests:
+
+      ```
+      (cd web && pnpm install --frozen-lockfile --reporter=append-only && pnpm typecheck && pnpm lint && pnpm format:check && pnpm design:lint && pnpm tokens:check && pnpm test)
+      ```
+
+   The parentheses keep each `cd` inside its own command, so you stay in the
+   repo root for the next one.
+
+Every route passes the same gate: `mise run check`, or its four commands by hand.
+Before you run it, prepare the PostgreSQL fixture and export `DATABASE_URL` and
+`TEST_DATABASE_URL` using the commands under Development Commands. Docker Engine or
 Docker Desktop with Compose v2 or newer runs the fixture; OpenSSL generates local fixture certificates.
 See [server setup](server/README.md) for container-free test prerequisites.
 
@@ -341,7 +390,7 @@ test: add unit tests for image processing
 just db-up
 export DATABASE_URL=$(just db-url)
 export TEST_DATABASE_URL=$(just db-test-url)
-just check
+mise run check
 
 # Run the server tests only
 cd server && cargo test
@@ -362,7 +411,7 @@ cd web && pnpm test
 1. **Test** your changes thoroughly
 2. **Run** the checks:
    ```bash
-   just check
+   mise run check
    ```
 3. **Update** documentation if needed
 4. **Add** tests for new functionality

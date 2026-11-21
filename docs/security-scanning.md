@@ -18,7 +18,7 @@ The dependency job uploads SARIF before failing on high or critical findings. Bo
 
 ## Verification and rollout
 
-Pre-merge validation uses `deli -- actionlint` and `deli -- just check`. The shared change in `openspec/changes/archive/2026-10-09-security-scan-categories/` carries the category contract; the contract is synced into `openspec/specs/ci/spec.md`. Pre-merge checks do not prove live baseline comparison.
+Pre-merge validation uses `deli -- actionlint` and `deli -- mise run check`. The shared change in `openspec/changes/archive/2026-10-09-security-scan-categories/` carries the category contract; the contract is synced into `openspec/specs/ci/spec.md`. Pre-merge checks do not prove live baseline comparison.
 
 After the user merges both PRs, follow the pending runtime checklist on #321:
 
