@@ -27,11 +27,19 @@ Sam claims an unclaimed instance as its one administrator, signs in to get a ses
 
 ### Requirement: The claim creates the one administrator
 
-`POST /api/claim` with the JSON body `{"username":"<u>","password":"<p>"}` SHALL create a user with that username, an argon2 hash of the password and the role `admin`, and answer 201 with the body `{"username":"<u>","role":"admin"}` and no `Set-Cookie` header. It SHALL be permitted only while no administrator exists: once one does it SHALL answer 409 with the body `{"error":"claimed"}` and create nothing. Concurrent claims SHALL produce exactly one administrator. When PostgreSQL cannot be read or written it SHALL answer 503 with the body `{"error":"unavailable"}` and create nothing.
+`POST /api/claim` with the JSON body `{"username":"<u>","password":"<p>"}` SHALL create a user with that username, an argon2 hash of the password and the role `admin`, and answer 201 with the body `{"username":"<u>","role":"admin"}` and no `Set-Cookie` header. When PostgreSQL cannot be read or written it SHALL answer 503 with the body `{"error":"unavailable"}` and create nothing.
 
 #### Scenario: First claim
 - **WHEN** no administrator exists and Sam sends `POST /api/claim` with username `sam` and password `correct-horse-battery`
 - **THEN** the status is 201, the body is `{"username":"sam","role":"admin"}`, the response has no `Set-Cookie` header, and the `users` table holds one row with username `sam`, role `admin`, and a password hash that is not the password
+
+#### Scenario: Persistence is unavailable
+- **WHEN** the server's database connections are closed and a caller sends `POST /api/claim`
+- **THEN** the status is 503 and the body is `{"error":"unavailable"}`
+
+### Requirement: The claim is closed once an administrator exists
+
+`POST /api/claim` SHALL be permitted only while no administrator exists: once one does it SHALL answer 409 with the body `{"error":"claimed"}` and create nothing. Concurrent claims SHALL produce exactly one administrator.
 
 #### Scenario: Second claim
 - **WHEN** an administrator exists and a caller sends `POST /api/claim` with any credentials
@@ -40,10 +48,6 @@ Sam claims an unclaimed instance as its one administrator, signs in to get a ses
 #### Scenario: Concurrent claims
 - **WHEN** no administrator exists and ten callers send `POST /api/claim` at the same time with different usernames
 - **THEN** exactly one answer is 201, the others are 409, and the `users` table holds exactly one row
-
-#### Scenario: Persistence is unavailable
-- **WHEN** the server's database connections are closed and a caller sends `POST /api/claim`
-- **THEN** the status is 503 and the body is `{"error":"unavailable"}`
 
 ### Requirement: Claimed credentials meet the credential rules
 
@@ -55,8 +59,6 @@ Sam claims an unclaimed instance as its one administrator, signs in to get a ses
 - The username holds no control character.
 - The password is 8 to 256 bytes.
 
-A control character is any character in the Unicode general category Cc, such as a line feed, an escape or a delete, wherever it appears in the username.
-
 #### Scenario: Short password
 - **WHEN** no administrator exists and a caller sends `POST /api/claim` with username `sam` and password `short`
 - **THEN** the status is 400, the body is `{"error":"invalid credentials"}`, and the `users` table is empty
@@ -65,23 +67,37 @@ A control character is any character in the Unicode general category Cc, such as
 - **WHEN** no administrator exists and a caller sends `POST /api/claim` with username ` sam` and a valid password
 - **THEN** the status is 400 and the `users` table is empty
 
-#### Scenario: A control character in the username
-- **WHEN** no administrator exists and a caller sends `POST /api/claim` with the username `sa\u001b[2Jm`, which holds an escape character, and a valid password
-- **THEN** the status is 400, the body is `{"error":"invalid credentials"}`, and the `users` table is empty
-
 #### Scenario: Not a credentials object
 - **WHEN** no administrator exists and a caller sends `POST /api/claim` with the body `["sam"]`
 - **THEN** the status is 400 and the `users` table is empty
 
+### Requirement: A control character is any Unicode Cc character
+
+For the rule that the username holds no control character, a control character SHALL be any character in the Unicode general category Cc, such as a line feed, an escape or a delete, wherever it appears in the username.
+
+#### Scenario: A control character in the username
+- **WHEN** no administrator exists and a caller sends `POST /api/claim` with the username `sa\u001b[2Jm`, which holds an escape character, and a valid password
+- **THEN** the status is 400, the body is `{"error":"invalid credentials"}`, and the `users` table is empty
+
 ### Requirement: Sign-in creates a session
 
-`POST /api/session` takes the JSON body `{"username":"<u>","password":"<p>"}`. When the username exists and the password matches its hash, it SHALL create a session row and answer 200 with the body `{"username":"<u>","role":"<role>"}` and a `Set-Cookie` header for `sidereal_session` whose value is the token. The session row SHALL hold the SHA-256 hash of a new random 32-byte token, the authentication type `password`, and its created, last-used and expiry times. When the username does not exist or the password does not match, it SHALL answer 401 with the body `{"error":"invalid credentials"}` and create nothing. It SHALL verify a password hash whether or not the username exists, so the two failures take the same work. A body that is not a JSON object with string `username` and `password` SHALL answer 400 with the same body. Each of these answers applies only while the request's client address is not limited; a limited address is answered 429, as the sign-in limit requirements say.
-
-A sign-in SHALL create its session only while the user's password hash is still the one its password matched. When an access recovery replaces that hash before the sign-in saves its session row, the sign-in SHALL answer as a wrong password does. It answers 401 with the body `{"error":"invalid credentials"}`, sets no cookie and saves no session row. A sign-in that saves its session row first SHALL answer 200, and the access recovery ends that session as the reset state requires. So no session created with a replaced password outlives the access recovery that replaced it.
+`POST /api/session` takes the JSON body `{"username":"<u>","password":"<p>"}`. When the username exists and the password matches its hash, it SHALL create a session row and answer 200 with the body `{"username":"<u>","role":"<role>"}` and a `Set-Cookie` header for `sidereal_session` whose value is the token. Every sign-in answer SHALL apply only while the request's client address is not limited; a limited address is answered 429, as the sign-in limit requirements say.
 
 #### Scenario: Correct credentials
 - **WHEN** Sam signs in with the username and password of the claim
 - **THEN** the status is 200, the body is `{"username":"sam","role":"admin"}`, the response sets `sidereal_session`, and the `sessions` table holds one row whose token hash is the SHA-256 of the cookie value, with authentication type `password`
+
+### Requirement: A session row holds a hash of its token
+
+The session row a sign-in creates SHALL hold the SHA-256 hash of a new random 32-byte token, the authentication type `password`, and its created, last-used and expiry times.
+
+#### Scenario: The stored row after sign-in
+- **WHEN** Sam signs in with correct credentials
+- **THEN** the new row in the `sessions` table holds the SHA-256 hash of the token in the cookie, not the token itself, the authentication type `password`, and a created, a last-used and an expiry time
+
+### Requirement: A failed sign-in creates nothing
+
+When the username does not exist or the password does not match, `POST /api/session` SHALL answer 401 with the body `{"error":"invalid credentials"}` and create nothing. It SHALL verify a password hash whether or not the username exists, so the two failures take the same work.
 
 #### Scenario: Wrong password
 - **WHEN** a caller signs in with username `sam` and a wrong password
@@ -91,13 +107,29 @@ A sign-in SHALL create its session only while the user's password hash is still 
 - **WHEN** a caller signs in with username `nobody` and any password
 - **THEN** the status, body and headers are identical to the wrong-password answer
 
+### Requirement: A malformed sign-in body is refused
+
+A `POST /api/session` body that is not a JSON object with string `username` and `password` SHALL answer 400 with the body `{"error":"invalid credentials"}`.
+
 #### Scenario: Malformed body
 - **WHEN** a caller sends `POST /api/session` with a body that is not a JSON object with string `username` and `password`
 - **THEN** the status is 400 and the body is `{"error":"invalid credentials"}`
 
+### Requirement: A sign-in needs the password hash it matched
+
+A sign-in SHALL create its session only while the user's password hash is still the one its password matched. When an access recovery replaces that hash before the sign-in saves its session row, the sign-in SHALL answer as a wrong password does. It answers 401 with the body `{"error":"invalid credentials"}`, sets no cookie and saves no session row.
+
 #### Scenario: Sign-in with the old password during an access recovery
 - **WHEN** an access recovery has replaced Sam's password hash but not yet committed, a caller signs in as `sam` with the old password, and the access recovery then commits
 - **THEN** the sign-in answers 401 with the body `{"error":"invalid credentials"}`, no cookie is set, and the `sessions` table is empty
+
+### Requirement: An access recovery ends a session saved before it
+
+A sign-in that saves its session row before an access recovery replaces the password hash SHALL answer 200, and the access recovery ends that session as the reset state requires. So no session created with a replaced password outlives the access recovery that replaced it.
+
+#### Scenario: Sign-in saved just before an access recovery
+- **WHEN** a caller signs in as `sam` with the old password and saves its session row, and an access recovery then replaces Sam's password hash and commits
+- **THEN** the sign-in answers 200, and afterwards the `sessions` table is empty and `GET /api/session` with that cookie answers 401
 
 ### Requirement: The session cookie is scoped to the browser
 
@@ -193,19 +225,7 @@ No response body, log line or error SHALL contain a password, a password hash or
 
 ### Requirement: Every API route needs an administrator session
 
-Every request to `/api`, `/api/` or a path under `/api` SHALL need a `sidereal_session` cookie whose token hash matches an unexpired session row for a user with the `admin` role. The exceptions are `GET /api/claim`, `HEAD /api/claim`, `POST /api/claim` and `POST /api/session`. Without such a session the server SHALL answer 401 with the body `{"error":"unauthenticated"}` before any route-specific handling. An unknown `/api` path, or an unsupported method on a known one, therefore answers 401 without a session. A session whose row has been deleted SHALL be refused on its next request. `/healthz`, `/readyz`, `/` and the web shell's files SHALL need no session.
-
-#### Scenario: A guarded route without a cookie
-- **WHEN** a caller sends `DELETE /api/session` with no cookie
-- **THEN** the status is 401 and the body is `{"error":"unauthenticated"}`
-
-#### Scenario: An unknown API path without a cookie
-- **WHEN** a caller sends `GET /api/does-not-exist`, `GET /api/`, `GET /api` and `PUT /api/claim`, each with no cookie
-- **THEN** every status is 401 and every body is `{"error":"unauthenticated"}`
-
-#### Scenario: An unknown API path with a session
-- **WHEN** Sam sends `GET /api/does-not-exist` with the cookie from sign-in
-- **THEN** the status is 404
+Every request to `/api`, `/api/` or a path under `/api` SHALL need a `sidereal_session` cookie whose token hash matches an unexpired session row for a user with the `admin` role. The exceptions are `GET /api/claim`, `HEAD /api/claim`, `POST /api/claim` and `POST /api/session`. A session whose row has been deleted SHALL be refused on its next request. `/healthz`, `/readyz`, `/` and the web shell's files SHALL need no session.
 
 #### Scenario: A session revoked mid-use
 - **WHEN** Sam signs in, the session row is deleted from the `sessions` table, and Sam sends `GET /api/session` with the same cookie
@@ -218,6 +238,22 @@ Every request to `/api`, `/api/` or a path under `/api` SHALL need a `sidereal_s
 #### Scenario: Health probes and the web shell stay public
 - **WHEN** a caller with no cookie sends `GET /healthz`, `GET /readyz` and `GET /` to a server with a web root
 - **THEN** no answer is 401
+
+### Requirement: The session check answers before any route
+
+Without an administrator session, a request under `/api` that is not one of the public exceptions SHALL be answered 401 with the body `{"error":"unauthenticated"}` before any route-specific handling. An unknown `/api` path, or an unsupported method on a known one, therefore answers 401 without a session.
+
+#### Scenario: A guarded route without a cookie
+- **WHEN** a caller sends `DELETE /api/session` with no cookie
+- **THEN** the status is 401 and the body is `{"error":"unauthenticated"}`
+
+#### Scenario: An unknown API path without a cookie
+- **WHEN** a caller sends `GET /api/does-not-exist`, `GET /api/`, `GET /api` and `PUT /api/claim`, each with no cookie
+- **THEN** every status is 401 and every body is `{"error":"unauthenticated"}`
+
+#### Scenario: An unknown API path with a session
+- **WHEN** Sam sends `GET /api/does-not-exist` with the cookie from sign-in
+- **THEN** the status is 404
 
 ### Requirement: A refused session clears the stale cookie
 
@@ -241,15 +277,11 @@ A request that passes the session check SHALL count as a use of that session. Th
 
 ### Requirement: A state-changing request comes from an allowed origin
 
-This applies to every request under `/api` whose method is not `GET`, `HEAD` or `OPTIONS`, public routes included. It also applies to every WebSocket upgrade request under `/api`, though its method is `GET`: a request whose `Upgrade` header names `websocket`, compared case-insensitively. The server SHALL read the `Origin` header, or when there is none the origin part of the `Referer` header. When one is present and it is not an allowed origin, the server SHALL answer 403 with the body `{"error":"forbidden"}`. It SHALL do so before the session check and without reading the database. When neither header is present the request SHALL pass this check. An origin is allowed when its host and port equal the request's `Host` header, or when it is listed in `SIDEREAL_ALLOWED_ORIGINS`. Hosts compare case-insensitively. A port of 80 or 443 counts as no port, on both sides. The scheme is not compared against `Host`. The server SHALL send no `Access-Control-Allow-Origin` header.
+This applies to every request under `/api` whose method is not `GET`, `HEAD` or `OPTIONS`, public routes included. The server SHALL read the `Origin` header, or when there is none the origin part of the `Referer` header. When one is present and it is not an allowed origin, the server SHALL answer 403 with the body `{"error":"forbidden"}`. It SHALL do so before the session check and without reading the database. When neither header is present the request SHALL pass this check.
 
 #### Scenario: Same-origin sign-in
 - **WHEN** a caller sends `POST /api/session` with correct credentials, `Host: localhost:5000` and `Origin: http://localhost:5000`
 - **THEN** the status is 200
-
-#### Scenario: Same host, default port
-- **WHEN** a caller sends `POST /api/session` with correct credentials, once with `Host: photos.example` and `Origin: https://photos.example:443`, and once with `Host: photos.example:443` and `Origin: https://photos.example`
-- **THEN** both statuses are 200
 
 #### Scenario: Cross-site sign-in
 - **WHEN** a caller sends `POST /api/session` with correct credentials, `Host: localhost:5000` and `Origin: http://evil.example`
@@ -275,9 +307,29 @@ This applies to every request under `/api` whose method is not `GET`, `HEAD` or 
 - **WHEN** a caller sends `GET /api/claim` with `Origin: http://evil.example`
 - **THEN** the status is 200 and the response has no `Access-Control-Allow-Origin` header
 
+### Requirement: The server sends no CORS header
+
+The server SHALL send no `Access-Control-Allow-Origin` header.
+
+#### Scenario: A same-origin state-changing request
+- **WHEN** a caller sends `POST /api/session` with correct credentials, `Host: localhost:5000` and `Origin: http://localhost:5000`
+- **THEN** the status is 200 and the response has no `Access-Control-Allow-Origin` header
+
+### Requirement: An allowed origin matches the Host header or the list
+
+An origin SHALL be allowed when its host and port equal the request's `Host` header, or when it is listed in `SIDEREAL_ALLOWED_ORIGINS`. Hosts compare case-insensitively. A port of 80 or 443 counts as no port, on both sides. The scheme is not compared against `Host`.
+
+#### Scenario: Same host, default port
+- **WHEN** a caller sends `POST /api/session` with correct credentials, once with `Host: photos.example` and `Origin: https://photos.example:443`, and once with `Host: photos.example:443` and `Origin: https://photos.example`
+- **THEN** both statuses are 200
+
 #### Scenario: A listed origin
 - **WHEN** the server started with `SIDEREAL_ALLOWED_ORIGINS=https://photos.example` and a caller sends `POST /api/session` with correct credentials, `Host: app:5000` and `Origin: https://photos.example`
 - **THEN** the status is 200
+
+### Requirement: A WebSocket upgrade passes the origin check
+
+The origin check SHALL also apply to every WebSocket upgrade request under `/api`, though its method is `GET`: a request whose `Upgrade` header names `websocket`, compared case-insensitively.
 
 #### Scenario: Cross-site WebSocket upgrade
 - **WHEN** Sam sends a WebSocket upgrade to `GET /api/events` with the cookie from sign-in, `Host: localhost:5000` and `Origin: http://evil.example`
@@ -289,7 +341,7 @@ This applies to every request under `/api` whose method is not `GET`, `HEAD` or 
 
 ### Requirement: Extra allowed origins come from the environment
 
-`SIDEREAL_ALLOWED_ORIGINS` is optional. When set, it SHALL hold a comma-separated list of origins, each `scheme://host` or `scheme://host:port` with a scheme of `http` or `https`, spaces around an item ignored. Unset or empty SHALL mean no extra origin. An item with a path, a trailing slash, a wildcard, another scheme, or no host SHALL stop the server at start, before it touches the database. The message SHALL name `SIDEREAL_ALLOWED_ORIGINS` and not the item's value. A listed port of 80 or 443 SHALL match an `Origin` that omits it.
+`SIDEREAL_ALLOWED_ORIGINS` is optional. When set, it SHALL hold a comma-separated list of origins, each `scheme://host` or `scheme://host:port` with a scheme of `http` or `https`, spaces around an item ignored. Unset or empty SHALL mean no extra origin. A listed port of 80 or 443 SHALL match an `Origin` that omits it.
 
 #### Scenario: Unset
 - **WHEN** the server starts with `SIDEREAL_ALLOWED_ORIGINS` unset
@@ -298,6 +350,10 @@ This applies to every request under `/api` whose method is not `GET`, `HEAD` or 
 #### Scenario: A list
 - **WHEN** the server starts with `SIDEREAL_ALLOWED_ORIGINS=https://photos.example, http://localhost:5173`
 - **THEN** it starts, and a `POST /api/session` with `Origin: http://localhost:5173` and `Host: app:5000` is not refused with 403
+
+### Requirement: A malformed allowed origin stops the server
+
+An item in `SIDEREAL_ALLOWED_ORIGINS` with a path, a trailing slash, a wildcard, another scheme, or no host SHALL stop the server at start, before it touches the database. The message SHALL name `SIDEREAL_ALLOWED_ORIGINS` and not the item's value.
 
 #### Scenario: A malformed item
 - **WHEN** the server starts with `SIDEREAL_ALLOWED_ORIGINS=https://photos.example/`
@@ -317,11 +373,15 @@ This applies to every request under `/api` whose method is not `GET`, `HEAD` or 
 
 ### Requirement: The create state creates the one administrator
 
-In the create state the command SHALL create a user with the given username, an argon2 hash of the given password and the role `admin`. It SHALL print `Created administrator <username>.` on stdout and exit 0. The claim SHALL be closed afterwards, and the administrator SHALL be able to sign in with those credentials. When an administrator appears between the state check and the write, the command SHALL write nothing and exit 1. Its one line on stderr SHALL say that an administrator now exists and to run the command again.
+In the create state the command SHALL create a user with the given username, an argon2 hash of the given password and the role `admin`. It SHALL print `Created administrator <username>.` on stdout and exit 0. The claim SHALL be closed afterwards, and the administrator SHALL be able to sign in with those credentials.
 
 #### Scenario: Create from the box
 - **WHEN** no administrator exists and Sam runs `siderealctl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` on stdin
 - **THEN** the exit status is 0, stdout holds `Created administrator sam.`, `GET /api/claim` answers `{"open":false}`, and `POST /api/session` with username `sam` and that password answers 200
+
+### Requirement: The create state writes nothing when an administrator appears first
+
+When an administrator appears between the state check and the write, the command SHALL write nothing and exit 1. Its one line on stderr SHALL say that an administrator now exists and to run the command again.
 
 #### Scenario: The claim closes between the check and the write
 - **WHEN** no administrator exists when the command starts, and a `POST /api/claim` creates one before the command writes
@@ -329,7 +389,7 @@ In the create state the command SHALL create a user with the given username, an 
 
 ### Requirement: The reset state sets a new password and ends every session
 
-In the reset state the command SHALL replace the administrator's password hash with an argon2 hash of the given password, and delete every row in the `sessions` table. Both SHALL happen in one transaction, so no outcome has one without the other. It SHALL print `Reset the password of administrator <username> and ended <n> sessions.` on stdout, with `<n>` the number of rows deleted, and exit 0. A request that carries the cookie of a deleted session SHALL be refused as the requirement "Every API route needs an administrator session" says. This holds whether or not the server was running during the reset.
+In the reset state the command SHALL replace the administrator's password hash with an argon2 hash of the given password, and delete every row in the `sessions` table. Both SHALL happen in one transaction, so no outcome has one without the other. It SHALL print `Reset the password of administrator <username> and ended <n> sessions.` on stdout, with `<n>` the number of rows deleted, and exit 0.
 
 #### Scenario: Reset while signed in
 - **WHEN** Sam is signed in twice and runs `siderealctl reset-admin-password --password-stdin` with `new-horse-battery` on stdin
@@ -339,9 +399,33 @@ In the reset state the command SHALL replace the administrator's password hash w
 - **WHEN** an administrator exists, no session does, and Sam runs the reset with a valid password
 - **THEN** the exit status is 0 and stdout holds `ended 0 sessions.`
 
+### Requirement: A session the reset ended is refused
+
+A request that carries the cookie of a session the reset deleted SHALL be refused as the requirement "Every API route needs an administrator session" says. This holds whether or not the server was running during the reset.
+
+#### Scenario: Reset while the server is stopped
+- **WHEN** Sam signs in, the server process stops, Sam runs the reset with a valid password, and a new server process starts against the same database
+- **THEN** `GET /api/session` with the cookie from before the reset answers 401
+
 ### Requirement: Credentials come from the terminal or from the flags
 
-Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. When the two answers differ it SHALL write nothing, print `passwords do not match` on stderr and exit 1. Prompts SHALL be written to stderr, so stdout holds only the state line, a generated password and the result. With `--password-stdin` the command SHALL never prompt. It SHALL read the first line of stdin as the password, without its line ending. In the create state the username SHALL then come from `--username`; without it, `--password-stdin` is a usage error. An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required, and exit 1. Without the flag, a stdin that closes before an answer to a prompt SHALL be refused: one line on stderr saying stdin closed before an answer, and exit 1. No refusal in this requirement changes the database.
+Without `--password-stdin` the command SHALL prompt on the terminal. In the create state it SHALL ask `Username:` with the answer echoed, unless `--username` was given, and then `New password:` and `Repeat password:` with no echo. In the reset state it SHALL ask only the two password prompts. Prompts SHALL be written to stderr, so stdout holds only the state line, a generated password and the result.
+
+#### Scenario: Prompts go to stderr
+- **WHEN** an administrator exists and Sam answers `New password:` and `Repeat password:` on the terminal with the same valid password
+- **THEN** stderr holds both prompts, and stdout holds only the state line and the result line
+
+### Requirement: Two different password answers are refused
+
+When the two answers to the password prompts differ, the command SHALL write nothing, print `passwords do not match` on stderr and exit 1.
+
+#### Scenario: The repeated password differs
+- **WHEN** Sam answers the prompts `New password:` with `correct-horse-battery` and `Repeat password:` with `correct-horse-batery`
+- **THEN** stderr holds `passwords do not match`, the exit status is 1, and the `users` and `sessions` tables are unchanged
+
+### Requirement: Script mode reads the password from stdin
+
+With `--password-stdin` the command SHALL never prompt. It SHALL read the first line of stdin as the password, without its line ending. In the create state the username SHALL then come from `--username`; without it, `--password-stdin` is a usage error, which changes nothing in the database.
 
 #### Scenario: Script mode creates the administrator
 - **WHEN** no administrator exists and a script runs `siderealctl reset-admin-password --username sam --password-stdin` with `correct-horse-battery` and a line feed on stdin
@@ -351,6 +435,10 @@ Without `--password-stdin` the command SHALL prompt on the terminal. In the crea
 - **WHEN** no administrator exists and a script runs `siderealctl reset-admin-password --password-stdin`
 - **THEN** the exit status is 2, stderr names `--username`, and the `users` table is empty
 
+### Requirement: Script mode refuses an empty password
+
+An empty or missing first line under `--password-stdin` SHALL be refused: one line on stderr saying a password is required, and exit 1. The refusal SHALL NOT change the database.
+
 #### Scenario: Script mode with an empty line
 - **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password --password-stdin` with a single line feed on stdin
 - **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
@@ -359,13 +447,13 @@ Without `--password-stdin` the command SHALL prompt on the terminal. In the crea
 - **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password --password-stdin` with stdin closed and nothing on it
 - **THEN** the exit status is 1, stderr says a password is required, the password hash is unchanged and the `sessions` table is unchanged
 
+### Requirement: A prompt refuses a stdin that closes before an answer
+
+Without `--password-stdin`, a stdin that closes before an answer to a prompt SHALL be refused: one line on stderr saying stdin closed before an answer, and exit 1. The refusal SHALL NOT change the database.
+
 #### Scenario: A closed stdin without the flag
 - **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password` with stdin closed, as `docker compose exec -T` with no input does
 - **THEN** the exit status is 1, stdout holds only the state line, stderr says stdin closed, the password hash is unchanged and the `sessions` table is unchanged
-
-#### Scenario: The repeated password differs
-- **WHEN** Sam answers the prompts `New password:` with `correct-horse-battery` and `Repeat password:` with `correct-horse-batery`
-- **THEN** stderr holds `passwords do not match`, the exit status is 1, and the `users` and `sessions` tables are unchanged
 
 ### Requirement: A given username must name the administrator in the reset state
 
@@ -381,19 +469,27 @@ In the reset state, a `--username` that is not the administrator's username SHAL
 
 ### Requirement: An empty answer at the password prompt is generated
 
-When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password. When that line cannot be written, the command SHALL exit 1 with one line on stderr that says the generated password could not be shown and to run the command again, because the password is already stored. Only the prompt on a terminal generates a password. When stdin is not a terminal, an empty answer to `New password:` SHALL be refused like an empty line under `--password-stdin`, and `--password-stdin` never generates one.
+When the answer to `New password:` is an empty line, the command SHALL generate a random password of 24 characters drawn from ASCII letters and digits. It SHALL skip `Repeat password:`. It SHALL print `Generated password: <password>` on stdout, before the line that says what it did, and use that password. This is the only output that ever holds a password.
 
 #### Scenario: Empty answer at the prompt
 - **WHEN** an administrator exists and Sam answers `New password:` with an empty line
 - **THEN** the command does not ask `Repeat password:`, the exit status is 0, stdout holds one line `Generated password: <p>` where `<p>` is 24 ASCII letters and digits, that password appears once in stdout and never in stderr, and `POST /api/session` with `<p>` answers 200
 
+#### Scenario: Empty answer in the create state
+- **WHEN** no administrator exists and Sam answers `Username:` with `sam` and `New password:` with an empty line
+- **THEN** the exit status is 0, stdout holds a `Generated password:` line and `Created administrator sam.`, and `POST /api/session` with `sam` and the generated password answers 200
+
+### Requirement: Only a prompt on a terminal generates a password
+
+Only the prompt on a terminal SHALL generate a password. When stdin is not a terminal, an empty answer to `New password:` SHALL be refused like an empty line under `--password-stdin`, and `--password-stdin` never generates one.
+
 #### Scenario: Empty answer through a pipe
 - **WHEN** an administrator exists and a script runs `siderealctl reset-admin-password` without `--password-stdin`, with a single line feed piped to stdin
 - **THEN** the exit status is 1, stderr says a password is required, no `Generated password:` line is printed, the password hash is unchanged and the `sessions` table is unchanged
 
-#### Scenario: Empty answer in the create state
-- **WHEN** no administrator exists and Sam answers `Username:` with `sam` and `New password:` with an empty line
-- **THEN** the exit status is 0, stdout holds a `Generated password:` line and `Created administrator sam.`, and `POST /api/session` with `sam` and the generated password answers 200
+### Requirement: A generated password that cannot be shown fails the command
+
+When the `Generated password:` line cannot be written, the command SHALL exit 1 with one line on stderr that says the generated password could not be shown and to run the command again, because the password is already stored.
 
 #### Scenario: The generated password cannot be shown
 - **WHEN** an administrator exists, Sam answers `New password:` with an empty line, and stdout stops accepting writes after the state line, as under `| head -1`
@@ -417,19 +513,23 @@ The command SHALL apply the rules of the requirement "Claimed credentials meet t
 
 ### Requirement: The recovery command uses the server's database settings and never changes the schema
 
-The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings as the server does, with the same errors for a missing or invalid value. It SHALL check that the database holds the current Sidereal schema before it reads the `users` table. It SHALL apply no migration and create no table. When the database is empty or behind, the command SHALL print one line on stderr that names the cause and says to start the server first, and exit 1. For any other database fault, such as a database that is not Sidereal's or a rejected login, it SHALL print the same line the server prints for that fault, and exit 1.
+The command SHALL read `DATABASE_URL`, the timeout settings and the TLS settings as the server does, with the same errors for a missing or invalid value. It SHALL check that the database holds the current Sidereal schema before it reads the `users` table. It SHALL apply no migration and create no table. When the database is empty or behind, the command SHALL print one line on stderr that names the cause and says to start the server first, and exit 1.
 
 #### Scenario: An empty database
 - **WHEN** `DATABASE_URL` names an empty database that no server has started against, and a script runs the command with valid credentials
 - **THEN** the exit status is 1, stderr says to start the server first, and the database still holds no `_sqlx_migrations` table
 
-#### Scenario: A database that is not Sidereal's
-- **WHEN** `DATABASE_URL` names a database that holds another application's tables, and a script runs the command with valid credentials
-- **THEN** the exit status is 1, stderr starts with `database is not an empty or owned Sidereal database`, and the database is unchanged
-
 #### Scenario: Missing configuration
 - **WHEN** a script runs the command with `DATABASE_URL` unset
 - **THEN** the exit status is 1 and stderr starts with `missing database configuration`
+
+### Requirement: The recovery command reports other database faults as the server does
+
+For any database fault other than an empty or behind database, such as a database that is not Sidereal's or a rejected login, the command SHALL print the same line the server prints for that fault, and exit 1.
+
+#### Scenario: A database that is not Sidereal's
+- **WHEN** `DATABASE_URL` names a database that holds another application's tables, and a script runs the command with valid credentials
+- **THEN** the exit status is 1, stderr starts with `database is not an empty or owned Sidereal database`, and the database is unchanged
 
 #### Scenario: A host that accepts the connection and never answers
 - **WHEN** `DATABASE_URL` names a host that accepts the TCP connection and sends nothing, and a script runs the command
@@ -479,13 +579,21 @@ When the peer is not a trusted proxy, the scheme SHALL be HTTP and the client ad
 
 When the peer is a trusted proxy, the scheme SHALL be HTTPS when `X-Forwarded-Proto` is exactly `https`, compared without regard to case. Any other value, a list of values, or no header SHALL mean HTTP.
 
-When the peer is a trusted proxy, the server SHALL read `X-Forwarded-For` from its last entry to its first. The first entry that is not a trusted proxy SHALL be the client address. An entry that is not an address SHALL count as not trusted, and so SHALL be the client address. When every entry is a trusted proxy, or the header is absent, the client address SHALL be the peer's address.
-
-The server SHALL NOT read the `Forwarded` header. The server SHALL NOT read `X-Forwarded-Host`: the origin check compares against `Host` alone.
-
 #### Scenario: No proxy
 - **WHEN** a request arrives from `192.168.1.20`, which is not a trusted proxy, with no forwarded headers
 - **THEN** the scheme is HTTP and the client address is `192.168.1.20`
+
+#### Scenario: Proto that is not https
+- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request arrives from `172.18.0.1`, once with `X-Forwarded-Proto: http`, once with `X-Forwarded-Proto: https, http`, and once with no `X-Forwarded-Proto`
+- **THEN** the scheme is HTTP each time
+
+#### Scenario: Case of the proto value
+- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request arrives from `172.18.0.1` with `X-Forwarded-Proto: HTTPS`
+- **THEN** the scheme is HTTPS
+
+### Requirement: A trusted proxy's X-Forwarded-For names the client address
+
+When the peer is a trusted proxy, the server SHALL read `X-Forwarded-For` from its last entry to its first. The first entry that is not a trusted proxy SHALL be the client address. An entry that is not an address SHALL count as not trusted, and so SHALL be the client address. When every entry is a trusted proxy, or the header is absent, the client address SHALL be the peer's address.
 
 #### Scenario: One trusted proxy
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request arrives from `172.18.0.1` with `X-Forwarded-Proto: https` and `X-Forwarded-For: 203.0.113.9`
@@ -503,17 +611,21 @@ The server SHALL NOT read the `Forwarded` header. The server SHALL NOT read `X-F
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.0/16` and a request arrives from `172.18.0.1` with `X-Forwarded-For: 172.18.0.5`
 - **THEN** the client address is `172.18.0.1`
 
-#### Scenario: Proto that is not https
-- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request arrives from `172.18.0.1`, once with `X-Forwarded-Proto: http`, once with `X-Forwarded-Proto: https, http`, and once with no `X-Forwarded-Proto`
-- **THEN** the scheme is HTTP each time
+### Requirement: The server reads neither Forwarded nor X-Forwarded-Host
 
-#### Scenario: Case of the proto value
-- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request arrives from `172.18.0.1` with `X-Forwarded-Proto: HTTPS`
-- **THEN** the scheme is HTTPS
+The server SHALL NOT read the `Forwarded` header. The server SHALL NOT read `X-Forwarded-Host`: the origin check compares against `Host` alone.
+
+#### Scenario: A Forwarded header from a trusted proxy
+- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and a request arrives from `172.18.0.1` with `Forwarded: for=203.0.113.9;proto=https` and no `X-Forwarded-For` or `X-Forwarded-Proto` header
+- **THEN** the scheme is HTTP and the client address is `172.18.0.1`
+
+#### Scenario: An X-Forwarded-Host from a trusted proxy
+- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1` and `SIDEREAL_ALLOWED_ORIGINS` unset, and a request from `172.18.0.1` sends `POST /api/session` with correct credentials, `Host: app:5000`, `X-Forwarded-Host: photos.example` and `Origin: https://photos.example`
+- **THEN** the status is 403
 
 ### Requirement: Forwarded headers from an untrusted peer are refused
 
-A request on any route, web shell files and health probes included, whose peer is not a trusted proxy and which carries an `X-Forwarded-For` or `X-Forwarded-Proto` header SHALL be answered 400 with the body `{"error":"untrusted proxy: set SIDEREAL_TRUSTED_PROXIES"}`. The server SHALL do so before the origin check and the session check, without reading the database, and without setting a cookie. The response SHALL hold nothing taken from the request. The server SHALL write nothing to its log for such a request.
+A request on any route, web shell files and health probes included, whose peer is not a trusted proxy and which carries an `X-Forwarded-For` or `X-Forwarded-Proto` header SHALL be answered 400 with the body `{"error":"untrusted proxy: set SIDEREAL_TRUSTED_PROXIES"}`. The server SHALL do so before the origin check and the session check, without reading the database, and without setting a cookie.
 
 #### Scenario: Forwarded headers with no trusted proxies
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES` unset and a caller sends `POST /api/session` with correct credentials and `X-Forwarded-Proto: https`
@@ -530,6 +642,14 @@ A request on any route, web shell files and health probes included, whose peer i
 #### Scenario: No forwarded headers, no refusal
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES` unset and a caller sends `GET /healthz` with no forwarded headers
 - **THEN** the status is 200
+
+### Requirement: The untrusted-proxy refusal echoes and logs nothing
+
+The response to a request refused for forwarded headers from an untrusted peer SHALL hold nothing taken from the request. The server SHALL write nothing to its log for such a request.
+
+#### Scenario: A refused request leaves no trace
+- **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES` unset and a caller sends `GET /healthz` with `X-Forwarded-For: 203.0.113.9`
+- **THEN** the status is 400, no header or body of the response contains `203.0.113.9`, and captured stdout and stderr gain no line
 
 ### Requirement: The events socket opens only with an administrator session
 
@@ -609,7 +729,7 @@ While the socket is open, the server SHALL send the text message `{"type":"heart
 
 ### Requirement: Failed sign-ins are counted per client address
 
-The server SHALL count failed sign-ins for each client address. A failed sign-in SHALL be a `POST /api/session` answered 401. An answer of 400, 429 or 503 SHALL NOT count. An IPv4 client address SHALL be counted by its full address. An IPv6 client address SHALL be counted by its /64 prefix, so every address in one /64 shares one count. Every request whose client address the server could not resolve SHALL share one count, kept apart from every resolved address. The counts SHALL live only in the server process: a restart SHALL clear them, and the server SHALL write nothing about them to PostgreSQL.
+The server SHALL count failed sign-ins for each client address. A failed sign-in SHALL be a `POST /api/session` answered 401. An answer of 400, 429 or 503 SHALL NOT count. An IPv4 client address SHALL be counted by its full address. An IPv6 client address SHALL be counted by its /64 prefix, so every address in one /64 shares one count. Every request whose client address the server could not resolve SHALL share one count, kept apart from every resolved address.
 
 #### Scenario: A malformed body is not a failure
 - **WHEN** a caller at `192.168.1.20` sends 25 `POST /api/session` requests whose body is not credentials, each answered 400, and then signs in with correct credentials
@@ -635,13 +755,17 @@ The server SHALL count failed sign-ins for each client address. A failed sign-in
 - **WHEN** the server started with `SIDEREAL_TRUSTED_PROXIES=172.18.0.1`, the unresolved count is limited, and a request from `172.18.0.1` with `X-Forwarded-For: 203.0.113.9` signs in with correct credentials
 - **THEN** that request answers 200
 
+### Requirement: Sign-in failure counts live only in the server process
+
+The counts of failed sign-ins SHALL live only in the server process: a restart SHALL clear them, and the server SHALL write nothing about them to PostgreSQL.
+
 #### Scenario: A restart clears the counts
 - **WHEN** a caller at `192.168.1.20` is limited and a new server process, against the same database, receives a sign-in from `192.168.1.20` with correct credentials
 - **THEN** the sign-in answers 200
 
 ### Requirement: Sign-in failures are limited in three tiers
 
-For each counted address the server SHALL apply three sliding windows: at most 1 failed sign-in in any 1 second, 5 in any 60 seconds, and 20 in any 3600 seconds. A tier is full while its window holds as many failures as its limit. While any tier is full, the address SHALL be limited. A tier SHALL have room again once its oldest counted failure is as old as its window. An attempt with well-formed credentials SHALL count from the moment the server starts to check its password, so attempts from one address that are checked at the same time count against the tiers together. Such an attempt that then answers 503 SHALL stop counting.
+For each counted address the server SHALL apply three sliding windows: at most 1 failed sign-in in any 1 second, 5 in any 60 seconds, and 20 in any 3600 seconds. A tier is full while its window holds as many failures as its limit. While any tier is full, the address SHALL be limited. A tier SHALL have room again once its oldest counted failure is as old as its window.
 
 #### Scenario: A second attempt within the second
 - **WHEN** a caller at `192.168.1.20` fails sign-in once and, within the same second, signs in with correct credentials
@@ -659,17 +783,21 @@ For each counted address the server SHALL apply three sliding windows: at most 1
 - **WHEN** a caller at `192.168.1.20` fails sign-in 20 times, 15 seconds apart, and 15 seconds after the twentieth failure signs in with correct credentials
 - **THEN** the attempt answers 429 with `Retry-After: 3300`
 
-#### Scenario: Attempts at the same time are counted together
-- **WHEN** a caller at `192.168.1.20` sends 10 sign-ins with a wrong password at the same moment
-- **THEN** exactly one answers 401 and the other nine answer 429
-
 #### Scenario: A known and an unknown username are limited alike
 - **WHEN** a caller at `192.168.1.20` fails sign-in 5 times, 2 seconds apart, once as `sam` with a wrong password and otherwise as `nobody`, and 2 seconds later signs in as `sam` with correct credentials
 - **THEN** the attempt answers 429 with `Retry-After: 50`, the same answer as when all 5 failures name `sam`
 
+### Requirement: A sign-in attempt counts from the start of its password check
+
+An attempt with well-formed credentials SHALL count from the moment the server starts to check its password, so attempts from one address that are checked at the same time count against the tiers together. Such an attempt that then answers 503 SHALL stop counting.
+
+#### Scenario: Attempts at the same time are counted together
+- **WHEN** a caller at `192.168.1.20` sends 10 sign-ins with a wrong password at the same moment
+- **THEN** exactly one answers 401 and the other nine answer 429
+
 ### Requirement: A limited address is answered 429 before any credential check
 
-While a client address is limited, every `POST /api/session` from it SHALL answer 429 with the body `{"error":"too many attempts"}` and a `Retry-After` header. The server SHALL send this answer before it checks the body or a password: with correct credentials, with wrong ones and with a malformed body alike. It SHALL verify no password hash, create no session and set no cookie. `Retry-After` SHALL hold the seconds until every full tier has room again, rounded up to a whole number and at least 1. A 429 SHALL NOT count as a failure and SHALL NOT make the wait longer. Other routes SHALL be unaffected by the limit.
+While a client address is limited, every `POST /api/session` from it SHALL answer 429 with the body `{"error":"too many attempts"}` and a `Retry-After` header. The server SHALL send this answer before it checks the body or a password: with correct credentials, with wrong ones and with a malformed body alike. It SHALL verify no password hash, create no session and set no cookie. Other routes SHALL be unaffected by the limit.
 
 #### Scenario: Correct credentials from a limited address
 - **WHEN** a caller at `192.168.1.20` is limited and signs in with correct credentials
@@ -679,6 +807,14 @@ While a client address is limited, every `POST /api/session` from it SHALL answe
 - **WHEN** a caller at `192.168.1.20` is limited and sends `POST /api/session` with a body that is not credentials
 - **THEN** the status is 429 and the body is `{"error":"too many attempts"}`
 
+#### Scenario: Other routes ignore the limit
+- **WHEN** a caller at `192.168.1.20` is limited and sends `GET /api/claim`
+- **THEN** the status is 200
+
+### Requirement: Retry-After gives the wait, and a 429 does not extend it
+
+In a 429 answer to a sign-in, `Retry-After` SHALL hold the seconds until every full tier has room again, rounded up to a whole number and at least 1. A 429 SHALL NOT count as a failure and SHALL NOT make the wait longer.
+
 #### Scenario: Refused attempts do not extend the wait
 - **WHEN** a caller at `192.168.1.20` fails sign-in 5 times, 2 seconds apart, is then refused with 429 once a second for 40 seconds, and 61 seconds after the first failure signs in with correct credentials
 - **THEN** the sign-in answers 200
@@ -686,10 +822,6 @@ While a client address is limited, every `POST /api/session` from it SHALL answe
 #### Scenario: Retry-After is never zero
 - **WHEN** a caller at `192.168.1.20` fails sign-in once and 999 milliseconds later sends a sign-in
 - **THEN** the attempt answers 429 with `Retry-After: 1`
-
-#### Scenario: Other routes ignore the limit
-- **WHEN** a caller at `192.168.1.20` is limited and sends `GET /api/claim`
-- **THEN** the status is 200
 
 ### Requirement: A successful sign-in clears its address's count
 
@@ -705,7 +837,7 @@ A sign-in answered 200 SHALL clear every tier's failures for its counted address
 
 ### Requirement: The server warns when an address becomes limited
 
-When the server answers 429 to an address whose previous sign-in attempt it did not refuse, it SHALL write a failed sign-in's `security event:` line with outcome `limited`, as the `security-events` capability says. That one line starts with `security event:` and names the client address, unless the address is unresolved. It also names the wait in seconds, as `Retry-After` gives it. The line SHALL NOT name the username or hold any part of the request body. Further 429s to the same address, with no attempt between them that was not refused, SHALL write nothing. The server SHALL write no line that starts with `sign-in limited:`.
+When the server answers 429 to an address whose previous sign-in attempt it did not refuse, it SHALL write a failed sign-in's `security event:` line with outcome `limited`, as the `security-events` capability says. That one line starts with `security event:` and names the client address, unless the address is unresolved. It also names the wait in seconds, as `Retry-After` gives it. Further 429s to the same address, with no attempt between them that was not refused, SHALL write nothing.
 
 #### Scenario: One line for a run of refusals
 - **WHEN** a caller at `127.0.0.1` fails sign-in as `sam` 5 times within a minute and then sends three more sign-ins as `sam`, each refused with 429
@@ -714,6 +846,14 @@ When the server answers 429 to an address whose previous sign-in attempt it did 
 #### Scenario: A failure that fills a tier writes nothing
 - **WHEN** a caller at `127.0.0.1` fails sign-in 5 times within a minute and sends nothing more
 - **THEN** captured stderr holds no line that holds `outcome=limited`
+
+### Requirement: The limited warning names no user
+
+The `outcome=limited` line SHALL NOT name the username or hold any part of the request body. The server SHALL write no line that starts with `sign-in limited:`.
+
+#### Scenario: A limited sign-in with a distinctive password
+- **WHEN** a caller at `127.0.0.1` fails sign-in as `sam` 5 times within a minute and then signs in as `sam` with a distinctive password, refused with 429
+- **THEN** the line that holds `outcome=limited` contains neither `sam` nor the distinctive password, and no captured line starts with `sign-in limited:`
 
 ### Requirement: The server sweeps expired sessions every hour
 

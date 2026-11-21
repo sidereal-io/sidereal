@@ -13,8 +13,6 @@ Storage validation and pairing belong to [managed-storage](../managed-storage/sp
 
 The repo SHALL provide `compose.external-db.yml` as an alternative entry file to `compose.yml`.
 Sam SHALL select it through `COMPOSE_FILE` or explicit `-f` arguments.
-Both entries SHALL extend the shared app definition in `compose.app.yml`.
-Except for `DATABASE_URL` and the bundled database dependency, their resolved app settings SHALL match.
 External mode SHALL NOT require `POSTGRES_PASSWORD`, define a database service, or declare a PostgreSQL data volume.
 It SHALL use the image's readiness health check without a database service dependency and retain Compose 2.20 compatibility.
 
@@ -25,6 +23,11 @@ It SHALL use the image's readiness health check without a database service depen
 - **THEN** the command exits successfully and the services list contains only `app`
 - **AND** the volumes list contains only `storage`
 - **AND** the app has no database service dependency
+
+### Requirement: Both entries share one app definition
+
+Both entries SHALL extend the shared app definition in `compose.app.yml`.
+Except for `DATABASE_URL` and the bundled database dependency, their resolved app settings SHALL match.
 
 #### Scenario: App settings match
 
@@ -73,8 +76,6 @@ Combining that override with the external entry SHALL fail Compose configuration
 The repo SHALL provide the optional override `compose.database-tls.yml`.
 It SHALL require a nonempty `SIDEREAL_DATABASE_TLS_PATH` and mount that host directory read-only at `/etc/sidereal/postgres`.
 It SHALL disable source-directory creation and refuse a missing host directory.
-Sam SHALL name certificate files using container-visible paths in `DATABASE_URL`.
-The override SHALL NOT change the TLS mode, elevate privileges, or modify certificate permissions.
 Without this override, the app SHALL NOT require a certificate directory setting.
 
 #### Scenario: The certificate directory setting is missing or empty
@@ -82,18 +83,23 @@ Without this override, the app SHALL NOT require a certificate directory setting
 - **WHEN** Sam resolves the TLS override with `SIDEREAL_DATABASE_TLS_PATH` unset or empty
 - **THEN** `docker compose config` exits unsuccessfully and names `SIDEREAL_DATABASE_TLS_PATH`
 
+#### Scenario: The host certificate directory is absent
+
+- **WHEN** Sam starts with the TLS override and a nonexistent source directory
+- **THEN** Compose fails and leaves that source directory absent
+- **AND** no app container exists under that new Compose project
+
+### Requirement: Certificate paths are container paths
+
+Sam SHALL name certificate files using container-visible paths in `DATABASE_URL`.
+The override SHALL NOT change the TLS mode, elevate privileges, or modify certificate permissions.
+
 #### Scenario: A private CA is available to the app
 
 - **GIVEN** a readable CA file in the selected host directory and a reachable PostgreSQL service with a matching certificate signed by that CA
 - **WHEN** Sam starts external mode with the TLS override and `/etc/sidereal/postgres/ca.crt` in `sslrootcert`
 - **THEN** the app reaches `/readyz` status 200 against the TLS-only service
 - **AND** container inspection reports the selected directory mounted read-only at `/etc/sidereal/postgres`
-
-#### Scenario: The host certificate directory is absent
-
-- **WHEN** Sam starts with the TLS override and a nonexistent source directory
-- **THEN** Compose fails and leaves that source directory absent
-- **AND** no app container exists under that new Compose project
 
 ### Requirement: App lifecycle leaves external resources and retained state intact
 
@@ -116,9 +122,6 @@ Compose SHALL run no separate database-provisioning or migration command.
 `docs/install.md` SHALL explain entry-file selection, `.env` settings, and network access from the app container.
 It SHALL describe URL encoding, literal `.env` quoting, shell-variable precedence, and credential exposure in `docker compose config` output.
 It SHALL explain the optional certificate mount and use of container-visible paths in `DATABASE_URL`.
-It SHALL describe storage selection, warn against the bundled database-bind override, and distinguish fresh installation from moving an existing database with its matching storage.
-It SHALL require a separate project name or fresh managed-storage bind directory for a fresh external installation.
-It SHALL state that external database lifecycle and backups remain the operator's responsibility.
 
 #### Scenario: Select the external entry and its overrides
 
@@ -126,13 +129,22 @@ It SHALL state that external database lifecycle and backups remain the operator'
 - **THEN** Compose resolves only the app service, the supplied URL, and the documented mount targets
 - **AND** the guide identifies which resources the app project manages and which remain externally managed
 
+### Requirement: The guide separates a fresh external installation from a move
+
+The installation guide SHALL describe storage selection, warn against the bundled database-bind override, and distinguish fresh installation from moving an existing database with its matching storage.
+It SHALL require a separate project name or fresh managed-storage bind directory for a fresh external installation.
+It SHALL state that external database lifecycle and backups remain the operator's responsibility.
+
+#### Scenario: The guide covers a fresh external installation
+
+- **WHEN** a reviewer reads `docs/install.md`
+- **THEN** it says a fresh external installation needs a separate project name or a fresh managed-storage bind directory
+- **AND** it warns against `compose.database-bind.yml` in external mode
+- **AND** it says the external database's lifecycle and backups remain the operator's responsibility
+
 ### Requirement: Verification covers the Compose contract safely
 
 The regular check gate and CI SHALL run daemon-free Compose configuration checks for the entry files, URL requirements, and overrides.
-A separate deployment recipe SHALL use one disposable external PostgreSQL fixture to verify the missing certificate directory refusal, a positive TLS start through the mount, and app recreation with retained state.
-It SHALL use generated credentials, isolated project names, locking, and scratch paths under `.workspace/`.
-It SHALL ignore operator connection URLs, Compose selections, certificate paths, and storage paths from the caller's environment and root `.env`.
-Cleanup SHALL remove only resources created by that verification run.
 
 #### Scenario: Configuration checks need no daemon
 
@@ -140,9 +152,25 @@ Cleanup SHALL remove only resources created by that verification run.
 - **WHEN** a tester runs `just check-compose`
 - **THEN** configuration checks pass without creating containers, networks, or volumes
 
+### Requirement: The deployment recipe verifies TLS and recreation against one fixture
+
+A separate deployment recipe SHALL use one disposable external PostgreSQL fixture to verify the missing certificate directory refusal, a positive TLS start through the mount, and app recreation with retained state.
+
+#### Scenario: The recipe covers each external path
+
+- **WHEN** the external verification recipe runs
+- **THEN** it exits successfully only when a start with a missing certificate directory is refused, a TLS start through the mount reaches readiness, and the recreated app keeps its saved state
+
+### Requirement: The deployment recipe uses only its own disposable resources
+
+The external deployment recipe SHALL use generated credentials, isolated project names, locking, and scratch paths under `.workspace/`.
+It SHALL ignore operator connection URLs, Compose selections, certificate paths, and storage paths from the caller's environment and root `.env`.
+Cleanup SHALL remove only resources created by that verification run.
+
 #### Scenario: Run with operator settings in the environment
 
 - **GIVEN** operator connection URLs, Compose selections, certificate paths, and storage paths in the environment and root `.env`
 - **WHEN** the external verification recipe runs
 - **THEN** no verification container uses those connection URLs or mounts those paths
 - **AND** operator services, settings files, and data remain unchanged
+

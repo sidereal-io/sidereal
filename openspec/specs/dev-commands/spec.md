@@ -23,16 +23,7 @@ The root `justfile` is the one place to run the server and the web shell for dev
 
 ### Requirement: The web gate fails on any web check error
 
-`just check-web` SHALL install the web shell's dependencies from `web/pnpm-lock.yaml`, then run six checks on `web/`:
-
-- a type check of every TypeScript file in `web/`, including config files, scripts, and test files;
-- a lint that includes rules which read TypeScript types, and rules for React components and hooks;
-- a format check, which fails when any file differs from the formatter's output;
-- a lint of `DESIGN.md` with the DESIGN.md specification's linter;
-- a token drift check, which fails when `web/src/styles/tokens.css` does not match `DESIGN.md`;
-- the unit tests, including the contrast test for `DESIGN.md`.
-
-`web/package.json` SHALL give each check its own script: `typecheck`, `lint`, `format:check`, `design:lint`, `tokens:check`, and `test`. A contributor can then run one check alone.
+`just check-web` SHALL install the web shell's dependencies from `web/pnpm-lock.yaml`, then run six checks on `web/`: a type check, a lint, a format check, a lint of `DESIGN.md`, a token drift check, and the unit tests.
 
 `just check-web` SHALL exit with a non-zero status when any check fails, or when the lockfile does not match `web/package.json`. It SHALL NOT change any file that git tracks.
 
@@ -46,6 +37,23 @@ The root `justfile` is the one place to run the server and the web shell for dev
 
 - **WHEN** `web/node_modules` does not exist and a contributor runs `just check-web`
 - **THEN** the command installs the dependencies, runs the six checks, and exits with status 0
+
+#### Scenario: The lockfile is out of date
+
+- **WHEN** a tester adds a dependency to `web/package.json` without updating `web/pnpm-lock.yaml`, then runs `just check-web`
+- **THEN** the command exits with a non-zero status
+- **AND** `git diff --exit-code web/pnpm-lock.yaml` exits with status 0
+
+#### Scenario: The full gate stops on a web error
+
+- **WHEN** a tester makes any change above that fails `just check-web`, then runs `just check`
+- **THEN** `just check` exits with a non-zero status
+
+### Requirement: The web gate checks types, lint rules and formatting
+
+The type check SHALL cover every TypeScript file in `web/`, including config files, scripts, and test files.
+The lint SHALL include rules which read TypeScript types, and rules for React components and hooks.
+The format check SHALL fail when any file differs from the formatter's output.
 
 #### Scenario: A type error in app code
 
@@ -79,21 +87,25 @@ The root `justfile` is the one place to run the server and the web shell for dev
 - **THEN** the command exits with a non-zero status
 - **AND** the file still has the trailing spaces
 
+### Requirement: The web gate checks DESIGN.md, the tokens and the unit tests
+
+The lint of `DESIGN.md` SHALL use the DESIGN.md specification's linter.
+The token drift check SHALL fail when `web/src/styles/tokens.css` does not match `DESIGN.md`.
+The unit tests SHALL include the contrast test for `DESIGN.md`.
+
 #### Scenario: A unit test fails
 
 - **WHEN** a tester changes a unit test's expected state from `healthy` to `checking`, then runs `just check-web`
 - **THEN** the command exits with a non-zero status
 
-#### Scenario: The lockfile is out of date
+### Requirement: Each web check has its own script
 
-- **WHEN** a tester adds a dependency to `web/package.json` without updating `web/pnpm-lock.yaml`, then runs `just check-web`
-- **THEN** the command exits with a non-zero status
-- **AND** `git diff --exit-code web/pnpm-lock.yaml` exits with status 0
+`web/package.json` SHALL give each check its own script: `typecheck`, `lint`, `format:check`, `design:lint`, `tokens:check`, and `test`. A contributor can then run one check alone.
 
-#### Scenario: The full gate stops on a web error
+#### Scenario: The six scripts exist
 
-- **WHEN** a tester makes any change above that fails `just check-web`, then runs `just check`
-- **THEN** `just check` exits with a non-zero status
+- **WHEN** a reviewer runs `jq -r '.scripts | keys[]' web/package.json`
+- **THEN** the output includes `typecheck`, `lint`, `format:check`, `design:lint`, `tokens:check`, and `test`
 
 ### Requirement: One command runs the server and the web shell
 
@@ -162,24 +174,9 @@ Operator guidance SHALL show exporting these values before running development a
 `just instance-verify` SHALL build the app image and start a disposable instance from the root `compose.yml`.
 It SHALL then run these checks, and SHALL exit with a non-zero status when any one fails:
 
-- Compose refuses to start without `POSTGRES_PASSWORD`;
 - the `db` image in `compose.yml` equals the pin in `server/postgres-image.env`;
 - the home page, `/healthz`, and `/readyz` return their documented answers;
-- the `app` container runs as user ID 10001, and the `db` container publishes no host port;
-- the app user can write to the storage volume;
-- the `db` container keeps its data in the project's named database volume;
-- the migration records are identical after `docker compose down` and a new start;
-- the container logs do not contain a generated password, after a successful start and after a failed database login.
-
-The recipe SHALL run the volume check before it removes any container. A failed volume check then leaves no unnamed volume behind.
-The recipe SHALL use its own Compose project name, its own image tag, its own generated password, and its own host port.
-It SHALL NOT read or change the `.env` file at the repo root. `POSTGRES_PASSWORD` and `SIDEREAL_PORT` values in the caller's shell SHALL NOT reach the disposable instance.
-The recipe SHALL give each start at most 180 seconds to become healthy, after the image is built. It SHALL measure that time itself, stop a start that takes longer, and fail.
-The recipe SHALL stop before it builds anything when Compose is older than release 2.20. Its output SHALL name the release it needs.
-The recipe SHALL stop before it starts anything when its Compose project name already owns a container or a volume that this checkout did not create. It SHALL remove nothing in that case.
-Only one run SHALL work on a checkout at a time. A second run in the same checkout SHALL exit with a non-zero status and change nothing.
-The recipe SHALL remove its containers, network, volumes, and image when it ends, whether it passes or fails. It SHALL remove nothing that belongs to another Compose project.
-`just check` SHALL NOT run `just instance-verify`.
+- the `app` container runs as user ID 10001, and the `db` container publishes no host port.
 
 #### Scenario: The instance is sound
 
@@ -187,6 +184,41 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 - **WHEN** a contributor runs `just instance-verify` on an unchanged checkout
 - **THEN** the command exits with status 0
 - **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
+
+#### Scenario: The web shell is missing from the image
+
+- **WHEN** a tester removes the step that copies the built web shell into the image, then runs `just instance-verify`
+- **THEN** the command exits with a non-zero status within 240 seconds of the image build ending
+- **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
+
+#### Scenario: The PostgreSQL pins differ
+
+- **WHEN** a tester changes the `db` image tag in `compose.yml`, then runs `just instance-verify`
+- **THEN** the command exits with a non-zero status before it builds the image
+
+#### Scenario: Docker is not running
+
+- **WHEN** a contributor runs `just instance-verify` with no reachable Docker daemon
+- **THEN** the command exits with a non-zero status, and its output names Docker
+
+### Requirement: The instance check covers the password, storage, retention and logs
+
+`just instance-verify` SHALL also run these checks, and SHALL exit with a non-zero status when any one fails:
+
+- Compose refuses to start without `POSTGRES_PASSWORD`;
+- the app user can write to the storage volume;
+- the `db` container keeps its data in the project's named database volume;
+- the migration records are identical after `docker compose down` and a new start;
+- the container logs do not contain a generated password, after a successful start and after a failed database login.
+
+#### Scenario: The app logs its connection URL
+
+- **WHEN** a tester changes the app so that it writes its `DATABASE_URL` to the log when it starts, then runs `just instance-verify`
+- **THEN** the command exits with a non-zero status
+
+### Requirement: The volume check runs before any container is removed
+
+`just instance-verify` SHALL run the volume check before it removes any container. A failed volume check then leaves no unnamed volume behind.
 
 #### Scenario: The database volume is not kept
 
@@ -196,37 +228,10 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 - **AND** `docker ps -a` lists nothing that belongs to the recipe's Compose project
 - **AND** `docker volume ls -q` lists no volume that the saved copy lacks
 
-#### Scenario: The web shell is missing from the image
+### Requirement: The instance check keeps to its own project and settings
 
-- **WHEN** a tester removes the step that copies the built web shell into the image, then runs `just instance-verify`
-- **THEN** the command exits with a non-zero status within 240 seconds of the image build ending
-- **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
-
-#### Scenario: The database never becomes healthy
-
-- **WHEN** a tester changes the `db` service's health check command in `compose.yml` to `false`, then runs `just instance-verify`
-- **THEN** the command exits with a non-zero status within 240 seconds of the image build ending
-- **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
-
-#### Scenario: A second run starts in the same checkout
-
-- **GIVEN** a run of `just instance-verify` that has started its disposable instance
-- **WHEN** a contributor starts a second `just instance-verify` in the same checkout
-- **THEN** the second command exits with a non-zero status within 10 seconds, and its output says a run is in progress
-- **AND** the first run exits with status 0
-
-#### Scenario: Another checkout owns the project name
-
-- **GIVEN** a container that carries the recipe's Compose project label, created outside this checkout
-- **WHEN** a contributor runs `just instance-verify`
-- **THEN** the command exits with a non-zero status, and its output names the project
-- **AND** that container still exists
-
-#### Scenario: Compose is too old
-
-- **WHEN** a contributor runs `just instance-verify` with a Compose release older than 2.20
-- **THEN** the command exits with a non-zero status, and its output names release 2.20
-- **AND** `docker images` lists no image that belongs to the recipe's Compose project
+`just instance-verify` SHALL use its own Compose project name, its own image tag, its own generated password, and its own host port.
+It SHALL NOT read or change the `.env` file at the repo root. `POSTGRES_PASSWORD` and `SIDEREAL_PORT` values in the caller's shell SHALL NOT reach the disposable instance.
 
 #### Scenario: The caller's shell holds conflicting settings
 
@@ -234,11 +239,6 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 - **WHEN** a contributor runs `just instance-verify` and reads the disposable `app` container's environment with `docker inspect`
 - **THEN** its `DATABASE_URL` does not contain `shellsecret`
 - **AND** the disposable instance publishes a host port other than 5000
-
-#### Scenario: The PostgreSQL pins differ
-
-- **WHEN** a tester changes the `db` image tag in `compose.yml`, then runs `just instance-verify`
-- **THEN** the command exits with a non-zero status before it builds the image
 
 #### Scenario: Sam's own instance is running
 
@@ -249,10 +249,49 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 - **AND** the image ID that `docker compose images -q app` prints for Sam's project is unchanged
 - **AND** `git status --porcelain` and the contents of `.env` are unchanged
 
-#### Scenario: Docker is not running
+### Requirement: Each start of the instance check has 180 seconds
 
-- **WHEN** a contributor runs `just instance-verify` with no reachable Docker daemon
-- **THEN** the command exits with a non-zero status, and its output names Docker
+`just instance-verify` SHALL give each start at most 180 seconds to become healthy, after the image is built. It SHALL measure that time itself, stop a start that takes longer, and fail.
+
+#### Scenario: The database never becomes healthy
+
+- **WHEN** a tester changes the `db` service's health check command in `compose.yml` to `false`, then runs `just instance-verify`
+- **THEN** the command exits with a non-zero status within 240 seconds of the image build ending
+- **AND** `docker ps -a` and `docker volume ls` list nothing that belongs to the recipe's Compose project
+
+### Requirement: The instance check stops before it starts on a bad setup
+
+`just instance-verify` SHALL stop before it builds anything when Compose is older than release 2.20. Its output SHALL name the release it needs.
+The recipe SHALL stop before it starts anything when its Compose project name already owns a container or a volume that this checkout did not create. It SHALL remove nothing in that case.
+
+#### Scenario: Compose is too old
+
+- **WHEN** a contributor runs `just instance-verify` with a Compose release older than 2.20
+- **THEN** the command exits with a non-zero status, and its output names release 2.20
+- **AND** `docker images` lists no image that belongs to the recipe's Compose project
+
+#### Scenario: Another checkout owns the project name
+
+- **GIVEN** a container that carries the recipe's Compose project label, created outside this checkout
+- **WHEN** a contributor runs `just instance-verify`
+- **THEN** the command exits with a non-zero status, and its output names the project
+- **AND** that container still exists
+
+### Requirement: One instance check runs per checkout at a time
+
+Only one run of `just instance-verify` SHALL work on a checkout at a time. A second run in the same checkout SHALL exit with a non-zero status and change nothing.
+
+#### Scenario: A second run starts in the same checkout
+
+- **GIVEN** a run of `just instance-verify` that has started its disposable instance
+- **WHEN** a contributor starts a second `just instance-verify` in the same checkout
+- **THEN** the second command exits with a non-zero status within 10 seconds, and its output says a run is in progress
+- **AND** the first run exits with status 0
+
+### Requirement: The instance check removes what it made and stays out of the gate
+
+`just instance-verify` SHALL remove its containers, network, volumes, and image when it ends, whether it passes or fails. It SHALL remove nothing that belongs to another Compose project.
+`just check` SHALL NOT run `just instance-verify`.
 
 #### Scenario: The gate does not build the image
 
@@ -263,8 +302,6 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 ### Requirement: The OpenSpec gate fails on any validation error or warning
 
 `just check-openspec` SHALL validate every spec under `openspec/specs/` and every active change under `openspec/changes/` in strict mode. It SHALL exit with a non-zero status when validation reports an error or a warning. A validation note that is neither an error nor a warning SHALL NOT fail it.
-
-`just check-openspec` SHALL NOT wait for input. It SHALL run the `openspec` CLI with usage telemetry turned off, and SHALL NOT change any file that git tracks.
 
 `just check` SHALL run `just check-openspec` after `just check-compose` and before `just check-server`.
 
@@ -289,11 +326,6 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 - **WHEN** a tester adds a requirement with no scenario to a delta spec in an active change under `openspec/changes/`, then runs `just check-openspec`
 - **THEN** the command exits with a non-zero status, and its output names that change
 
-#### Scenario: No terminal is attached
-
-- **WHEN** a contributor runs `just check-openspec < /dev/null` on an unchanged checkout inside the development shell
-- **THEN** the command exits with status 0 without waiting for input
-
 #### Scenario: The full gate stops on an OpenSpec error
 
 - **WHEN** a tester makes any change above that fails `just check-openspec`, then runs `just check`
@@ -303,3 +335,13 @@ The recipe SHALL remove its containers, network, volumes, and image when it ends
 
 - **WHEN** a contributor runs `just --show check`
 - **THEN** the output contains the line `check: check-compose check-openspec check-server check-web`
+
+### Requirement: The OpenSpec gate runs unattended
+
+`just check-openspec` SHALL NOT wait for input. It SHALL run the `openspec` CLI with usage telemetry turned off, and SHALL NOT change any file that git tracks.
+
+#### Scenario: No terminal is attached
+
+- **WHEN** a contributor runs `just check-openspec < /dev/null` on an unchanged checkout inside the development shell
+- **THEN** the command exits with status 0 without waiting for input
+

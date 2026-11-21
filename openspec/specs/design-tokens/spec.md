@@ -9,20 +9,7 @@ The web shell's design tokens come from `DESIGN.md`, the source of truth for how
 
 `web/src/styles/tokens.css` SHALL define one CSS custom property for each primitive token in `DESIGN.md`'s front matter. The primitives are the entries under `colors`, `rounded`, and `spacing`, and under each group in `x-sidereal` except `css-prefix` and `semantic`.
 
-Each property's name SHALL be `--`, then the value of `x-sidereal.css-prefix`, then `-`, then the token's key. Each property's value SHALL be the token's value as `DESIGN.md` writes it. The file SHALL define no other custom property.
-
 The generator SHALL write this file. Contributors SHALL NOT edit it by hand.
-
-#### Scenario: A color token
-
-- **WHEN** a reviewer reads `web/src/styles/tokens.css`
-- **THEN** it defines `--sr-obsidian-950` with the value `#0B0A0F`
-
-#### Scenario: A token from the extension
-
-- **WHEN** a reviewer reads `web/src/styles/tokens.css`
-- **THEN** it defines `--sr-font-size-14` with the value `14px`
-- **AND** it defines `--sr-opacity-45` with the value `0.45`
 
 #### Scenario: One property per primitive
 
@@ -36,6 +23,21 @@ The generator SHALL write this file. Contributors SHALL NOT edit it by hand.
 - **AND** runs the generator
 - **THEN** `web/src/styles/tokens.css` defines `--sr-spacing-16` with the value `16px`
 
+### Requirement: Each property's name and value come from its token
+
+Each property's name SHALL be `--`, then the value of `x-sidereal.css-prefix`, then `-`, then the token's key. Each property's value SHALL be the token's value as `DESIGN.md` writes it. The file SHALL define no other custom property.
+
+#### Scenario: A color token
+
+- **WHEN** a reviewer reads `web/src/styles/tokens.css`
+- **THEN** it defines `--sr-obsidian-950` with the value `#0B0A0F`
+
+#### Scenario: A token from the extension
+
+- **WHEN** a reviewer reads `web/src/styles/tokens.css`
+- **THEN** it defines `--sr-font-size-14` with the value `14px`
+- **AND** it defines `--sr-opacity-45` with the value `0.45`
+
 ### Requirement: The generator refuses tokens it cannot write yet
 
 The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds any token it cannot write. These are:
@@ -43,21 +45,7 @@ The generator SHALL exit with a non-zero status and write no file when `DESIGN.m
 - any entry under `x-sidereal.semantic`;
 - any entry under `components`;
 - any entry under the specification's `typography` key, or a `colors`, `rounded`, or `spacing` key that is not a map;
-- two tokens with the same key in different groups;
-- a key that holds anything other than lowercase letters, digits, and hyphens;
-- an `x-sidereal.css-prefix` that is missing, or holds anything other than lowercase letters;
-- a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`;
-- a value that does not fit its group's form, from the table below;
-- an `x-sidereal` group that the table does not name.
-
-| Group | Form of each value | Example |
-|---|---|---|
-| `colors` | a hex color: `#` and 6 hex digits | `#0B0A0F` |
-| `rounded`, `spacing`, and `x-sidereal`'s `font-size`, `line-height`, `blur`, `border-width`, and `size` | a whole number of pixels | `14px` |
-| `x-sidereal.letter-spacing` | a decimal number of `em`, which may be negative | `-0.015em` |
-| `x-sidereal.opacity` | a number from 0 to 1 | `0.45` |
-| `x-sidereal.font-weight` | a whole number from 1 to 1000 | `600` |
-| `x-sidereal.font-family` | a comma-separated list. Each item is a name in double quotes, or words that each start with a letter or a hyphen. No item may be a CSS-wide keyword, such as `inherit` | `Inter, -apple-system, "Segoe UI", sans-serif` |
+- two tokens with the same key in different groups.
 
 Its error message SHALL name the token.
 
@@ -76,6 +64,16 @@ Its error message SHALL name the token.
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `spacing-4`
 
+### Requirement: The generator refuses a key or value that could escape its CSS
+
+The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds any of these:
+
+- a key that holds anything other than lowercase letters, digits, and hyphens;
+- an `x-sidereal.css-prefix` that is missing, or holds anything other than lowercase letters;
+- a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`.
+
+Its error message SHALL name the token.
+
 #### Scenario: A value that would escape its property
 
 - **WHEN** a tester changes `size-1280` under `x-sidereal.size` in `DESIGN.md` to `"1px; } body { background: url(https://x.invalid) }"`
@@ -83,6 +81,57 @@ Its error message SHALL name the token.
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `size-1280`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+#### Scenario: A prefix that would escape its block
+
+- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `"sr; } body { color: red } /*"`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `css-prefix`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+### Requirement: A color or pixel value fits its group's form
+
+The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds a value in these groups that does not fit its group's form. Its error message SHALL name the token.
+
+| Group | Form of each value | Example |
+|---|---|---|
+| `colors` | a hex color: `#` and 6 hex digits | `#0B0A0F` |
+| `rounded`, `spacing`, and `x-sidereal`'s `font-size`, `line-height`, `blur`, `border-width`, and `size` | a whole number of pixels | `14px` |
+
+#### Scenario: A spacing value in another unit
+
+- **WHEN** a tester changes `spacing-4` under `spacing` in `DESIGN.md` to `4em`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `spacing-4`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+### Requirement: A number value fits its group's form
+
+The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds a value in these groups that does not fit its group's form. Its error message SHALL name the token.
+
+| Group | Form of each value | Example |
+|---|---|---|
+| `x-sidereal.letter-spacing` | a decimal number of `em`, which may be negative | `-0.015em` |
+| `x-sidereal.opacity` | a number from 0 to 1 | `0.45` |
+| `x-sidereal.font-weight` | a whole number from 1 to 1000 | `600` |
+
+#### Scenario: An opacity above 1
+
+- **WHEN** a tester changes `opacity-45` under `x-sidereal.opacity` in `DESIGN.md` to `1.5`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `opacity-45`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+### Requirement: A font family value fits its group's form
+
+The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds a value in these groups that does not fit its group's form. Its error message SHALL name the token.
+
+| Group | Form of each value | Example |
+|---|---|---|
+| `x-sidereal.font-family` | a comma-separated list. Each item is a name in double quotes, or words that each start with a letter or a hyphen. No item may be a CSS-wide keyword, such as `inherit` | `Inter, -apple-system, "Segoe UI", sans-serif` |
 
 #### Scenario: A value that does not fit its group
 
@@ -92,12 +141,16 @@ Its error message SHALL name the token.
 - **AND** its output contains `font-family-sans`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
 
-#### Scenario: A prefix that would escape its block
+### Requirement: The generator refuses an x-sidereal group with no form
 
-- **WHEN** a tester changes `x-sidereal.css-prefix` in `DESIGN.md` to `"sr; } body { color: red } /*"`
+The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds an `x-sidereal` group that none of the form tables names. Its error message SHALL name the token.
+
+#### Scenario: An unknown group
+
+- **WHEN** a tester adds a group `shadow` holding `shadow-1: 1px` under `x-sidereal` in `DESIGN.md`
 - **AND** runs the generator
 - **THEN** the generator exits with a non-zero status
-- **AND** its output contains `css-prefix`
+- **AND** its output contains `shadow-1`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
 
 ### Requirement: Stylesheets use only tokens that exist
@@ -171,16 +224,7 @@ When a known warning stops appearing, the gate SHALL still pass.
 
 ### Requirement: The web gate checks DESIGN.md's contrast claims
 
-The unit tests SHALL check every cell of the table in `DESIGN.md`'s Contrast section. The first cell of each row names a text color token. Each column header names a background color token. For each cell that holds a number, the test SHALL compute the WCAG 2 contrast ratio between the two tokens' values in the front matter. The test SHALL fail when:
-
-- the computed ratio, rounded to one decimal place, differs from the number in the cell;
-- the cell is marked `(fails)`, but the computed ratio is at least 4.5;
-- the cell is not marked `(fails)`, but the computed ratio is below 4.5;
-- the table is missing, has no background columns, or has no rows;
-- the table names a token that is not a color in the front matter;
-- a cell holds anything other than a number with one decimal place, that number followed by `(fails)`, or `—`.
-
-The test SHALL read a row that leaves out its outer pipes, as Markdown allows, and SHALL read `DESIGN.md` the same way with either line ending.
+The unit tests SHALL check every cell of the table in `DESIGN.md`'s Contrast section. The first cell of each row names a text color token. Each column header names a background color token. For each cell that holds a number, the test SHALL compute the WCAG 2 contrast ratio between the two tokens' values in the front matter.
 
 A cell that holds `—` claims nothing, and the test SHALL skip it.
 
@@ -188,6 +232,14 @@ A cell that holds `—` claims nothing, and the test SHALL skip it.
 
 - **WHEN** a contributor runs `just check-web` on an unchanged checkout
 - **THEN** the contrast test passes
+
+### Requirement: A contrast claim matches the computed ratio
+
+The contrast test SHALL fail when:
+
+- the computed ratio, rounded to one decimal place, differs from the number in the cell;
+- the cell is marked `(fails)`, but the computed ratio is at least 4.5;
+- the cell is not marked `(fails)`, but the computed ratio is below 4.5.
 
 #### Scenario: A color changed, but its claims did not
 
@@ -201,6 +253,22 @@ A cell that holds `—` claims nothing, and the test SHALL skip it.
 - **AND** runs `just check-web`
 - **THEN** the command exits with a non-zero status
 
+#### Scenario: A failing pair is not marked
+
+- **WHEN** a tester removes `(fails)` from the `obsidian-600` cell on `obsidian-950`
+- **AND** runs `just check-web`
+- **THEN** the command exits with a non-zero status
+
+### Requirement: A contrast table the test cannot read fails the test
+
+The contrast test SHALL fail when:
+
+- the table is missing, has no background columns, or has no rows;
+- the table names a token that is not a color in the front matter;
+- a cell holds anything other than a number with one decimal place, that number followed by `(fails)`, or `—`.
+
+The test SHALL read a row that leaves out its outer pipes, as Markdown allows, and SHALL read `DESIGN.md` the same way with either line ending.
+
 #### Scenario: A cell holds no claim the test can read
 
 - **WHEN** a tester changes the `obsidian-500` cell on `obsidian-850` from `4.5` to `TBD`
@@ -213,8 +281,3 @@ A cell that holds `—` claims nothing, and the test SHALL skip it.
 - **AND** runs `just check-web`
 - **THEN** the command exits with a non-zero status
 
-#### Scenario: A failing pair is not marked
-
-- **WHEN** a tester removes `(fails)` from the `obsidian-600` cell on `obsidian-950`
-- **AND** runs `just check-web`
-- **THEN** the command exits with a non-zero status

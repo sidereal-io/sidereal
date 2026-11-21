@@ -27,12 +27,8 @@ The server SHALL NOT create the storage root directory.
 ### Requirement: Startup initializes only unpaired storage
 
 Storage-enabled startup SHALL evaluate the database UUID and directory contents before serving HTTP.
-A paired database SHALL require a valid marker carrying the same UUID.
 An unpaired database with an empty root SHALL create and durably sync a marker before persisting its UUID.
 An unpaired database with only a valid marker SHALL persist that marker's UUID after syncing the marker and root directory.
-Startup SHALL reject all other unpaired states and every paired state with a missing, malformed, or mismatched marker.
-Startup SHALL NOT replace an existing marker or database UUID.
-Repeated successful startup SHALL preserve both identities.
 The server SHALL expose no separate storage initialization command or HTTP initialization endpoint.
 
 #### Scenario: First startup
@@ -48,6 +44,13 @@ The server SHALL expose no separate storage initialization command or HTTP initi
 - **GIVEN** an unpaired database and a root containing only a valid marker
 - **WHEN** Sam starts the instance
 - **THEN** startup persists that marker's UUID and reaches readiness without changing marker bytes
+
+### Requirement: Startup refuses every other storage state and keeps both identities
+
+A paired database SHALL require a valid marker carrying the same UUID.
+Startup SHALL reject all other unpaired states and every paired state with a missing, malformed, or mismatched marker.
+Startup SHALL NOT replace an existing marker or database UUID.
+Repeated successful startup SHALL preserve both identities.
 
 #### Scenario: Unpaired storage contains other files
 
@@ -79,6 +82,15 @@ The server SHALL expose no separate storage initialization command or HTTP initi
 The server SHALL sync the marker and parent directory before committing the database UUID.
 Startup SHALL serialize pairing for one database and SHALL create markers exclusively without overwriting existing files.
 Concurrent successful starts against one database SHALL observe the same UUID.
+
+#### Scenario: Concurrent starts
+
+- **WHEN** two servers start concurrently against one unpaired database and one empty storage root
+- **THEN** every successful startup observes the same marker UUID and database UUID
+- **AND** the storage root contains at most one marker
+
+### Requirement: An interrupted pairing recovers or refuses
+
 A failed or interrupted pairing SHALL leave the UUID null unless a concurrent successful startup committed it.
 A subsequent startup SHALL recover a complete marker-only state without changing its identity.
 A malformed partial marker SHALL cause refusal rather than automatic replacement.
@@ -94,12 +106,6 @@ A malformed partial marker SHALL cause refusal rather than automatic replacement
 - **GIVEN** a truncated marker and an unpaired database
 - **WHEN** startup runs again
 - **THEN** it refuses HTTP and preserves the marker bytes and null UUID
-
-#### Scenario: Concurrent starts
-
-- **WHEN** two servers start concurrently against one unpaired database and one empty storage root
-- **THEN** every successful startup observes the same marker UUID and database UUID
-- **AND** the storage root contains at most one marker
 
 ### Requirement: Marker parsing permits compatible extensions
 
@@ -125,8 +131,6 @@ The server SHALL validate create, write, sync, and delete access as the app user
 The server SHALL run the access probe only after pairing succeeds, while holding startup serialization.
 Each probe SHALL use a unique name.
 It SHALL use exclusive creation and remove its probe after successful validation.
-A pairing refusal SHALL create no file.
-A later probe failure SHALL NOT clear the committed pairing UUID.
 Access failure SHALL prevent HTTP serving and leave existing storage files unchanged.
 The server SHALL NOT change ownership, broaden permissions, or elevate privileges.
 
@@ -142,6 +146,18 @@ The server SHALL NOT change ownership, broaden permissions, or elevate privilege
 - **GIVEN** a paired store with a matching marker and a leftover probe file
 - **WHEN** Sam starts the instance
 - **THEN** the app reaches readiness and the leftover file remains unchanged
+
+### Requirement: A refused pairing or failed probe keeps what exists
+
+A pairing refusal SHALL create no file.
+A later probe failure SHALL NOT clear the committed pairing UUID.
+
+#### Scenario: A probe fails after pairing
+
+- **GIVEN** a paired database, a matching marker, and a storage root where UID/GID `10001:10001` cannot create a file
+- **WHEN** Sam starts the instance
+- **THEN** startup refuses HTTP
+- **AND** the database UUID remains unchanged
 
 ### Requirement: Storage diagnostics identify the failed path
 

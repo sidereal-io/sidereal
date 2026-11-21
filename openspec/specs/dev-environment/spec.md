@@ -4,6 +4,8 @@
 
 The development environment gives every contributor and AI agent the same pinned tools for this repo. It turns on automatically when Nix is installed. It stays optional, so contributors without Nix can still build and check the repo. It also generates the same agent skills on every machine, from settings tracked in the repo.
 
+Every scenario in this spec that runs `yq` uses version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+
 ## Requirements
 
 ### Requirement: The shell provides the pinned toolchain
@@ -343,18 +345,11 @@ When the Nix development shell loads, it SHALL regenerate the OpenSpec skills if
 - `.config/openspec/config.json` or `scripts/skills.sh` differs from the version used to generate them;
 - a generated skill folder from that run is missing.
 
-When none is true, loading the shell SHALL NOT change any file under `.agents/skills`. Running `just skills` by hand SHALL keep working as before.
-
 #### Scenario: A fresh clone gets its skills
 
 - **WHEN** a contributor with Nix and direnv clones the repo, runs `direnv allow`, and enters the repo directory
 - **THEN** `.agents/skills` contains the 8 generated `openspec-*` folders
 - **AND** `git status --porcelain` prints nothing
-
-#### Scenario: Nothing changed since the last refresh
-
-- **WHEN** a tester records the modification time of every file under `.agents/skills`, leaves the repo directory, and enters it again
-- **THEN** every modification time is unchanged
 
 #### Scenario: The skill settings changed
 
@@ -371,6 +366,15 @@ When none is true, loading the shell SHALL NOT change any file under `.agents/sk
 
 - **WHEN** a contributor deletes `.agents/skills/openspec-explore`, then the shell loads again
 - **THEN** `.agents/skills/openspec-explore/SKILL.md` exists
+
+### Requirement: Loading the shell leaves current skills alone
+
+When none of the staleness conditions is true, loading the shell SHALL NOT change any file under `.agents/skills`. Running `just skills` by hand SHALL keep working as before.
+
+#### Scenario: Nothing changed since the last refresh
+
+- **WHEN** a tester records the modification time of every file under `.agents/skills`, leaves the repo directory, and enters it again
+- **THEN** every modification time is unchanged
 
 ### Requirement: Refreshing skills never blocks the shell
 
@@ -457,8 +461,6 @@ Dependabot SHALL check the crates in `server/Cargo.lock` every week. When a crat
 ### Requirement: Dependabot proposes web package updates every week
 
 Dependabot SHALL check the packages in `web/package.json` and `web/pnpm-lock.yaml` every Monday at 04:00. When a package has a newer release, Dependabot SHALL open a pull request that updates it. The `/web` entry SHALL group updates exactly as the root `npm` entry does. Dependabot SHALL NOT propose a TypeScript major update for `web/`.
-
-The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
 
 #### Scenario: The configuration declares the web updates
 
@@ -573,9 +575,16 @@ The repo SHALL state Node major version 26 wherever it names a Node version for 
 
 ### Requirement: Dependabot keeps the v0.x branch up to date
 
-GitHub reads Dependabot's configuration from the default branch only. So `main`'s `.github/dependabot.yml` SHALL declare the v0.10.x version updates and aim them at the `v0.x` branch. These entries cover version updates only. Security warnings for `v0.x` come from the weekly scan that the `ci` capability defines. It SHALL declare exactly three entries with `target-branch` set to `v0.x`: one each for `npm`, `docker`, and `github-actions`, each with `directory` set to `/`. Every other entry SHALL have no `target-branch`, so it updates `main`.
+GitHub reads Dependabot's configuration from the default branch only. So `main`'s `.github/dependabot.yml` SHALL declare the v0.10.x version updates and aim them at the `v0.x` branch. These entries cover version updates only. Security warnings for `v0.x` come from the weekly scan that the `ci` capability defines.
 
-The scenarios below use `yq` version 4 (the Go implementation). The development shell does not provide it, so a reviewer installs it first.
+#### Scenario: A v0.10.x version update targets v0.x
+
+- **WHEN** Dependabot opens a version update pull request that changes the root `package.json` or `package-lock.json`
+- **THEN** that pull request's base branch is `v0.x`
+
+### Requirement: Dependabot declares exactly three v0.x entries
+
+`.github/dependabot.yml` SHALL declare exactly three entries with `target-branch` set to `v0.x`: one each for `npm`, `docker`, and `github-actions`, each with `directory` set to `/`. Every other entry SHALL have no `target-branch`, so it updates `main`.
 
 #### Scenario: The configuration declares the v0.x updates
 
@@ -586,11 +595,6 @@ The scenarios below use `yq` version 4 (the Go implementation). The development 
 
 - **WHEN** a reviewer runs `yq '.updates[] | select(."target-branch" == "v0.x") | .directory' .github/dependabot.yml`
 - **THEN** every line of the output is `/`
-
-#### Scenario: A v0.10.x version update targets v0.x
-
-- **WHEN** Dependabot opens a version update pull request that changes the root `package.json` or `package-lock.json`
-- **THEN** that pull request's base branch is `v0.x`
 
 ### Requirement: mise provides the pinned toolchain
 
