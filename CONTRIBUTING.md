@@ -292,12 +292,20 @@ once, in the repo root:
    gone. To clear direnv's record of approved folders too, run `direnv prune`;
    this is optional.
 3. If you kept settings in `.envrc.local`, move them to `mise.local.toml`, as
-   TOML under an `[env]` table. For example, `export RUST_LOG=debug` becomes:
+   TOML under an `[env]` table. For example, `export RUST_LOG=debug` becomes
+   `RUST_LOG = "debug"`. A line that put a folder first on `PATH`, such as
+   `export PATH="$PWD/.local-bin:$PATH"`, becomes mise's
+   [`_.path`](https://mise.jdx.dev/environments/) setting:
 
    ```toml
    [env]
    RUST_LOG = "debug"
+   _.path = ".local-bin"
    ```
+
+   mise reads a relative path from the folder that holds `mise.local.toml`,
+   and puts it ahead of the tools it installs. To check, run
+   `mise env --paths`: the folder is on the first line.
 
    Git still ignores `.envrc.local`, so you can delete it when you are done.
 4. Follow [With mise](#with-mise). mise is also in Nixpkgs, so you can install
