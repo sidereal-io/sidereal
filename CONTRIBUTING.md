@@ -62,7 +62,7 @@ and the gate. Run each one as `mise run <task>` from the repo root.
 `mise tasks` describes every task.
 
 ```bash
-mise run db-up          # Start the isolated PostgreSQL fixture (Docker + Compose required)
+mise run db-up          # Start the isolated PostgreSQL fixture (Docker, Compose and OpenSSL required)
 export DATABASE_URL=$(mise run db-url)
 export TEST_DATABASE_URL=$(mise run db-test-url)
 mise run dev            # Run the server and the web interface together; Ctrl-C stops both
@@ -263,11 +263,17 @@ branch's hook without asking. After you read the branch's changes, run
 
 Every route passes the same gate: `mise run check`, or its four commands by hand.
 Before you run it, prepare the PostgreSQL fixture and export `DATABASE_URL` and
-`TEST_DATABASE_URL` using the commands under Development Commands. Docker Engine or
-Docker Desktop with Compose v2 or newer runs the fixture. On both routes, the
-`db-tls` and `external-db-verify` tasks need `openssl` on `PATH` to generate
-fixture certificates: mise does not install it, so install it from your system's
-package manager.
+`TEST_DATABASE_URL` using the commands under Development Commands.
+
+On both routes, some tasks need tools that mise does not install. Install them
+from your system's package manager:
+
+- **The fixture:** Docker Engine or Docker Desktop, with Compose v2 or newer,
+  and `openssl` on `PATH`. The first `db-up` in a checkout makes the fixture's
+  certificates with `openssl`, before it starts Compose. Without `openssl`, it
+  stops with no error message. `db-tls` and `external-db-verify` need
+  `openssl` too.
+
 See [server setup](server/README.md) for container-free test prerequisites.
 
 ### Moving from the Nix shell
