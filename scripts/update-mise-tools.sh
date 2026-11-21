@@ -7,7 +7,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 cd "$root"
 
 # rustup owns the toolchain release, and the lock records only the channel.
-mise upgrade --exclude rust
+mise upgrade --local --exclude rust
 # Let's Spec has an exact pin, so only --bump moves it and rewrites mise.toml.
 mise upgrade --bump github:sidereal-io/lets-spec
 # mise upgrade may record only this machine's platform for a new release.
