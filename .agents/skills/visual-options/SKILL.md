@@ -99,7 +99,7 @@ the person.
    pattern, such as `Options: mono-tracking`, with `penpot.createPage()`, and
    open it with `await penpot.openPage(page)`. One topic, one page.
 3. **Show what exists today.** If the topic is a component or screen that is
-   already built, run the app with `just dev` and take a screenshot of it.
+   already built, run the app with `mise run dev` and take a screenshot of it.
    Put the screenshot first on the page, on a board named `current`. Import
    it with `penpot.uploadMediaData`, and use it as an image fill. Options are
    compared against what is built, not against a redrawing.

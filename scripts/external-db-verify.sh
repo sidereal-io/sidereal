@@ -1,8 +1,8 @@
 #!/bin/sh
-# Disposable external deployment checks. Run through `just external-db-verify`.
+# Disposable external deployment checks. Run through `mise run external-db-verify`.
 # Only this checkout's recorded projects and scratch directories may be removed.
 set -eu
-[ "$#" = 0 ] || { echo "usage: just external-db-verify (config checks: mise run check-compose)" >&2; exit 2; }
+[ "$#" = 0 ] || { echo "usage: mise run external-db-verify (config checks: mise run check-compose)" >&2; exit 2; }
 umask 077
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 work="$root/.workspace/external-db-verify"

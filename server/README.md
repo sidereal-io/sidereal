@@ -7,21 +7,24 @@ See [architecture](../docs/architecture.md) and [ADR-002](../docs/decisions/ADR-
 
 ## Prepare development and tests
 
-Install rustup with the stable toolchain, a C linker, `just`, Node.js, OpenSSL, and Docker Engine
+Install rustup with the stable toolchain, a C linker, Node.js, OpenSSL, and Docker Engine
 or Docker Desktop with Compose v2 or newer. The optional [Nix shell](../CONTRIBUTING.md#development-environment)
 provides the build tools; Docker runs separately.
 
 From the repository root:
 
 ```sh
-just db-up
-export DATABASE_URL=$(just db-url)
-export TEST_DATABASE_URL=$(just db-test-url)
-just server
+mise run db-up
+export DATABASE_URL=$(mise run db-url)
+export TEST_DATABASE_URL=$(mise run db-test-url)
+mise run server
 ```
 
+Without mise, run the command behind each task instead, as
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#without-nix) lists them.
+
 The fixture binds only to loopback. Its Compose project, named volume, and default
-port derive from the checkout path. Set `SIDEREAL_DB_PORT` before every recipe when
+port derive from the checkout path. Set `SIDEREAL_DB_PORT` before every task when
 another process occupies that port. Database credentials are fixed test-only fixtures. TLS credentials are generated
 per checkout under gitignored `.workspace/db-fixture-tls/`; no private key enters Git. Runtime and demo roles cannot create databases; the test role can.
 The image's exact patch and digest live only in `server/postgres-image.env`.
@@ -33,8 +36,8 @@ curl localhost:5000/healthz  # 200 {"status":"ok"}
 curl localhost:5000/readyz   # 200 {"status":"ready"}, or 503 {"status":"not_ready"}
 ```
 
-`just dev` runs the server and web shell in parallel using native `just` recipes and the same exported `DATABASE_URL`.
-Press Ctrl+C to stop both. If either recipe exits, the other keeps running until you stop it.
+`mise run dev` runs the server and web shell together, with the same exported `DATABASE_URL`.
+Press Ctrl+C to stop both. If either one exits, the other stops too, and `mise run dev` exits with the first one's status.
 Prepare the fixture and exports before running it.
 
 ## Verify changes and manage fixture data
@@ -42,10 +45,10 @@ Prepare the fixture and exports before running it.
 ```sh
 mise run check         # The full gate: Compose configuration, OpenSpec, server, and web
 mise run check-server  # The server checks only
-just db-schema         # Regenerate committed normalized schema descriptions
-just db-down           # Stop this fixture while retaining its volume
-just db-test-clean     # Remove this fixture's killed-test leftovers only
-just db-clean          # Explicitly delete this fixture's volume and all its data
+mise run db-schema     # Regenerate committed normalized schema descriptions
+mise run db-down       # Stop this fixture while retaining its volume
+mise run db-test-clean # Remove this fixture's killed-test leftovers only
+mise run db-clean      # Explicitly delete this fixture's volume and all its data
 ```
 
 Database tests use unique temporary databases with a separate supervisor for cleanup
@@ -55,8 +58,8 @@ the gate; tests never fall back to `DATABASE_URL`.
 A Rust-only contributor can run cargo directly after preparing the same fixture:
 
 ```sh
-export DATABASE_URL=$(just db-url)
-export TEST_DATABASE_URL=$(just db-test-url)
+export DATABASE_URL=$(mise run db-url)
+export TEST_DATABASE_URL=$(mise run db-test-url)
 cd server
 cargo run -p sidereal-server
 cargo test
@@ -65,7 +68,7 @@ cargo test
 An existing PostgreSQL 18 service can replace Docker for database tests. Its test
 role needs `CREATEDB`, and the default empty template must match PostgreSQL's standard
 template. The TLS tests also expect the service on the URL's port to present the generated
-`.workspace/db-fixture-tls/server.crt` and key (run `just db-tls` first): `localhost` must verify against the generated `ca.crt`, while
+`.workspace/db-fixture-tls/server.crt` and key (run `mise run db-tls` first): `localhost` must verify against the generated `ca.crt`, while
 `127.0.0.1` must fail hostname verification. Configure those files with PostgreSQL's
 `ssl`, `ssl_cert_file`, and `ssl_key_file` settings. Container-free setup requires these
 same test capabilities; prerequisites are never silently skipped. The demo and schema
@@ -98,7 +101,7 @@ With `WEB_ROOT` set, the server answers `GET` and `HEAD` requests with the match
 file, and `/` with `index.html`. An unknown path or a folder path returns 404. Startup
 checks the folder before it connects to the database, and fails when the folder is
 missing or holds no `index.html`. The server trusts the folder's contents and follows
-symbolic links, so only trusted users should be able to write to it. `just dev` leaves
+symbolic links, so only trusted users should be able to write to it. `mise run dev` leaves
 `WEB_ROOT` unset, because Vite serves the web shell in development.
 
 The app image is built from the root `Dockerfile` with `docker build .` at the repository

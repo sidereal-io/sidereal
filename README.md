@@ -46,20 +46,22 @@ Sidereal is being built to provide:
 
 ## Developing on `main`
 
-The server is a Rust cargo workspace in `server/`, and the web interface is a React app in `web/`. The root `justfile` runs both.
+The server is a Rust cargo workspace in `server/`, and the web interface is a React app in `web/`. The tasks in `mise.toml` run both.
 
 ### Get set up
 
 Pick one route. [`CONTRIBUTING.md`](CONTRIBUTING.md#-development-environment) has the steps for each.
 
 - **With Nix:** install Nix and direnv, then run `direnv allow` in the repo root. The pinned shell provides every tool.
-- **Without Nix:** install rustup, Node 26 (your version manager reads `.nvmrc`), pnpm 12, and [`just`](https://github.com/casey/just).
+- **Without Nix:** install rustup, Node 26 (your version manager reads `.nvmrc`), and pnpm 12.
 
 ### Run it
 
 ```bash
-just dev
+mise run dev
 ```
+
+Without mise, including inside the Nix shell, run `sh scripts/dev.sh` instead.
 
 This starts the server and the web interface together. Open `http://localhost:5173`. Today the page shows the server's health, because the first features are still being built.
 

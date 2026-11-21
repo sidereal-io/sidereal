@@ -6,7 +6,7 @@ Guidance for AI agents working in this repo. `CLAUDE.md` is a symlink to this fi
 
 **Sidereal** is a self-hosted photo gallery and management system for astrophotographers. It provides plate solving (via Astrometry.net), equipment tracking, and deep-sky imaging metadata management.
 
-**Stack:** Rust server (axum, cargo workspace in `server/`) · React 19 + Vite + TypeScript web interface (pnpm, in `web/`) · PostgreSQL · orchestrated by the root `justfile`
+**Stack:** Rust server (axum, cargo workspace in `server/`) · React 19 + Vite + TypeScript web interface (pnpm, in `web/`) · PostgreSQL · the tasks in `mise.toml` run everything
 
 ## The v0.x maintenance branch
 

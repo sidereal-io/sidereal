@@ -20,13 +20,15 @@ the cached copy.
 From the repo root:
 
 ```bash
-just web
+mise run web
 ```
+
+Without mise, run `sh scripts/dev.sh web` instead.
 
 This installs dependencies from `pnpm-lock.yaml`, then starts the dev server on
 <http://localhost:5173>.
 
-`just web` never changes `pnpm-lock.yaml`. If you add a dependency to
+`mise run web` never changes `pnpm-lock.yaml`. If you add a dependency to
 `package.json`, run `pnpm install` in `web/` to update the lockfile, and commit
 both files.
 
@@ -58,7 +60,7 @@ To fix formatting, run `pnpm format`. To rerun the tests on every save, run
 
 ## End-to-end tests
 
-`just e2e` boots the Rust server and Vite, then drives Chromium against them
+`mise run e2e` boots the Rust server and Vite, then drives Chromium against them
 through one smoke test. It downloads the Chromium build that `@playwright/test`
 asks for the first time it runs; after that the download is skipped, so there
 is no separate install step.

@@ -57,39 +57,49 @@ We welcome several types of contributions:
 
 ## 🛠️ Development Commands
 
-The root `justfile` runs the server, the web interface and the database fixture.
-The tasks in `mise.toml` run the gate. `just --list` describes every recipe, and
+The tasks in `mise.toml` run the server, the web interface, the database fixture
+and the gate. Run each one as `mise run <task>` from the repo root.
 `mise tasks` describes every task.
 
 ```bash
-just db-up          # Start the isolated PostgreSQL fixture (Docker + Compose required)
-export DATABASE_URL=$(just db-url)
-export TEST_DATABASE_URL=$(just db-test-url)
-just dev            # Run the server and the web interface together
-just server         # Run the server only
-just web            # Run the web interface only
+mise run db-up          # Start the isolated PostgreSQL fixture (Docker + Compose required)
+export DATABASE_URL=$(mise run db-url)
+export TEST_DATABASE_URL=$(mise run db-test-url)
+mise run dev            # Run the server and the web interface together; Ctrl-C stops both
+mise run server         # Run the server only
+mise run web            # Run the web interface only
+mise run e2e            # Run the Playwright end-to-end suite (the fixture must be up)
+mise run db-schema      # Regenerate the normalized schema descriptions
+mise run db-down        # Stop the fixture, keeping its data
+mise run db-clean       # Delete the fixture's containers and data
+mise run db-test-clean  # Remove databases left by killed tests
+mise run db-tls         # Generate local fixture certificates (OpenSSL required)
 mise run check           # The gate to pass before every pull request
 mise run check-compose   # Compose configuration checks (Compose CLI + jq; no daemon)
 mise run check-openspec  # OpenSpec checks: strict validation of every spec and active change
 mise run check-server    # Server checks: format, clippy, tests, dependency-direction lint
 mise run check-web       # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
-just instance-verify  # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
-just external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
+mise run instance-verify     # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
+mise run external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
 ```
 
 `mise run check` runs its four parts one at a time, in the order above, and stops
 at the first one that fails. Without mise, run the same four commands by hand: see
-step 6 of [Without Nix](#without-nix).
+step 6 of [Without Nix](#without-nix). Step 7 lists the command behind each of the
+other tasks.
 
-When you add or change a gate task, keep a body of up to about six lines inline in
+When you add or change a task, keep a body of up to about six lines inline in
 `mise.toml`. Put a longer body in a POSIX `sh` script under `scripts/` or
 `server/scripts/`, and make the task run that script, as `check-compose` does.
+A task body must run without mise, so it never calls `mise` itself. When you
+change a development task's body, change its row in step 7 of
+[Without Nix](#without-nix) to match.
 
 `mise run check-compose` compares the resolved app services, checks the external entry's
 services and volumes, and verifies URL requirements and mount settings. It needs
 Docker Compose and `jq`, but no running Docker daemon. CI runs it on every pull request.
 
-`just external-db-verify` builds the app and uses one disposable PostgreSQL fixture
+`mise run external-db-verify` builds the app and uses one disposable PostgreSQL fixture
 in a separate Compose project. It checks an absent certificate directory is refused,
 starts through the read-only CA mount against a TLS-only database, then recreates
 the app and compares migration rows, pairing, the storage marker, and a stored file.
@@ -105,7 +115,7 @@ cover database outage and recovery. Keep these cases there when changing deploym
 
 ## 🧰 Development Environment
 
-The repo pins its tools — Rust, Node, pnpm, `just`, `gh`, the `openspec` CLI and
+The repo pins its tools — Rust, Node, pnpm, `gh`, the `openspec` CLI and
 [Let's Spec](https://github.com/sidereal-io/lets-spec) — through a Nix flake and
 through mise. Neither is required. Pick one route, and use only that route in a
 shell: with both direnv's Nix shell and `mise activate` loaded, you get two copies
@@ -139,11 +149,12 @@ If you cloned before the Rust workspace moved from `backend/` to `server/`, run
 4. Nothing to run for the agent skills. The shell runs `lets sync` when it
    loads, which keeps them at the pinned Let's Spec release. See
    [Agent skills](#agent-skills).
-5. To run the gate, pick one of these. The Nix shell has no mise, so
-   `mise run check` does not work inside it until the Nix route goes.
-   - Inside the shell, run the four gate commands from step 6 of
-     [Without Nix](#without-nix), in that order.
-   - If you also installed mise, run `mise run check` in a terminal that has
+5. To run the gate or any other task, pick one of these. The Nix shell has no
+   mise, so `mise run <task>` does not work inside it until the Nix route goes.
+   - Inside the shell, run the commands that the task runs: the four gate
+     commands from step 6 of [Without Nix](#without-nix), in that order, or a
+     development task's command from step 7.
+   - If you also installed mise, run `mise run <task>` in a terminal that has
      not loaded the Nix shell.
 
 Nix sees only files tracked by git. A new file under `nix/` stays invisible to
@@ -215,8 +226,7 @@ branch's hook without asking. After you read the branch's changes, run
    In `web/`, pnpm switches itself to the exact release that
    `web/package.json` pins, so any pnpm 12 works. See
    [`web/README.md`](web/README.md).
-4. Install [`just`](https://github.com/casey/just) and the
-   [GitHub CLI](https://cli.github.com/), `gh`, 2.102.0 or later. The agent
+4. Install the [GitHub CLI](https://cli.github.com/), `gh`, 2.102.0 or later. The agent
    skills set Project fields and issue links with it.
 5. Install the `openspec` CLI at OpenSpec 2.1.1. Download the file for your
    system from its
@@ -263,6 +273,33 @@ branch's hook without asking. After you read the branch's changes, run
 
    The parentheses keep each `cd` inside its own command, so you stay in the
    repo root for the next one.
+7. Run a development task. Each task in `mise.toml` runs one command, and runs
+   the same way without mise. Run it from the repo root:
+
+   | Task | Command |
+   |---|---|
+   | `db-up` | `sh server/scripts/db-fixture.sh up` |
+   | `db-down` | `sh server/scripts/db-fixture.sh down` |
+   | `db-clean` | `sh server/scripts/db-fixture.sh clean` |
+   | `db-url` | `sh server/scripts/db-fixture.sh url` |
+   | `db-test-url` | `sh server/scripts/db-fixture.sh test-url` |
+   | `db-test-clean` | `sh server/scripts/db-fixture.sh orphan-clean` |
+   | `db-tls` | `sh server/scripts/db-tls.sh` |
+   | `db-schema` | `sh server/scripts/db-schema.sh` |
+   | `server` | `sh scripts/dev.sh server` |
+   | `web` | `sh scripts/dev.sh web` |
+   | `dev` | `sh scripts/dev.sh` |
+   | `e2e` | `sh scripts/e2e.sh` |
+   | `instance-verify` | `sh scripts/instance-verify.sh` |
+   | `external-db-verify` | `sh scripts/external-db-verify.sh` |
+
+   For example, prepare the fixture and run the stack:
+
+   ```
+   sh server/scripts/db-fixture.sh up
+   export DATABASE_URL=$(sh server/scripts/db-fixture.sh url)
+   sh scripts/dev.sh
+   ```
 
 Every route passes the same gate: `mise run check`, or its four commands by hand.
 Before you run it, prepare the PostgreSQL fixture and export `DATABASE_URL` and
@@ -280,7 +317,7 @@ branch's changes, run `direnv allow` again.
 
 Change a version only where the table below says it is set. Until the Nix
 route goes, some versions are set once for each route. `flake.lock` and
-`mise.lock` both pin `just`, Let's Spec and `gh`. `nix/openspec.nix` and
+`mise.lock` both pin Let's Spec and `gh`. `nix/openspec.nix` and
 `mise.lock` both pin `openspec`. The Rust channel, pnpm's major version and
 the Let's Spec release are named for each route too.
 When you change one of these, change both routes in the same pull request.
@@ -290,11 +327,10 @@ When you change one of these, change both routes in the same pull request.
 | Tool | Set in | How exact |
 |---|---|---|
 | OpenSSL | `flake.lock` | Pinned through Nixpkgs in the Nix shell; install OpenSSL when using system tools |
-| PostgreSQL | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI. `compose.yml` holds a copy for the Compose instance. Change both together; `just instance-verify` fails when they differ |
+| PostgreSQL | `server/postgres-image.env` | Exact PostgreSQL 18 patch and image digest, shared by development and CI. `compose.yml` holds a copy for the Compose instance. Change both together; `mise run instance-verify` fails when they differ |
 | Rust | `server/rust-toolchain.toml`, and `mise.toml` with `mise.lock` | Both files name the `stable` channel, and the `mise` workflow fails when they differ. In the Nix shell and the `nix` workflow, `flake.lock` decides the exact release. In the `ci` workflow and with mise, `mise.lock` records the channel and rustup decides the release. With your own tools, rustup uses the latest stable release you have installed |
 | Node | `.nvmrc` and `nix/toolchains.nix` | Major version 26 in both. Keep them in step. mise reads `.nvmrc`, and `mise.lock` pins the exact release. The root `Dockerfile` names the same major version for the image's web build |
 | pnpm | `packageManager` in `web/package.json` | One exact release. Any pnpm 12 switches itself to it in `web/`. `nix/toolchains.nix` provides pnpm 12. `mise.toml` names pnpm 12, and `mise.lock` pins the release |
-| `just` | `flake.lock`, and `mise.toml` with `mise.lock` | Exact release in each lock. `mise.toml` names major version 1 |
 | Let's Spec, with `gh` | The release tag in `flake.nix` with `flake.lock`, and `mise.toml` with `mise.lock` | One release of [Let's Spec](https://github.com/sidereal-io/lets-spec), named in `flake.nix` and `mise.toml`. Its flake pins the `gh` the skills call, and an older `openspec` that the Nix shell does not use. `mise.toml` names `gh` 2, and `mise.lock` pins both |
 | `openspec` | `nix/openspec.nix`, and `mise.toml` with `mise.lock` | OpenSpec 2.1.1, the release binary from [GitHub](https://github.com/Fission-AI/OpenSpec/releases/tag/v2.1.1). `nix/openspec.nix` names the release once, with the hash of each download, and `nix flake check` fails when the shell runs another `openspec`. `mise.toml` names the release, and `mise.lock` pins each download's checksum. Pinned on its own until a Let's Spec release names OpenSpec 2: don't take its version from the Let's Spec release notes. With your own tools, install 2.1.1 |
 
@@ -387,9 +423,9 @@ test: add unit tests for image processing
 ### Running Tests
 ```bash
 # Prepare the database prerequisite, then run every check
-just db-up
-export DATABASE_URL=$(just db-url)
-export TEST_DATABASE_URL=$(just db-test-url)
+mise run db-up
+export DATABASE_URL=$(mise run db-url)
+export TEST_DATABASE_URL=$(mise run db-test-url)
 mise run check
 
 # Run the server tests only
