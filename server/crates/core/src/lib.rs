@@ -26,5 +26,7 @@ mod tests {
 mod test_support;
 
 pub mod access;
+pub mod assets;
 pub mod database;
+pub mod ingest;
 pub mod storage;
