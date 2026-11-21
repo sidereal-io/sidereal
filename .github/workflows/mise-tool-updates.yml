@@ -1,7 +1,9 @@
 name: mise tool updates
 
 # Dependabot does not read mise.toml, so this workflow moves the mise pins
-# once a week and opens one pull request with the result.
+# once a week and opens one pull request with the result. A scheduled run
+# uses main; a manual run uses the branch picked in the Actions tab, so the
+# update job refuses every branch but main.
 on:
   schedule:
     - cron: '0 4 * * 1'
@@ -27,7 +29,15 @@ jobs:
     # the concurrency group.
     timeout-minutes: 30
     steps:
-      # publish checks out the same commit, so the patch applies there.
+      - name: Refuse a run from another branch
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::This workflow runs only from main. This run started from $GITHUB_REF, so it changed nothing. Start it again from main."
+            exit 1
+          fi
+
+      # github.sha is the main commit this run started from; publish checks
+      # out the same one, so the patch applies there.
       - name: Checkout main
         uses: actions/checkout@v7
         with:
@@ -70,6 +80,7 @@ jobs:
   # patch, and checks every path in it before it creates the token.
   publish:
     needs: update
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
