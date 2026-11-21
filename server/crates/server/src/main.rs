@@ -9,12 +9,12 @@ use sidereal_server::{
         relay,
         sweep::{sweep, Schedule},
     },
-    app_with_database,
+    app_with_library,
     config::{
         allowed_origins_from_env, storage_root_from_env, trusted_proxies_from_env,
         web_root_from_env, DatabaseConfig,
     },
-    with_trusted_proxies, with_web_root, Log,
+    with_trusted_proxies, with_web_root, Library, Log, Tuning,
 };
 use std::net::SocketAddr;
 
@@ -39,7 +39,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         config.startup_timeout,
         config.migration_timeout,
     );
-    let (database, _objects) = match &storage {
+    let (database, objects) = match &storage {
         Some(storage) => {
             let (database, paired) =
                 initialize_with_storage(options, startup, migration, storage).await?;
@@ -86,7 +86,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let app = with_trusted_proxies(
         with_web_root(
-            app_with_database(database.clone(), allowed_origins),
+            app_with_library(
+                database.clone(),
+                allowed_origins,
+                Tuning::default(),
+                Library::new(objects),
+            ),
             web_root.as_deref(),
         ),
         trusted_proxies,

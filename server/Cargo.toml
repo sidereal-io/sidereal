@@ -32,7 +32,7 @@ sidereal-pack-astro = { path = "crates/packs/astro" }
 sidereal-pack-image = { path = "crates/packs/image" }
 
 # External crates.
-axum = { version = "0.8", features = ["ws"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
 sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "macros", "uuid"] }
 rustls = { version = "0.23", default-features = false }
@@ -41,7 +41,7 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.7", features = ["fs"] }
+tower-http = { version = "0.7", features = ["fs", "limit"] }
 argon2 = "0.6"
 base64ct = { version = "1", features = ["alloc"] }
 rand = "0.10"

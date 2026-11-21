@@ -1,0 +1,265 @@
+//! The Asset routes. They sit behind the same origin check and session guard
+//! as every other `/api` route (`access::routes`).
+//!
+//! Upload streams one multipart field into core's staging in bounded chunks,
+//! then core runs the manual-upload Source, publishes the object and commits
+//! the Asset. Every refusal has a fixed body, so no path or driver error
+//! reaches a client; the operational log names the cause.
+use crate::access::Log;
+use axum::{
+    extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::post,
+    Json, Router,
+};
+use serde_json::{json, Value};
+use sidereal_core::{
+    assets::AssetRecord,
+    database::Database,
+    ingest::{ingest, IngestError},
+    storage::objects::{ObjectStore, StageError, Staging, MAX_UPLOAD_BYTES},
+};
+use sidereal_pack_astro::AstroPack;
+use sidereal_pack_image::{ImagePack, MANUAL_UPLOAD};
+use sidereal_plugin_abi::{Pack, Registry};
+use std::{
+    convert::Infallible,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+};
+use tower_http::limit::RequestBodyLimitLayer;
+
+/// The most bytes one upload request may hold, multipart framing and any
+/// epilogue included: the 100 MiB file plus 1 MiB.
+pub const TRANSPORT_LIMIT: usize = 105_906_176;
+
+/// Staged writes go to disk in chunks of about this size.
+const WRITE_CHUNK: usize = 1024 * 1024;
+
+/// What the Asset routes work with: the object store, when the server has
+/// managed storage, and the Registry of every compiled-in pack.
+#[derive(Clone)]
+pub struct Library {
+    objects: Option<ObjectStore>,
+    registry: Arc<Registry>,
+}
+
+impl Library {
+    /// The production Registry, with `objects` when `STORAGE_ROOT` is set.
+    pub fn new(objects: Option<ObjectStore>) -> Self {
+        let mut registry = Registry::new();
+        AstroPack.register(&mut registry);
+        ImagePack.register(&mut registry);
+        Self {
+            objects,
+            registry: Arc::new(registry),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Assets {
+    database: Database,
+    library: Library,
+    log: Log,
+}
+
+/// The Asset routes, to be merged before the access layers.
+pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<Database> {
+    Router::new()
+        .route(
+            "/api/assets",
+            post(upload)
+                // Content-Length is checked before the body is read; the
+                // extractor limit covers a body without one.
+                .layer::<_, Infallible>(DefaultBodyLimit::max(TRANSPORT_LIMIT))
+                .layer::<_, Infallible>(RequestBodyLimitLayer::new(TRANSPORT_LIMIT)),
+        )
+        .with_state(Assets {
+            database,
+            library,
+            log,
+        })
+}
+
+/// One Asset as the API shows it.
+fn entry(record: &AssetRecord) -> Value {
+    json!({
+        "id": record.id.to_string(),
+        "kind": record.kind,
+        "name": record.name,
+        "current_version_id": record.current_version_id.to_string(),
+        "original_url": format!("/api/assets/{}/original", record.id),
+    })
+}
+
+/// Every refusal an upload can get, each with a fixed message.
+#[derive(Debug)]
+enum UploadError {
+    Malformed,
+    TooLarge,
+    Unsupported,
+    NoStorage,
+    Failed,
+}
+
+impl IntoResponse for UploadError {
+    fn into_response(self) -> Response {
+        let (status, error) = match self {
+            Self::Malformed => (
+                StatusCode::BAD_REQUEST,
+                "invalid upload: send one file, with a file name, in a multipart field named file",
+            ),
+            Self::TooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "the file is larger than the 100 MiB limit",
+            ),
+            Self::Unsupported => (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported format: only PNG and JPEG images are supported",
+            ),
+            Self::NoStorage => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "storage unavailable: this server has no managed storage",
+            ),
+            Self::Failed => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the upload could not be saved; try again later",
+            ),
+        };
+        (status, Json(json!({ "error": error }))).into_response()
+    }
+}
+
+fn multipart_error(error: MultipartError) -> UploadError {
+    if error.status() == StatusCode::PAYLOAD_TOO_LARGE {
+        UploadError::TooLarge
+    } else {
+        UploadError::Malformed
+    }
+}
+
+/// Marks the ingest cancelled when the request's future is dropped, as when
+/// the client goes away, so nothing is published after that.
+struct CancelOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+async fn upload(
+    State(assets): State<Assets>,
+    multipart: Result<Multipart, axum::extract::multipart::MultipartRejection>,
+) -> Result<(StatusCode, Json<Value>), UploadError> {
+    let objects = assets
+        .library
+        .objects
+        .clone()
+        .ok_or(UploadError::NoStorage)?;
+    let mut multipart = multipart.map_err(|_| UploadError::Malformed)?;
+    let mut field = multipart
+        .next_field()
+        .await
+        .map_err(multipart_error)?
+        .ok_or(UploadError::Malformed)?;
+    let name = match (field.name(), field.file_name()) {
+        (Some("file"), Some(name)) if !name.is_empty() => name.to_owned(),
+        _ => return Err(UploadError::Malformed),
+    };
+    let failed = |error: &dyn std::fmt::Display| {
+        assets.log.line(&format!("upload failed: {error}"));
+        UploadError::Failed
+    };
+    let staging = blocking(move || objects.begin())
+        .await?
+        .map_err(|e| failed(&e))?;
+    let mut staging = Some(staging);
+    let mut pending = Vec::with_capacity(WRITE_CHUNK);
+    let mut total: u64 = 0;
+    while let Some(chunk) = field.chunk().await.map_err(multipart_error)? {
+        total += chunk.len() as u64;
+        if total > MAX_UPLOAD_BYTES {
+            return Err(UploadError::TooLarge);
+        }
+        pending.extend_from_slice(&chunk);
+        if pending.len() >= WRITE_CHUNK {
+            staging = Some(
+                write(
+                    staging.take().unwrap(),
+                    std::mem::take(&mut pending),
+                    &failed,
+                )
+                .await?,
+            );
+        }
+    }
+    let staging = write(staging.take().unwrap(), pending, &failed).await?;
+    // The field holds the reader's lock until it is dropped.
+    drop(field);
+    // The file is complete only once the closing delimiter arrives; any
+    // other field before it refuses the whole upload.
+    if multipart
+        .next_field()
+        .await
+        .map_err(multipart_error)?
+        .is_some()
+    {
+        return Err(UploadError::Malformed);
+    }
+    let staged = blocking(move || staging.finish())
+        .await?
+        .map_err(|e| failed(&e))?;
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let _cancel = CancelOnDrop(cancelled.clone());
+    let objects = assets.library.objects.as_ref().expect("checked above");
+    match ingest(
+        &assets.database,
+        objects,
+        assets.library.registry.clone(),
+        MANUAL_UPLOAD,
+        &name,
+        staged,
+        cancelled,
+    )
+    .await
+    {
+        Ok(record) => Ok((
+            StatusCode::CREATED,
+            Json(json!({ "asset": entry(&record) })),
+        )),
+        Err(IngestError::Refused(_)) => Err(UploadError::Unsupported),
+        Err(IngestError::EmptyName) => Err(UploadError::Malformed),
+        Err(error) => Err(failed(&error)),
+    }
+}
+
+/// Write `bytes` to staging on a blocking worker.
+async fn write(
+    mut staging: Staging,
+    bytes: Vec<u8>,
+    failed: &impl Fn(&dyn std::fmt::Display) -> UploadError,
+) -> Result<Staging, UploadError> {
+    let (staging, written) = blocking(move || {
+        let written = staging.write(&bytes);
+        (staging, written)
+    })
+    .await?;
+    match written {
+        Ok(()) => Ok(staging),
+        Err(StageError::TooLarge) => Err(UploadError::TooLarge),
+        Err(StageError::Storage(error)) => Err(failed(&error)),
+    }
+}
+
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, UploadError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| UploadError::Failed)
+}
