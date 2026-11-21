@@ -1,3 +1,5 @@
+<!-- Plain language: Help the next implementer find the approach, understand the choices and act on the plan. Explain necessary technical terms. Put each risk beside its mitigation and each open question beside the decision it affects. -->
+
 ## Context
 
 <!-- Current state and constraints that shape the approach. See proposal.md for motivation; do not restate it. -->

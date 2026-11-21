@@ -5,9 +5,25 @@ description: Create or check the GitHub Project this repository uses as its back
 
 # Let's set up the backlog
 
-The backlog is the one open GitHub Project linked to this repository. `lets-shape` and `lets-go` read and write its fields by name. This skill creates that Project, or checks that an existing one has what they need. Run every command below from the repo root.
+The backlog is the one open GitHub Project linked to this repository.
+`lets-shape` and `lets-go` read and write its fields by name. This skill
+creates that Project, or checks that an existing one has what they need. Run
+every command below from the repo root.
 
-`gh project` commands need the `project` scope. If one fails and asks for it, run `gh auth refresh -s project` and try again.
+`gh project` commands need the `project` scope. If one fails and asks for
+it, run `gh auth refresh -s project` and try again.
+
+Read [Plain language](../lets-shape/references/plain-language.md) before
+writing.
+Use it when reporting setup gaps: name the field, the expected value and the
+action the user needs to take.
+
+## Choose the setup path
+
+Start with [Find the Project](#find-the-project). It sends an existing
+Project to [Check](#check), or a repository with none to [Create](#create).
+Check reports missing fields or options and their fixes. It changes them
+only after the user agrees.
 
 ## Find the Project
 
@@ -28,13 +44,19 @@ query($owner: String!, $name: String!) {
       | map(select(.closed | not) | {number, title, url, owner: .owner.login}) | unique_by(.owner, .number))}'
 ```
 
-The query lists the Projects linked to the repository, and the owner's Projects that link back to it. A user-owned Project can be missing from the repository's own listing for a while after it is linked, so neither list alone is enough.
+The query lists the Projects linked to the repository, and the owner's
+Projects that link back to it. A user-owned Project can be missing from the
+repository's own listing for a while after it is linked, so neither list
+alone is enough.
 
-`repo` is the repository, as `owner/name`. Each project has the `number` and `owner` that every `gh project` command below takes.
+`repo` is the repository, as `owner/name`. Each project has the `number` and
+`owner` that every `gh project` command below takes.
 
 - **One Project:** go to [Check](#check).
 - **None:** go to [Create](#create).
-- **Two or more:** list each one's title and URL. The skills need exactly one, so ask the user which to keep and to unlink the others with `gh project unlink <n> --owner <owner> --repo <repo>`. Stop. Never pick one yourself.
+- **Two or more:** list each one's title and URL. The skills need exactly
+  one, so ask the user which to keep and to unlink the others with `gh project unlink <n> --owner <owner> --repo <repo>`. Stop. Never pick one
+  yourself.
 
 ## Create
 
@@ -44,9 +66,14 @@ First find the owner and the title:
 gh repo view --json name,owner
 ```
 
-The title is the repository's `name`, and `<owner>` is `owner.login`, for a user and an organization alike. Never use `@me`: `gh project link` rejects it when `--repo` names the owner. A Project can only link to a repository with the same owner, so for a user's repository that user must be you. If it belongs to someone else, stop and say that its owner has to run this skill.
+The title is the repository's `name`, and `<owner>` is `owner.login`, for a
+user and an organization alike. Never use `@me`: `gh project link` rejects
+it when `--repo` names the owner. A Project can only link to a repository
+with the same owner, so for a user's repository that user must be you. If it
+belongs to someone else, stop and say that its owner has to run this skill.
 
-Then create the Project, add the three fields and link it:
+The first command prints the Project's number. Use it as `<n>` below.
+Stop at the first error and show it.
 
 ```bash
 gh project create --owner <owner> --title "<repo name>" --format json --jq .number
@@ -56,9 +83,9 @@ gh project field-create <n> --owner <owner> --name Size --data-type SINGLE_SELEC
 gh project link <n> --owner <owner> --repo <repo>
 ```
 
-The first command prints the Project's number, `<n>`. Stop at the first error and show it.
-
-A new Project already has the Status field with Todo, In Progress and Done. It also has two workflows on: item closed sets Done, and pull request merged sets Done. Nothing else needs setting.
+A new Project already has the Status field with Todo, In Progress and Done.
+It also has two workflows on: item closed sets Done, and pull request merged
+sets Done. Nothing else needs setting.
 
 Print the Project's URL with `gh project view <n> --owner <owner> --format json --jq .url`, then go to [Check](#check).
 
@@ -70,7 +97,8 @@ List the Project's fields and their options:
 gh project field-list <n> --owner <owner> --format json --jq '.fields[] | select(.options) | "\(.name): \(.options | map(.name) | join(", "))"'
 ```
 
-Compare the output with the contract. Names must match exactly, including case: `In progress` is not `In Progress`.
+Compare the output with the contract. Names must match exactly, including
+case: `In progress` is not `In Progress`.
 
 | Field | Options the skills use |
 |---|---|
@@ -81,13 +109,23 @@ Compare the output with the contract. Names must match exactly, including case: 
 
 Extra fields and extra options are fine. The skills ignore them.
 
-Tell the user each gap and its fix. Run a fix only when the user says so.
+Tell the user each gap and its fix. Name the affected field and the
+consequence of the fix before asking. Run a fix only when the user says so.
 
-- **A missing field:** run its `field-create` command from [Create](#create).
-- **A field that lacks an option:** `gh` cannot add an option to a field. Delete the field and create it again. Get its id with `gh project field-list <n> --owner <owner> --format json --jq '.fields[] | select(.name == "<field>") | .id'`, then run `gh project field-delete --id <field id>` and the field's `field-create` command. Warn the user first: the delete clears that field on every item, so they set the values again by hand.
-- **A missing Status option:** `gh` cannot change Status. Give the user the Project's settings page, `<project url>/settings`, and say which option to add or rename. A rename keeps every item's value.
+- **A missing field:** run its `field-create` command from
+  [Create](#create).
+- **A field other than Status that lacks an option:** `gh` cannot add an
+  option to a field. Delete the field and create it again. Get its id with `gh project field-list <n> --owner <owner> --format json --jq '.fields[] | select(.name == "<field>") | .id'`, then run `gh project field-delete --id <field id>` and the field's `field-create` command. Warn the user first:
+  the delete clears that field on every item, so they set the values again
+  by hand.
+- **A missing Status option:** `gh` cannot change Status. Give the user the
+  Project's settings page, `<project url>/settings`, and say which option to
+  add or rename. A rename keeps every item's value.
 
-When there are no gaps, say the backlog is ready. Then tell the user two things:
+When there are no gaps, say the backlog is ready. Then tell the user two
+things:
 
-- New issues join the Project when they are created with `--project`. `lets-shape` does that.
-- Auto-add, in the Project's workflows, is optional. Turn it on to add issues created outside the skills.
+- New issues join the Project when they are created with `--project`.
+  `lets-shape` does that.
+- Auto-add, in the Project's workflows, is optional. Turn it on to add
+  issues created outside the skills.

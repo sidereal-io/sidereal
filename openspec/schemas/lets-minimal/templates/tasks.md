@@ -1,3 +1,5 @@
+<!-- Plain language: Each task must make sense to an agent and reviewer without the planning conversation. Name an observable outcome, its location when needed, and how to verify it. Preserve checkbox syntax and tags. -->
+
 <!-- Five to twelve tasks. One task is one behavior, its test, and the code that passes it.
      Each task is one line: - [ ] X.Y [tag] <behavior> (verify: <command>)
      Tags: [easy|medium|complex]. This flow builds tasks in order, so there are no parallel tags.

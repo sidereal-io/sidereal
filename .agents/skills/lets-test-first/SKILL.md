@@ -5,12 +5,19 @@ description: "Use when implementing a change with test-driven development (TDD):
 
 # Test-Driven Development
 
-Use the repository's existing test tooling and conventions.
+Use the repository's existing test tooling and conventions. Work through
+one behavior at a time: first show a test failing because that behavior is
+missing (red), then make it pass (green), then improve the code while tests
+still pass (refactor).
 
 One test, one behavior, one reason to fail. A test name describes that one
 behavior; never use joiners such as "and", "or", or "etc." to combine
 independent outcomes. Use several assertions only when together they
 establish that one behavior.
+
+Read [Plain language](../lets-shape/references/plain-language.md) before writing.
+Use it for test names and failure reports: name the observable behavior and
+explain what failed.
 
 ## Red
 
@@ -37,4 +44,6 @@ Read [patterns and anti-patterns](references/best-practices.md) when choosing a 
 
 ## Collaborators
 
-Read [collaborators](references/collaborators.md) before substituting a dependency. Mock system boundaries, not code owned by the application.
+Read [collaborators](references/collaborators.md) before replacing a dependency
+with a test substitute. Mock system boundaries, not code owned by the
+application: the reference explains where a substitute is appropriate.

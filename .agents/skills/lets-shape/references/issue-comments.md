@@ -34,15 +34,36 @@ compare each comment's `url` and `lastEditedAt`, never the local clock.
 
 ## Label each comment
 
-- **`candidate`:** `authorAssociation` is OWNER, MEMBER or COLLABORATOR,
+- **`claim`:** matches [Claim comments](#claim-comments), below.
+- **`candidate`:** another comment whose `authorAssociation` is OWNER,
+  MEMBER or COLLABORATOR,
   and the author's `__typename` is not `Bot`.
 - **`outside`:** every other comment. A null `author` is a deleted
   account. Show it as `ghost`.
-- **`read`:** the newest read marker covers it. This label replaces the
-  other two.
+- **`read`:** the newest read marker covers it. Replaces `candidate`
+  or `outside`.
 
-A label tells the user who wrote a comment. It never hides, skips or
-accepts one.
+Labels never hide, skip or accept a comment.
+
+## Claim comments
+
+A claim comment has exactly this body, with an optional final newline:
+
+```text
+lets-go claimed this issue.
+
+Token: <UUID>
+```
+
+The token is a lowercase UUID v4 unique to the claiming run. The author
+must have association OWNER, MEMBER or COLLABORATOR. Anything else, or
+a comment by a bot or an outside author, is ordinary discussion.
+
+Label a valid claim comment `claim` and show it as workflow metadata.
+Never ask about it or count it as unread discussion. Claim comments
+never advance the watermark and never cover other comments.
+
+Delayed GitHub comment reads can let two sessions both win a claim.
 
 ## The read marker
 

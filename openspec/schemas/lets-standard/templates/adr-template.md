@@ -6,6 +6,8 @@ title: 'ADR-NNN: [Title]'
 description: Architecture decision record (ADR) for [Title]
 ---
 
+<!-- Plain language: Help a future maintainer find the decision, understand its constraints and apply its consequences. Explain necessary technical terms. Keep the required fields and headings. -->
+
 <!--
 Rules for every ADR made from this template. The lets-write-adrs skill explains them.
 - Record one decision that passes the skill's test: a real fork whose reversal would be costly.

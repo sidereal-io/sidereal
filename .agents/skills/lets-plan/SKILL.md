@@ -9,6 +9,11 @@ Plan one change, on its branch. This is the plan step. `lets-go` claims
 the issue and routes it first. Run every command below from the repo
 root.
 
+Read [Plain language](../lets-shape/references/plain-language.md) before
+writing.
+Use it for planning status: say which change is ready or what decision or
+artifact is still needed.
+
 ## Find where you are
 
 1. Find the default branch:
@@ -16,27 +21,34 @@ root.
 2. Run `git branch --show-current`. On the default branch, say that
    `lets-go` starts an issue, and stop. Otherwise the branch is the
    change's name, `<name>`.
-3. Take the issue, `<i>`, and the route line from the caller. When the
-   caller gives no issue, search for it:
+3. The current branch is `<branch>` and the change name is `<name>`.
+   Take the issue's key, `<i>`, and the route line from the caller.
+   The key is the one `lets backlog` prints, such as `149` on GitHub.
+   The route line names the selected schema and explains the choice.
+   When the caller gives no issue, search for it:
 
    ```bash
-   gh issue list --state open --search "<branch> in:title" --json number,title
+   lets backlog find <branch>
    ```
 
-   Keep the one whose title starts with `<branch> — `. If none or
-   several match, say that `lets-plan` needs the issue number, and stop.
+   Of the `issues` it prints, keep the one whose title starts with
+   `<branch> — `. Its `key` is `<i>`. If none or several match, say
+   that `lets-plan` needs the issue number, and stop. When it prints an
+   `error`, show the user its `message`, and stop. For `no-backlog`, say to run the
+   `lets-setup-backlog` skill.
 
 ## Plan
 
-Invoke the `openspec-propose` skill for the change `<name>`, for issue
-#<i>. Give it the route line for the proposal's commit message. When the
-route is `lets-minimal` and the flow's schema is not, say to use the
-schema `lets-minimal`. The flow's schema is the `schema:` line of
-`openspec/config.yaml`.
+If `openspec/changes/<name>/` does not exist and you have no route line,
+stop: say that `lets-go` routes and claims the issue. Otherwise invoke
+`openspec-propose` for `<name>`, issue `#<i>`:
 
-When `openspec/changes/<name>/` exists, say to continue the change. When
-it does not, and you have no route line, stop: say that `lets-go` routes
-and claims the issue.
+- Existing change: continue it. Keep the schema in its `.openspec.yaml`,
+  even when the route names another.
+- New change: give it the route line for the proposal's commit
+  message. When the route is `lets-minimal` and the flow's schema is
+  not, say to use the schema `lets-minimal`. The flow's schema is the
+  `schema:` line of `openspec/config.yaml`.
 
 ## When propose stops
 

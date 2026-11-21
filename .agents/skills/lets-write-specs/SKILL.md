@@ -5,8 +5,12 @@ description: Use when writing or changing an OpenSpec spec. Says what belongs in
 
 # Writing specs
 
-A spec is a behavior contract, not an implementation plan. It says what the
-system does as seen from outside. The design says how.
+A spec states the behavior that users and other systems can rely on. It
+says what happens as seen from outside. The design explains how to build it.
+
+Read [Plain language](../lets-shape/references/plain-language.md) before writing.
+Use it for requirements and scenarios. Keep the required headings and SHALL
+or MUST; make the actor, condition and outcome clear.
 
 ## Read and maintain domain language
 
@@ -69,9 +73,12 @@ code. "THEN the system handles it correctly" asserts nothing.
 Cover the failure path as well as the success path when the requirement has
 one: the missing input, the denied request, the timeout.
 
-## Changing an existing requirement
+Before finishing, read each scenario as a person or agent who will implement
+or review it. They need to identify the actor, the starting condition and
+an observable outcome. Replace vague results such as "works correctly"
+with the value, message or state that demonstrates success.
 
-### Choose the capability paths
+## Choose the capability paths
 
 Use `planningHome.root` from `openspec instructions ... --json` to locate the
 main specs under `openspec/specs/`. A capability path is the directory relative
@@ -91,6 +98,8 @@ specs read only for context out of the change's delta files. Keep flat paths
 flat; grouping by domain is optional and needs no migration or registry.
 Domain names do not map to source folders, so find the specs a change
 touches from the project context, the request and the code.
+
+## Changing an existing requirement
 
 ### Preserve the requirement
 
@@ -143,6 +152,10 @@ JSON file, as they choose.
 #### Scenario: Successful export
 - **WHEN** a signed-in user chooses Export and picks a format
 - **THEN** the browser downloads one file in that format that holds every record the user owns
+
+#### Scenario: Export while signed out
+- **WHEN** a request to export arrives without a session
+- **THEN** the system responds 401 and sends no data
 
 ## REMOVED Requirements
 

@@ -32,7 +32,7 @@ in a single test.
 
 ## Bad tests
 
-### Implementation-coupled
+### Tests tied to implementation details
 
 Do not test private methods, mock internal collaborators, or assert internal
 call sequences. Such tests break during refactors even when observable
@@ -47,7 +47,7 @@ test("checkout calls paymentService.process", async () => {
 });
 ```
 
-### Self-fulfilling
+### Expected results copied from the implementation
 
 Do not compute the expected result using the same logic the production code is
 supposed to implement. This is circular: the test derives its answer from the
@@ -58,9 +58,9 @@ const expected = items.reduce((sum, item) => sum + item.price, 0);
 expect(calculateTotal(items)).toBe(expected);
 ```
 
-### Horizontal slicing
+### Writing a batch of tests before implementing any behavior
 
 Do not write a batch of imagined tests and implement them later. Work in
 vertical slices: one failing test, the smallest implementation to make it
-pass, then the next test. Each test is a tracer bullet that can change what
-the next slice should be.
+pass, then the next test. Each test gives feedback that can change what
+the next behavior should be.

@@ -1,3 +1,5 @@
+<!-- Plain language: Lead with the problem and resulting behavior. Give a reader enough context to decide whether the scope solves that problem. Keep the required headings. -->
+
 ## Why
 
 <!-- Explain the motivation for this change. What problem does this solve? Why now? -->

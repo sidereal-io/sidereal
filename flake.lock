@@ -45,15 +45,16 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1793938429,
-        "narHash": "sha256-5I1Csg2+AKBk9G/NRcLUiGOYwn5i00gk74W5f0kqC58=",
+        "lastModified": 1794845886,
+        "narHash": "sha256-dpvzPSrX2Bg2zcaHYGWWOlBRgeaEEetq4Z0dh7tYhtU=",
         "owner": "sidereal-io",
         "repo": "lets-spec",
-        "rev": "3a9e669119913be1a0d7ee2c4e2f2000f28ca0f2",
+        "rev": "6f8dc1945ec556c92085c34a68da34fe7d756ad9",
         "type": "github"
       },
       "original": {
         "owner": "sidereal-io",
+        "ref": "v0.8.0",
         "repo": "lets-spec",
         "type": "github"
       }

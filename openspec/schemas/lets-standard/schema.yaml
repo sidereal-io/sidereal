@@ -7,6 +7,11 @@ artifacts:
     description: Decision ledger from grilling the story with the user, before any plan is written
     template: brainstorm.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
       from the code repository root (not the planning store or change directory).
       Use `planningHome.root` from this artifact's
@@ -50,6 +55,11 @@ artifacts:
     description: Initial proposal document outlining the change
     template: proposal.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Read brainstorm.md. If its last line is not `Confirmed by user: yes`,
       stop: the brainstorm is unfinished, so return to it.
 
@@ -89,6 +99,11 @@ artifacts:
     description: Detailed specifications for the change
     template: spec.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
       from the code repository root (not the planning store or change directory).
       Use `planningHome.root` from this artifact's
@@ -149,6 +164,11 @@ artifacts:
     description: Technical design document with implementation details
     template: design.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Write design.md from the template: how to build what the proposal and
       the specs describe. The proposal holds the why; do not restate it.
 
@@ -182,6 +202,11 @@ artifacts:
     description: Per-change ADR review manifest and durable decision handoff
     template: adr.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Decide which of design.md's decisions need an architecture decision
       record (ADR), write them, and write adr.md as this change's manifest.
       The `lets-write-adrs` skill says what qualifies and how to write a record.
@@ -209,6 +234,11 @@ artifacts:
     description: Implementation checklist with trackable tasks
     template: tasks.md
     instruction: |
+      Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+      from the code repository root. Apply it to this step's questions,
+      instructions and output for people and agents. Preserve the exact
+      headings, markers and formats this schema requires.
+
       Break the plan into tasks. The `lets-write-tasks` skill says how to
       size, order, tag and verify them. Before you start, read design.md's
       Open Questions. If one would change what gets built, settle it with the
@@ -233,6 +263,11 @@ apply:
   requires: [ tasks ]
   tracks: tasks.md
   instruction: |
+    Read [Plain language](.agents/skills/lets-shape/references/plain-language.md)
+    from the code repository root. Apply it to this step's questions,
+    instructions and output for people and agents. Preserve the exact
+    headings, markers and formats this schema requires.
+
     Read [Domain language](.agents/skills/lets-shape/references/domain-language.md)
     from the code repository root (not the planning store or change directory).
     Use `root.path` from this apply instruction's

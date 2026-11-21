@@ -61,20 +61,22 @@
 - **Success looks like**: the same tool versions and the same skills in every
   session, with no setup steps to work out.
 
-#### Nico — the contributor with Nix
+#### Nico — the contributor with a tool manager
 
-- **Who**: a contributor who already uses Nix.
+- **Who**: a contributor who lets a tool manager install a project's pinned tools.
 - **Goal**: go from clone to a passing check with no manual installs.
 - **Pain today**: a Rust-and-Node repo usually means a page of install steps and
   versions that drift from what CI uses.
-- **Success looks like**: running `direnv allow` once is the whole setup.
+- **Success looks like**: one trust-and-install step after cloning is the whole
+  setup, and the tools turn on whenever they enter the repo.
 
-#### Dana — the contributor without Nix
+#### Dana — the contributor who installs tools by hand
 
-- **Who**: a contributor who installs tools by hand and doesn't want to learn Nix.
-- **Goal**: contribute without learning Nix.
-- **Pain today**: projects that adopt Nix often leave everyone else on an unsupported,
-  second-class path.
+- **Who**: a contributor who installs tools by hand and doesn't want to adopt a
+  project's tool manager.
+- **Goal**: contribute without adopting the project's tool manager.
+- **Pain today**: projects that adopt a tool manager often leave everyone else on an
+  unsupported, second-class path.
 - **Success looks like**: with tools installed by hand, gets the same checks and the
   same skills as everyone else.
 
@@ -84,6 +86,8 @@
 - **Goal**: trust that every pull request is built with the pinned tools and commits
   no generated drift, and keep the pins fresh without toil.
 - **Pain today**: generated files and tool pins drift quietly until something breaks.
+  Keeping the development environment working should not need knowledge of a
+  specialist language that few maintainers have.
 - **Success looks like**: CI fails on drift, and pin updates arrive as routine pull
   requests.
 
@@ -94,7 +98,8 @@
 ## Journey Map
 
 Stage status checked against the code on 2026-10-02; the self-host journey and the
-library journey's sign-in stage re-checked on 2026-10-26. Status describes the server
+library journey's sign-in stage re-checked on 2026-10-26; the contributor journey
+re-checked on 2026-11-19. Status describes the server
 in `server/`; where v0.10.x already covers a stage, the stage says so.
 
 ### People who use Sidereal
@@ -195,33 +200,33 @@ in `server/`; where v0.10.x already covers a stage, the stage says so.
 **Contributor journey** (Ada, Nico, Dana, Mo):
 
 ```
-  Clone ─► Enter env ─► Get skills ─► Work & check ─► Open PR ─► Bump pins (Mo)
-    │          │             │              │             │            │
- supported  supported     partial        partial       partial     supported
+  Clone ─► Enter env ─► Get skills ─► Work & check ─► Open PR ─► Keep tools current (Mo)
+    │          │             │              │             │                 │
+ supported  supported     partial       supported     supported          partial
 ```
 
 1. **Clone** — `git clone` works — supported.
 2. **Enter env** — `flake.nix`, `nix/`, and `.envrc` give Nico a pinned shell through
-   direnv; Dana installs the same tools by hand — supported.
+   direnv; Dana installs the same tools by hand, from `server/rust-toolchain.toml`
+   and `.nvmrc` — supported.
 3. **Get skills** — `lets sync` copies the same skills, schemas and rules into
    every clone when the shell loads, and they are committed, so an agent started
    outside the shell reads the same text. The `openspec` it runs can still differ
    from the one the skills were generated from. The project accepts this gap and
    does not plan to close it — partial.
 4. **Work & check** — `just dev` runs the server and web shell together, and
-   `just check` gates both the Rust workspace and `web/` with pinned tools.
-   `DESIGN.md` defines the design system, but the web shell doesn't use its
-   tokens yet, has no components to build screens from, and has no browser smoke
-   test — partial ([#302](https://github.com/sidereal-io/sidereal/issues/302),
-   [#337](https://github.com/sidereal-io/sidereal/issues/337),
-   [#303](https://github.com/sidereal-io/sidereal/issues/303)).
-5. **Open PR** — CI checks the server and web code inside the pinned shell, but
-   runs no end-to-end browser check — partial
-   ([#303](https://github.com/sidereal-io/sidereal/issues/303)).
-6. **Bump pins** — Dependabot opens weekly pull requests for npm (root and `web/`),
-   Docker, Actions, `flake.lock` and `server/Cargo.lock`. Rust follows the stable
-   channel, so a new Rust release arrives in the `flake.lock` update, and the flake
-   check prints its version — supported.
+   `just check` gates the Compose files, OpenSpec, the Rust workspace and `web/`
+   with pinned tools, including the token drift check — supported.
+5. **Open PR** — CI runs the same checks inside the pinned shell, plus an
+   end-to-end browser check — supported.
+6. **Keep tools current (Mo)** — Dependabot opens weekly pull requests for npm
+   (root and `web/`), Docker, Actions, `flake.lock` and `server/Cargo.lock`. Rust
+   follows the stable channel, so a new Rust release arrives in the `flake.lock`
+   update. A `flake.lock` bump that moves Let's Spec fails `lets sync --check`
+   until someone enters the shell and commits what `lets sync` wrote, and changing
+   the shell itself needs Nix and flake-parts — partial
+   ([#501](https://github.com/sidereal-io/sidereal/issues/501),
+   [#502](https://github.com/sidereal-io/sidereal/issues/502)).
 
 ## Backlog
 
