@@ -11,7 +11,7 @@ gh = "2"
 # Pinned on its own until a Let's Spec release names OpenSpec 2. Until
 # then, don't take this version from the Let's Spec release notes.
 "github:Fission-AI/OpenSpec" = "2.1.1"
-"github:sidereal-io/lets-spec" = "0.8.0"
+"github:sidereal-io/lets-spec" = "0.9.0"
 
 [env]
 LETS_SPEC_FLOW = "standard"

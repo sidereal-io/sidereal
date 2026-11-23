@@ -48,6 +48,8 @@ artifacts:
 
       Commit brainstorm.md on its own as `docs:`. Then push the branch and
       open a draft pull request whose description says `Closes #<n>`.
+      When the step prompt has a `## Stack` section, follow it where you
+      open the draft pull request.
     requires: []
 
   - id: proposal

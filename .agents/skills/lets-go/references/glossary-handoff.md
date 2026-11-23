@@ -24,6 +24,9 @@ issue owns.
 2. If another issue owns the definitions the story needs, check that the
    owner's pull request has merged, and that the definitions are on the
    proposed base. A pull request closed without merging is not enough.
+   The proposed base is the branch the change's branch is created from:
+   the default branch, or `origin/<blocker-branch>` for a story that
+   [Stack the story](epic-run.md#stack-the-story) stacked.
 3. Treat each of these as unresolved: an undecided owner, a declined
    blocker link with an unmerged owner, or definitions missing from the
    base.

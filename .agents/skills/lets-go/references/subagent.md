@@ -13,7 +13,9 @@ prompt, with any answers added.
 1. Run that prompt in a subagent that starts with no context from this
    session. It follows the saved prompt, works only in this repository
    on the branch `<name>`, or on the default branch for shape, and makes
-   only the changes that the step calls for.
+   only the changes that the step calls for. In an epic run's walk, this
+   repository is the story's worktree, `<path>`, as
+   [Wait for the wave](epic-run.md#wait-for-the-wave) says.
 2. Read the last `step-report` block in the subagent's final message, by
    the rules `lets` uses:
    - The block opens with a line of three or more backticks followed by
@@ -24,12 +26,16 @@ prompt, with any answers added.
    - A `done` report holds `evidence`, a non-empty list of strings.
    - A `needs-input` report holds `questions`, a non-empty list of
      mappings. Each has a string `question`, and may have a string
-     `recommendation`.
+     `recommendation` and a boolean `ask`. `ask: true` is kept,
+     `ask: false` is dropped, and any other value breaks the report,
+     whose reason names the question, such as `questions[0].ask` for
+     the first.
    - A `failed` report holds a string `reason`.
 3. A final message that breaks any of these rules is a `failed` report.
    Its `reason` says what is missing or wrong, such as no `step-report`
    block, or a `done` report with no `evidence`.
 4. Add `date` to a `done` report: the current time in ISO 8601 UTC, from
    `date -u +%Y-%m-%dT%H:%M:%SZ`.
-5. Write the report as one JSON line, `outcome` first, to
+5. Write the report as one JSON line, `outcome` first, keeping
+   `"ask":true` on each question marked `ask: true`, to
    `.workspace/lets-go/<session>-report.json`.
