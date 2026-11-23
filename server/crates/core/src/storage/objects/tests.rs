@@ -691,11 +691,17 @@ mod staging_cleanup {
     fn cleanup_leaves_the_marker_and_store_unchanged() {
         let (temp, store) = leftovers(&["a"]);
         store.publish(staged(&store, b"abc")).unwrap();
-        let objects = store_files(&temp);
-        let marker = std::fs::read(temp.path.join(MARKER)).unwrap();
+        let objects = || {
+            store_files(&temp)
+                .into_iter()
+                .map(|path| (fingerprint(&path), path))
+                .collect::<Vec<_>>()
+        };
+        let before = objects();
+        let marker = fingerprint(&temp.path.join(MARKER));
         store.remove_leftover_staging().unwrap();
-        assert_eq!(store_files(&temp), objects);
-        assert_eq!(std::fs::read(temp.path.join(MARKER)).unwrap(), marker);
+        assert_eq!(objects(), before);
+        assert_eq!(fingerprint(&temp.path.join(MARKER)), marker);
     }
 
     #[test]
