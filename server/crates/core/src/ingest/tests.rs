@@ -719,6 +719,47 @@ mod ingest_commit {
         concurrent_uploads_make_one_asset(Some("repeatable read")).await;
     }
 
+    /// The content lock is per content: while an upload of `abc` is held
+    /// before its commit, an upload of other bytes commits at once.
+    #[tokio::test]
+    async fn an_upload_of_other_bytes_does_not_wait_for_a_held_upload() {
+        let fixture = Arc::new(Fixture::new().await);
+        let mut hold = fixture.conn().await;
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_lock({HOLD}); \
+             CREATE FUNCTION public.hold() RETURNS trigger LANGUAGE plpgsql \
+             AS 'BEGIN IF NEW.content_hash = ''{ABC}'' THEN \
+             PERFORM pg_advisory_xact_lock_shared({HOLD}); END IF; RETURN NULL; END'; \
+             CREATE TRIGGER hold AFTER INSERT ON public.asset_versions \
+             FOR EACH ROW EXECUTE FUNCTION public.hold()"
+        )))
+        .await
+        .unwrap();
+        let a = {
+            let fixture = fixture.clone();
+            tokio::spawn(async move { fixture.upload("a.png", b"abc").await })
+        };
+        wait_for_waiters(&fixture, 1).await;
+        let other = tokio::time::timeout(WAIT, fixture.upload("b.png", b"abd"))
+            .await
+            .expect("an upload of other bytes waited for the held upload")
+            .unwrap();
+        assert!(matches!(other, Ingested::Created(_)), "{other:?}");
+        assert!(!a.is_finished());
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_unlock({HOLD})"
+        )))
+        .await
+        .unwrap();
+        let held = tokio::time::timeout(WAIT, a)
+            .await
+            .expect("waited too long for the held upload")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(held, Ingested::Created(_)), "{held:?}");
+        assert_eq!(fixture.rows().await, 4);
+    }
+
     #[tokio::test]
     async fn a_name_with_traversal_is_display_text_only() {
         let fixture = Fixture::new().await;
