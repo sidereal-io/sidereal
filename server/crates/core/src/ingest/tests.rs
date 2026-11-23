@@ -71,12 +71,24 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_isolation(None).await
+    }
+
+    /// A fixture whose Database connections start every transaction at
+    /// `isolation`, when one is given, as a role or database setting could.
+    async fn with_isolation(isolation: Option<&str>) -> Self {
         let db = TestDatabase::new();
         let temp = TempRoot::new();
-        let (database, paired) =
-            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
-                .await
-                .unwrap();
+        let options = match isolation {
+            Some(level) => db
+                .options
+                .clone()
+                .options([("default_transaction_isolation", level)]),
+            None => db.options.clone(),
+        };
+        let (database, paired) = initialize_with_storage(options, SECONDS, SECONDS, &temp.root())
+            .await
+            .unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mut registry = Registry::new();
         TestPack(seen.clone()).register(&mut registry);
@@ -601,6 +613,110 @@ mod ingest_commit {
             "{outcome:?}"
         );
         assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[test]
+    fn the_content_lock_key_keeps_the_bits_of_the_first_eight_hex_digits() {
+        use crate::assets::content_lock_key;
+        let key = |prefix: &str| content_lock_key(&format!("{prefix}{}", &ABC[8..]));
+        assert_eq!(key("00000000"), 0);
+        assert_eq!(key("7fffffff"), i32::MAX);
+        assert_eq!(key("80000000"), i32::MIN);
+        assert_eq!(key("ffffffff"), -1);
+        assert_eq!(content_lock_key(ABC), 0x6437_b3ac);
+    }
+
+    /// The advisory lock key a held upload waits on before it commits.
+    const HOLD: i64 = 522;
+    /// How long a test waits for another connection before it fails.
+    const WAIT: Duration = Duration::from_secs(10);
+
+    /// How many backends in this test's database wait on an advisory lock.
+    async fn advisory_waiters(fixture: &Fixture) -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid \
+             WHERE a.datname = current_database() AND NOT l.granted AND l.locktype = 'advisory'",
+        )
+        .fetch_one(&mut fixture.conn().await)
+        .await
+        .unwrap()
+    }
+
+    /// Wait until `count` backends wait on an advisory lock, failing after
+    /// [`WAIT`].
+    async fn wait_for_waiters(fixture: &Fixture, count: i64) {
+        tokio::time::timeout(WAIT, async {
+            while advisory_waiters(fixture).await < count {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("waited too long for {count} advisory waiters"));
+    }
+
+    /// Two uploads of the same new bytes: A is held after its insert and
+    /// before its commit, then B starts. Each must end as one new Asset and
+    /// one found Asset.
+    async fn concurrent_uploads_make_one_asset(isolation: Option<&str>) {
+        let fixture = Arc::new(Fixture::with_isolation(isolation).await);
+        let mut hold = fixture.conn().await;
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_lock({HOLD}); \
+             CREATE FUNCTION public.hold() RETURNS trigger LANGUAGE plpgsql \
+             AS 'BEGIN PERFORM pg_advisory_xact_lock_shared({HOLD}); RETURN NULL; END'; \
+             CREATE TRIGGER hold AFTER INSERT ON public.asset_versions \
+             FOR EACH ROW EXECUTE FUNCTION public.hold()"
+        )))
+        .await
+        .unwrap();
+        let start = |name: &'static str| {
+            let fixture = fixture.clone();
+            tokio::spawn(async move { fixture.upload(name, b"abc").await })
+        };
+        let a = start("a.png");
+        wait_for_waiters(&fixture, 1).await;
+        let b = start("b.png");
+        wait_for_waiters(&fixture, 2).await;
+        assert!(!a.is_finished() && !b.is_finished());
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_unlock({HOLD})"
+        )))
+        .await
+        .unwrap();
+        let finish = |task: tokio::task::JoinHandle<_>| async move {
+            tokio::time::timeout(WAIT, task)
+                .await
+                .expect("waited too long for an upload")
+                .unwrap()
+        };
+        let outcomes = [finish(a).await.unwrap(), finish(b).await.unwrap()];
+        let (created, found): (Vec<_>, Vec<_>) = outcomes
+            .iter()
+            .partition(|outcome| matches!(outcome, Ingested::Created(_)));
+        assert_eq!((created.len(), found.len()), (1, 1), "{outcomes:?}");
+        let (Ingested::Created(new), Ingested::Found(existing)) = (created[0], found[0]) else {
+            unreachable!()
+        };
+        assert_eq!(existing.id, new.id);
+        let counts: (i64, i64) = sqlx::query_as(
+            "SELECT count(DISTINCT asset_id), count(*) FROM public.asset_versions WHERE content_hash = $1",
+        )
+        .bind(ABC)
+        .fetch_one(&mut fixture.conn().await)
+        .await
+        .unwrap();
+        assert_eq!(counts, (1, 1));
+        assert_eq!(fixture.rows().await, 2);
+    }
+
+    #[tokio::test]
+    async fn concurrent_uploads_of_the_same_new_bytes_make_one_asset() {
+        concurrent_uploads_make_one_asset(None).await;
+    }
+
+    #[tokio::test]
+    async fn concurrent_uploads_make_one_asset_under_a_repeatable_read_default() {
+        concurrent_uploads_make_one_asset(Some("repeatable read")).await;
     }
 
     #[tokio::test]
