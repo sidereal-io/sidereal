@@ -391,7 +391,12 @@ impl ObjectStore {
                 self.reuse(second.as_fd(), &hash, size)?;
                 true
             }
-            Err(e) if matches!(e.raw_os_error(), Some(libc::EINVAL | libc::ENOSYS)) => {
+            Err(e)
+                if matches!(
+                    e.raw_os_error(),
+                    Some(libc::EINVAL | libc::ENOSYS | libc::ENOTSUP)
+                ) =>
+            {
                 return Err(self.error(Problem::NoReplaceUnsupported))
             }
             Err(e) if e.raw_os_error() == Some(libc::EXDEV) => {
@@ -557,8 +562,34 @@ fn rename_no_replace(
     Ok(())
 }
 
+/// Rename that fails with `AlreadyExists` instead of replacing an entry.
+/// A filesystem without exclusive rename answers `ENOTSUP`.
+#[cfg(target_os = "macos")]
+fn rename_no_replace(
+    from_folder: BorrowedFd<'_>,
+    from: &str,
+    to_folder: BorrowedFd<'_>,
+    to: &str,
+) -> io::Result<()> {
+    let (from, to) = (name_cstring(from), name_cstring(to));
+    // SAFETY: both folders are open directories and both names NUL-terminated.
+    let result = unsafe {
+        libc::renameatx_np(
+            from_folder.as_raw_fd(),
+            from.as_ptr(),
+            to_folder.as_raw_fd(),
+            to.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// No supported no-replace rename here: publication fails closed.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn rename_no_replace(_: BorrowedFd<'_>, _: &str, _: BorrowedFd<'_>, _: &str) -> io::Result<()> {
     Err(io::Error::from_raw_os_error(libc::ENOSYS))
 }
