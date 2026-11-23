@@ -412,6 +412,7 @@ describe("Library", () => {
       ["no body", undefined],
       ["a body with no asset", { other: nebula }],
       ["an entry with no name", { asset: { ...nebula, name: 3 } }],
+      ["an entry with an empty name", { asset: { ...nebula, name: "" } }],
       [
         "an entry with no current version",
         { asset: { ...nebula, current_version_id: undefined } },

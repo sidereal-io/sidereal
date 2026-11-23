@@ -59,11 +59,11 @@ function entries(body: unknown): Entry[] | null {
 }
 
 // The name of the Asset a repeat upload found, or null when the answer's
-// body holds no valid entry.
+// body holds no valid entry or names it with nothing to show.
 async function foundName(response: Response): Promise<string | null> {
   try {
     const body: unknown = await response.json();
-    return isObject(body) ? (toEntry(body.asset)?.name ?? null) : null;
+    return isObject(body) ? toEntry(body.asset)?.name || null : null;
   } catch {
     return null;
   }
