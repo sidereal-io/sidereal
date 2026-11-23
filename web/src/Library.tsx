@@ -20,7 +20,7 @@ type List = "loading" | "failed" | Entry[];
 const sessionEnded = Symbol("session ended");
 
 // An original is always fetched from this server's API, never from an
-// address the list names elsewhere.
+// address the list names elsewhere, and only from its own Asset's route.
 const ORIGINAL_URL = /^\/api\/assets\/[\w-]+\/original$/;
 
 function isObject(body: unknown): body is Record<string, unknown> {
@@ -37,8 +37,10 @@ function entries(body: unknown): Entry[] | null {
       !isObject(item) ||
       typeof item.id !== "string" ||
       typeof item.name !== "string" ||
+      typeof item.current_version_id !== "string" ||
       typeof item.original_url !== "string" ||
-      !ORIGINAL_URL.test(item.original_url)
+      !ORIGINAL_URL.test(item.original_url) ||
+      item.original_url !== `/api/assets/${item.id}/original`
     ) {
       return null;
     }

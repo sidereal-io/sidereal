@@ -133,6 +133,24 @@ describe("Library", () => {
       { "GET /api/assets": listAnswer({ ...nebula, name: 3 }) },
     ],
     [
+      "an entry with no current version",
+      {
+        "GET /api/assets": listAnswer({
+          ...nebula,
+          current_version_id: undefined,
+        }),
+      },
+    ],
+    [
+      "an original URL that names another Asset",
+      {
+        "GET /api/assets": listAnswer({
+          ...nebula,
+          original_url: "/api/assets/a2/original",
+        }),
+      },
+    ],
+    [
       "an original URL off the API",
       {
         "GET /api/assets": listAnswer({
