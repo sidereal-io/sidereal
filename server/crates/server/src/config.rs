@@ -185,9 +185,8 @@ impl std::error::Error for OverlapError {}
 /// followed. A link or mount created inside the web root later is outside
 /// this check; `docs/install.md` says so.
 pub fn check_overlap(storage: &StorageRoot, web_root: &Path) -> Result<(), OverlapError> {
-    let web_root = std::fs::canonicalize(web_root).unwrap_or_else(|_| web_root.to_owned());
     let storage = storage.path();
-    if storage.starts_with(&web_root) || web_root.starts_with(storage) {
+    if storage.starts_with(web_root) || web_root.starts_with(storage) {
         Err(OverlapError)
     } else {
         Ok(())
@@ -886,8 +885,10 @@ mod tests {
         std::fs::remove_dir_all(&parent).unwrap();
     }
 
+    /// Checks `web` resolved once, as startup resolves `WEB_ROOT`.
     fn overlap(storage: &Path, web: &Path) -> Result<(), OverlapError> {
-        check_overlap(&StorageRoot::new(storage).unwrap(), web)
+        let web = std::fs::canonicalize(web).unwrap();
+        check_overlap(&StorageRoot::new(storage).unwrap(), &web)
     }
 
     #[test]
@@ -921,6 +922,19 @@ mod tests {
             std::fs::create_dir(parent.join("web")).unwrap();
             std::os::unix::fs::symlink(parent.join("web"), parent.join("storage")).unwrap();
             assert!(overlap(&parent.join("storage"), &parent.join("web")).is_err());
+        });
+    }
+
+    #[test]
+    fn web_root_overlap_compares_the_resolved_root_it_is_given() {
+        // Startup resolves WEB_ROOT once. A folder replaced by a link after
+        // that must not change which folder the check compares.
+        overlap_case("resolved", |parent| {
+            let parent = std::fs::canonicalize(parent).unwrap();
+            std::fs::create_dir(parent.join("storage")).unwrap();
+            let storage = StorageRoot::new(&parent.join("storage")).unwrap();
+            std::os::unix::fs::symlink(parent.join("storage"), parent.join("web")).unwrap();
+            assert_eq!(check_overlap(&storage, &parent.join("web")), Ok(()));
         });
     }
 
