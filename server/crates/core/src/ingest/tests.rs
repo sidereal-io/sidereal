@@ -404,4 +404,44 @@ mod ingest_commit {
         );
         assert!(!fixture.object(ABC).exists());
     }
+
+    /// Stage `bytes`, let another server's startup cleanup run on the same
+    /// root, then ingest what was staged.
+    async fn upload_after_cleanup(
+        fixture: &Fixture,
+        bytes: &[u8],
+    ) -> Result<AssetRecord, IngestError> {
+        let objects = fixture.objects(None);
+        let mut staging = objects.begin().unwrap();
+        staging.write(bytes).unwrap();
+        let staged = staging.finish().unwrap();
+        fixture.objects(None).remove_leftover_staging().unwrap();
+        ingest(
+            &fixture.database,
+            &objects,
+            fixture.registry.clone(),
+            "test.recorder",
+            "nebula.png",
+            staged,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn an_upload_whose_staging_file_was_cleaned_up_fails_with_a_storage_error() {
+        let fixture = Fixture::new().await;
+        let outcome = upload_after_cleanup(&fixture, b"abc").await;
+        assert!(
+            matches!(outcome, Err(IngestError::Storage(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_upload_whose_staging_file_was_cleaned_up_commits_nothing() {
+        let fixture = Fixture::new().await;
+        let _ = upload_after_cleanup(&fixture, b"abc").await;
+        assert_eq!(fixture.rows().await, 0);
+    }
 }
