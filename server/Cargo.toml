@@ -34,7 +34,7 @@ sidereal-pack-image = { path = "crates/packs/image" }
 # External crates.
 axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
-sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "macros", "uuid"] }
+sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "macros", "uuid", "json"] }
 rustls = { version = "0.23", default-features = false }
 url = "2"
 serde_json = "1"

@@ -117,7 +117,7 @@ async fn upgrade_preserves_the_original_migration_and_metadata() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!(migrations, 4);
+    assert_eq!(migrations, 5);
 }
 
 async fn successful_records(conn: &mut PgConnection) -> i64 {
@@ -135,17 +135,20 @@ async fn application_tables(conn: &mut PgConnection) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn first_startup_holds_four_migrations_and_the_asset_tables() {
+async fn first_startup_holds_five_migrations_and_the_facet_tables() {
     let db = TestDatabase::new();
     init(&db).await.unwrap();
     let mut conn = connection(&db).await;
-    assert_eq!(successful_records(&mut conn).await, 4);
+    assert_eq!(successful_records(&mut conn).await, 5);
     assert_eq!(
         application_tables(&mut conn).await,
         [
             "_sqlx_migrations",
             "asset_versions",
             "assets",
+            "facet_schemas",
+            "facet_values",
+            "operation_runs",
             "sessions",
             "sidereal_metadata",
             "users"
@@ -154,7 +157,7 @@ async fn first_startup_holds_four_migrations_and_the_asset_tables() {
 }
 
 #[tokio::test]
-async fn concurrent_startup_applies_four_records_once() {
+async fn concurrent_startup_applies_five_records_once() {
     let db = TestDatabase::new();
     let (first, second) = tokio::join!(init(&db), init(&db));
     first.unwrap();
@@ -164,7 +167,7 @@ async fn concurrent_startup_applies_four_records_once() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!((total, successful_records(&mut conn).await), (4, 4));
+    assert_eq!((total, successful_records(&mut conn).await), (5, 5));
 }
 
 #[tokio::test]
@@ -188,7 +191,7 @@ async fn upgrade_adds_empty_access_tables() {
         upgraded.as_array().unwrap()[..2],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 4);
+    assert_eq!(successful_records(&mut conn).await, 5);
     let rows: i64 = sqlx::query_scalar(
         "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions)",
     )
@@ -230,7 +233,7 @@ async fn asset_schema_upgrade_from_three_keeps_a_claimed_user() {
         upgraded.as_array().unwrap()[..3],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 4);
+    assert_eq!(successful_records(&mut conn).await, 5);
     let rows: i64 = sqlx::query_scalar(ASSET_ROWS)
         .fetch_one(&mut conn)
         .await
@@ -241,6 +244,67 @@ async fn asset_schema_upgrade_from_three_keeps_a_claimed_user() {
         .await
         .unwrap();
     assert_eq!(users, after);
+}
+
+const FACET_ROWS: &str = "SELECT (SELECT count(*) FROM public.facet_schemas) + (SELECT count(*) FROM public.facet_values) + (SELECT count(*) FROM public.operation_runs)";
+const ASSET_AND_VERSIONS: &str = "SELECT (SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY id), '[]') FROM public.assets a) || (SELECT coalesce(jsonb_agg(to_jsonb(v) ORDER BY id), '[]') FROM public.asset_versions v)";
+
+#[tokio::test]
+async fn facet_schema_upgrade_from_four_keeps_a_user_and_an_asset() {
+    let db = TestDatabase::new();
+    initialize_with(
+        &db.options,
+        Duration::from_secs(3),
+        Duration::from_secs(3),
+        &prefix(4),
+        &baselines(),
+        None,
+    )
+    .await
+    .unwrap();
+    let mut conn = connection(&db).await;
+    conn.execute(SAM).await.unwrap();
+    insert_pair(&mut conn, ASSET_A, VERSION_A, VERSION_A, ASSET_A)
+        .await
+        .unwrap();
+    let users: String = sqlx::query_scalar(USERS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    let assets: Value = sqlx::query_scalar(AssertSqlSafe(format!(
+        "SELECT ({ASSET_AND_VERSIONS})::text"
+    )))
+    .fetch_one(&mut conn)
+    .await
+    .map(|text: String| serde_json::from_str(&text).unwrap())
+    .unwrap();
+    let original: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    init(&db).await.unwrap();
+    let upgraded: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
+    assert_eq!(
+        upgraded.as_array().unwrap()[..4],
+        original.as_array().unwrap()[..]
+    );
+    assert_eq!(successful_records(&mut conn).await, 5);
+    let rows: i64 = sqlx::query_scalar(FACET_ROWS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0);
+    let after: String = sqlx::query_scalar(USERS)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+    assert_eq!(users, after);
+    let assets_after: Value = sqlx::query_scalar(AssertSqlSafe(format!(
+        "SELECT ({ASSET_AND_VERSIONS})::text"
+    )))
+    .fetch_one(&mut conn)
+    .await
+    .map(|text: String| serde_json::from_str(&text).unwrap())
+    .unwrap();
+    assert_eq!(assets.as_array().unwrap().len(), 2);
+    assert_eq!(assets, assets_after);
 }
 
 const ASSET_A: &str = "00000000-0000-4000-8000-00000000000a";
