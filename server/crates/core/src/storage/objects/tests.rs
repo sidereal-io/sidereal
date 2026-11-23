@@ -657,3 +657,57 @@ mod object_publication {
         assert_eq!(std::fs::read(object_path(&temp.path, ABC)).unwrap(), b"abc");
     }
 }
+
+mod staging_cleanup {
+    use super::*;
+
+    /// A paired root whose `tmp` holds the regular files named `files`.
+    fn leftovers(files: &[&str]) -> (TempRoot, ObjectStore) {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        std::fs::create_dir(temp.path.join("tmp")).unwrap();
+        for name in files {
+            std::fs::write(temp.path.join("tmp").join(name), b"left").unwrap();
+        }
+        (temp, store)
+    }
+
+    #[test]
+    fn leftover_staging_files_are_removed() {
+        let (temp, store) = leftovers(&["a", "b", "c"]);
+        store.remove_leftover_staging().unwrap();
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn cleanup_reports_how_many_files_it_removed() {
+        let (_temp, store) = leftovers(&["a", "b", "c"]);
+        assert_eq!(store.remove_leftover_staging().unwrap().removed, 3);
+    }
+
+    #[test]
+    fn cleanup_leaves_the_marker_and_store_unchanged() {
+        let (temp, store) = leftovers(&["a"]);
+        store.publish(staged(&store, b"abc")).unwrap();
+        let objects = store_files(&temp);
+        let marker = std::fs::read(temp.path.join(MARKER)).unwrap();
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(store_files(&temp), objects);
+        assert_eq!(std::fs::read(temp.path.join(MARKER)).unwrap(), marker);
+    }
+
+    #[test]
+    fn a_root_without_tmp_reports_nothing_removed() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        assert_eq!(store.remove_leftover_staging().unwrap(), Cleanup::default());
+    }
+
+    #[test]
+    fn a_root_without_tmp_is_left_without_tmp() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(names(&temp.path), [MARKER]);
+    }
+}

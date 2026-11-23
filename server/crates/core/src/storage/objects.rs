@@ -497,6 +497,97 @@ impl ObjectStore {
     }
 }
 
+/// What startup cleanup did with the entries left in `tmp`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Cleanup {
+    /// How many entries it removed.
+    pub removed: usize,
+}
+
+impl ObjectStore {
+    /// Remove the staging files that an interrupted ingest left in `tmp`.
+    /// Creates nothing: a root without `tmp` is left as it is.
+    pub fn remove_leftover_staging(&self) -> Result<Cleanup, StorageError> {
+        let tmp = match open_folder_at(self.root(), TMP) {
+            Ok(tmp) => tmp,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Cleanup::default()),
+            Err(e) => return Err(self.io(Operation::OpenDirectory)(e)),
+        };
+        let mut cleanup = Cleanup::default();
+        for name in list(tmp.as_fd()).map_err(self.io(Operation::ListTmp))? {
+            unlink_at(tmp.as_fd(), &name).map_err(self.io(Operation::RemoveStaging))?;
+            cleanup.removed += 1;
+        }
+        Ok(cleanup)
+    }
+}
+
+/// The names in an open folder, except `.` and `..`, as raw bytes.
+fn list(folder: BorrowedFd<'_>) -> io::Result<Vec<CString>> {
+    // `fdopendir` takes ownership of its descriptor, so it gets a duplicate.
+    // SAFETY: `folder` is an open descriptor.
+    let fd = unsafe { libc::fcntl(folder.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is an open directory descriptor that nothing else owns.
+    let dir = unsafe { libc::fdopendir(fd) };
+    if dir.is_null() {
+        let error = io::Error::last_os_error();
+        // SAFETY: `fdopendir` failed, so `fd` is still ours to close.
+        unsafe { libc::close(fd) };
+        return Err(error);
+    }
+    // A duplicate shares the file offset, so start from the first entry.
+    // SAFETY: `dir` is an open directory stream.
+    unsafe { libc::rewinddir(dir) };
+    let mut names = Vec::new();
+    let result = loop {
+        clear_errno();
+        // SAFETY: `dir` is an open directory stream.
+        let entry = unsafe { libc::readdir(dir) };
+        if entry.is_null() {
+            let error = io::Error::last_os_error();
+            break match error.raw_os_error() {
+                Some(0) => Ok(()),
+                _ => Err(error),
+            };
+        }
+        // SAFETY: `readdir` returned an entry whose name is NUL-terminated
+        // and valid until the next call on `dir`.
+        let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
+        if name != c"." && name != c".." {
+            names.push(name.to_owned());
+        }
+    };
+    // SAFETY: `dir` is open, and closing it also closes `fd`.
+    unsafe { libc::closedir(dir) };
+    result.map(|()| names)
+}
+
+/// Reset `errno`, so a null `readdir` tells the end apart from an error.
+fn clear_errno() {
+    // SAFETY: errno is thread-local and writable.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        *libc::__errno_location() = 0;
+    }
+    // SAFETY: errno is thread-local and writable.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        *libc::__error() = 0;
+    }
+}
+
+/// Remove one entry that is not a folder, without following a link.
+fn unlink_at(folder: BorrowedFd<'_>, name: &std::ffi::CStr) -> io::Result<()> {
+    // SAFETY: `folder` is an open directory and `name` is NUL-terminated.
+    if unsafe { libc::unlinkat(folder.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 fn device(fd: BorrowedFd<'_>) -> io::Result<libc::dev_t> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `fd` is open and `stat` has room for one `struct stat`.

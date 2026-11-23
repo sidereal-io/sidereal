@@ -365,6 +365,7 @@ pub enum Operation {
     PublishObject,
     ReadObject,
     SyncObject,
+    ListTmp,
     RemoveStaging,
 }
 
@@ -401,6 +402,7 @@ impl fmt::Display for Operation {
             Self::PublishObject => "publish a stored object",
             Self::ReadObject => "read a stored object",
             Self::SyncObject => "sync a stored object",
+            Self::ListTmp => "list the tmp folder",
             Self::RemoveStaging => "remove a staging file",
         })
     }
