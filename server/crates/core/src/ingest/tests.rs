@@ -101,7 +101,7 @@ impl Fixture {
         name: &str,
         bytes: &[u8],
         cancelled: bool,
-    ) -> Result<AssetRecord, IngestError> {
+    ) -> Result<Ingested, IngestError> {
         let mut staging = objects.begin().map_err(IngestError::Storage)?;
         staging.write(bytes).map_err(|e| match e {
             crate::storage::objects::StageError::Storage(e) => IngestError::Storage(e),
@@ -120,12 +120,20 @@ impl Fixture {
         .await
     }
 
-    async fn upload(&self, name: &str, bytes: &[u8]) -> Result<AssetRecord, IngestError> {
+    async fn upload(&self, name: &str, bytes: &[u8]) -> Result<Ingested, IngestError> {
         self.upload_with(&self.objects(None), name, bytes, false)
             .await
     }
 
-    async fn failing_at(&self, failing: Step, bytes: &[u8]) -> Result<AssetRecord, IngestError> {
+    /// Upload bytes not yet in the library, and return the new Asset.
+    async fn create(&self, name: &str, bytes: &[u8]) -> AssetRecord {
+        match self.upload(name, bytes).await {
+            Ok(Ingested::Created(record)) => record,
+            other => panic!("expected a new Asset, got {other:?}"),
+        }
+    }
+
+    async fn failing_at(&self, failing: Step, bytes: &[u8]) -> Result<Ingested, IngestError> {
         let hook: Hook = Arc::new(move |step| {
             if step == failing {
                 Err(std::io::Error::other("injected"))
@@ -180,7 +188,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn an_accepted_upload_commits_one_asset_pointing_to_its_version() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(
             (record.name.as_str(), record.kind.as_str()),
             ("nebula.png", "image")
@@ -195,7 +203,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn a_committed_asset_reads_back_from_the_database() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(
             fixture.database.asset(record.id).await.unwrap(),
             Some(record.clone())
@@ -206,7 +214,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn the_object_is_published_before_the_commit() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(
             std::fs::read(fixture.object(&record.version.content_hash)).unwrap(),
             b"abc"
@@ -217,7 +225,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn the_ids_are_fresh_uuids_not_the_name_or_hash() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_ne!(record.id, record.version.id);
         for id in [record.id, record.version.id] {
             assert_eq!(id.get_version_num(), 4);
@@ -228,7 +236,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn provenance_names_the_registered_source_that_ran() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(*fixture.seen.lock().unwrap(), b"abc");
         assert_eq!(
             (
@@ -353,19 +361,55 @@ mod ingest_commit {
 
     #[tokio::test]
     async fn a_failed_commit_after_reuse_keeps_the_shared_object() {
+        use std::os::unix::fs::MetadataExt;
         let fixture = Fixture::new().await;
-        let first = fixture.upload("first.png", b"abc").await.unwrap();
         break_version_inserts(&fixture).await;
-        assert!(fixture.upload("second.png", b"abc").await.is_err());
+        let outcome = fixture.upload("first.png", b"abc").await;
+        assert!(
+            matches!(outcome, Err(IngestError::Database(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(fixture.rows().await, 0);
+        let kept = std::fs::metadata(fixture.object(ABC)).unwrap().ino();
+        fixture
+            .conn()
+            .await
+            .execute("DROP TRIGGER refuse ON public.asset_versions")
+            .await
+            .unwrap();
+        let second = fixture.create("second.png", b"abc").await;
+        assert_eq!(second.name, "second.png");
         assert_eq!(fixture.rows().await, 2);
+        assert_eq!(std::fs::metadata(fixture.object(ABC)).unwrap().ino(), kept);
         assert_eq!(std::fs::read(fixture.object(ABC)).unwrap(), b"abc");
+        assert_eq!(fixture.database.assets().await.unwrap(), [second]);
+    }
+
+    #[tokio::test]
+    async fn the_same_bytes_under_another_name_find_the_first_asset() {
+        let fixture = Fixture::new().await;
+        let first = fixture.create("nebula.png", b"abc").await;
+        let outcome = fixture.upload("m31-final.png", b"abc").await.unwrap();
+        assert_eq!(outcome, Ingested::Found(first.clone()));
+        assert_eq!(first.name, "nebula.png");
+        assert_eq!(fixture.rows().await, 2);
         assert_eq!(fixture.database.assets().await.unwrap(), [first]);
+    }
+
+    #[tokio::test]
+    async fn different_bytes_make_a_new_asset() {
+        let fixture = Fixture::new().await;
+        let first = fixture.create("nebula.png", b"abc").await;
+        let second = fixture.create("nebula.jpg", b"abd").await;
+        assert_ne!(first.id, second.id);
+        assert_eq!(fixture.rows().await, 4);
+        assert_eq!(fixture.database.assets().await.unwrap(), [first, second]);
     }
 
     #[tokio::test]
     async fn a_name_with_traversal_is_display_text_only() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("../../outside.png", b"abc").await.unwrap();
+        let record = fixture.create("../../outside.png", b"abc").await;
         assert_eq!(record.name, "../../outside.png");
         for escaped in [
             "../outside.png",

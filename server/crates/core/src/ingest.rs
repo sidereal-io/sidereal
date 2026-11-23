@@ -1,5 +1,6 @@
 //! Ingest one staged candidate: run the selected Source over it, publish the
-//! object, then commit the Asset and its first version (ADR-011 order).
+//! object, then find the Asset that already holds those bytes or commit a
+//! new Asset and its first version (ADR-011 order).
 //!
 //! Nothing is committed unless the Source accepted the candidate and the
 //! object and its folder chain are durable. A failure after publication
@@ -22,6 +23,16 @@ use std::{
 };
 #[cfg(test)]
 use uuid::Uuid;
+
+/// What an ingest that succeeded did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Ingested {
+    /// No version had the bytes' hash, so ingest committed a new Asset.
+    Created(AssetRecord),
+    /// A version of this Asset already had the bytes' hash, so ingest
+    /// committed nothing and left the Asset as it was.
+    Found(AssetRecord),
+}
 
 /// Why an ingest committed nothing.
 #[derive(Debug)]
@@ -65,8 +76,9 @@ impl Candidate for StagedBytes<'_> {
     }
 }
 
-/// Ingest `staged` through the Source registered as `source`, naming the
-/// new Asset `name`. `cancelled` is checked during the Source run and once
+/// Ingest `staged` through the Source registered as `source`. When a version
+/// of an existing Asset has the same bytes, the result is that Asset, found
+/// and unchanged; otherwise it is a new Asset named `name`. `cancelled` is checked during the Source run and once
 /// more before publication; after commit, the Asset stays.
 pub async fn ingest(
     database: &Database,
@@ -76,7 +88,7 @@ pub async fn ingest(
     name: &str,
     staged: Staged,
     cancelled: Arc<AtomicBool>,
-) -> Result<AssetRecord, IngestError> {
+) -> Result<Ingested, IngestError> {
     if name.is_empty() {
         return Err(IngestError::EmptyName);
     }
@@ -106,7 +118,7 @@ pub async fn ingest(
     .await
     .map_err(|_| IngestError::Source(ExecutionError::Failed("the ingest task stopped".into())))??;
     database
-        .create_asset(NewVersion {
+        .find_or_create_asset(NewVersion {
             name,
             accepted: &accepted,
             content_hash: &published.hash,

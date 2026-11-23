@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use sidereal_core::{
     assets::AssetRecord,
     database::Database,
-    ingest::{ingest, IngestError},
+    ingest::{ingest, IngestError, Ingested},
     storage::objects::{ObjectStore, StageError, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
@@ -402,7 +402,7 @@ async fn upload(
     )
     .await
     {
-        Ok(record) => Ok((
+        Ok(Ingested::Created(record) | Ingested::Found(record)) => Ok((
             StatusCode::CREATED,
             Json(json!({ "asset": entry(&record) })),
         )),
