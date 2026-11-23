@@ -344,14 +344,24 @@ describe("Library", () => {
       });
     });
 
-    it("shows the same fixed message when the upload cannot reach the server", async () => {
-      stubServer({ "GET /api/assets": listAnswer() });
+    it("says the outcome is unknown, and loads the list again, when no answer comes back", async () => {
+      // The server saved the file, but its answer was lost on the way.
+      const fetch = stubServer({
+        "GET /api/assets": [listAnswer(), listAnswer(nebula)],
+      });
       showLibrary();
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText(
-        "nebula.png was not uploaded: the server could not save it. Try again later.",
+        "No answer came back for nebula.png. It may have been saved: check the library before you upload it again.",
       );
+      expect(document.body.textContent).not.toContain("was not uploaded");
+      await screen.findByRole("img", { name: "nebula.png" });
+      expect(
+        fetch.mock.calls.filter(
+          ([url, init]) => url === "/api/assets" && !init?.method,
+        ),
+      ).toHaveLength(2);
     });
 
     it("shows a filename holding markup as literal text", async () => {

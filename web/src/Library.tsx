@@ -76,11 +76,14 @@ function refusal(status: number): string {
 }
 
 // Sends one file as the multipart field `file`. Never retried: a lost
-// answer after the server saved the file cannot be told from a failure.
+// answer after the server saved the file cannot be told from a failure,
+// so no answer at all is "unconfirmed", never a refusal.
 async function sendFile(
   file: File,
   signal: AbortSignal,
-): Promise<"saved" | { refused: string } | typeof sessionEnded> {
+): Promise<
+  "saved" | "unconfirmed" | { refused: string } | typeof sessionEnded
+> {
   try {
     const body = new FormData();
     body.append("file", file);
@@ -93,14 +96,15 @@ async function sendFile(
     if (response.status === 401) return sessionEnded;
     return { refused: refusal(response.status) };
   } catch {
-    return { refused: refusal(0) };
+    return "unconfirmed";
   }
 }
 
 type Upload =
   | { kind: "idle" }
   | { kind: "sending"; name: string }
-  | { kind: "refused"; name: string; reason: string };
+  | { kind: "refused"; name: string; reason: string }
+  | { kind: "unconfirmed"; name: string };
 
 // One image, whole, at its own shape once it loads. Until then its frame
 // keeps the 3:2 shape that Library.css gives it.
@@ -195,6 +199,10 @@ function Library({
     } else if (result === "saved") {
       setUpload({ kind: "idle" });
       setGeneration((value) => value + 1);
+    } else if (result === "unconfirmed") {
+      // The file may have been saved, so the list loads again to show it.
+      setUpload({ kind: "unconfirmed", name: file.name });
+      setGeneration((value) => value + 1);
     } else {
       setUpload({ kind: "refused", name: file.name, reason: result.refused });
     }
@@ -240,6 +248,12 @@ function Library({
       {upload.kind === "refused" && (
         <p className="library-status">
           {upload.name} was not uploaded: {upload.reason}
+        </p>
+      )}
+      {upload.kind === "unconfirmed" && (
+        <p className="library-status">
+          No answer came back for {upload.name}. It may have been saved: check
+          the library before you upload it again.
         </p>
       )}
       {notice && <p className="library-status">{notice}</p>}
