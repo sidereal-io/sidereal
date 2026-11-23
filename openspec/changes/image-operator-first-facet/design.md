@@ -223,25 +223,44 @@ CREATE TABLE public.facet_values (
     facet TEXT NOT NULL REFERENCES public.facet_schemas (name),
     asset_id UUID REFERENCES public.assets (id),
     asset_version_id UUID REFERENCES public.asset_versions (id),
-    count_value BIGINT CHECK (count_value >= 0),
+    value JSONB NOT NULL CHECK (jsonb_typeof(value) <> 'null'),
     producer_id TEXT NOT NULL CHECK (producer_id <> ''),
     producer_version TEXT NOT NULL CHECK (producer_version <> ''),
     run_id UUID NOT NULL REFERENCES public.operation_runs (id),
     schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
     written_at TIMESTAMPTZ NOT NULL,
-    CHECK ((asset_id IS NULL) <> (asset_version_id IS NULL)),
-    CHECK (count_value IS NOT NULL)
+    CHECK ((asset_id IS NULL) <> (asset_version_id IS NULL))
 );
 CREATE INDEX facet_values_asset ON public.facet_values (asset_id);
 CREATE INDEX facet_values_asset_version ON public.facet_values (asset_version_id);
+CREATE INDEX facet_values_value ON public.facet_values USING GIN (value jsonb_path_ops);
 ```
 
-- **A typed column per value type**, starting with `count_value`. A later
-  type adds a nullable column and widens the last check to "exactly one value
-  column is set". *Alternative:* one `JSONB` value column. It needs no
-  migration per type, but PostgreSQL cannot check or index the value by type,
-  and later Selectors need typed comparisons. This choice is the most costly
-  to reverse in this change, so the ADR step weighs it.
+- **One row per value, with the value in a `JSONB` column** and a GIN index
+  on it, as the user chose and
+  [ADR-017](../../../docs/decisions/ADR-017-facet-value-rows.md) records. The
+  row keeps each value's provenance in typed columns, with foreign keys to its
+  schema, its Asset or Asset version, and its run. A file size is stored as a
+  bare JSON number, such as `1234567`. A new value type needs no migration.
+- **Core checks the value's type, not PostgreSQL.** A row check cannot read
+  the schema's `value_type` in another table, so the database only refuses
+  JSON `null`. Core checks every value against the Registry's schema before it
+  stores it (decision 3), and only core writes the table (ADR-008).
+- **Writing and reading the column.** The workspace's `sqlx` gains its `json`
+  feature, so core binds and reads `serde_json::Value`. Core turns
+  `FacetValue::Integer(n)` into a JSON number, and reads a `count` value back
+  with `as_i64()`; a stored value that is not a whole number of zero or more
+  is a database error, not a fact.
+- **The GIN index uses `jsonb_path_ops`,** which serves containment (`@>`)
+  and JSON path matches. Range comparisons on one facet, which later
+  Selectors need, will add an expression index for that facet in the story
+  that needs it.
+- *Alternative:* a typed column per value type (`count_value BIGINT`).
+  PostgreSQL could check and range-index the value, but every new value type
+  needs a core migration. *Alternative:* ADR-004's literal rule, a `facets`
+  column on `assets` and `asset_versions`. It changes version rows that
+  `asset-library` keeps immutable, and the database cannot check a value's
+  run reference. ADR-017 gives the full reasons.
 - **`facet_schemas` rows are written when a value first needs them**, inside
   the run's transaction, with `ON CONFLICT (name) DO UPDATE` from the running
   build's declaration. Startup writes nothing new, so the readiness, restore
@@ -365,10 +384,11 @@ Ledger records why no existing token fit.
 
 ### ADR candidates
 
-The ADR step decides. Candidates: decision 4's typed value columns (costly
-to reverse once values exist), and decision 2's rule that the host, not the
-pack, checks facet declarations at pack registration. Decisions 5, 7 and 8
-are reversible inside one story.
+Decision 4's storage of facet values (costly to reverse once values exist)
+is recorded in ADR-017, which replaces ADR-004's rule to store facets in
+JSONB columns on the asset rows. Decision 2's registration check carries out
+ADR-008's rule that one pack owns each schema; it needs no record of its own.
+Decisions 5, 7 and 8 are reversible inside one story.
 
 ## Risks / Trade-offs
 
