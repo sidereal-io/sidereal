@@ -80,8 +80,8 @@ access tests green.
   pipe to the e2e steps only, so it prints every `server` step too; it does
   the same on `main`, whose spec has the same text. With parentheses,
   `(.jobs.server.steps[], .jobs.e2e.steps[]) | select(.run == "mise run
-  db-down") | .if` prints exactly two `always()` lines. The spec text is
-  unchanged; the review can decide whether to fix it.
+  db-down") | .if` prints exactly two `always()` lines. The code review
+  fixed the spec text to use the parentheses.
 - **4.2, the Library's look came from HTML drafts, not Penpot options.** The
   user rejected the Penpot options on 'Options: library' and
   'Options: library-directions', and then Gemini and Opus drafts. They chose

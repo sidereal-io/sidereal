@@ -22,7 +22,7 @@ The `server` and `e2e` jobs SHALL start the database fixture with `mise run db-u
 
 #### Scenario: The fixture stops after a failure
 
-- **WHEN** a reviewer runs `yq '.jobs.server.steps[], .jobs.e2e.steps[] | select(.run == "mise run db-down") | .if' .github/workflows/ci.yml`
+- **WHEN** a reviewer runs `yq '(.jobs.server.steps[], .jobs.e2e.steps[]) | select(.run == "mise run db-down") | .if' .github/workflows/ci.yml`
 - **THEN** the output is exactly two lines, each `always()`
 
 ### Requirement: The e2e job builds the server before the end-to-end gate
