@@ -34,3 +34,13 @@ fn the_fits_source_says_it_cannot_run_yet() {
         Err(sidereal_plugin_abi::ExecutionError::Unsupported)
     );
 }
+
+#[test]
+fn operator_execution_of_the_plate_solve_stub_says_it_cannot_run_yet() {
+    let mut registry = Registry::new();
+    registry.register_pack(&AstroPack).unwrap();
+    assert_eq!(
+        registry.execute_operator("astro.plate-solve", &mut Empty, &mut |_| {}, &|| false),
+        Err(sidereal_plugin_abi::ExecutionError::Unsupported)
+    );
+}

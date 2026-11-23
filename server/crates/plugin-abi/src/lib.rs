@@ -7,9 +7,10 @@
 //! The contracts here are intentionally minimal and not a frozen ABI. They
 //! are expected to churn until M2 freezes them.
 //!
-//! A [`Source`] runs through an [`AssetContext`]: the context is the only way
-//! it reaches the candidate's bytes, and it can propose one Asset. The host
-//! keeps identity, hashing and provenance; a Source never sets them.
+//! A [`Source`] and an [`Operator`] run through an [`AssetContext`]: the
+//! context is the only way they reach their input's bytes. A Source can
+//! propose one Asset; an Operator can propose facet values. The host keeps
+//! identity, hashing and provenance; a plugin never sets them.
 
 use std::fmt;
 
@@ -111,6 +112,8 @@ pub struct Accepted {
 pub enum ExecutionError {
     /// No Source with that id is registered.
     UnknownSource,
+    /// No Operator with that id is registered.
+    UnknownOperator,
     /// The Source refused the candidate.
     Refused(String),
     /// The Source cannot run yet.
@@ -127,6 +130,7 @@ impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownSource => f.write_str("no such source is registered"),
+            Self::UnknownOperator => f.write_str("no such operator is registered"),
             Self::Refused(reason) => write!(f, "the source refused the candidate: {reason}"),
             Self::Unsupported => f.write_str("the source cannot run yet"),
             Self::Failed(reason) => write!(f, "the source failed: {reason}"),
@@ -147,16 +151,50 @@ pub enum ContextError {
     AlreadyProposed,
     /// The proposal's kind or media type is not well formed.
     InvalidProposal,
+    /// This kind of run may not make this proposal: a Source run proposes
+    /// no facet, and an Operator run proposes no Asset.
+    NotAllowed,
 }
 
-/// The run-scoped context a [`Source`] works through. It exposes no path,
-/// database handle or identity setter.
+/// Which kind of plugin a context serves.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RunKind {
+    Source,
+    Operator,
+}
+
+/// The run-scoped context a [`Source`] or [`Operator`] works through. It
+/// exposes no path, database handle or identity setter.
+///
+/// The candidate is the run's input: for a Source, the file it looks at; for
+/// an Operator, the stored bytes of the Asset version it reads.
 pub struct AssetContext<'a> {
+    kind: RunKind,
     candidate: &'a mut dyn Candidate,
     log: &'a mut dyn FnMut(&str),
     cancelled: &'a dyn Fn() -> bool,
     proposal: Option<AssetProposal>,
+    facets: Vec<FacetProposal>,
     broken: Option<String>,
+}
+
+impl<'a> AssetContext<'a> {
+    fn new(
+        kind: RunKind,
+        candidate: &'a mut dyn Candidate,
+        log: &'a mut dyn FnMut(&str),
+        cancelled: &'a dyn Fn() -> bool,
+    ) -> Self {
+        Self {
+            kind,
+            candidate,
+            log,
+            cancelled,
+            proposal: None,
+            facets: Vec::new(),
+            broken: None,
+        }
+    }
 }
 
 impl AssetContext<'_> {
@@ -181,6 +219,10 @@ impl AssetContext<'_> {
 
     /// Propose the one Asset this run produces.
     pub fn propose_asset(&mut self, proposal: AssetProposal) -> Result<(), ContextError> {
+        if self.kind != RunKind::Source {
+            self.broken = Some("an operator run proposed an asset".into());
+            return Err(ContextError::NotAllowed);
+        }
         if self.proposal.is_some() {
             self.broken = Some("proposed more than one asset".into());
             return Err(ContextError::AlreadyProposed);
@@ -189,6 +231,25 @@ impl AssetContext<'_> {
             return Err(ContextError::InvalidProposal);
         }
         self.proposal = Some(proposal);
+        Ok(())
+    }
+
+    /// Propose a value for the facet `name`. The host checks every proposal
+    /// against the facet's schema and this Operator's grants before it
+    /// stores any.
+    pub fn propose_facet(
+        &mut self,
+        name: impl Into<String>,
+        value: FacetValue,
+    ) -> Result<(), ContextError> {
+        if self.kind != RunKind::Operator {
+            self.broken = Some("a source run proposed a facet".into());
+            return Err(ContextError::NotAllowed);
+        }
+        self.facets.push(FacetProposal {
+            name: name.into(),
+            value,
+        });
         Ok(())
     }
 
@@ -223,6 +284,48 @@ pub trait Operator: Send + Sync {
     /// The facets this Operator writes: its grants. Core refuses a proposal
     /// for any other facet.
     fn writes(&self) -> &[&str];
+
+    /// Read one Asset version through `context` and propose facet values.
+    fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError>;
+}
+
+/// How an [`Operator`] run ends when it does not finish.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OperatorError {
+    /// This Operator cannot run yet.
+    Unsupported,
+    /// The Operator could not finish.
+    Failed(String),
+}
+
+/// A facet value an Operator proposes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FacetValue {
+    /// A whole number. A [`FacetType::Count`] accepts 0 to [`MAX_COUNT`];
+    /// the host refuses any other.
+    Integer(i64),
+}
+
+/// The largest count: the largest whole number a JavaScript client reads
+/// exactly (`Number.MAX_SAFE_INTEGER`).
+pub const MAX_COUNT: i64 = 9_007_199_254_740_991;
+
+/// One proposed value for one facet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetProposal {
+    pub name: String,
+    pub value: FacetValue,
+}
+
+/// An Operator run that finished, with what it proposed. The producer and
+/// the grants come from the Operator's registration, never from the run.
+/// Nothing here is checked yet: the host checks it before it stores it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetProposals {
+    pub producer_id: String,
+    pub producer_version: String,
+    pub grants: Vec<String>,
+    pub proposals: Vec<FacetProposal>,
 }
 
 /// An Operator as the Registry recorded it when it registered. Core takes
@@ -444,13 +547,7 @@ impl Registry {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Accepted, ExecutionError> {
         let source = self.source(id).ok_or(ExecutionError::UnknownSource)?;
-        let mut context = AssetContext {
-            candidate,
-            log,
-            cancelled,
-            proposal: None,
-            broken: None,
-        };
+        let mut context = AssetContext::new(RunKind::Source, candidate, log, cancelled);
         let outcome = source.run(&mut context);
         if context.is_cancelled() {
             return Err(ExecutionError::Cancelled);
@@ -471,6 +568,38 @@ impl Registry {
                 source_id: source.id().to_owned(),
                 source_version: source.version().to_owned(),
             },
+        })
+    }
+
+    /// Run the Operator registered as `id` over one Asset version's bytes.
+    /// The result names the producer and the grants from the Operator's
+    /// registration. It does not check the proposals; the host does.
+    pub fn execute_operator(
+        &self,
+        id: &str,
+        candidate: &mut dyn Candidate,
+        log: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<FacetProposals, ExecutionError> {
+        let entry = self.operator(id).ok_or(ExecutionError::UnknownOperator)?;
+        let mut context = AssetContext::new(RunKind::Operator, candidate, log, cancelled);
+        let outcome = entry.operator.run(&mut context);
+        if context.is_cancelled() {
+            return Err(ExecutionError::Cancelled);
+        }
+        match outcome {
+            Err(OperatorError::Unsupported) => return Err(ExecutionError::Unsupported),
+            Err(OperatorError::Failed(reason)) => return Err(ExecutionError::Failed(reason)),
+            Ok(()) => {}
+        }
+        if let Some(reason) = context.broken {
+            return Err(ExecutionError::Failed(reason));
+        }
+        Ok(FacetProposals {
+            producer_id: entry.id.clone(),
+            producer_version: entry.version.clone(),
+            grants: entry.writes.clone(),
+            proposals: context.facets,
         })
     }
 
@@ -865,6 +994,9 @@ mod operator_registration {
                 &["test.size"]
             }
         }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            Ok(())
+        }
     }
 
     fn shifty(id: &'static str, widened: &Arc<AtomicBool>) -> Box<dyn Operator> {
@@ -907,6 +1039,21 @@ mod operator_registration {
         let entry = registry.operator("test.op").unwrap();
         assert_eq!(entry.writes(), ["test.size"]);
         assert_eq!(entry.version(), "1.2.3");
+        let run = registry
+            .execute_operator("test.op", &mut NoBytes, &mut |_| {}, &|| false)
+            .unwrap();
+        assert_eq!(run.grants, ["test.size"]);
+        assert_eq!(run.producer_version, "1.2.3");
+    }
+
+    struct NoBytes;
+    impl Candidate for NoBytes {
+        fn size(&self) -> u64 {
+            0
+        }
+        fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
     }
 
     #[test]
@@ -953,5 +1100,213 @@ mod operator_registration {
     #[test]
     fn operator_registration_is_abi_version_2() {
         assert_eq!(ABI_VERSION, 2);
+    }
+}
+
+#[cfg(test)]
+mod operator_execution {
+    use super::*;
+
+    struct Bytes(Vec<u8>);
+    impl Candidate for Bytes {
+        fn size(&self) -> u64 {
+            self.0.len() as u64
+        }
+        fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+            let start = (offset as usize).min(self.0.len());
+            let n = buf.len().min(self.0.len() - start);
+            buf[..n].copy_from_slice(&self.0[start..start + n]);
+            Ok(n)
+        }
+    }
+
+    /// An Operator whose run is a closure, for one-off behaviors.
+    struct Scripted(fn(&mut AssetContext<'_>) -> Result<(), OperatorError>);
+    impl Operator for Scripted {
+        fn id(&self) -> &str {
+            "test.op"
+        }
+        fn version(&self) -> &str {
+            "1.2.3"
+        }
+        fn writes(&self) -> &[&str] {
+            &["test.first-byte"]
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            (self.0)(context)
+        }
+    }
+
+    struct TestPack(fn(&mut AssetContext<'_>) -> Result<(), OperatorError>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            registry.register_operator(Box::new(Scripted(self.0)));
+        }
+    }
+
+    fn run(
+        script: fn(&mut AssetContext<'_>) -> Result<(), OperatorError>,
+        bytes: &[u8],
+    ) -> Result<FacetProposals, ExecutionError> {
+        let mut registry = Registry::new();
+        registry.register_pack(&TestPack(script)).unwrap();
+        registry.execute_operator("test.op", &mut Bytes(bytes.to_vec()), &mut |_| {}, &|| {
+            false
+        })
+    }
+
+    fn first_byte(context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        let mut first = [0; 1];
+        context
+            .read_candidate(0, &mut first)
+            .map_err(|_| OperatorError::Failed("read".into()))?;
+        context
+            .propose_facet("test.first-byte", FacetValue::Integer(first[0].into()))
+            .map_err(|_| OperatorError::Failed("proposal".into()))
+    }
+
+    #[test]
+    fn operator_execution_returns_proposals_with_host_provenance_and_grants() {
+        let run = run(first_byte, b"*rest").unwrap();
+        assert_eq!(
+            run.proposals,
+            [FacetProposal {
+                name: "test.first-byte".into(),
+                value: FacetValue::Integer(42)
+            }]
+        );
+        assert_eq!(run.producer_id, "test.op");
+        assert_eq!(run.producer_version, "1.2.3");
+        assert_eq!(run.grants, ["test.first-byte"]);
+    }
+
+    #[test]
+    fn operator_execution_returns_every_proposal_in_order() {
+        let run = run(
+            |context| {
+                context
+                    .propose_facet("test.a", FacetValue::Integer(-1))
+                    .unwrap();
+                context
+                    .propose_facet("test.b", FacetValue::Integer(i64::MAX))
+                    .unwrap();
+                Ok(())
+            },
+            b"",
+        )
+        .unwrap();
+        let names: Vec<_> = run.proposals.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["test.a", "test.b"]);
+    }
+
+    #[test]
+    fn operator_execution_writes_log_lines_through_the_host() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(|context| {
+                context.log("looked at the bytes");
+                Ok(())
+            }))
+            .unwrap();
+        let mut lines = Vec::new();
+        registry
+            .execute_operator(
+                "test.op",
+                &mut Bytes(b"I".to_vec()),
+                &mut |line| lines.push(line.to_owned()),
+                &|| false,
+            )
+            .unwrap();
+        assert_eq!(lines, ["looked at the bytes"]);
+    }
+
+    #[test]
+    fn operator_execution_refuses_an_asset_proposal() {
+        let outcome = run(
+            |context| {
+                assert_eq!(
+                    context.propose_asset(AssetProposal::new("image", "image/png")),
+                    Err(ContextError::NotAllowed)
+                );
+                Ok(())
+            },
+            b"I",
+        );
+        assert!(
+            matches!(outcome, Err(ExecutionError::Failed(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn operator_execution_is_refused_to_a_source_that_proposes_a_facet() {
+        struct Proposer;
+        impl Source for Proposer {
+            fn id(&self) -> &str {
+                "test.source"
+            }
+            fn version(&self) -> &str {
+                "1"
+            }
+            fn run(&self, context: &mut AssetContext<'_>) -> Result<(), SourceError> {
+                assert_eq!(
+                    context.propose_facet("test.size", FacetValue::Integer(1)),
+                    Err(ContextError::NotAllowed)
+                );
+                context
+                    .propose_asset(AssetProposal::new("image", "image/png"))
+                    .map_err(|_| SourceError::Failed("p".into()))
+            }
+        }
+        let mut registry = Registry::new();
+        registry.register_source(Box::new(Proposer));
+        let outcome = registry.execute_source(
+            "test.source",
+            &mut Bytes(b"I".to_vec()),
+            &mut |_| {},
+            &|| false,
+        );
+        assert!(
+            matches!(outcome, Err(ExecutionError::Failed(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn operator_execution_reports_failure_unsupported_and_cancel() {
+        assert_eq!(
+            run(
+                |_| Err(OperatorError::Failed("could not read the header".into())),
+                b""
+            ),
+            Err(ExecutionError::Failed("could not read the header".into()))
+        );
+        assert_eq!(
+            run(|_| Err(OperatorError::Unsupported), b""),
+            Err(ExecutionError::Unsupported)
+        );
+        let mut registry = Registry::new();
+        registry.register_pack(&TestPack(first_byte)).unwrap();
+        assert_eq!(
+            registry.execute_operator("test.op", &mut Bytes(b"I".to_vec()), &mut |_| {}, &|| true),
+            Err(ExecutionError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn operator_execution_refuses_an_unknown_operator() {
+        let registry = Registry::new();
+        assert_eq!(
+            registry.execute_operator("test.op", &mut Bytes(vec![]), &mut |_| {}, &|| false),
+            Err(ExecutionError::UnknownOperator)
+        );
+    }
+
+    #[test]
+    fn operator_execution_max_count_is_the_largest_safe_javascript_integer() {
+        assert_eq!(MAX_COUNT, (1i64 << 53) - 1);
     }
 }
