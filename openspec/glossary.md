@@ -36,6 +36,10 @@ Shared vocabulary for Sidereal. A spec folder under `openspec/specs/` may hold i
 - **Facet** — one named, typed fact about an asset or an asset version, such as an image's
   width. One pack owns each facet's schema. Only core writes facet values: it checks each value
   first and records who produced it.
+- **Facet schema** — the declaration of one facet: its name, value type, unit, whether it
+  describes an asset or an asset version, and the pack that owns it.
+- **Grant** — permission for one plugin to write the values of one facet. A pack built into
+  the server has its grants from the build.
 - **Source** — a plugin that brings files into the library as assets, such as manual upload or
   a watched folder.
 - **Operator** — a plugin that takes asset versions and settings, and proposes facets, new
