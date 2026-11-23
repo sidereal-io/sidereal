@@ -68,14 +68,23 @@ the bar for each state.
 
 1. **The lookup runs inside the Asset transaction, under a lock per hash.**
    `create_asset` becomes a find-or-create step. It opens the transaction,
-   takes `pg_advisory_xact_lock(<key1>, <key2>)`, then looks for a version
-   with the hash. If it finds one, it returns that Asset and inserts nothing.
-   Otherwise it inserts as today and commits. `<key1>` is a new constant for
-   "Asset content", distinct from the startup lock's `1397310533`; `<key2>` is
-   the first 8 hex digits of the hash as an `i32`. The lock is released at
-   commit, and under READ COMMITTED a query that starts after the lock is
-   granted sees the other upload's committed rows. Two hashes with the same
-   first 8 digits only wait for each other; they stay correct.
+   and its first statement is `SET TRANSACTION ISOLATION LEVEL READ
+   COMMITTED`. The transaction must not inherit the role's or database's
+   `default_transaction_isolation`: under REPEATABLE READ, the snapshot is
+   taken when the lock statement starts, before the lock is granted, so the
+   lookup would miss the other upload's committed rows. The next statement,
+   on its own, takes `pg_advisory_xact_lock(<key1>, <key2>)`. A separate
+   statement then looks for a version with the full hash. If it finds one,
+   the step commits with no insert and returns that Asset. Otherwise it
+   inserts as today and commits. Both paths end the transaction, which
+   releases the lock. `<key1>` is a new `i32` constant for "Asset content",
+   distinct from the startup lock's `1397310533`. `<key2>` comes from the
+   first 8 hex digits of the hash: parse them as a `u32`, then keep the bits
+   as an `i32` (`as i32`), so `80000000` gives `i32::MIN` and `ffffffff`
+   gives `-1`. Bind both keys as PostgreSQL `int4`. Under READ COMMITTED, a
+   query that starts after the lock is granted sees the other upload's
+   committed rows. Two hashes with the same first 8 digits only wait for
+   each other; they stay correct, because the lookup uses the full hash.
    - *Instead: a unique index on `content_hash`.* Rejected: ADR-003 and
      ADR-011 keep the hash non-unique, and #526's derived assets may share
      bytes.
@@ -129,21 +138,32 @@ stored format.
 ## Risks / Trade-offs
 
 - [A concurrency test passes by luck when the two uploads do not overlap] →
-  The core test holds both ingests at a `std::sync::Barrier` in the storage
-  hook on the last directory sync, so both reach the Asset transaction
-  together. It runs several rounds with fresh bytes, and asserts exactly one
-  `Created` and one row pair each round.
+  The core test holds the first upload inside its Asset transaction, after
+  its lookup and insert and before commit. It uses the pattern of the
+  `HeldReset` test in `server/crates/core/src/access/session.rs`: a test
+  connection holds `pg_advisory_lock(<hold>)`, and an `AFTER INSERT` trigger
+  on `public.asset_versions` takes `pg_advisory_xact_lock_shared(<hold>)`.
+  The test starts upload A, waits until one backend waits on an advisory
+  lock, starts upload B, and waits until two do. Then it releases `<hold>`.
+  Every wait is bounded and fails the test when it runs out. Without the
+  content lock, B finds nothing, inserts, and both commit, so the test
+  fails. The test runs once more with `default_transaction_isolation` set to
+  `repeatable read` on the Database's connections, which proves the explicit
+  READ COMMITTED of Decision 1.
 - [The existing test `a_failed_commit_after_reuse_keeps_the_shared_object`
   no longer reaches the insert, because the second upload finds the first
-  Asset] → Rewrite it: the first upload's commit fails and leaves the object;
-  a second upload of the same bytes then reuses that object and creates the
-  Asset.
+  Asset] → Rewrite it: the first upload's commit fails and leaves the object.
+  The test then drops the failure trigger, and a second upload of the same
+  bytes reuses that object and creates the Asset.
 - [A client that treated every non-201 answer as a failure now shows a 409
   as one] → The only client is `web/`, which this change updates. No outside
   client exists yet.
 - [A repeat upload of an Asset whose stored object is damaged answers 503,
   because `publish` refuses to reuse it] → This is the current rule for
-  reused objects. Checking and repair belong to #371.
+  reused objects, and the specs make publication a condition for finding the
+  Asset. The route tests `upload_onto_an_object_whose_bytes_changed_answers_503`
+  and `upload_onto_a_much_larger_object_answers_503_and_leaves_it_unchanged`
+  stay as they are. Checking and repair belong to #371.
 - [The lock adds a wait for uploads of the same bytes, or of hashes that share
   the first 8 hex digits] → The wait covers one short transaction. Unrelated
   hashes almost never share a key.
