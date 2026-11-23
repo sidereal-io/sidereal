@@ -25,6 +25,7 @@ Maintaining two separate hand-written schemas in v0.10.x introduced clear operat
 **Standardizing on PostgreSQL**. Utilizing a single server-grade database engine delivers optimal JSONB and GIN facet indexing, peak recursive-CTE lineage performance, and robust concurrency during heavy ingest operations. This strategy eliminates dialect fragmentation, unverified runtime parity, and redundant indexing overhead. Key implementation directives include:
 
 - **JSONB Column Storage with GIN Indexing**: Store facets directly in JSONB columns utilizing GIN indexes rather than maintaining separate key-value tables.
+  *Replaced by [ADR-017](ADR-017-facet-value-rows.md): each facet value is one row, with its value in a JSONB column with a GIN index.*
 - **Query Abstraction via `sqlx`**: Dynamic facet querying makes static ORM builders such as `diesel` or `SeaORM` impractical. Adopting `sqlx` enables asynchronous PostgreSQL access using runtime-built SQL combined with optional compile-time checking.
 - **Strict Forward-Only Migrations**: Schema downgrades are disabled and blocked; updated schemas will refuse execution against legacy application binaries. A unified migration pipeline replaces separate schema definitions.
 
