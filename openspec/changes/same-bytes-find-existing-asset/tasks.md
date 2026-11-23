@@ -19,7 +19,7 @@
 
 ## 4. Journey and gate [depends-on: 2, 3]
 
-- [ ] 4.1 [medium] In `web/e2e/upload.spec.ts`, after Nova uploads `nebula.png` and `nebula.jpg`, Nova uploads `nebula.png`'s bytes again as `m31-final.png` (Playwright `setFiles` with a name and a buffer). The screen shows `m31-final.png is already in the library as nebula.png.`, and the library still shows exactly two images, before and after the restart (verify: mise run e2e)
+- [x] 4.1 [medium] In `web/e2e/upload.spec.ts`, after Nova uploads `nebula.png` and `nebula.jpg`, Nova uploads `nebula.png`'s bytes again as `m31-final.png` (Playwright `setFiles` with a name and a buffer). The screen shows `m31-final.png is already in the library as nebula.png.`, and the library still shows exactly two images, before and after the restart (verify: mise run e2e) (✓ mise run e2e passed: 2 tests; mutation check in the Deviations Ledger)
 - [ ] 4.2 [easy] The whole gate passes: format, lint, unit and integration tests, the architecture lint, strict OpenSpec validation and the web checks (verify: mise run check)
 
 ## Deviations Ledger
@@ -33,3 +33,8 @@
   newest first, with current versions only, failed the oldest, lowest-id and
   not-current tests. Matching only the uploading Source's `source_id` failed
   the provenance test.
+- 2026-11-23, task 4.1: the journey step passed on its first run, because
+  tasks 2.1 and 3.1 had already built the 409 answer and the notice. To show
+  the step catches a regression, the route was made to answer 201 for a found
+  Asset and then restored: the journey then failed, waiting for the notice
+  `m31-final.png is already in the library as nebula.png.`
