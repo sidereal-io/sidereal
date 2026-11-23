@@ -141,12 +141,13 @@ target. The database pairing SHALL stay as it was.
 When the server process stops at any filesystem step of ingest before the
 Asset commit (writing or syncing the staging file, publishing the object,
 syncing an existing object, or syncing any folder in the chain), the library
-SHALL hold no Asset or Asset version for that upload. An object published
-before the stop SHALL stay in `store`, where no record refers to it, and this
-slice SHALL NOT reclaim it. The next
-startup SHALL leave `tmp` empty of the upload's staging file.
+SHALL hold no Asset or Asset version for that upload. An object the upload
+published before the stop SHALL stay in `store`, and this slice SHALL NOT
+reclaim it, even when no record refers to it. The next startup SHALL leave
+`tmp` empty of the upload's staging file.
 
 #### Scenario: Stopped while the staging file is written or synced, or before publication
+- **GIVEN** no object is stored for the upload's bytes
 - **WHEN** the server process is killed at the step that writes the staging file, syncs it, or publishes it
 - **THEN** no Asset or Asset version for the upload exists, and no object exists at its hash path
 - **AND** after the next startup, `tmp` holds no staging file
