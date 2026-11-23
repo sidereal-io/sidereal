@@ -452,7 +452,7 @@ mod ingest_commit {
 /// would after a crash or a kill.
 mod interrupted_ingest {
     use super::*;
-    use crate::storage::objects::Cleanup;
+    use crate::storage::objects::{Cleanup, Level};
     use sqlx::ConnectOptions;
     use std::os::unix::process::{CommandExt, ExitStatusExt};
 
@@ -609,5 +609,73 @@ mod interrupted_ingest {
     #[tokio::test]
     async fn killed_before_publication_leaves_a_file_the_next_start_removes() {
         leaves_one_staging_file_the_next_start_removes(Step::Publish).await;
+    }
+
+    async fn keeps_the_object_and_adds_no_record(step: Step, earlier: bool) {
+        let killed = killed_at(step, earlier).await;
+        assert_eq!(killed.fixture.rows().await, killed.rows_before);
+        assert_eq!(std::fs::read(killed.fixture.object(ABC)).unwrap(), b"abc");
+    }
+
+    /// After a new object is published, its staging file is already gone.
+    async fn leaves_tmp_empty_with_nothing_to_remove(step: Step) {
+        let killed = killed_at(step, false).await;
+        assert_eq!(killed.fixture.staging_files(), 0);
+        assert_eq!(killed.restart().await.removed, 0);
+        assert_eq!(killed.fixture.staging_files(), 0);
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_the_second_prefix_keeps_the_object_and_adds_no_record() {
+        keeps_the_object_and_adds_no_record(Step::SyncDirectory(Level::SecondPrefix), false).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_the_second_prefix_leaves_tmp_empty() {
+        leaves_tmp_empty_with_nothing_to_remove(Step::SyncDirectory(Level::SecondPrefix)).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_the_first_prefix_keeps_the_object_and_adds_no_record() {
+        keeps_the_object_and_adds_no_record(Step::SyncDirectory(Level::FirstPrefix), false).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_the_first_prefix_leaves_tmp_empty() {
+        leaves_tmp_empty_with_nothing_to_remove(Step::SyncDirectory(Level::FirstPrefix)).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_store_keeps_the_object_and_adds_no_record() {
+        keeps_the_object_and_adds_no_record(Step::SyncDirectory(Level::Store), false).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_store_leaves_tmp_empty() {
+        leaves_tmp_empty_with_nothing_to_remove(Step::SyncDirectory(Level::Store)).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_the_root_keeps_the_object_and_adds_no_record() {
+        keeps_the_object_and_adds_no_record(Step::SyncDirectory(Level::Root), false).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_the_root_leaves_tmp_empty() {
+        leaves_tmp_empty_with_nothing_to_remove(Step::SyncDirectory(Level::Root)).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_a_reused_object_keeps_the_records_from_before() {
+        keeps_the_object_and_adds_no_record(Step::SyncObject, true).await;
+    }
+
+    /// On reuse, the object is synced before the staging file is dropped.
+    #[tokio::test]
+    async fn killed_while_syncing_a_reused_object_leaves_a_file_the_next_start_removes() {
+        let killed = killed_at(Step::SyncObject, true).await;
+        assert_eq!(killed.fixture.staging_files(), 1);
+        assert_eq!(killed.restart().await.removed, 1);
+        assert_eq!(killed.fixture.staging_files(), 0);
     }
 }
