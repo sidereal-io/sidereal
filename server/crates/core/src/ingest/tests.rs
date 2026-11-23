@@ -445,3 +445,169 @@ mod ingest_commit {
         assert_eq!(fixture.rows().await, 0);
     }
 }
+
+/// Stopping the process mid-ingest. The parent test runs this test binary
+/// again as a child, which uploads one candidate and aborts at a chosen
+/// [`Step`]. `abort` runs no destructor, so the staging file stays, as it
+/// would after a crash or a kill.
+mod interrupted_ingest {
+    use super::*;
+    use crate::storage::objects::Cleanup;
+    use sqlx::ConnectOptions;
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
+
+    const STEP: &str = "SIDEREAL_KILL_STEP";
+    const DATABASE: &str = "SIDEREAL_KILL_DATABASE";
+    const ROOT: &str = "SIDEREAL_KILL_ROOT";
+    const PAIRED: &str = "SIDEREAL_KILL_PAIRED";
+
+    /// The child: upload `abc` and abort the first time the step named in
+    /// `SIDEREAL_KILL_STEP` runs. Only the parent runs it.
+    #[tokio::test]
+    #[ignore = "run by the interrupted_ingest tests as a child process"]
+    async fn child_uploads_until_killed() {
+        let Ok(target) = std::env::var(STEP) else {
+            return;
+        };
+        let options = std::env::var(DATABASE).unwrap().parse().unwrap();
+        let database = crate::database::Database::open(options, SECONDS)
+            .await
+            .unwrap();
+        let root =
+            crate::storage::StorageRoot::new(Path::new(&std::env::var(ROOT).unwrap())).unwrap();
+        let paired = Uuid::try_parse(&std::env::var(PAIRED).unwrap()).unwrap();
+        let hook: Hook = Arc::new(move |step| {
+            if format!("{step:?}") == target {
+                std::process::abort();
+            }
+            Ok(())
+        });
+        let objects = ObjectStore::open_with(&root, paired, Some(hook)).unwrap();
+        let mut registry = Registry::new();
+        TestPack(Arc::default()).register(&mut registry);
+        let mut staging = objects.begin().unwrap();
+        staging.write(b"abc").unwrap();
+        let staged = staging.finish().unwrap();
+        let outcome = ingest(
+            &database,
+            &objects,
+            Arc::new(registry),
+            "test.recorder",
+            "nebula.png",
+            staged,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+        panic!("the upload ended without reaching the step: {outcome:?}");
+    }
+
+    /// A paired root after a child was killed at `step` while it uploaded
+    /// `abc`, with the Asset and Asset version row count from before.
+    struct Killed {
+        fixture: Fixture,
+        rows_before: i64,
+    }
+
+    /// Kill an upload of `abc` at `step`. With `earlier`, an upload of the
+    /// same bytes commits first, so the child reuses its object.
+    async fn killed_at(step: Step, earlier: bool) -> Killed {
+        let fixture = Fixture::new().await;
+        if earlier {
+            fixture.upload("earlier.png", b"abc").await.unwrap();
+        }
+        let rows_before = fixture.rows().await;
+        let child = module_path!()
+            .split_once("::")
+            .map(|(_, path)| format!("{path}::child_uploads_until_killed"))
+            .unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--ignored", "--exact", &child, "--nocapture"])
+            .env(STEP, format!("{step:?}"))
+            .env(DATABASE, fixture.db.options.to_url_lossy().to_string())
+            .env(ROOT, &fixture.temp.path)
+            .env(PAIRED, fixture.paired.to_string());
+        // SAFETY: setrlimit is async-signal-safe. The abort writes no core file.
+        unsafe {
+            command.pre_exec(|| {
+                let none = libc::rlimit {
+                    rlim_cur: 0,
+                    rlim_max: 0,
+                };
+                libc::setrlimit(libc::RLIMIT_CORE, &none);
+                Ok(())
+            });
+        }
+        let output = command.output().unwrap();
+        assert_eq!(
+            output.status.signal(),
+            Some(libc::SIGABRT),
+            "the child was not killed at {step:?}: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        Killed {
+            fixture,
+            rows_before,
+        }
+    }
+
+    impl Killed {
+        /// Start again on the same database and root, as the next server does.
+        async fn restart(&self) -> Cleanup {
+            let (database, _, cleanup) = initialize_with_storage(
+                self.fixture.db.options.clone(),
+                SECONDS,
+                SECONDS,
+                &self.fixture.temp.root(),
+            )
+            .await
+            .unwrap();
+            database.close().await;
+            cleanup
+        }
+    }
+
+    async fn leaves_no_library_record_or_object(step: Step) {
+        let killed = killed_at(step, false).await;
+        assert_eq!(killed.fixture.rows().await, killed.rows_before);
+        assert!(!killed.fixture.object(ABC).exists());
+    }
+
+    async fn leaves_one_staging_file_the_next_start_removes(step: Step) {
+        let killed = killed_at(step, false).await;
+        assert_eq!(killed.fixture.staging_files(), 1);
+        assert_eq!(killed.restart().await.removed, 1);
+        assert_eq!(killed.fixture.staging_files(), 0);
+    }
+
+    #[tokio::test]
+    async fn killed_while_writing_staging_leaves_no_library_record_or_object() {
+        leaves_no_library_record_or_object(Step::WriteStaging).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_writing_staging_leaves_a_file_the_next_start_removes() {
+        leaves_one_staging_file_the_next_start_removes(Step::WriteStaging).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_staging_leaves_no_library_record_or_object() {
+        leaves_no_library_record_or_object(Step::SyncStaging).await;
+    }
+
+    #[tokio::test]
+    async fn killed_while_syncing_staging_leaves_a_file_the_next_start_removes() {
+        leaves_one_staging_file_the_next_start_removes(Step::SyncStaging).await;
+    }
+
+    #[tokio::test]
+    async fn killed_before_publication_leaves_no_library_record_or_object() {
+        leaves_no_library_record_or_object(Step::Publish).await;
+    }
+
+    #[tokio::test]
+    async fn killed_before_publication_leaves_a_file_the_next_start_removes() {
+        leaves_one_staging_file_the_next_start_removes(Step::Publish).await;
+    }
+}
