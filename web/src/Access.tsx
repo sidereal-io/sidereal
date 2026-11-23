@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./Access.css";
 import { watchSession } from "./eventsSocket.ts";
+import Library from "./Library.tsx";
 
 type View =
   "loading" | "unclaimed" | "signed-out" | "failed" | { username: string };
@@ -136,15 +137,18 @@ function Access() {
     };
   }, []);
 
+  // The session ended, as the events socket or a library request found.
+  const sessionLost = useCallback(() => {
+    setMessage(null);
+    setView("signed-out");
+  }, []);
+
   // Keyed on the username, so a re-render of the same user keeps its socket.
   const signedIn = typeof view === "object" ? view.username : null;
   useEffect(() => {
     if (signedIn === null) return;
-    return watchSession(() => {
-      setMessage(null);
-      setView("signed-out");
-    });
-  }, [signedIn]);
+    return watchSession(sessionLost);
+  }, [signedIn, sessionLost]);
 
   function show(next: View) {
     setMessage(null);
@@ -207,19 +211,16 @@ function Access() {
     );
   }
   return (
-    <div className="access-form">
-      <p>
-        Signed in as <strong>{view.username}</strong>
-      </p>
+    <Library onSessionLost={sessionLost} notice={message}>
+      <span className="access-user">{view.username}</span>
       <button
-        className="access-button"
+        className="button-quiet"
         type="button"
         onClick={() => void signOut()}
       >
         Sign out
       </button>
-      {message && <p className="access-message">{message}</p>}
-    </div>
+    </Library>
   );
 }
 

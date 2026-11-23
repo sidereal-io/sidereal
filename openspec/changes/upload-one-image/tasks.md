@@ -32,7 +32,7 @@ design decision 5's table must return to planning. Keep the existing health and
 access tests green.
 
 - [x] 4.1 [medium] Add the six semantic color tokens of design decision 5 to DESIGN.md first; teach `web/scripts/tokens.ts` to write a semantic token as `var()` of the primitive it references, accepting only a value that is exactly `{<group>.<key>}` and still refusing raw values, unknown references, extra text after a reference and component tokens; extend `tokens.test.ts` to count semantic properties separately from primitives and check each alias value; run `pnpm tokens` in `web/`; update `web/README.md` to show the accepted `{<group>.<key>}` form and the cases still refused; move `Access.css` and `styles/base.css` to the semantic tokens for those roles, keeping the submit button's computed color; make the Access test's style helper follow `var()` chains to the final value, and add a test that `Access.css` uses no primitive that has a semantic token for its role (verify: pnpm --dir web test -- tokens.test.ts tokens-in-use.test.ts Access.test.tsx, then mise run check-web) (✓ pnpm --dir web test passed, 153 tests including tokens.test.ts, tokens-in-use.test.ts and Access.test.tsx; ✓ mise run check-web passed)
-- [ ] 4.2 [medium] Display committed images and literal filenames in a token-styled Library within Access's signed-in branch, with loading/empty/list-error/retry and image-display-error states, removing the library on sign-out or session loss and ignoring late responses (verify: pnpm --dir web test -- Library.test.tsx Access.test.tsx)
+- [x ] 4.2 [medium] Display committed images and literal filenames in a token-styled Library within Access's signed-in branch, with loading/empty/list-error/retry and image-display-error states, removing the library on sign-out or session loss and ignoring late responses (verify: pnpm --dir web test -- Library.test.tsx Access.test.tsx) (✓ pnpm --dir web test -- Library.test.tsx Access.test.tsx passed, 170 tests; ✓ mise run check-web passed; ✓ checked by eye at 1440 px and 390 px against the Showcase mockup, with five real PNG and JPEG uploads and one damaged PNG)
 - [ ] 4.3 [medium] Let Nova select and upload one image, showing the filename and pending state, preventing a second submission, displaying fixed refusal messages and refreshing the library after success without a page reload (verify: pnpm --dir web test -- Library.test.tsx)
 
 ## 5. Integration [depends-on: 4]
@@ -82,3 +82,23 @@ access tests green.
   `(.jobs.server.steps[], .jobs.e2e.steps[]) | select(.run == "mise run
   db-down") | .if` prints exactly two `always()` lines. The spec text is
   unchanged; the review can decide whether to fix it.
+- **4.2, the Library's look came from HTML drafts, not Penpot options.** The
+  user rejected the Penpot options on 'Options: library' and
+  'Options: library-directions', and then Gemini and Opus drafts. They chose
+  **Showcase, large** (`.workspace/library-simple/option-2.html`) and asked
+  for no more Penpot options. DESIGN.md records the choice in its new Top
+  bar and Library sections. No 'Library: chosen' record was drawn in
+  Penpot; the user allowed one but did not require it.
+- **4.2, one primitive beyond design decision 5.** Showcase rows aim for
+  300 px tall, so DESIGN.md gains `size-300`. The user asked for the row
+  height's token to go into DESIGN.md, so this does not return to planning.
+- **4.2, one top bar for every screen.** The user's layout puts the
+  wordmark, `Library`, Upload, the username and Sign out in one bar. App
+  owns the bar, so the health line stays mounted, and shows it in the bar
+  as quiet text; the Library puts its name and actions into the bar's two
+  places through a portal (`web/src/Bar.tsx`). The signed-out forms sit
+  under the same bar. The username is no longer in `<strong>`, so the
+  health line's `<strong>` stays the only one that the browser tests match.
+- **4.2, filename weight.** The filename uses the mono face at 14/20 with
+  `font-weight-400`, as in the chosen mockup, not mono-lg's
+  `font-weight-500`.

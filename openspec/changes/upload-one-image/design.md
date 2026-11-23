@@ -397,12 +397,21 @@ Client size/type hints do not replace server validation. On 401, notify Access
 to return to sign-in. Unmount aborts outstanding fetches and ignores late
 responses. Image load errors retain the name and show the fixed display message.
 
-Use a gallery-family layout: uncropped originals at their natural ratio,
-square corners, filename in the mono face, a primary violet Upload control,
-and quiet sign-out/retry controls. Display status colors only in badges.
-Use the semantic color tokens below and existing spacing, type and radius
-tokens. Do not add thumbnails, preview generation, image transforms, zoom,
-sorting controls or a client router.
+Use the Showcase layout that DESIGN.md's Library section records. App
+owns one top bar: the `Sidereal` wordmark, the screen's name, the health
+line, and a place for the screen's actions. The Library puts its name and
+its actions there: one primary Upload button, then the username and a
+quiet Sign out from Access. The bar and the health line stay mounted when
+the screen changes. Below the bar there is only the grid: uncropped
+originals at their natural ratio in justified rows that aim for `size-300`
+tall, square corners, and the filename under each in the mono face. The
+list API returns no width or height, so each frame keeps a 3:2 shape until
+its image loads and gives its own ratio. Every other state is one quiet
+line of text under the bar, and a list error adds a quiet Retry button.
+Display status colors only in badges. Use the semantic color tokens below
+and existing spacing, type and radius tokens, plus one new primitive,
+`size-300`, for the row height. Do not add thumbnails, preview
+generation, image transforms, zoom, sorting controls or a client router.
 
 **New semantic tokens (D13).** The Library is the first component to need
 these roles, and DESIGN.md says a semantic token is added when a component
@@ -451,7 +460,10 @@ use `visual-options` as DESIGN.md requires, record the selected component
 treatment there, and verify it uses these tokens. That visual comparison can
 adjust presentation within this plan. A choice that changes scope or needs
 token values beyond this table returns to planning rather than silently
-expanding the task.
+expanding the task. The user rejected the Penpot options and chose the
+Showcase layout from a set of HTML drafts instead. It needs one value
+beyond this table, the `size-300` row height, which the user asked to add
+to DESIGN.md; the tasks' Deviations Ledger records both.
 
 Alternative: a separate asset page and viewer would introduce the later
 viewing story early. Keeping the library inside the current access lifecycle

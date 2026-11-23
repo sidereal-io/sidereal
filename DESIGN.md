@@ -76,6 +76,7 @@ x-sidereal:
     border-width-1: 1px
   size:
     size-32: 32px
+    size-300: 300px
     size-1280: 1280px
   semantic:
     color-action-primary: "{colors.violet-600}"
@@ -218,6 +219,7 @@ content:
 - Desktop screens use a 12-column grid with `spacing-32` margins and
   `spacing-24` gutters.
 - Table rows are `size-32` tall, for dense data.
+- Library rows aim for `size-300` tall; see [Library](#library).
 
 | Spacing | Use |
 |---|---|
@@ -262,10 +264,53 @@ on near-black surfaces, so don't add shadows.
 
 ## Components
 
-There are no components yet. Each component is built when a screen first needs
-it, styled only through tokens, and drawn as options in Penpot before it is
-built. When a component needs a role this file doesn't name, it adds a semantic
-token; see [How tokens grow](#how-tokens-grow).
+Each component is built when a screen first needs it, styled only through
+tokens, and drawn as options in Penpot before it is built. When a component
+needs a role this file doesn't name, it adds a semantic token; see
+[How tokens grow](#how-tokens-grow).
+
+### Top bar
+
+Every screen starts with one bar across the top of the page.
+
+- **Left:** the `Sidereal` wordmark in headline-sm, then the screen's name in
+  `color-text-secondary`, after a `/` separator in `obsidian-600`.
+- **Right:** the server's health in `color-text-secondary`, then the screen's
+  actions. The Library's actions are one primary Upload button, the
+  username in `color-text-body`, and a quiet Sign out button.
+- **Shape:** `spacing-12` above and below, `spacing-32` at the sides, and a
+  `border-width-1` bottom edge in `color-border-hairline`. Buttons are
+  `size-32` tall with `radius-4`.
+- **Quiet buttons** have no fill: `color-text-secondary` text, and on hover the
+  ghost tint with `color-text-body` text.
+
+### Library
+
+The Library is the signed-in home screen. Its layout is **Showcase**: the
+images carry the page, and nothing else competes with them.
+
+- **Below the top bar there is only the grid.** No panels, cards, badges,
+  captions, or upload form.
+- **Each image is shown whole,** uncropped, at its own aspect ratio, with
+  square corners. Until an image loads, its frame keeps a 3:2 shape; a small
+  shift when it loads is accepted.
+- **Rows are justified.** Each row aims for `size-300` tall, and its images
+  grow together to fill the width, so a laptop 1440px wide shows 2 or 3 images
+  a row. A narrow phone shows one a row. The last row keeps its images at the
+  aimed height instead of stretching them.
+- **Spacing:** `spacing-32` page margin, `spacing-24` between images in a row,
+  and `spacing-32` between rows.
+- **The filename sits under each image,** `spacing-12` below it, in the mono
+  face at `font-size-14`, `line-height-20` and `font-weight-400`, in
+  `color-text-body`. It is the image's only label.
+- **Upload is one primary button.** It opens the file picker, and choosing a
+  file starts the upload at once.
+- **Every other state is one quiet line of `color-text-secondary` text** under
+  the top bar: loading, uploading, a refused file, and a list that failed to
+  load, which adds a quiet Retry button. An empty library shows one plain line
+  in the grid's place. An image that cannot display keeps its name, and its
+  3:2 frame shows the message in `color-text-secondary` inside a
+  `color-border-hairline` edge.
 
 ## Do's and Don'ts
 

@@ -44,3 +44,10 @@
   color: var(--sr-color-text-secondary);
   font-size: var(--sr-font-size-14);
 }
+
+/* The signed-in username in the top bar. */
+.access-user {
+  color: var(--sr-color-text-body);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+}

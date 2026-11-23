@@ -56,7 +56,7 @@ function HealthStatus() {
   }, []);
 
   return (
-    <p>
+    <p className="health-status">
       Server: <strong>{health}</strong>
     </p>
   );
