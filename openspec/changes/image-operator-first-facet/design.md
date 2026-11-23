@@ -63,7 +63,15 @@ renames nothing that already exists in the contract.
   (`server/crates/server/tests/assets.rs`), against a fresh PostgreSQL
   database and paired storage per test. They drive upload, the new
   `GET /api/assets/{id}`, and the failure cases, and read `operation_runs`
-  and `facet_values` through SQL, as the existing tests read `assets`.
+  and `facet_values` through SQL, as the existing tests read `assets`. They
+  own the outcomes only the server can show: an Operator panic leaves the
+  server answering the next request, and a client that goes away during the
+  commit still gets its run (decision 5).
+- **Database fixture:** every test against PostgreSQL (core's database
+  tests and the server's route tests) needs the fixture that CONTRIBUTING.md
+  names: `mise run db-up`, then
+  `export TEST_DATABASE_URL=$(mise run db-test-url)`. Without it,
+  `TestDatabase::new` stops the test before any assertion.
 - **Existing seams reused:**
   - `plugin-abi`'s unit tests (`mod source_execution` pattern) for facet
     declarations, the namespace rule and Operator execution with in-memory
@@ -73,9 +81,13 @@ renames nothing that already exists in the contract.
     provenance, using test Operators registered through the public contract.
   - core's schema-snapshot test (`startup/tests.rs`) and upgrade test for
     migration 5.
-  - `server/tests/web_root.rs` for the `/assets/<id>` answer.
+  - `server/tests/web_root.rs` for the `/assets/<id>` answer to `GET` and
+    `HEAD`, the files `index.html` names, and a file at a reserved address.
+    The browser journey runs through Vite, so this is the seam for the built
+    shell.
   - Vitest with jsdom (`web/src/*.test.tsx`) for the asset page and
-    navigation.
+    navigation, and a Vitest test that reads `AssetPage.css` for the
+    "uses tokens" scenario.
   - The browser journey (`web/e2e/upload.spec.ts`, run by `mise run e2e`) for
     upload → open the page → see the file size → reload.
 
@@ -85,7 +97,8 @@ renames nothing that already exists in the contract.
   declarations), a migration with three tables, and a trust boundary: which
   plugin may write which fact.
 - **Blast radius:** `plugin-abi` (public API, ABI version 2), both packs,
-  core's database schema and a new `operations` module, the upload route and
+  core's database schema, a new `operations` module and the `User` type
+  (which gains the user's id), the upload route and
   the web-file fallback in the server, and the web app's signed-in view.
   Existing Assets and versions are read but never changed.
 
@@ -134,51 +147,105 @@ pub struct FacetSchema {
 }
 
 pub enum FacetValue { Integer(i64) }
+
+/// The largest count: the largest whole number a JavaScript client reads
+/// exactly (`Number.MAX_SAFE_INTEGER`).
+pub const MAX_COUNT: i64 = 9_007_199_254_740_991;
 ```
 
-`FacetValue::Integer` takes any `i64`, so an Operator can propose -1 and core
-can refuse it, as the spec's scenario needs. `OperatorError` mirrors
-`SourceError` without `Refused`: `Unsupported` and `Failed(String)`.
+`FacetValue::Integer` takes any `i64`, so an Operator can propose -1, or a
+number above `MAX_COUNT`, and core can refuse it, as the spec's scenarios
+need. A `Count` fits when it is from 0 to `MAX_COUNT`. The API sends the
+value as a JSON number, and the page reads it exactly, so core, the API and
+the page accept the same range (decision 8).
+
+`OperatorError` mirrors `SourceError` without `Refused`: `Unsupported` and
+`Failed(String)`. Core records a `Failed` reason that is empty, or only
+spaces, as `the operator gave no reason`, so the stored reason is never
+empty.
 
 A pack declares a schema with `Registry::declare_facet(schema)`. The host
 registers each pack through a new `Registry::register_pack(&dyn Pack) ->
 Result<(), RegistryError>`. It notes the pack's id, calls `Pack::register`,
-and then checks what the pack declared: a name already declared, or a name
-that does not start with `<pack id>.`, is refused with an error that names
-the facet. `Pack::register` keeps its signature, so packs do not handle
-errors. The server builds its Registry through `register_pack` for both
-packs. A conflict among compiled-in packs is a build defect: `Library::new`
-panics with the error's message, and a server unit test builds the
-production Registry so the defect fails `mise run check`, not a start.
+and then checks what the pack declared and registered:
+
+- a facet name already declared, or one that does not start with
+  `<pack id>.`, is refused with an error that names the facet;
+- an Operator id that another registered Operator already has is refused
+  with an error that names the id.
+
+**The grant is fixed at registration.** When an Operator is registered, the
+Registry calls its `id()`, `version()` and `writes()` once and keeps the
+answers in a host-owned entry. The Registry never calls `writes()` again.
+`Registry::execute_operator` takes the producer and the grants from that
+entry, so an Operator that answers `writes()` differently later (through
+interior mutability) cannot widen its grants or change its identity. This is
+the registration-time approval that D4 describes, and the place where
+plugin installation (#361) will later add its own approval step (ADR-007).
+
+`Pack::register` keeps its signature, so packs do not handle errors. The
+server builds its Registry through `register_pack` for both packs. A
+conflict among compiled-in packs is a build defect: `Library::new` panics
+with the error's message, and a server unit test builds the production
+Registry so the defect fails `mise run check`, not a start.
 
 `ABI_VERSION` becomes 2. The astro `PlateSolveOperator` stub gains a version,
 an empty `writes()`, and a `run` that returns `OperatorError::Unsupported`.
 
 `Registry::execute_operator(id, candidate, log, cancelled)` runs the
-Operator and returns its proposals with host-made provenance (`producer_id`,
-`producer_version` from the registered Operator), or an `ExecutionError`.
-It does not check grants or schemas: core does (decision 3).
+Operator and returns its proposals with host-made provenance
+(`producer_id`, `producer_version`) and the grants, all from the
+registration entry, or an `ExecutionError`. It does not check grants or
+schemas: core does (decision 3).
+
+A schema's `scope` says what the value describes. Core stores an
+`AssetVersion` value against the version the run read, and an `Asset` value
+against the Asset that owns that version (decision 3). The file-size facet
+is an `AssetVersion` facet.
 
 ### 3. Core's executor checks everything before it stores anything
 
 A new core module, `operations`, holds
-`run_operator(database, objects, registry, operator_id, version, cancelled)`.
-In order:
 
-1. Insert an `operation_runs` row with status `running`, the Operator's id
-   and version, the Asset version id and `started_at = now()`, in its own
-   transaction, so a failed run is still recorded.
+```rust
+pub async fn run_operator(
+    database: &Database,
+    objects: &ObjectStore,
+    registry: Arc<Registry>,
+    run: RunRequest,            // operator_id, asset_version_id, actor (a user id)
+    cancelled: Arc<AtomicBool>,
+) -> Result<RunOutcome, OperationError>;
+
+pub enum RunOutcome { Succeeded, Failed(String) }
+pub enum OperationError { Unrecorded(DatabaseError) }
+```
+
+`RunOutcome` is what the run's row says. `OperationError::Unrecorded` means
+core could not record the run's start, or could not record or read back how
+it ended; the outcome is then unknown. In order:
+
+1. Read the version's row: its Asset id, content hash and recorded
+   `byte_size`. Insert an `operation_runs` row with status `running`, the
+   Operator's id and version from the registration entry, the version id,
+   the actor and `started_at = now()`, in its own transaction, so a failed
+   run is still recorded.
 2. On a blocking worker, open the version's object with
-   `ObjectStore::open_object(content_hash)` and expose it as a `Candidate`
-   through positioned reads. Run `Registry::execute_operator`. Log lines go
-   to standard error as `operator <id>: <line>`, as Source lines do.
+   `ObjectStore::open_object(content_hash)`. If the opened file's length is
+   not the version's `byte_size`, the run fails with the reason
+   `the stored object does not match its version`, and the Operator does
+   not run. Otherwise expose the file as a `Candidate` through positioned
+   reads, with `size()` equal to `byte_size`, and run
+   `Registry::execute_operator`. Log lines go to standard error as
+   `operator <id>: <line>`, as Source lines do.
 3. Check each proposal: a registered schema exists for the name (unknown);
-   the name is in the Operator's `writes()` (grant); the value fits the
-   schema's type (a `Count` is `>= 0`). Check cancellation once more.
-4. In one transaction: upsert each used schema into `facet_schemas`, insert
-   every value into `facet_values`, and set the run to `succeeded` with
-   `ended_at`. On any failure from steps 2–4, set the run to `failed` with
-   its reason and `ended_at`, and store no value.
+   the name is in the registration entry's grants (grant); the value fits
+   the schema's type (a `Count` is from 0 to `MAX_COUNT`). Check
+   cancellation once more.
+4. In one transaction: write each used schema's row (decision 4), insert
+   every value into `facet_values` against the subject its scope names, and
+   set the run to `succeeded` with `ended_at`. On any failure in steps 2–4,
+   set the run to `failed` with its reason and `ended_at`, and store no
+   value.
 
 A panic in the Operator ends the blocking task with a join error; core
 records `failed` with the reason `the operator stopped`. An `Unsupported` or
@@ -186,10 +253,25 @@ records `failed` with the reason `the operator stopped`. An `Unsupported` or
 reason names the facet, for example `facet test.width is not granted to
 test.op`.
 
-Core takes schemas from the Registry at run time, so it never trusts what a
-pack wrote into the database earlier. The `facet_schemas` rows are a copy for
-integrity (a value always has a schema row) and for reading labels and units
-without the Registry.
+**A finished run never changes.** Every update that ends a run, to
+`succeeded` or to `failed`, has the condition
+`WHERE id = $1 AND status = 'running'`. So a run that is `failed` never has
+stored values, and a run that is `succeeded` is never marked `failed`.
+
+**When the final commit's answer is lost.** If the commit in step 4 returns
+an error, core cannot tell whether PostgreSQL committed it. Core then sends
+the conditional failure update on a fresh connection, with the reason
+`the values could not be stored`:
+
+- one row changed: the commit did not land; the outcome is `Failed`;
+- no row changed: the commit landed; core reads the status back and
+  returns it (`Succeeded`);
+- the update or the read fails: core returns `Unrecorded`, and the row may
+  stay `running`, as a server stop leaves it (see Risks).
+
+Core takes schemas and grants from the Registry at run time, so it never
+trusts what a pack wrote into the database earlier. The `facet_schemas`
+rows keep each schema version as values were written under it (decision 4).
 
 ### 4. The tables: migration 5
 
@@ -199,8 +281,9 @@ CREATE TABLE public.operation_runs (
     operator_id TEXT NOT NULL CHECK (operator_id <> ''),
     operator_version TEXT NOT NULL CHECK (operator_version <> ''),
     asset_version_id UUID NOT NULL REFERENCES public.asset_versions (id),
+    actor_user_id UUID NOT NULL REFERENCES public.users (id),
     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
-    reason TEXT CHECK (reason <> ''),
+    reason TEXT CHECK (btrim(reason) <> ''),
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
     CHECK ((status = 'failed') = (reason IS NOT NULL)),
@@ -209,26 +292,28 @@ CREATE TABLE public.operation_runs (
 );
 
 CREATE TABLE public.facet_schemas (
-    name TEXT PRIMARY KEY CHECK (name ~ '^[a-z0-9-]+(\.[a-z0-9-]+)+$'),
+    name TEXT NOT NULL CHECK (name ~ '^[a-z0-9-]+(\.[a-z0-9-]+)+$'),
+    version INTEGER NOT NULL CHECK (version >= 1),
     owner_pack TEXT NOT NULL CHECK (owner_pack <> ''),
     label TEXT NOT NULL CHECK (label <> ''),
-    value_type TEXT NOT NULL CHECK (value_type IN ('count')),
+    value_type TEXT NOT NULL CHECK (value_type <> ''),
     unit TEXT NOT NULL,
     scope TEXT NOT NULL CHECK (scope IN ('asset', 'asset_version')),
-    version INTEGER NOT NULL CHECK (version >= 1)
+    PRIMARY KEY (name, version)
 );
 
 CREATE TABLE public.facet_values (
     id UUID PRIMARY KEY,
-    facet TEXT NOT NULL REFERENCES public.facet_schemas (name),
+    facet TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
     asset_id UUID REFERENCES public.assets (id),
     asset_version_id UUID REFERENCES public.asset_versions (id),
     value JSONB NOT NULL CHECK (jsonb_typeof(value) <> 'null'),
     producer_id TEXT NOT NULL CHECK (producer_id <> ''),
     producer_version TEXT NOT NULL CHECK (producer_version <> ''),
     run_id UUID NOT NULL REFERENCES public.operation_runs (id),
-    schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
     written_at TIMESTAMPTZ NOT NULL,
+    FOREIGN KEY (facet, schema_version) REFERENCES public.facet_schemas (name, version),
     CHECK ((asset_id IS NULL) <> (asset_version_id IS NULL))
 );
 CREATE INDEX facet_values_asset ON public.facet_values (asset_id);
@@ -240,8 +325,18 @@ CREATE INDEX facet_values_value ON public.facet_values USING GIN (value jsonb_pa
   on it, as the user chose and
   [ADR-017](../../../docs/decisions/ADR-017-facet-value-rows.md) records. The
   row keeps each value's provenance in typed columns, with foreign keys to its
-  schema, its Asset or Asset version, and its run. A file size is stored as a
-  bare JSON number, such as `1234567`. A new value type needs no migration.
+  schema version, its Asset or Asset version, and its run. A file size is
+  stored as a bare JSON number, such as `1234567`. A new value type needs no
+  migration: `value_type` is free text that core checks, as it checks values.
+- **The actor is on the run.** ADR-008's provenance names an actor: who
+  caused the write. Every run in this change starts from an upload, so its
+  actor is the signed-in administrator, stored as `actor_user_id`. Each value
+  reaches its actor through `run_id`, as it reaches the run's times. User
+  rows are never deleted, so the reference stays valid. Core's `User` type
+  gains `id: Uuid`, and the session query reads it from `users.id`, so the
+  session guard hands it to the upload handler.
+  A later story that starts runs without a person (processing goals, #527)
+  decides how to record that actor.
 - **Core checks the value's type, not PostgreSQL.** A row check cannot read
   the schema's `value_type` in another table, so the database only refuses
   JSON `null`. Core checks every value against the Registry's schema before it
@@ -249,8 +344,8 @@ CREATE INDEX facet_values_value ON public.facet_values USING GIN (value jsonb_pa
 - **Writing and reading the column.** The workspace's `sqlx` gains its `json`
   feature, so core binds and reads `serde_json::Value`. Core turns
   `FacetValue::Integer(n)` into a JSON number, and reads a `count` value back
-  with `as_i64()`; a stored value that is not a whole number of zero or more
-  is a database error, not a fact.
+  with `as_i64()`; a stored value that is not a whole number from 0 to
+  `MAX_COUNT` is a database error, not a fact.
 - **The GIN index uses `jsonb_path_ops`,** which serves containment (`@>`)
   and JSON path matches. Range comparisons on one facet, which later
   Selectors need, will add an expression index for that facet in the story
@@ -261,63 +356,113 @@ CREATE INDEX facet_values_value ON public.facet_values USING GIN (value jsonb_pa
   column on `assets` and `asset_versions`. It changes version rows that
   `asset-library` keeps immutable, and the database cannot check a value's
   run reference. ADR-017 gives the full reasons.
-- **`facet_schemas` rows are written when a value first needs them**, inside
-  the run's transaction, with `ON CONFLICT (name) DO UPDATE` from the running
-  build's declaration. Startup writes nothing new, so the readiness, restore
-  and "nothing is stored" checks keep their behavior, and the upgrade
-  scenario's tables are empty. `schema_version` on each value keeps the
-  version that applied when it was written.
+- **One `facet_schemas` row per schema version, never changed.** A row is
+  written when a value first needs it, inside the run's transaction, with
+  `INSERT … ON CONFLICT (name, version) DO NOTHING`. Core then reads the row
+  back and compares it with the running build's declaration. If the label,
+  unit, value type, scope or owner differ, the run fails with the reason
+  `facet <name> version <n> changed without a new version`, and stores
+  nothing. So a value is always read with the label and unit of the schema
+  version it was written under, and a build that changes a facet's meaning
+  must raise its version (ADR-008). Startup writes nothing new, so the
+  readiness, restore and "nothing is stored" checks keep their behavior, and
+  the upgrade scenario's tables are empty.
 - **No unique key on (facet, version).** ADR-008 keeps every observation; a
   rule for which value is current is not part of this change.
 - Mint all ids in core with `Uuid::new_v4()`, as `assets.rs` does.
 - Regenerate `core/schema/5.json` with `mise run db-schema` and add it to
   `baselines()`.
 
-### 5. Upload runs the file-size Operator after the commit
+### 5. Upload runs the file-size Operator in the task that commits
 
-After `ingest()` returns the saved record, the upload handler calls
-`tokio::spawn` with `run_operator(…, FILE_SIZE, …)` and awaits the join
-handle. A spawned task keeps running when its handle is dropped, so a client
-that goes away does not stop the run. The run gets its own cancel flag,
-never set by the request; `CancelOnDrop` keeps guarding only the ingest
-before the commit.
+Once the upload is staged, the handler calls `tokio::spawn` with one task
+that runs `ingest()` and then, when ingest returns the saved record,
+`run_operator(…, RunRequest { FILE_SIZE, version id, actor: user.id }, …)`.
+The handler awaits the task's join handle. A spawned task keeps running when
+its handle is dropped. So once the task has started, a client that goes
+away cannot stop the commit or the run: there is no point after the commit
+where the run has not yet been started. This closes the gap where the
+request future is dropped while the commit is pending.
 
-Whatever the run's result, the handler answers 201 with the existing body.
-A failed run, a refused proposal, a failure to record the run, or a join
-error writes one line through the server's `Log`:
-`file-size run failed for asset <id>: <error>`.
+The two cancel flags keep their jobs. `CancelOnDrop` sets ingest's flag when
+the request is dropped. Ingest checks it during the Source run and once
+before publication, as it does today, so a client that goes away before
+then still leaves nothing behind. The run gets its own flag, which the
+request never sets.
+
+The task writes the log line itself, because the handler may be gone.
+Whatever the run's result, the upload answers 201 with the existing body:
+
+- `RunOutcome::Failed(reason)` writes
+  `file-size run failed for asset <id>: <reason>`;
+- `OperationError::Unrecorded` writes
+  `file-size run not recorded for asset <id>: <error>`. This tells the
+  operator that the outcome is unknown, unlike a failed or refused run,
+  which is recorded and stored no value.
+
+A join error of the whole task (a panic in core, not in the Operator) is a
+server fault: the handler answers 500 as other upload faults do and logs
+`upload failed: the upload task stopped`.
 
 The image pack exports `FILE_SIZE` (the Operator id `image.measure-file-size`)
 and `FILE_SIZE_FACET` (`image.file-size`). The Operator proposes
 `context.candidate_size()` as the value. It reads no bytes: the size is the
-fact, and `ObjectStore::open_object` already gives core the stored size.
+fact, and core has already checked that the stored object's length is the
+version's recorded size (decision 3, step 2).
 
 For tests, `Library` gains two `#[doc(hidden)]` builders, like
 `with_original_reader`: `with_registry(Registry)` and
 `with_upload_operators(Vec<String>)`. A test registers the image pack plus a
-test pack whose Operator fails, blocks on a channel, or proposes a refused
-value, and points upload at it.
+test pack whose Operator fails, panics, blocks on a channel, or proposes a
+refused value, and points upload at it.
+
+The commit gap has its own route test. The test holds
+`LOCK TABLE public.assets IN ACCESS EXCLUSIVE MODE` in an open transaction,
+starts an upload, and waits until `pg_locks` shows the upload's insert
+waiting on that lock: ingest has then passed its last cancellation check.
+The test drops the request, releases the lock, and checks that the Asset,
+a `succeeded` file-size run and the file-size value all exist.
 
 ### 6. `GET /api/assets/{id}` returns the Asset with its facets
 
 The route sits in `assets::routes`, inside the session guard. It parses the
 id like the original route (404 for a malformed id), reads the Asset, then
 calls a new `Database::facets(asset_id, current_version_id)`. That query
-joins `facet_values` to `facet_schemas` for values whose `asset_id` is the
-Asset or whose `asset_version_id` is its current version, ordered by facet
-name, then `written_at`, then id. The body is the list entry plus
-`"facets": [{"name", "label", "value", "unit"}]`. A database error is 503
+joins each value in `facet_values` to its own schema version's row in
+`facet_schemas`, on `(facet, schema_version)`, for values whose `asset_id`
+is the Asset or whose `asset_version_id` is its current version. It orders
+them by facet name, then `written_at`, then id. A database error is 503
 with the library's fixed message.
+
+The body wraps the entry in `asset`, as upload's 201 body does:
+
+```json
+{"asset": {"id": "…", "kind": "image", "name": "nebula.png",
+           "current_version_id": "…", "original_url": "/api/assets/…/original",
+           "facets": [{"name": "image.file-size", "label": "File size",
+                       "value": 1234567, "unit": "bytes"}]}}
+```
+
+The route is a read. The origin check lets `GET` and `HEAD` pass
+(`access/guard.rs`, `origin`), as it does for the list and the original, so
+its tests assert 401 without a session and no origin refusal. The
+forbidden-origin regression stays with upload's tests.
 
 ### 7. The server answers `/assets/<id>` with `index.html`
 
 `with_web_root` wraps its file fallback in one small service. When the path
 matches `^/assets/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
-it answers with the same `ServeFile` for `index.html` that `/` uses.
-Every other path goes to `ServeDir` unchanged, so Vite's `/assets/index-….js`
-files, a tester's `assets/index.html`, and every 404 keep working. The match
-is on the exact text: an uppercase id or a trailing slash is not an asset
-page address. Vite's output folder stays where it is.
+it answers `GET` and `HEAD` with the same `ServeFile` for `index.html` that
+`/` uses. Every other path goes to `ServeDir` unchanged, so Vite's
+`/assets/index-….js` files, a tester's `assets/index.html`, and every 404
+keep working. The match is on the exact text: an uppercase id or a trailing
+slash is not an asset page address. Vite's output folder stays where it is.
+
+An asset page address is reserved. A file or folder in `WEB_ROOT` whose path
+is an asset page address is never served: the address answers with
+`index.html`. Vite names its files with a hash and an extension, so no built
+file has such a path. A `web_root` test puts a file at one such path and
+checks that the address still answers with `index.html`.
 
 - *Alternative:* an axum route `/assets/{id}`. It would capture every
   one-segment path under `/assets/`, including Vite's own files, so it would
@@ -351,6 +496,8 @@ Each Library image and its name become one `Link` to `/assets/<id>`.
 `Library` does, and accepts the body only when `asset.id` equals the page's
 id, `original_url` is `/api/assets/<id>/original`, and every facet has
 string `name`, `label` and `unit` and a non-negative safe-integer `value`.
+Core stores no count above `MAX_COUNT` (decision 2), so a valid answer always
+passes this check.
 Values are formatted with `Intl.NumberFormat("en-US")`, so the grouping is
 commas in every locale. Its states follow the spec: loading, not found,
 failed with Retry, loaded, and loaded with no facts. The image uses the
@@ -392,17 +539,24 @@ Decisions 5, 7 and 8 are reversible inside one story.
 
 ## Risks / Trade-offs
 
-- [A server that stops during a run leaves an `operation_runs` row in
-  `running` for good] → Accepted for this change: the Asset is saved and only
-  the fact is missing. Processing goals and their states (#527) own
-  recovery; this change adds no retry.
+- [A server that stops during a run, or a database that fails while core
+  records how a run ended, leaves an `operation_runs` row in `running` for
+  good] → Accepted for this change: the Asset is saved, and either the fact
+  is missing or, after a lost commit answer, the fact is stored and the row
+  reads `running`. The log line `file-size run not recorded …` says so.
+  Processing goals and their states (#527) own recovery; this change adds no
+  retry.
+- [A stored object changed on disk to another file of the same size passes
+  the size check] → Accepted: core does not hash the object again before
+  each run, which would read every byte for every Operator. Detecting
+  out-of-band changes belongs to reconciliation (ADR-003).
+- [A build that changes a facet's label or unit without raising its version
+  fails every run that writes it] → Intended: the stored schema version
+  never changes, so the pack author must raise the version. The failure
+  reason names the facet and the version.
 - [Upload now waits for one extra run and database transaction] → The
   file-size Operator reads no bytes and does one small transaction. The
   route tests time nothing, but the browser journey's existing limits stay.
-- [`facet_schemas` rows follow the newest build's label and unit, so an
-  older value can show under a changed label] → Each value keeps its
-  `schema_version`; a breaking change to a facet needs a new version
-  (ADR-008). There is one schema at version 1 today.
 - [The image pack and core both know a file's size, so the fact repeats
   `asset_versions.byte_size`] → Intended (D3): the smallest fact that proves
   the contract.

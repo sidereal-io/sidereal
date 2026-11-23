@@ -24,20 +24,23 @@ ADR-008 requires each stored value to carry its own provenance: the plugin and i
 
 Store each facet value as one row in a `facet_values` table. The row holds:
 
-- the facet's name, with a foreign key to its schema row;
+- the facet's name and schema version, with a foreign key to that schema version's row;
 - exactly one subject: an Asset or an Asset version, with a foreign key;
-- the provenance, in typed columns: producer id, producer version, schema version, write time, and a foreign key to the operation run;
+- the provenance, in typed columns: producer id, producer version, write time, and a foreign key to the operation run, which records the actor who started it;
 - the value, in a `JSONB` column with a GIN index.
 
-Core checks each value against its facet schema before it stores the row. The database only refuses a JSON `null` value, because a row check cannot read the schema's value type from another table.
+Keep one schema row for each facet name and schema version, and never change it. A value is then always read with the label, unit and type of the schema version it was written under.
+
+Core checks each value against its facet schema before it stores the row. The database only refuses a JSON `null` value, because a row check cannot read the schema's value type from another table. The schema row's value type is free text that core checks, so the database lists no value types.
 
 This replaces only ADR-004's rule on where facets live. ADR-004's choice of PostgreSQL, sqlx and forward-only migrations still applies.
 
 ## Consequences
 
-- PostgreSQL checks what matters for trust: every value has a schema, a subject and a run that exist. Asset and Asset version rows never change when a fact is learned.
+- PostgreSQL checks what matters for trust: every value has a schema version, a subject and a run that exist. Asset and Asset version rows never change when a fact is learned.
+- A pack that changes a facet's label, unit or type must raise the schema version. Core refuses to write under a kept version whose declaration changed.
 - Several producers can hold values for one facet on one subject, each with its own provenance, with no shared document to merge.
-- A new value type (text, a decimal number, coordinates) needs no migration. Core learns the type, and the column already holds any JSON value.
+- A new value type (text, a decimal number, coordinates) needs no migration. Core learns the type, the value column already holds any JSON value, and the schema table does not list types.
 - The database does not check the value's type. A bug in core's checks could store a text value under a whole-number facet. Core's tests own that rule, and core is the only writer.
 - Reading all of an Asset's facets is a join and many rows, not one column. With an index on each subject column, this stays cheap at the size of one person's library.
 - The GIN index serves containment and JSON path matches. A range comparison on one facet, such as "exposure longer than 300 seconds", needs an expression index for that facet. The first feature that needs such a query adds it.

@@ -58,12 +58,30 @@ proposing Operator's list.
 - **THEN** the run is recorded as failed with a reason that names `test.width`
 - **AND** core stores no facet value from that run
 
+### Requirement: An Operator's grants and identity are fixed when it registers
+
+The Registry SHALL record an Operator's id, version and list of facets once,
+when its pack registers it. Core SHALL check grants, and record the
+producer, from that record only. The Registry SHALL refuse an Operator whose
+id another registered Operator already has.
+
+#### Scenario: The Operator's list changes after registration
+- **WHEN** an Operator lists only `test.size` when it registers, later answers that it writes `test.size` and `test.width`, and then proposes a value for `test.width`
+- **THEN** the run is recorded as failed with a reason that names `test.width`
+- **AND** core stores no facet value from that run
+
+#### Scenario: Two Operators with one id
+- **WHEN** a pack registers an Operator with the id `test.op`, and a second pack registers another Operator with the id `test.op`
+- **THEN** the Registry refuses the second pack with an error that names `test.op`
+
 ### Requirement: Core checks every proposal before it stores any
 
 Core SHALL refuse a proposed value whose facet has no registered schema, or
 whose value does not fit the schema's value type. The only value type is a
-whole number of zero or more. When core refuses any proposal from a run, it
-SHALL record the run as failed and SHALL store none of that run's proposals.
+count: a whole number from 0 to 9,007,199,254,740,991, the largest whole
+number a JavaScript client reads exactly. When core refuses any proposal
+from a run, it SHALL record the run as failed and SHALL store none of that
+run's proposals.
 
 #### Scenario: An unknown facet
 - **WHEN** an Operator that lists `test.missing` proposes a value for it, and no pack declares a schema named `test.missing`
@@ -71,9 +89,18 @@ SHALL record the run as failed and SHALL store none of that run's proposals.
 - **AND** core stores no facet value from that run
 
 #### Scenario: A value that does not fit its type
-- **WHEN** an Operator proposes the value -1 for a facet whose value type is a whole number of zero or more
+- **WHEN** an Operator proposes the value -1 for a count facet
 - **THEN** the run is recorded as failed with a reason that names the facet
 - **AND** core stores no facet value from that run
+
+#### Scenario: A count above the largest count
+- **WHEN** an Operator proposes the value 9007199254740992 for a count facet
+- **THEN** the run is recorded as failed with a reason that names the facet
+- **AND** core stores no facet value from that run
+
+#### Scenario: The largest count
+- **WHEN** an Operator proposes the value 9007199254740991 for a count facet
+- **THEN** core stores the value 9007199254740991
 
 #### Scenario: One refused proposal among valid ones
 - **WHEN** an Operator proposes a valid value for `test.size` and then a value for a facet it did not declare
@@ -84,44 +111,104 @@ SHALL record the run as failed and SHALL store none of that run's proposals.
 
 Core SHALL record one operation run for each time it runs an Operator. The
 record SHALL hold its own opaque id, the Operator's id and version, the Asset
-version it read, when it started and ended, and how it ended: `succeeded` or
-`failed`. A failed run SHALL record its reason. A run SHALL be `failed` when
-the Operator reports a failure, when it stops abnormally, when the host
-cancels it, or when core refuses a proposal. A run that ends with no
-proposals and no failure SHALL be `succeeded`.
+version it read, the user who started it, when it started and ended, and
+how it ended: `succeeded` or `failed`. A run that ends with no proposals and
+no failure SHALL be `succeeded`.
 
 #### Scenario: A successful run
-- **WHEN** core runs an Operator that proposes one valid value
-- **THEN** one operation run exists with outcome `succeeded`, the Operator's id and version, the version it read, and an end time no earlier than its start time
+- **WHEN** an administrator's action makes core run an Operator that proposes one valid value
+- **THEN** one operation run exists with outcome `succeeded`, the Operator's id and version, the version it read, that administrator as the user who started it, and an end time no earlier than its start time
+
+### Requirement: A run that does not finish cleanly is recorded as failed
+
+A run SHALL be `failed` when the Operator reports a failure, stops
+abnormally, or is cancelled, or when core refuses a proposal. A failed run
+SHALL record a reason that is not empty, and core SHALL store no facet value
+from it.
 
 #### Scenario: The Operator reports a failure
 - **WHEN** an Operator returns the failure `could not read the header`
 - **THEN** its operation run is `failed` with the reason `could not read the header`
 - **AND** core stores no facet value from that run
 
+#### Scenario: The Operator reports a failure with no reason
+- **WHEN** an Operator returns a failure whose reason is empty
+- **THEN** its operation run is `failed` with the reason `the operator gave no reason`
+
 #### Scenario: The Operator stops abnormally
 - **WHEN** an Operator panics during its run
 - **THEN** its operation run is `failed` with a reason that says the Operator stopped
-- **AND** the server goes on answering requests
+- **AND** core stores no facet value from that run
 
 #### Scenario: The host cancels the run
 - **WHEN** the host cancels a run after the Operator proposed a valid value
 - **THEN** the operation run is `failed` with a reason that says it was cancelled
 - **AND** core stores no facet value from that run
 
+### Requirement: A finished run never changes
+
+Once core has recorded a run as `succeeded` or `failed`, it SHALL NOT change
+that record. A `failed` run SHALL have no stored facet values. When core
+cannot tell whether a run's values were stored, it SHALL read the run's
+record back and report what it holds.
+
+#### Scenario: A failure recorded after the values were stored
+- **WHEN** core has stored a run's values and recorded it `succeeded`, and then tries to record that run as failed, as it does after the answer to its commit is lost
+- **THEN** the run stays `succeeded` and its values remain
+- **AND** core reports the run as succeeded
+
+### Requirement: The Operator reads only the bytes its version recorded
+
+Before it runs an Operator, core SHALL check that the stored object's size
+is the size its Asset version recorded. When the sizes differ, core SHALL
+record the run as failed with a reason that says the stored object does not
+match its version, and SHALL NOT run the Operator.
+
+#### Scenario: The stored object changed on disk
+- **WHEN** the stored object of a version of 1,234,567 bytes is cut to 1,000 bytes outside Sidereal, and core runs an Operator over that version
+- **THEN** the run is recorded as failed with a reason that says the stored object does not match its version
+- **AND** the Operator did not run, and core stores no facet value from that run
+
 ### Requirement: Stored facet values carry their provenance
 
 Core SHALL be the only writer of facet values. With each value it stores,
 core SHALL record the producing plugin's id and version, the operation run
-that produced it, the facet schema's version, and when core stored it. Core
-SHALL take the producer from the registered Operator that ran, never from
-anything the Operator proposed. Core SHALL store a value for an Asset version
-facet against the version the run read.
+that produced it, and through that run the user who started it, the facet
+schema's version, and when core stored it. Core SHALL take the producer from
+the registered Operator that ran, never from anything the Operator proposed.
 
 #### Scenario: Provenance of a stored value
-- **WHEN** a run of a test Operator at version `1.2.3` succeeds with one value for a version facet at schema version 1
+- **WHEN** a run that an administrator started, of a test Operator at version `1.2.3`, succeeds with one value for a version facet at schema version 1
 - **THEN** the stored value names the test Operator, version `1.2.3`, that run's id and schema version 1, and has the time it was stored
-- **AND** it belongs to the Asset version the run read
+- **AND** its run names that administrator as the user who started it
+
+### Requirement: A value belongs to what its schema describes
+
+Core SHALL store a value for an Asset version facet against the version the
+run read, and a value for an Asset facet against the Asset that owns that
+version.
+
+#### Scenario: A value for an Asset version facet
+- **WHEN** a run over an Asset version succeeds with one value for a facet whose schema describes the Asset version
+- **THEN** the stored value belongs to the Asset version the run read, and to no Asset
+
+#### Scenario: A value for an Asset facet
+- **WHEN** a run over an Asset version succeeds with one value for a facet whose schema describes the Asset
+- **THEN** the stored value belongs to the Asset that owns that version, and to no Asset version
+
+### Requirement: A stored value keeps the schema it was written under
+
+Core SHALL keep each facet schema version that a stored value was written
+under, unchanged. A value SHALL be read with the label and unit of its own
+schema version. When a pack declares a schema version that core already
+keeps, with a different label, unit, value type, scope or owner, core SHALL
+record a run that writes that facet as failed, with a reason that names the
+facet and its version, and SHALL store none of its values.
+
+#### Scenario: A facet changed without a new version
+- **WHEN** a value of `test.size` at schema version 1 with the unit `bytes` is stored, and a later build declares `test.size` version 1 with the unit `KiB` and runs an Operator that writes it
+- **THEN** that run is recorded as failed with a reason that names `test.size` and version 1
+- **AND** the stored value still reads with the unit `bytes`
 
 ### Requirement: The image pack records an image's file size
 

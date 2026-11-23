@@ -20,14 +20,19 @@ shows.
   registered Operator over an Asset version, records one operation run for the
   attempt, and refuses any proposed facet that is unknown, invalid, or not in
   the Operator's declared facets. It stores each accepted value with its
-  provenance: plugin and version, run, schema version and time (ADR-008).
-  A pack compiled into the server has its grants from the build (D4).
+  provenance: actor (the user who started the run), plugin and version, run,
+  schema version and time (ADR-008). A pack compiled into the server has its
+  grants from the build, fixed when the pack registers (D4). A finished run
+  never changes, and each schema version is kept as values were written
+  under it.
 - **The image pack adds a file-size Operator.** It writes `image.file-size`,
   a whole number of bytes, on the Asset version. The value repeats
   `asset_versions.byte_size` on purpose (D3).
 - **Upload runs the Operator.** Inside the same upload request, after the
   Asset is saved, the server runs the file-size Operator; the upload answers
-  once the run has ended (D5). Only new uploads run it: images already in the
+  once the run has ended (D5). A client that goes away once the save can no
+  longer be cancelled does not stop the save or the run. Only new uploads
+  run it: images already in the
   library get no facts (D2). A failed or refused run is recorded as failed
   with its reason, writes no facet, and does not fail the upload (D6).
 - **A new endpoint returns one Asset with its facets.** `GET /api/assets/{id}`
@@ -78,14 +83,15 @@ shows.
 - `server/crates/plugin-abi`: the Operator trait, its Asset context, facet
   schema and grant declarations, and the ABI version.
 - `server/crates/core`: migration 5 and its schema snapshot, the executor,
-  facet and operation-run persistence, and reading an Asset's facets.
+  facet and operation-run persistence, reading an Asset's facets, and the
+  user's id on the `User` that the session lookup returns.
 - `server/crates/packs/image`: the file-size Operator and its facet schema.
 - `server/crates/packs/astro`: the plate-solve stub adapts to the new trait.
 - `server/crates/server`: run the Operator after ingest, the new
   `GET /api/assets/{id}` route, and `index.html` for `/assets/<id>`.
 - `web/src`: client-side navigation between the Library and the asset page,
-  and the page itself. `web/vite.config.ts` if the built files must move out
-  of `/assets/`, which the design decides.
+  and the page itself. The built files stay under `/assets/` (design
+  decision 7).
 - `DESIGN.md`: an asset page component section, and any token the chosen draft
   needs, regenerated into `tokens.css`.
 - `scripts/instance-verify.sh`: expects five migrations.
