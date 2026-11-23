@@ -292,8 +292,8 @@ function Library({
       )}
       {upload.kind === "unconfirmed" && (
         <p className="library-status">
-          No answer came back for {upload.name}. It may have been saved: check
-          the library before you upload it again.
+          No answer came back for {upload.name}. It is safe to upload it again:
+          if it was saved, Sidereal will find it.
         </p>
       )}
       {notice && <p className="library-status">{notice}</p>}

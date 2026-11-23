@@ -460,7 +460,7 @@ describe("Library", () => {
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText(
-        "No answer came back for nebula.png. It may have been saved: check the library before you upload it again.",
+        "No answer came back for nebula.png. It is safe to upload it again: if it was saved, Sidereal will find it.",
       );
       expect(document.body.textContent).not.toContain("was not uploaded");
       await screen.findByRole("img", { name: "nebula.png" });
@@ -469,6 +469,8 @@ describe("Library", () => {
           ([url, init]) => url === "/api/assets" && !init?.method,
         ),
       ).toHaveLength(2);
+      // The screen never sends the file again by itself.
+      expect(uploads(fetch)).toHaveLength(1);
     });
 
     it("shows a filename holding markup as literal text", async () => {
