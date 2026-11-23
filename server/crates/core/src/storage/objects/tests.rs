@@ -890,4 +890,35 @@ mod staging_cleanup {
         let _ = store.remove_leftover_staging();
         assert_eq!(names(&temp.path.join("tmp")), ["a"]);
     }
+
+    /// Makes `tmp` unreadable until dropped, so cleanup cannot list it.
+    struct Unreadable(PathBuf);
+    impl Unreadable {
+        fn new(path: PathBuf) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Unreadable {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    #[test]
+    fn an_unreadable_tmp_fails_with_an_error_that_names_tmp() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a"]);
+        let unreadable = Unreadable::new(temp.path.join("tmp"));
+        let result = store.remove_leftover_staging();
+        drop(unreadable);
+        assert_eq!(
+            problem(result),
+            Problem::Io(Operation::ListTmp, io::ErrorKind::PermissionDenied)
+        );
+    }
 }

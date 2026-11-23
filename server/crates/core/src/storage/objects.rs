@@ -517,7 +517,8 @@ impl ObjectStore {
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Cleanup::default()),
             // A link or a file named `tmp` is never followed or removed.
             Err(e) if is_refused_entry(&e) => return Err(self.error(Problem::Unsafe(Entry::Tmp))),
-            Err(e) => return Err(self.io(Operation::OpenDirectory)(e)),
+            // An unreadable `tmp` cannot be listed, so the error names `tmp`.
+            Err(e) => return Err(self.io(Operation::ListTmp)(e)),
         };
         let mut cleanup = Cleanup::default();
         for name in list(tmp.as_fd()).map_err(self.io(Operation::ListTmp))? {
