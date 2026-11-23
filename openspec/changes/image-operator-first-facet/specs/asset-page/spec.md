@@ -23,6 +23,26 @@ the asset page SHALL show the Library again.
 - **WHEN** Nova uses the browser's Back action on an asset page they opened from the Library
 - **THEN** the address is `/` and the Library shows
 
+### Requirement: An upload in progress goes on while the asset page shows
+
+An upload that is still sending when Nova opens an asset page SHALL keep
+sending. The asset page SHALL show no upload status. When Nova returns to the
+Library, it SHALL show that upload as it now stands: still in progress, or
+its result. While it is in progress, the Library SHALL send no second upload
+request, as image-upload requires.
+
+#### Scenario: Nova opens an image while an upload is sending
+- **GIVEN** Nova has chosen `m31.png` and its upload request is still pending
+- **WHEN** Nova opens the asset page of `nebula.png` and then goes back to the Library
+- **THEN** the asset page showed no upload status, and the upload request was not aborted
+- **AND** the Library shows `Uploading m31.png…` and its Upload button is disabled
+- **AND** choosing another file sends no second upload request
+
+#### Scenario: The upload ends while the asset page shows
+- **GIVEN** Nova opened the asset page of `nebula.png` while the upload of `m31.png` was pending
+- **WHEN** the server answers that upload with 201, and Nova then goes back to the Library
+- **THEN** the Library lists `m31.png` and shows no `Uploading` line
+
 ### Requirement: The asset page shows the image, its name and its facts
 
 The asset page SHALL show the image whole, its name as literal text, and one

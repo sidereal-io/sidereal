@@ -74,6 +74,18 @@ id another registered Operator already has.
 - **WHEN** a pack registers an Operator with the id `test.op`, and a second pack registers another Operator with the id `test.op`
 - **THEN** the Registry refuses the second pack with an error that names `test.op`
 
+### Requirement: A refused pack adds nothing to the Registry
+
+When the Registry refuses a pack, it SHALL keep none of the Sources,
+Operators, Sinks or facet schemas that pack registered or declared. Every
+pack registered before it SHALL stay as it was.
+
+#### Scenario: A pack refused for one of its Operators
+- **WHEN** a pack declares the facet `test.good-size`, registers an Operator `test.good` that lists it, and then registers an Operator with the id `test.op`, which an earlier pack's Operator already has
+- **THEN** the Registry refuses the pack with an error that names `test.op`
+- **AND** the Registry has no Operator `test.good` and no schema `test.good-size`, and running `test.good` fails because no such Operator is registered
+- **AND** the earlier pack's Operator `test.op` still runs
+
 ### Requirement: Core checks every proposal before it stores any
 
 Core SHALL refuse a proposed value whose facet has no registered schema, or
@@ -124,7 +136,8 @@ no failure SHALL be `succeeded`.
 A run SHALL be `failed` when the Operator reports a failure, stops
 abnormally, or is cancelled, or when core refuses a proposal. A failed run
 SHALL record a reason that is not empty, and core SHALL store no facet value
-from it.
+from it. Before it records a reason, core SHALL remove every zero character
+(U+0000) from it, because PostgreSQL text cannot hold one.
 
 #### Scenario: The Operator reports a failure
 - **WHEN** an Operator returns the failure `could not read the header`
@@ -134,6 +147,15 @@ from it.
 #### Scenario: The Operator reports a failure with no reason
 - **WHEN** an Operator returns a failure whose reason is empty
 - **THEN** its operation run is `failed` with the reason `the operator gave no reason`
+
+#### Scenario: A failure reason holds a zero character
+- **WHEN** an Operator returns the failure `bad` U+0000 `header`, or a failure whose reason is only U+0000
+- **THEN** its operation run is `failed` with the reason `badheader`, or `the operator gave no reason`
+- **AND** core stores no facet value from that run
+
+#### Scenario: A proposed facet name holds a zero character
+- **WHEN** an Operator proposes a value for the facet `test.` U+0000 `x`, which no schema declares
+- **THEN** its operation run is `failed` with a reason that names `test.x`
 
 #### Scenario: The Operator stops abnormally
 - **WHEN** an Operator panics during its run

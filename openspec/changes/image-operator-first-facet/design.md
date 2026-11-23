@@ -85,8 +85,11 @@ renames nothing that already exists in the contract.
     `HEAD`, the files `index.html` names, and a file at a reserved address.
     The browser journey runs through Vite, so this is the seam for the built
     shell.
-  - Vitest with jsdom (`web/src/*.test.tsx`) for the asset page and
-    navigation, and a Vitest test that reads `AssetPage.css` for the
+  - Vitest with jsdom (`web/src/*.test.tsx`) for the asset page,
+    navigation and the upload that goes on while the asset page shows (a
+    test holds the upload's `fetch` pending, opens an image, goes back, and
+    checks the status line, the disabled button and that no second request
+    went out), and a Vitest test that reads `AssetPage.css` for the
     "uses tokens" scenario.
   - The browser journey (`web/e2e/upload.spec.ts`, run by `mise run e2e`) for
     upload → open the page → see the file size → reload.
@@ -99,7 +102,8 @@ renames nothing that already exists in the contract.
 - **Blast radius:** `plugin-abi` (public API, ABI version 2), both packs,
   core's database schema, a new `operations` module and the `User` type
   (which gains the user's id), the upload route and
-  the web-file fallback in the server, and the web app's signed-in view.
+  the web-file fallback in the server, and the web app's signed-in view,
+  where the upload state moves from `Library` to the signed-in view.
   Existing Assets and versions are read but never changed.
 
 ## Decisions
@@ -160,19 +164,45 @@ value as a JSON number, and the page reads it exactly, so core, the API and
 the page accept the same range (decision 8).
 
 `OperatorError` mirrors `SourceError` without `Refused`: `Unsupported` and
-`Failed(String)`. Core records a `Failed` reason that is empty, or only
-spaces, as `the operator gave no reason`, so the stored reason is never
-empty.
+`Failed(String)`.
+
+**Core cleans every reason before it records it.** A reason can hold text
+from the Operator: a `Failed` reason, or a proposed facet name inside a
+refusal. PostgreSQL `TEXT` cannot hold U+0000, so an update with one fails on
+a healthy database and leaves the run `running`. Core therefore removes every
+U+0000 from the reason first. A reason that is then empty, or only spaces,
+is recorded as `the operator gave no reason`, so the stored reason is never
+empty and the `btrim(reason) <> ''` check always holds. One function in
+`operations` does this, and every update that records `failed` calls it.
 
 A pack declares a schema with `Registry::declare_facet(schema)`. The host
 registers each pack through a new `Registry::register_pack(&dyn Pack) ->
-Result<(), RegistryError>`. It notes the pack's id, calls `Pack::register`,
-and then checks what the pack declared and registered:
+Result<(), RegistryError>`. It creates an empty staging Registry, notes the
+pack's id, and calls `Pack::register` on the staging Registry. It then
+checks what the pack declared and registered there against the live
+Registry and against itself:
 
 - a facet name already declared, or one that does not start with
   `<pack id>.`, is refused with an error that names the facet;
 - an Operator id that another registered Operator already has is refused
   with an error that names the id.
+
+Only when every check passes does it move the staged Sources, Operator
+entries, Sinks and schemas into the live Registry. A refused pack therefore
+adds nothing, and every pack registered before it stays as it was. A
+`Pack::register` that panics also leaves the live Registry unchanged.
+
+**Every host registers packs through `register_pack`.** `Pack::register`
+stays public, because a pack implements it, but its doc comment says that
+hosts call `register_pack` and never `Pack::register` directly. This change
+moves every existing direct call to `register_pack`:
+`server/crates/server/src/assets.rs` (`Library::new`),
+`packs/image/tests/recognition.rs`, `packs/astro/tests/registration.rs` and
+`core/src/ingest/tests.rs`. A test that needs a refused pack calls
+`register_pack` and checks its error. The `register_operator` and
+`declare_facet` methods stay too, because `Pack::register` uses them, but
+only the staging Registry that `register_pack` hands a pack is meant to
+receive them.
 
 **The grant is fixed at registration.** When an Operator is registered, the
 Registry calls its `id()`, `version()` and `writes()` once and keeps the
@@ -212,7 +242,7 @@ pub async fn run_operator(
     database: &Database,
     objects: &ObjectStore,
     registry: Arc<Registry>,
-    run: RunRequest,            // operator_id, asset_version_id, actor (a user id)
+    run: RunRequest,            // operator_id, asset_version_id, actor: i64 (users.id)
     cancelled: Arc<AtomicBool>,
 ) -> Result<RunOutcome, OperationError>;
 
@@ -251,7 +281,7 @@ A panic in the Operator ends the blocking task with a join error; core
 records `failed` with the reason `the operator stopped`. An `Unsupported` or
 `Failed(reason)` result is recorded with that reason. A refused proposal's
 reason names the facet, for example `facet test.width is not granted to
-test.op`.
+test.op`. Every reason is cleaned first (decision 2).
 
 **A finished run never changes.** Every update that ends a run, to
 `succeeded` or to `failed`, has the condition
@@ -281,7 +311,7 @@ CREATE TABLE public.operation_runs (
     operator_id TEXT NOT NULL CHECK (operator_id <> ''),
     operator_version TEXT NOT NULL CHECK (operator_version <> ''),
     asset_version_id UUID NOT NULL REFERENCES public.asset_versions (id),
-    actor_user_id UUID NOT NULL REFERENCES public.users (id),
+    actor_user_id BIGINT NOT NULL REFERENCES public.users (id),
     status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
     reason TEXT CHECK (btrim(reason) <> ''),
     started_at TIMESTAMPTZ NOT NULL,
@@ -332,9 +362,14 @@ CREATE INDEX facet_values_value ON public.facet_values USING GIN (value jsonb_pa
   caused the write. Every run in this change starts from an upload, so its
   actor is the signed-in administrator, stored as `actor_user_id`. Each value
   reaches its actor through `run_id`, as it reaches the run's times. User
-  rows are never deleted, so the reference stays valid. Core's `User` type
-  gains `id: Uuid`, and the session query reads it from `users.id`, so the
-  session guard hands it to the upload handler.
+  rows are never deleted, so the reference stays valid. `users.id` is
+  `BIGINT GENERATED ALWAYS AS IDENTITY` (migration 3), so the column is
+  `BIGINT` and core's `User` type gains `id: i64`. Every place that builds a
+  `User` fills it in: the claim insert in `access/claim.rs` (with
+  `RETURNING id`), sign-in in `access/session.rs` (from the row it checks the
+  password against), the session lookup in `access/session.rs` (which adds
+  `u.id` to its `SELECT`), and the test values in both files. The session
+  guard then hands the id to the upload handler.
   A later story that starts runs without a person (processing goals, #527)
   decides how to record that actor.
 - **Core checks the value's type, not PostgreSQL.** A row check cannot read
@@ -483,12 +518,32 @@ A new `web/src/navigation.ts` holds a `usePath()` hook, which reads
 hook. A `Link` component renders a real `<a href>` and calls `navigate` on a
 plain left click (no modifier key), so opening in a new tab still works.
 
-`Access.tsx`'s signed-in branch picks the screen from the path:
-`/assets/<id>` (the same pattern as decision 7) shows `AssetPage`; any other
-path shows `Library`. Both get `onSessionLost` and the account items
-(username and Sign out) as children for the top bar, so the bar looks the
-same on both screens. When the session ends, Access shows the sign-in form
-and keeps the path, so signing in again shows the same screen.
+`Access.tsx`'s signed-in branch renders a new `SignedIn` component, which
+picks the screen from the path: `/assets/<id>` (the same pattern as
+decision 7) shows `AssetPage`; any other path shows `Library`. Both get
+`onSessionLost` and the account items (username and Sign out) as children
+for the top bar, so the bar looks the same on both screens. When the session
+ends, Access shows the sign-in form and keeps the path, so signing in again
+shows the same screen.
+
+**The upload lives above the screen switch.** Today `Library` owns the
+upload: its state, the `sendingRef` guard and the `AbortController` that its
+unmount aborts. Opening an asset page unmounts `Library`, which would abort
+a pending POST and drop its state, so Back would show an enabled Upload
+button while the first upload may still run on the server. As the user
+decided, the upload moves into a `useUpload(onSessionLost)` hook in a new
+`web/src/upload.ts`, which `SignedIn` calls once, above the switch. The hook
+owns the upload state (`idle`, `sending`, `refused`, `unconfirmed`), the
+guard that sends no second request while one is in progress, a `saved`
+counter that goes up after each 201 or unconfirmed answer, and the
+`AbortController`. It aborts only when `SignedIn` unmounts: on sign-out or a
+lost session, as the Library's unmount does today. `SignedIn` passes the
+state, `send` and `saved` to `Library` as props. `Library` keeps its picker,
+button, status lines and list. It adds `saved` to its list effect's
+dependencies, so an upload that ended while the asset page showed is listed
+when the Library shows again. `AssetPage` gets nothing from the hook and
+shows no upload status. The existing `Library.test.tsx` upload tests move
+to rendering through `SignedIn`, or pass the hook's values as props.
 
 Each Library image and its name become one `Link` to `/assets/<id>`.
 
@@ -521,6 +576,14 @@ are copied in. Then DESIGN.md gains an "Asset page" section under
 Components, and only then is the page built. The task that does this stops
 for the user's choice.
 
+`pnpm design:lint` reads only `DESIGN.md`, so it passes before any of this
+happens. The task is therefore done only when three things can be seen: the
+task's line in `tasks.md` names the draft file the user picked; the Penpot
+file has a page named `Options: asset-page` with that draft on it, which the
+Penpot tools list (no project command reads Penpot); and `DESIGN.md` has an
+`### Asset page` heading under `## Components`, which `grep` finds, and
+still passes `pnpm design:lint`.
+
 **Tokens this change adds:** none planned. The page can use existing tokens:
 `color-text-body` and `color-text-secondary` for the name and labels,
 `font-family-mono` with `font-size-14` and `line-height-20` for values,
@@ -541,11 +604,19 @@ Decisions 5, 7 and 8 are reversible inside one story.
 
 - [A server that stops during a run, or a database that fails while core
   records how a run ended, leaves an `operation_runs` row in `running` for
-  good] → Accepted for this change: the Asset is saved, and either the fact
-  is missing or, after a lost commit answer, the fact is stored and the row
-  reads `running`. The log line `file-size run not recorded …` says so.
-  Processing goals and their states (#527) own recovery; this change adds no
-  retry.
+  good] → Accepted for this change: the Asset is saved and has no fact. A
+  `running` row never has stored values, because the values and the
+  `succeeded` status commit in one transaction (decision 3, step 4): when
+  that commit landed, the row reads `succeeded`; when it did not, no value
+  exists. The log line `file-size run not recorded …` says the outcome is
+  unknown. Processing goals and their states (#527) own recovery; this
+  change adds no retry.
+- [The Asset's own commit answer is lost in `ingest`, so the upload answers
+  an error and the file-size run never starts] → Out of scope: this is
+  ingest's existing path from #521, which this change does not touch. The
+  Asset shows `No facts are recorded for this image.`, as an image from
+  before this change does. The case is raised on #532; recovering Assets
+  that have no run belongs to processing goals (#527).
 - [A stored object changed on disk to another file of the same size passes
   the size check] → Accepted: core does not hash the object again before
   each run, which would read every byte for every Operator. Detecting

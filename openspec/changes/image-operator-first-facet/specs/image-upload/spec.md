@@ -7,15 +7,21 @@
 After a successful upload saves the Asset, and before it answers, the server
 SHALL run the image pack's file-size Operator over the new version, with the
 uploading administrator as the user who started the run. The 201 answer
-SHALL keep its existing body. Once the client has it, reading the Asset
-SHALL return its file size. A client that goes away once the Asset can no
-longer be cancelled SHALL NOT stop the save or the run. Images saved before
-this change SHALL get no file size.
+SHALL keep its existing body. When the run succeeded, reading the Asset
+after the 201 SHALL return its file size; when it did not, the requirement
+"A failed file-size run does not fail the upload" applies. Images saved
+before this change SHALL get no file size.
 
 #### Scenario: A new upload has its file size
-- **WHEN** Nova uploads a PNG of 1,234,567 bytes and the server answers 201
+- **WHEN** Nova uploads a PNG of 1,234,567 bytes, its file-size run succeeds, and the server answers 201
 - **THEN** reading that Asset returns the facet `image.file-size` with the value 1234567 and the unit `bytes`
 - **AND** one operation run of the file-size Operator exists for its version, with outcome `succeeded`, started by Nova
+
+### Requirement: A client that goes away does not stop the save or the run
+
+Once the upload has passed its last cancellation check, a client that closes
+its connection SHALL NOT stop the Asset's save or its file-size run. The run
+SHALL end as it would have with the client connected.
 
 #### Scenario: The client goes away while the Asset is being saved
 - **WHEN** the client closes its connection after the upload has passed its last cancellation check and before the Asset's transaction commits
@@ -23,7 +29,7 @@ this change SHALL get no file size.
 
 #### Scenario: The client goes away during the run
 - **WHEN** the client closes its connection after the Asset is saved and while the file-size Operator is running
-- **THEN** the run ends as it would have, and reading the Asset afterwards returns its file size
+- **THEN** the run ends `succeeded`, as it would have with the client connected, and reading the Asset afterwards returns its file size
 
 ### Requirement: A failed file-size run does not fail the upload
 

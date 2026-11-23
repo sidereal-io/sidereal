@@ -19,6 +19,7 @@
 | D9 | How is the asset page's look chosen? | Draft it here as HTML first; the user picks one; then it goes into Penpot. | User |
 | D10 | Does the asset page show who produced each fact (plugin, version, time)? | Only the value. Core still stores the provenance, as ADR-008 requires. | User |
 | D11 | Should *Facet schema* and *Grant* go in the glossary under "Assets and processing"? | Yes, as worded. Both are now in `openspec/glossary.md`. | User |
+| D12 | When Nova opens an image while an upload is still sending, what happens to that upload? (asked after plan review round 2) | Keep the upload running. Its state lives in the signed-in view, above the switch between the Library and the asset page. The asset page shows no upload status. Back to the Library shows the same upload still in progress, and no second upload can start. A test holds the upload pending, opens an image, goes back, and checks this. | User |
 
 ## Changes from the story
 

@@ -47,6 +47,38 @@ be served; the address SHALL answer with `index.html`. Every other file in
 
 ## MODIFIED Requirements
 
+### Requirement: The app connects and migrates through the foundation's startup path
+
+The `app` service SHALL connect to the `db` service with the foundation's `DATABASE_URL` setting and `sslmode=disable`.
+The app SHALL apply migrations through the foundation's startup path. The Compose file SHALL run no other migration step.
+Storage initialization SHALL run during app startup without a separate command.
+
+#### Scenario: The database holds the initial migration
+
+- **WHEN** a first start has reached readiness
+- **AND** a tester counts the rows of `_sqlx_migrations` where `success` is true, through `docker compose exec db psql`
+- **THEN** the count is 5
+
+### Requirement: The server serves the built web shell from a configured folder
+
+The server SHALL read the optional `WEB_ROOT` setting, which names a folder of built web shell files.
+With `WEB_ROOT` set, the server SHALL answer `GET` and `HEAD` requests with the matching file under that folder, except at an asset page address, which the requirement "An asset page address is reserved in the web root" covers. It SHALL answer `/` with `index.html`.
+Without `WEB_ROOT`, the server SHALL serve no files and SHALL answer as it did before this change.
+
+#### Scenario: The home page loads
+
+- **GIVEN** a server running with `WEB_ROOT` set to a built web shell
+- **WHEN** a tester runs `curl -si http://localhost:5000/`
+- **THEN** the status is 200
+- **AND** the `Content-Type` header starts with `text/html`
+- **AND** the body equals the `index.html` file in `WEB_ROOT`
+
+#### Scenario: The setting is absent
+
+- **WHEN** Sam starts the server without `WEB_ROOT` and a tester requests `GET /`
+- **THEN** the status is 404
+- **AND** `GET /healthz` still returns `200 {"status":"ok"}`
+
 ### Requirement: The web shell answers 404 for folders and unknown paths
 
 The server SHALL answer 404 for any path other than `/` or an asset page address that names a folder, with or without a trailing slash. It SHALL NOT redirect such a path, and SHALL NOT answer it with that folder's `index.html`.

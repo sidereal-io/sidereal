@@ -43,7 +43,8 @@ shows.
   as `File size  1,234,567 bytes` in the mono face, with a way back to the
   Library. It says so when no facts are recorded (D6, D7). The address survives
   a reload: the server answers `/assets/<id>` with `index.html`, and no other
-  unknown path changes (D8).
+  unknown path changes (D8). An upload that is still sending when Nova opens
+  an image keeps going, and the Library shows it again on the way back (D12).
 - **The page's look is drafted as HTML first.** The user picks one draft, it
   goes into Penpot, and DESIGN.md records the choice before the page is built
   (D9).
@@ -63,7 +64,8 @@ shows.
   values with provenance, and the file-size Operator that upload runs.
 - `asset-page`: the signed-in asset page at `/assets/<id>`: opening it from
   the Library, showing the image, name and facets, its loading, missing,
-  failed and no-facts states, and the way back.
+  failed and no-facts states, the way back, and an upload that goes on while
+  the page shows.
 
 ### Modified Capabilities
 
@@ -73,7 +75,7 @@ shows.
   it answers, and a failed run still leaves the upload successful.
 - `compose-instance`: the web shell answers `/assets/<id>` with `index.html`
   when `<id>` is a well-formed Asset id; every other unknown or folder path
-  still gets 404.
+  still gets 404. A first start of the instance holds five migration records.
 - `postgres-foundation`: migration 5 adds the facet and operation-run tables,
   so first startup holds five migration records, with an upgrade scenario from
   four.
@@ -90,7 +92,8 @@ shows.
 - `server/crates/server`: run the Operator after ingest, the new
   `GET /api/assets/{id}` route, and `index.html` for `/assets/<id>`.
 - `web/src`: client-side navigation between the Library and the asset page,
-  and the page itself. The built files stay under `/assets/` (design
+  the upload state moved from the Library to the signed-in view, and the page
+  itself. The built files stay under `/assets/` (design
   decision 7).
 - `DESIGN.md`: an asset page component section, and any token the chosen draft
   needs, regenerated into `tokens.css`.
