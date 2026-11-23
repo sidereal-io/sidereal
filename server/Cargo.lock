@@ -1361,6 +1361,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "futures-util",
+ "http-body-util",
  "libc",
  "serde_json",
  "sidereal-core",

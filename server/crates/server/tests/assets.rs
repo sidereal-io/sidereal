@@ -208,6 +208,19 @@ impl<'a> Part<'a> {
     }
 }
 
+/// A body whose chunks arrive one at a time, as from a network: each chunk
+/// is ready only after the reader has once found nothing to read.
+fn arriving<T: Send + 'static>(
+    chunks: impl IntoIterator<Item = T>,
+) -> impl futures_util::Stream<Item = T> + Send + 'static {
+    use futures_util::StreamExt;
+    let chunks: Vec<T> = chunks.into_iter().collect();
+    futures_util::stream::iter(chunks).then(|chunk| async move {
+        tokio::task::yield_now().await;
+        chunk
+    })
+}
+
 /// A multipart body. Without `closing`, it ends after the last part's bytes.
 fn multipart(parts: &[Part], closing: bool, epilogue: &[u8]) -> Vec<u8> {
     let mut body = Vec::new();
@@ -474,6 +487,54 @@ mod upload {
         );
         assert_eq!(instance.rows().await, 0);
         assert!(instance.store_files().is_empty());
+    }
+
+    #[tokio::test]
+    async fn streamed_upload_whose_epilogue_passes_the_transport_limit_answers_413() {
+        let instance = Instance::new().await;
+        let head = multipart(
+            &[Part::file("file", "nebula.png", "image/png", PNG)],
+            true,
+            b"",
+        );
+        // 102 chunks of 1 MiB after the closing delimiter, with no
+        // Content-Length, so only reading the epilogue finds the excess.
+        let filler = axum::body::Bytes::from(vec![b'x'; 1024 * 1024]);
+        let chunks = std::iter::once(axum::body::Bytes::from(head))
+            .chain(std::iter::repeat_n(filler, 102))
+            .map(Ok::<_, std::io::Error>);
+        let request = instance
+            .upload_request()
+            .body(Body::from_stream(arriving(chunks)))
+            .unwrap();
+        assert!(request.headers().get(header::CONTENT_LENGTH).is_none());
+        assert_eq!(
+            instance.send(request).await.status(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+        assert_eq!(instance.rows().await, 0);
+        assert!(instance.store_files().is_empty());
+    }
+
+    #[tokio::test]
+    async fn streamed_upload_with_a_small_epilogue_answers_201() {
+        let instance = Instance::new().await;
+        let body = multipart(
+            &[Part::file("file", "nebula.png", "image/png", PNG)],
+            true,
+            b"",
+        );
+        let chunks = [
+            axum::body::Bytes::from(body),
+            axum::body::Bytes::from_static(b"an epilogue in its own chunk"),
+        ]
+        .map(Ok::<_, std::io::Error>);
+        let request = instance
+            .upload_request()
+            .body(Body::from_stream(arriving(chunks)))
+            .unwrap();
+        assert_eq!(instance.send(request).await.status(), StatusCode::CREATED);
+        assert_eq!(instance.store_files()[0].1, PNG);
     }
 
     #[tokio::test]

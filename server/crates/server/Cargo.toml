@@ -28,6 +28,7 @@ tower-http = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 futures-util = { workspace = true }
+http-body-util = { workspace = true }
 
 [dev-dependencies]
 tokio-tungstenite = { workspace = true }

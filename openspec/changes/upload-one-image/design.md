@@ -256,11 +256,12 @@ chunks and counts actual file bytes. Do not buffer a 100 MiB request in RAM.
 After the field completes, the handler keeps reading parts until the closing
 delimiter, and refuses any extra field before executing or committing an
 upload. The closing delimiter ends validation (D19). Bytes after it are a
-multipart epilogue, which RFC 2046 says to ignore; the handler does not read
-them. axum 0.8's multipart reader stops at the closing delimiter in the same
-way. The file is complete at that point, so a later error in the rest of the
-body does not change the outcome, just as a lost response after commit does
-not. A body that ends or fails before the closing delimiter is malformed: it
+multipart epilogue, which RFC 2046 says to ignore. axum 0.8's multipart
+reader stops at the closing delimiter, so before publication the handler
+reads the rest of the body itself and discards it, only to apply the
+transport limit below to a body sent without Content-Length. The file is
+complete at that point, so any other error in the rest of the body does not
+change the outcome, just as a lost response after commit does not. A body that ends or fails before the closing delimiter is malformed: it
 gets 400 and commits nothing. Set the route's transport limit above 100 MiB to allow bounded
 multipart overhead (1 MiB); enforce the exact 100 MiB file cap separately.
 The transport limit counts the whole body, epilogue included, so a request

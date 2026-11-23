@@ -7,8 +7,10 @@
 //! reaches a client; the operational log names the cause.
 use crate::access::Log;
 use axum::{
-    body::{Body, Bytes},
-    extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, State},
+    body::{Body, BodyDataStream, Bytes},
+    extract::{
+        multipart::MultipartError, DefaultBodyLimit, FromRequest, Multipart, Path, Request, State,
+    },
     http::{
         header::{CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, X_CONTENT_TYPE_OPTIONS},
         StatusCode,
@@ -17,6 +19,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use futures_util::{Stream, StreamExt};
+use http_body_util::LengthLimitError;
 use serde_json::{json, Value};
 use sidereal_core::{
     assets::AssetRecord,
@@ -30,10 +34,12 @@ use sidereal_plugin_abi::{Pack, Registry};
 use std::{
     convert::Infallible,
     io::Read,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
+    task::{Context, Poll},
 };
 use tower_http::limit::RequestBodyLimitLayer;
 
@@ -247,11 +253,59 @@ impl IntoResponse for UploadError {
 }
 
 fn multipart_error(error: MultipartError) -> UploadError {
-    if error.status() == StatusCode::PAYLOAD_TOO_LARGE {
+    if error.status() == StatusCode::PAYLOAD_TOO_LARGE || past_limit(&error) {
         UploadError::TooLarge
     } else {
         UploadError::Malformed
     }
+}
+
+/// Whether `error`, or any error it wraps, is the transport limit's.
+fn past_limit(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut next = Some(error);
+    while let Some(error) = next {
+        if error.is::<LengthLimitError>() {
+            return true;
+        }
+        next = error.source();
+    }
+    false
+}
+
+/// The request body, shared by the multipart reader and the epilogue drain
+/// that follows it. The lock is held only while one chunk is polled.
+#[derive(Clone)]
+struct SharedBody(Arc<Mutex<BodyDataStream>>);
+
+impl Stream for SharedBody {
+    type Item = Result<Bytes, axum::BoxError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut body = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // The inner error is passed on unwrapped, so the multipart reader
+        // still finds the transport limit's error one level down.
+        body.poll_next_unpin(cx)
+            .map(|chunk| chunk.map(|chunk| chunk.map_err(axum::Error::into_inner)))
+    }
+}
+
+/// Read the epilogue after the closing delimiter, ignoring its bytes, so
+/// that a body past the transport limit gets 413 even without
+/// Content-Length. Any other error there leaves the complete file as it is.
+async fn drain(mut body: SharedBody) -> Result<(), UploadError> {
+    while let Some(chunk) = body.next().await {
+        if let Err(error) = chunk {
+            return if past_limit(error.as_ref()) {
+                Err(UploadError::TooLarge)
+            } else {
+                Ok(())
+            };
+        }
+    }
+    Ok(())
 }
 
 /// Marks the ingest cancelled when the request's future is dropped, as when
@@ -266,14 +320,19 @@ impl Drop for CancelOnDrop {
 
 async fn upload(
     State(assets): State<Assets>,
-    multipart: Result<Multipart, axum::extract::multipart::MultipartRejection>,
+    request: Request,
 ) -> Result<(StatusCode, Json<Value>), UploadError> {
     let objects = assets
         .library
         .objects
         .clone()
         .ok_or(UploadError::NoStorage)?;
-    let mut multipart = multipart.map_err(|_| UploadError::Malformed)?;
+    let (parts, body) = request.into_parts();
+    let body = SharedBody(Arc::new(Mutex::new(body.into_data_stream())));
+    let request = Request::from_parts(parts, Body::from_stream(body.clone()));
+    let mut multipart = Multipart::from_request(request, &())
+        .await
+        .map_err(|_| UploadError::Malformed)?;
     let mut field = multipart
         .next_field()
         .await
@@ -323,6 +382,8 @@ async fn upload(
     {
         return Err(UploadError::Malformed);
     }
+    drop(multipart);
+    drain(body).await?;
     let staged = blocking(move || staging.finish())
         .await?
         .map_err(|e| failed(&e))?;
