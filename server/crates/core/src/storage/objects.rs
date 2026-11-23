@@ -11,12 +11,12 @@
 //! objects by their BLAKE3 hash. A display filename never becomes a path.
 use super::{Entry, Operation, Problem, StorageError, StorageRoot, MARKER, MARKER_LIMIT};
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString, OsStr, OsString},
     fs::File,
     io::{self, Read, Write},
     os::{
         fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
-        unix::fs::FileExt,
+        unix::{ffi::OsStrExt, fs::FileExt},
     },
     path::{Path, PathBuf},
     sync::Arc,
@@ -502,6 +502,8 @@ impl ObjectStore {
 pub struct Cleanup {
     /// How many entries it removed.
     pub removed: usize,
+    /// The subfolders it left, by their raw names.
+    pub kept: Vec<OsString>,
 }
 
 impl ObjectStore {
@@ -515,6 +517,15 @@ impl ObjectStore {
         };
         let mut cleanup = Cleanup::default();
         for name in list(tmp.as_fd()).map_err(self.io(Operation::ListTmp))? {
+            // Inspected without following a link or opening the entry, so a
+            // FIFO cannot block and a link's target is never touched.
+            let found = stat_raw(tmp.as_fd(), &name).map_err(self.io(Operation::RemoveStaging))?;
+            if found.st_mode & libc::S_IFMT == libc::S_IFDIR {
+                cleanup
+                    .kept
+                    .push(OsStr::from_bytes(name.to_bytes()).to_owned());
+                continue;
+            }
             unlink_at(tmp.as_fd(), &name).map_err(self.io(Operation::RemoveStaging))?;
             cleanup.removed += 1;
         }
@@ -555,7 +566,7 @@ fn list(folder: BorrowedFd<'_>) -> io::Result<Vec<CString>> {
         }
         // SAFETY: `readdir` returned an entry whose name is NUL-terminated
         // and valid until the next call on `dir`.
-        let name = unsafe { std::ffi::CStr::from_ptr((*entry).d_name.as_ptr()) };
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
         if name != c"." && name != c".." {
             names.push(name.to_owned());
         }
@@ -580,7 +591,7 @@ fn clear_errno() {
 }
 
 /// Remove one entry that is not a folder, without following a link.
-fn unlink_at(folder: BorrowedFd<'_>, name: &std::ffi::CStr) -> io::Result<()> {
+fn unlink_at(folder: BorrowedFd<'_>, name: &CStr) -> io::Result<()> {
     // SAFETY: `folder` is an open directory and `name` is NUL-terminated.
     if unsafe { libc::unlinkat(folder.as_raw_fd(), name.as_ptr(), 0) } != 0 {
         return Err(io::Error::last_os_error());
@@ -600,7 +611,11 @@ fn device(fd: BorrowedFd<'_>) -> io::Result<libc::dev_t> {
 
 /// Inspect an entry without following a symbolic link or opening it.
 fn stat_at(folder: BorrowedFd<'_>, name: &str) -> io::Result<libc::stat> {
-    let c = name_cstring(name);
+    stat_raw(folder, &name_cstring(name))
+}
+
+/// [`stat_at`] for a name read from a folder, which may not be UTF-8.
+fn stat_raw(folder: BorrowedFd<'_>, c: &CStr) -> io::Result<libc::stat> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `folder` is an open directory, `c` NUL-terminated, and `stat`
     // has room for one `struct stat`.

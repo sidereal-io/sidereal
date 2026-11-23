@@ -710,4 +710,88 @@ mod staging_cleanup {
         store.remove_leftover_staging().unwrap();
         assert_eq!(names(&temp.path), [MARKER]);
     }
+
+    #[test]
+    fn a_symlink_in_tmp_is_removed() {
+        let (temp, store) = leftovers(&[]);
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("target"), b"keep").unwrap();
+        symlink(
+            outside.path.join("target"),
+            temp.path.join("tmp").join("link"),
+        )
+        .unwrap();
+        store.remove_leftover_staging().unwrap();
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn a_symlink_target_outside_the_root_keeps_its_bytes() {
+        let (temp, store) = leftovers(&[]);
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("target"), b"keep").unwrap();
+        symlink(
+            outside.path.join("target"),
+            temp.path.join("tmp").join("link"),
+        )
+        .unwrap();
+        let before = fingerprint(&outside.path.join("target"));
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(fingerprint(&outside.path.join("target")), before);
+    }
+
+    #[test]
+    fn a_fifo_with_no_writer_in_tmp_is_removed_promptly() {
+        let (temp, store) = leftovers(&[]);
+        let fifo = temp.path.join("tmp").join("fifo");
+        let c = CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(store.remove_leftover_staging()));
+        let cleanup = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("cleanup blocked")
+            .unwrap();
+        assert_eq!(cleanup.removed, 1);
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn a_subfolder_of_tmp_is_left_with_its_contents() {
+        let (temp, store) = leftovers(&["a"]);
+        std::fs::create_dir(temp.path.join("tmp").join("kept")).unwrap();
+        std::fs::write(temp.path.join("tmp").join("kept").join("inside"), b"keep").unwrap();
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(
+            std::fs::read(temp.path.join("tmp").join("kept").join("inside")).unwrap(),
+            b"keep"
+        );
+    }
+
+    #[test]
+    fn a_left_subfolder_is_not_counted_as_removed() {
+        let (temp, store) = leftovers(&["a"]);
+        std::fs::create_dir(temp.path.join("tmp").join("kept")).unwrap();
+        assert_eq!(store.remove_leftover_staging().unwrap().removed, 1);
+    }
+
+    #[test]
+    fn cleanup_names_each_subfolder_it_left() {
+        let (temp, store) = leftovers(&[]);
+        std::fs::create_dir(temp.path.join("tmp").join("kept")).unwrap();
+        assert_eq!(
+            store.remove_leftover_staging().unwrap().kept,
+            [std::ffi::OsString::from("kept")]
+        );
+    }
+
+    #[test]
+    fn a_subfolder_name_is_reported_as_its_raw_bytes() {
+        use std::os::unix::ffi::OsStrExt;
+        let (temp, store) = leftovers(&[]);
+        let name = std::ffi::OsStr::from_bytes(b"k\xffept");
+        std::fs::create_dir(temp.path.join("tmp").join(name)).unwrap();
+        assert_eq!(store.remove_leftover_staging().unwrap().kept, [name]);
+    }
 }
