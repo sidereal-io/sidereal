@@ -5,9 +5,9 @@ use sidereal_pack_astro::AstroPack;
 use sidereal_plugin_abi::{Pack, Registry};
 
 #[test]
-fn astro_pack_registers_and_is_discoverable() {
+fn astro_pack_registration_makes_it_discoverable() {
     let mut registry = Registry::new();
-    AstroPack.register(&mut registry);
+    registry.register_pack(&AstroPack).unwrap();
 
     assert_eq!(AstroPack.id(), "astro");
     assert!(registry.source_ids().contains(&"astro.fits"));
@@ -28,7 +28,7 @@ impl sidereal_plugin_abi::Candidate for Empty {
 #[test]
 fn the_fits_source_says_it_cannot_run_yet() {
     let mut registry = Registry::new();
-    AstroPack.register(&mut registry);
+    registry.register_pack(&AstroPack).unwrap();
     assert_eq!(
         registry.execute_source("astro.fits", &mut Empty, &mut |_| {}, &|| false),
         Err(sidereal_plugin_abi::ExecutionError::Unsupported)

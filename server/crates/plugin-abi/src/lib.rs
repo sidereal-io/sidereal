@@ -403,6 +403,13 @@ pub enum RegistryError {
     FacetOutsideNamespace { facet: String, pack: String },
     /// Another registered Operator already has this id.
     OperatorAlreadyRegistered(String),
+    /// The facet schema holds something core could not store.
+    InvalidFacet { facet: String, reason: &'static str },
+    /// The Operator's id or version is something core could not record.
+    InvalidOperator {
+        operator: String,
+        reason: &'static str,
+    },
 }
 
 impl fmt::Display for RegistryError {
@@ -420,6 +427,18 @@ impl fmt::Display for RegistryError {
             Self::OperatorAlreadyRegistered(id) => {
                 write!(f, "operator {} is already registered", id.escape_debug())
             }
+            Self::InvalidFacet { facet, reason } => {
+                write!(
+                    f,
+                    "facet {} cannot be stored: {reason}",
+                    facet.escape_debug()
+                )
+            }
+            Self::InvalidOperator { operator, reason } => write!(
+                f,
+                "operator {} cannot be recorded: {reason}",
+                operator.escape_debug()
+            ),
         }
     }
 }
@@ -501,6 +520,12 @@ impl Registry {
         let pack_id = pack.id();
         for (index, declared) in staged.facets.iter().enumerate() {
             let name = &declared.schema.name;
+            if let Some(reason) = unstorable_facet(&declared.schema) {
+                return Err(RegistryError::InvalidFacet {
+                    facet: name.clone(),
+                    reason,
+                });
+            }
             if !name
                 .strip_prefix(pack_id)
                 .is_some_and(|rest| rest.starts_with('.'))
@@ -519,6 +544,12 @@ impl Registry {
             }
         }
         for (index, entry) in staged.operators.iter().enumerate() {
+            if let Some(reason) = unrecordable_operator(entry) {
+                return Err(RegistryError::InvalidOperator {
+                    operator: entry.id.clone(),
+                    reason,
+                });
+            }
             if self.operator(&entry.id).is_some()
                 || staged.operators[..index].iter().any(|o| o.id == entry.id)
             {
@@ -619,14 +650,61 @@ impl Registry {
     }
 }
 
+/// Why core could not store this schema, if it could not. These checks match
+/// the columns core stores a schema in, so a run never fails on a healthy
+/// database because of what its pack declared.
+fn unstorable_facet(schema: &FacetSchema) -> Option<&'static str> {
+    let part = |p: &str| {
+        !p.is_empty()
+            && p.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    };
+    let mut parts = schema.name.split('.');
+    let well_formed = schema.name.contains('.') && parts.all(part);
+    if !well_formed {
+        Some("its name must be two or more parts of lowercase letters, digits and hyphens, joined by dots")
+    } else if !(1..=i32::MAX as u32).contains(&schema.version) {
+        Some("its version must be from 1 to 2147483647")
+    } else if schema.label.is_empty() {
+        Some("its label is empty")
+    } else if schema.label.contains('\0') {
+        Some("its label holds a zero character")
+    } else if schema.unit.contains('\0') {
+        Some("its unit holds a zero character")
+    } else {
+        None
+    }
+}
+
+/// Why core could not record this Operator's identity, if it could not.
+fn unrecordable_operator(entry: &RegisteredOperator) -> Option<&'static str> {
+    if entry.id.is_empty() {
+        Some("it has an empty id")
+    } else if entry.id.contains('\0') {
+        Some("its id holds a zero character")
+    } else if entry.version.is_empty() {
+        Some("its version is empty")
+    } else if entry.version.contains('\0') {
+        Some("its version holds a zero character")
+    } else {
+        None
+    }
+}
+
 /// Implemented by a domain pack to contribute its components. The host builds a
-/// [`Registry`] and calls [`Pack::register`] on each pack; this is the entire
-/// contact surface between a pack and the host.
+/// [`Registry`] and registers each pack with [`Registry::register_pack`]; this
+/// is the entire contact surface between a pack and the host.
 pub trait Pack {
-    /// Stable pack identifier, e.g. `"astro"`.
+    /// Stable pack identifier, e.g. `"astro"`. It is the namespace of the
+    /// pack's facets.
     fn id(&self) -> &str;
 
-    /// Register this pack's sources, operators, and sinks into `registry`.
+    /// Register this pack's sources, operators and sinks, and declare its
+    /// facet schemas, into `registry`.
+    ///
+    /// Hosts call [`Registry::register_pack`], never this method directly:
+    /// `register_pack` hands the pack a staging Registry and checks what it
+    /// registered before any of it joins the live one.
     fn register(&self, registry: &mut Registry);
 }
 
@@ -1308,5 +1386,261 @@ mod operator_execution {
     #[test]
     fn operator_execution_max_count_is_the_largest_safe_javascript_integer() {
         assert_eq!(MAX_COUNT, (1i64 << 53) - 1);
+    }
+}
+
+#[cfg(test)]
+mod pack_registration {
+    use super::*;
+
+    struct TestPack(&'static str, Box<dyn Fn(&mut Registry)>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.1)(registry)
+        }
+    }
+
+    fn pack(register: impl Fn(&mut Registry) + 'static) -> TestPack {
+        TestPack("test", Box::new(register))
+    }
+
+    struct Op {
+        id: &'static str,
+        version: &'static str,
+        writes: &'static [&'static str],
+    }
+    impl Operator for Op {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn version(&self) -> &str {
+            self.version
+        }
+        fn writes(&self) -> &[&str] {
+            self.writes
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            Ok(())
+        }
+    }
+
+    fn op(id: &'static str) -> Box<dyn Operator> {
+        Box::new(Op {
+            id,
+            version: "1",
+            writes: &[],
+        })
+    }
+
+    struct Named(&'static str);
+    impl Source for Named {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), SourceError> {
+            Err(SourceError::Unsupported)
+        }
+    }
+    impl Sink for Named {
+        fn id(&self) -> &str {
+            self.0
+        }
+    }
+
+    fn schema(name: &str) -> FacetSchema {
+        FacetSchema {
+            name: name.into(),
+            label: "Size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        }
+    }
+
+    struct NoBytes;
+    impl Candidate for NoBytes {
+        fn size(&self) -> u64 {
+            0
+        }
+        fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    fn runs(registry: &Registry, id: &str) -> Result<FacetProposals, ExecutionError> {
+        registry.execute_operator(id, &mut NoBytes, &mut |_| {}, &|| false)
+    }
+
+    fn with_earlier_pack() -> Registry {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(
+                "earlier",
+                Box::new(|r| r.register_operator(op("test.op"))),
+            ))
+            .unwrap();
+        registry
+    }
+
+    /// The live Registry holds only what the earlier pack registered.
+    fn assert_unchanged(registry: &Registry) {
+        assert_eq!(registry.operator_ids(), ["test.op"]);
+        assert!(registry.source_ids().is_empty());
+        assert!(registry.sink_ids().is_empty());
+        assert!(registry.facets.is_empty());
+        assert!(runs(registry, "test.op").is_ok());
+    }
+
+    #[test]
+    fn pack_registration_refused_for_one_operator_adds_nothing() {
+        let mut registry = with_earlier_pack();
+        let error = registry
+            .register_pack(&pack(|r| {
+                r.declare_facet(schema("test.good-size"));
+                r.register_source(Box::new(Named("test.source")));
+                r.register_sink(Box::new(Named("test.sink")));
+                r.register_operator(Box::new(Op {
+                    id: "test.good",
+                    version: "1",
+                    writes: &["test.good-size"],
+                }));
+                r.register_operator(op("test.op"));
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert!(registry.operator("test.good").is_none());
+        assert!(registry.facet_schema("test.good-size").is_none());
+        assert_eq!(
+            runs(&registry, "test.good"),
+            Err(ExecutionError::UnknownOperator)
+        );
+        assert_unchanged(&registry);
+    }
+
+    /// Each pack makes one declaration core could not store; the error
+    /// names `named`, and the live Registry is unchanged.
+    fn assert_refused(named: &str, register: impl Fn(&mut Registry) + 'static) {
+        let mut registry = with_earlier_pack();
+        let error = registry.register_pack(&pack(register)).unwrap_err();
+        assert!(error.to_string().contains(named), "{named}: {error}");
+        assert_unchanged(&registry);
+    }
+
+    #[test]
+    fn pack_registration_refuses_a_facet_name_the_store_does_not_accept() {
+        for name in [
+            "test.Size",
+            "test.",
+            "test..size",
+            "test.si ze",
+            "test.size_x",
+        ] {
+            assert_refused(name, move |r| r.declare_facet(schema(name)));
+        }
+    }
+
+    #[test]
+    fn pack_registration_refuses_a_schema_version_the_store_cannot_hold() {
+        for version in [0, 2_147_483_648, u32::MAX] {
+            assert_refused("test.size", move |r| {
+                r.declare_facet(FacetSchema {
+                    version,
+                    ..schema("test.size")
+                })
+            });
+        }
+    }
+
+    #[test]
+    fn pack_registration_keeps_the_largest_schema_version() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&pack(|r| {
+                r.declare_facet(FacetSchema {
+                    version: 2_147_483_647,
+                    unit: String::new(),
+                    ..schema("test.size")
+                })
+            }))
+            .unwrap();
+        assert!(registry.facet_schema("test.size").is_some());
+    }
+
+    #[test]
+    fn pack_registration_refuses_an_empty_label_or_a_zero_character() {
+        assert_refused("test.size", |r| {
+            r.declare_facet(FacetSchema {
+                label: String::new(),
+                ..schema("test.size")
+            })
+        });
+        assert_refused("test.size", |r| {
+            r.declare_facet(FacetSchema {
+                label: "Si\0ze".into(),
+                ..schema("test.size")
+            })
+        });
+        assert_refused("test.size", |r| {
+            r.declare_facet(FacetSchema {
+                unit: "by\0tes".into(),
+                ..schema("test.size")
+            })
+        });
+    }
+
+    #[test]
+    fn pack_registration_refuses_an_operator_core_cannot_record() {
+        assert_refused("test.bad", |r| {
+            r.register_operator(Box::new(Op {
+                id: "test.bad",
+                version: "",
+                writes: &[],
+            }))
+        });
+        assert_refused("test.bad", |r| {
+            r.register_operator(Box::new(Op {
+                id: "test.bad",
+                version: "1\0",
+                writes: &[],
+            }))
+        });
+        assert_refused("test.b", |r| r.register_operator(op("test.b\0ad")));
+        assert_refused("empty id", |r| r.register_operator(op("")));
+    }
+
+    #[test]
+    fn pack_registration_names_an_operator_version_with_a_zero_character() {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&pack(|r| {
+                r.register_operator(Box::new(Op {
+                    id: "test.op",
+                    version: "1\0",
+                    writes: &[],
+                }))
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert!(registry.operator("test.op").is_none());
+    }
+
+    #[test]
+    fn pack_registration_leaves_the_registry_unchanged_when_register_panics() {
+        let mut registry = with_earlier_pack();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            registry.register_pack(&pack(|r| {
+                r.register_operator(op("test.other"));
+                panic!("the pack broke");
+            }))
+        }));
+        assert!(outcome.is_err());
+        assert_unchanged(&registry);
     }
 }

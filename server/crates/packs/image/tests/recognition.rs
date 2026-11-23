@@ -20,7 +20,7 @@ const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
 fn recognize(bytes: &[u8]) -> Result<AssetProposal, ExecutionError> {
     let mut registry = Registry::new();
-    ImagePack.register(&mut registry);
+    registry.register_pack(&ImagePack).unwrap();
     registry
         .execute_source(
             MANUAL_UPLOAD,
@@ -39,9 +39,9 @@ fn png() -> Vec<u8> {
 }
 
 #[test]
-fn the_pack_registers_the_manual_upload_source() {
+fn registration_gives_the_registry_the_manual_upload_source() {
     let mut registry = Registry::new();
-    ImagePack.register(&mut registry);
+    registry.register_pack(&ImagePack).unwrap();
     assert_eq!(ImagePack.id(), "image");
     assert_eq!(registry.source_ids(), ["image.manual-upload"]);
 }
@@ -65,7 +65,7 @@ fn jpeg_bytes_are_an_image_jpeg() {
 #[test]
 fn provenance_names_the_manual_upload_source_and_its_version() {
     let mut registry = Registry::new();
-    ImagePack.register(&mut registry);
+    registry.register_pack(&ImagePack).unwrap();
     let accepted = registry
         .execute_source(MANUAL_UPLOAD, &mut Bytes(png()), &mut |_| {}, &|| false)
         .unwrap();
