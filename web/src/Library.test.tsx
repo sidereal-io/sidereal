@@ -204,4 +204,210 @@ describe("Library", () => {
     });
     expect(onSessionLost).not.toHaveBeenCalled();
   });
+
+  describe("upload", () => {
+    const png = () =>
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "nebula.png", {
+        type: "image/png",
+      });
+
+    // The file input the Upload button opens.
+    const picker = () => {
+      const input =
+        document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("no file input");
+      return input;
+    };
+
+    function choose(file: File) {
+      fireEvent.change(picker(), { target: { files: [file] } });
+    }
+
+    const uploads = (fetch: ReturnType<typeof vi.fn>) =>
+      fetch.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/assets" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      );
+
+    it("opens the file picker from one Upload button, for PNG and JPEG", async () => {
+      stubServer({ "GET /api/assets": listAnswer() });
+      showLibrary();
+      const upload = await screen.findByRole("button", { name: "Upload" });
+      const click = vi.spyOn(picker(), "click");
+      fireEvent.click(upload);
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(picker().accept).toBe("image/png,image/jpeg");
+      expect(picker().multiple).toBe(false);
+    });
+
+    it("sends the chosen file at once, as the multipart field file", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [201, { asset: nebula }],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      const file = png();
+      choose(file);
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(1);
+      });
+      const body = (uploads(fetch)[0]?.[1] as RequestInit).body;
+      expect(body).toBeInstanceOf(FormData);
+      expect((body as FormData).get("file")).toBe(file);
+      expect([...(body as FormData).keys()]).toEqual(["file"]);
+    });
+
+    it("shows the filename while pending and sends no second request", async () => {
+      const pending = deferred();
+      const fetch = vi.fn((_input: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? pending.promise
+          : Promise.resolve(Response.json({ assets: [] })),
+      );
+      vi.stubGlobal("fetch", fetch);
+      showLibrary();
+      const upload = await screen.findByRole("button", { name: "Upload" });
+      choose(png());
+      await screen.findByText("Uploading nebula.png…");
+      expect(upload.hasAttribute("disabled")).toBe(true);
+      fireEvent.click(upload);
+      choose(png());
+      expect(uploads(fetch)).toHaveLength(1);
+      await act(async () => {
+        pending.answer(Response.json({ asset: nebula }, { status: 201 }));
+        await pending.promise;
+      });
+      await waitFor(() => {
+        expect(upload.hasAttribute("disabled")).toBe(false);
+      });
+    });
+
+    it("shows the new image after success, without a page reload", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": [listAnswer(), listAnswer(nebula)],
+        "POST /api/assets": [201, { asset: nebula }],
+      });
+      showLibrary();
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      choose(png());
+      await screen.findByRole("img", { name: "nebula.png" });
+      expect(screen.queryByText(/Uploading/)).toBeNull();
+      expect(
+        fetch.mock.calls.filter(
+          ([url, init]) => url === "/api/assets" && !init?.method,
+        ),
+      ).toHaveLength(2);
+    });
+
+    it.each([
+      [
+        413,
+        "nebula.png was not uploaded: it is larger than the 100 MiB limit.",
+      ],
+      [
+        415,
+        "nebula.png was not uploaded: only PNG and JPEG images are supported.",
+      ],
+      [
+        400,
+        "nebula.png was not uploaded: choose one PNG or JPEG file and try again.",
+      ],
+      [
+        503,
+        "nebula.png was not uploaded: the server could not save it. Try again later.",
+      ],
+      [
+        403,
+        "nebula.png was not uploaded: the server could not save it. Try again later.",
+      ],
+    ])("shows a fixed message for a %i refusal", async (status, message) => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [status, { error: "<b>server words</b>" }],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(png());
+      await screen.findByText(message);
+      expect(document.body.textContent).not.toContain("server words");
+      expect(screen.queryByText(/Uploading/)).toBeNull();
+      // Nova can choose another file straight away.
+      expect(
+        screen.getByRole("button", { name: "Upload" }).hasAttribute("disabled"),
+      ).toBe(false);
+      expect(picker().value).toBe("");
+      choose(png());
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(2);
+      });
+    });
+
+    it("shows the same fixed message when the upload cannot reach the server", async () => {
+      stubServer({ "GET /api/assets": listAnswer() });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(png());
+      await screen.findByText(
+        "nebula.png was not uploaded: the server could not save it. Try again later.",
+      );
+    });
+
+    it("shows a filename holding markup as literal text", async () => {
+      const pending = deferred();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) =>
+          init?.method === "POST"
+            ? pending.promise
+            : Promise.resolve(Response.json({ assets: [] })),
+        ),
+      );
+      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      await screen.findByRole("button", { name: "Upload" });
+      choose(new File(["x"], "<b>m42</b>.png", { type: "image/png" }));
+      await screen.findByText("Uploading <b>m42</b>.png…");
+      expect(container.querySelector("b")).toBeNull();
+    });
+
+    it("reports a lost session when the upload answers 401", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [401, { error: "unauthenticated" }],
+      });
+      const onSessionLost = showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(png());
+      await waitFor(() => {
+        expect(onSessionLost).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("ignores an upload that answers after the library is gone", async () => {
+      const pending = deferred();
+      const fetch = vi.fn((_input: string, init?: RequestInit) =>
+        init?.method === "POST"
+          ? pending.promise
+          : Promise.resolve(Response.json({ assets: [] })),
+      );
+      vi.stubGlobal("fetch", fetch);
+      const onSessionLost = vi.fn();
+      const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+      await screen.findByRole("button", { name: "Upload" });
+      choose(png());
+      await screen.findByText("Uploading nebula.png…");
+      unmount();
+      await act(async () => {
+        pending.answer(
+          Response.json({ error: "unauthenticated" }, { status: 401 }),
+        );
+        await pending.promise;
+      });
+      expect(onSessionLost).not.toHaveBeenCalled();
+      expect(fetch.mock.calls.filter(([, init]) => !init?.method)).toHaveLength(
+        1,
+      );
+    });
+  });
 });

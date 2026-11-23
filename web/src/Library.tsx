@@ -1,4 +1,10 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { InBar } from "./Bar.tsx";
 import "./Library.css";
 
@@ -54,6 +60,48 @@ async function fetchList(
   }
 }
 
+// Why an upload was refused, in fixed words. The server's own words never
+// reach the screen.
+function refusal(status: number): string {
+  switch (status) {
+    case 413:
+      return "it is larger than the 100 MiB limit.";
+    case 415:
+      return "only PNG and JPEG images are supported.";
+    case 400:
+      return "choose one PNG or JPEG file and try again.";
+    default:
+      return "the server could not save it. Try again later.";
+  }
+}
+
+// Sends one file as the multipart field `file`. Never retried: a lost
+// answer after the server saved the file cannot be told from a failure.
+async function sendFile(
+  file: File,
+  signal: AbortSignal,
+): Promise<"saved" | { refused: string } | typeof sessionEnded> {
+  try {
+    const body = new FormData();
+    body.append("file", file);
+    const response = await fetch("/api/assets", {
+      method: "POST",
+      body,
+      signal,
+    });
+    if (response.status === 201) return "saved";
+    if (response.status === 401) return sessionEnded;
+    return { refused: refusal(response.status) };
+  } catch {
+    return { refused: refusal(0) };
+  }
+}
+
+type Upload =
+  | { kind: "idle" }
+  | { kind: "sending"; name: string }
+  | { kind: "refused"; name: string; reason: string };
+
 // One image, whole, at its own shape once it loads. Until then its frame
 // keeps the 3:2 shape that Library.css gives it.
 function Picture({ entry }: { entry: Entry }) {
@@ -105,6 +153,20 @@ function Library({
   const [list, setList] = useState<List>("loading");
   // Each change loads the list again.
   const [generation, setGeneration] = useState(0);
+  const [upload, setUpload] = useState<Upload>({ kind: "idle" });
+  const pickerRef = useRef<HTMLInputElement>(null);
+  // Set while a file is on its way, so a second choice sends nothing.
+  const sendingRef = useRef(false);
+  // Aborted when the Library goes away, so a late answer changes nothing.
+  const uploadsRef = useRef<AbortController>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    uploadsRef.current = controller;
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     // Aborted when the Library goes away or loads again, so a late answer
@@ -120,6 +182,24 @@ function Library({
     };
   }, [generation, onSessionLost]);
 
+  async function send(file: File) {
+    const signal = uploadsRef.current?.signal;
+    if (sendingRef.current || !signal) return;
+    sendingRef.current = true;
+    setUpload({ kind: "sending", name: file.name });
+    const result = await sendFile(file, signal);
+    sendingRef.current = false;
+    if (signal.aborted) return;
+    if (result === sessionEnded) {
+      onSessionLost();
+    } else if (result === "saved") {
+      setUpload({ kind: "idle" });
+      setGeneration((value) => value + 1);
+    } else {
+      setUpload({ kind: "refused", name: file.name, reason: result.refused });
+    }
+  }
+
   function retry() {
     setList("loading");
     setGeneration((value) => value + 1);
@@ -130,7 +210,38 @@ function Library({
       <InBar at="start">
         <span className="library-title">Library</span>
       </InBar>
-      <InBar at="end">{children}</InBar>
+      <InBar at="end">
+        <button
+          className="button-primary"
+          type="button"
+          disabled={upload.kind === "sending"}
+          onClick={() => pickerRef.current?.click()}
+        >
+          Upload
+        </button>
+        {children}
+      </InBar>
+      <input
+        ref={pickerRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        aria-label="Image to upload"
+        hidden
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          // Cleared, so the same file can be chosen again after a refusal.
+          event.currentTarget.value = "";
+          if (file) void send(file);
+        }}
+      />
+      {upload.kind === "sending" && (
+        <p className="library-status">Uploading {upload.name}…</p>
+      )}
+      {upload.kind === "refused" && (
+        <p className="library-status">
+          {upload.name} was not uploaded: {upload.reason}
+        </p>
+      )}
       {notice && <p className="library-status">{notice}</p>}
       {list === "loading" && (
         <p className="library-status">Loading the library…</p>

@@ -103,15 +103,16 @@ SHALL continue to permit database-only health and readiness serving.
 
 ### Requirement: The signed-in library supports one-image upload
 
-The signed-in view SHALL show an upload control for selecting one PNG or JPEG
-and an `Upload` button. It SHALL show the selected filename, disable duplicate
-submission while a request is in progress, and show each committed image by
-its name and original. Successful upload SHALL refresh the library without a
-page reload. Names SHALL render as text. The view SHALL retain existing
-health, username, sign-out and event-socket behavior and follow DESIGN.md.
+The signed-in view SHALL show one `Upload` button that opens the file picker
+for one PNG or JPEG. Choosing a file SHALL start its upload at once.
+While it is in progress, the view SHALL show the chosen filename and send no
+second request. Each committed image SHALL show with its name, as text, and
+its original. A successful upload SHALL refresh the library without a page
+reload. Health, username, sign-out and event-socket behavior SHALL stay as
+they are, and the view SHALL follow DESIGN.md.
 
 #### Scenario: First upload appears
-- **WHEN** Nova chooses `nebula.png` and presses Upload and the server accepts it
+- **WHEN** Nova presses Upload, chooses `nebula.png`, and the server accepts it
 - **THEN** the library shows `nebula.png` and its image without reloading
 
 #### Scenario: Library after restart
@@ -120,7 +121,7 @@ health, username, sign-out and event-socket behavior and follow DESIGN.md.
 
 #### Scenario: Upload in progress
 - **WHEN** an upload request is pending
-- **THEN** the view shows an uploading state and a second press cannot send another request
+- **THEN** the view shows the chosen filename as uploading, and neither a second press nor a second choice sends another request
 
 #### Scenario: Filename contains markup
 - **WHEN** the library contains an image whose display name includes HTML markup

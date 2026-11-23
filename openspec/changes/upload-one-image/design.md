@@ -389,10 +389,12 @@ memory use. Core-backed streaming avoids both.
 ### 5. Add the library inside the signed-in view
 
 Render a new `Library` component from Access's signed-in branch. Keep App's
-health display and Access's credentials and socket transitions intact. Use a
-labelled single-file input accepting PNG/JPEG and a type=button Upload action,
-without adding a credentials-style form. Mounting loads the list; success
-reloads it; list errors have Retry; upload errors retain the selected file.
+health display and Access's credentials and socket transitions intact. Use
+one type=button Upload action that opens a hidden, labelled single-file input
+accepting PNG/JPEG. Choosing a file sends it at once, with no form and no
+separate choose step. Mounting loads the list; success reloads it; list
+errors have Retry. A refused upload names the file in its message and lets
+Nova choose another file at once, the same one included.
 Client size/type hints do not replace server validation. On 401, notify Access
 to return to sign-in. Unmount aborts outstanding fetches and ignores late
 responses. Image load errors retain the name and show the fixed display message.

@@ -33,7 +33,7 @@ access tests green.
 
 - [x] 4.1 [medium] Add the six semantic color tokens of design decision 5 to DESIGN.md first; teach `web/scripts/tokens.ts` to write a semantic token as `var()` of the primitive it references, accepting only a value that is exactly `{<group>.<key>}` and still refusing raw values, unknown references, extra text after a reference and component tokens; extend `tokens.test.ts` to count semantic properties separately from primitives and check each alias value; run `pnpm tokens` in `web/`; update `web/README.md` to show the accepted `{<group>.<key>}` form and the cases still refused; move `Access.css` and `styles/base.css` to the semantic tokens for those roles, keeping the submit button's computed color; make the Access test's style helper follow `var()` chains to the final value, and add a test that `Access.css` uses no primitive that has a semantic token for its role (verify: pnpm --dir web test -- tokens.test.ts tokens-in-use.test.ts Access.test.tsx, then mise run check-web) (✓ pnpm --dir web test passed, 153 tests including tokens.test.ts, tokens-in-use.test.ts and Access.test.tsx; ✓ mise run check-web passed)
 - [x ] 4.2 [medium] Display committed images and literal filenames in a token-styled Library within Access's signed-in branch, with loading/empty/list-error/retry and image-display-error states, removing the library on sign-out or session loss and ignoring late responses (verify: pnpm --dir web test -- Library.test.tsx Access.test.tsx) (✓ pnpm --dir web test -- Library.test.tsx Access.test.tsx passed, 170 tests; ✓ mise run check-web passed; ✓ checked by eye at 1440 px and 390 px against the Showcase mockup, with five real PNG and JPEG uploads and one damaged PNG)
-- [ ] 4.3 [medium] Let Nova select and upload one image, showing the filename and pending state, preventing a second submission, displaying fixed refusal messages and refreshing the library after success without a page reload (verify: pnpm --dir web test -- Library.test.tsx)
+- [x ] 4.3 [medium] Let Nova select and upload one image, showing the filename and pending state, preventing a second submission, displaying fixed refusal messages and refreshing the library after success without a page reload (verify: pnpm --dir web test -- Library.test.tsx) (✓ pnpm --dir web test -- Library.test.tsx passed, 183 tests; ✓ mise run check-web passed; ✓ in a real browser, Upload opened the file picker and a TIFF chosen there showed the fixed format refusal)
 
 ## 5. Integration [depends-on: 4]
 
@@ -102,3 +102,8 @@ access tests green.
 - **4.2, filename weight.** The filename uses the mono face at 14/20 with
   `font-weight-400`, as in the chosen mockup, not mono-lg's
   `font-weight-500`.
+- **4.3, one Upload button instead of a file field and a button.** The user
+  asked that Upload open the file picker and that choosing a file start the
+  upload at once. The `image-upload` requirement and its two scenarios, and
+  design decision 5, now say so. A refusal names the file and clears the
+  picker, so Nova can choose another file, or the same one, at once.
