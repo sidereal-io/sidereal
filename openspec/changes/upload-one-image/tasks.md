@@ -46,11 +46,12 @@ access tests green.
 
 - **3.1, transport limit without `Content-Length`.** The route checks the
   101 MiB limit against `Content-Length` before it reads the body, and
-  against the bytes it reads up to the closing delimiter. It never reads an
-  epilogue (design decision 3), so a body that has no `Content-Length` and
-  passes the limit only in its epilogue gets the answer its multipart data
-  earns. Browsers send `Content-Length` and no epilogue. The 413 test sends
-  `Content-Length`, as the `image-upload` scenario's request would.
+  against the bytes it reads up to the closing delimiter. As built, it never
+  read an epilogue, so a body with no `Content-Length` that passed the limit
+  only in its epilogue could get 201. The code review found this (finding 1):
+  the route now reads and discards the epilogue before publication, and such
+  a body gets 413. Tests cover both a body with `Content-Length` and a
+  streamed body without it.
 - **5.1–5.3, one commit.** The three tasks change the same runner, and none
   runs on its own: 5.1's throwaway stack needs 5.2's server ownership and
   5.3's Playwright settings before `mise run e2e` can pass, and port 5173
