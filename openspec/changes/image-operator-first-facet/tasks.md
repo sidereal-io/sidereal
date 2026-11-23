@@ -1,0 +1,36 @@
+<!-- Plain language: Each task must make sense to an agent and reviewer without the planning conversation. Name an observable outcome, its location when needed, and how to verify it. Preserve checkbox syntax and tags. -->
+
+<!-- Run every cargo, pnpm and mise command through the deli, with a long timeout, as the verify commands show. A run that dies or times out with no failed assertion is load: run it again through the deli before debugging. -->
+
+## 1. Contract and tables
+
+- [ ] 1.1 [medium] `Registry::register_pack(&dyn Pack)` keeps every facet schema the pack declares with `Registry::declare_facet` (name, label, `FacetType::Count`, unit, version, `FacetScope`), and refuses, with an error that names the facet, a name another pack already declared or a name that does not start with `<pack id>.`; `ABI_VERSION` is 2 (design decision 2; asset-facets "Each facet schema has one owning pack") (verify: `cd server && deli -- cargo test -p sidereal-plugin-abi facet`)
+- [ ] 1.2 [complex] A test Operator registered through the public contract runs through `Registry::execute_operator`: the `Operator` trait has `id`, `version`, `writes` and `run`; `AssetContext::propose_facet` collects `FacetValue::Integer` proposals with host-made provenance; log lines go through the host; an Operator run that calls `propose_asset`, or a Source run that calls `propose_facet`, gets `ContextError::NotAllowed` and the run fails; the astro `PlateSolveOperator` stub returns `OperatorError::Unsupported` (design decisions 1 and 2) (verify: `cd server && deli -- cargo test -p sidereal-plugin-abi -p sidereal-pack-astro operator`)
+- [ ] 1.3 [medium] Migration 5 creates empty `operation_runs`, `facet_schemas` and `facet_values` tables exactly as design decision 4 and ADR-017 give them (JSONB `value` with a `jsonb_path_ops` GIN index); the workspace `sqlx` gains its `json` feature; `core/schema/5.json` comes from `mise run db-schema` and joins `baselines()`; the upgrade test from migration 4 keeps the first four records and finds the three tables empty; `scripts/instance-verify.sh` expects five migrations (postgres-foundation) (verify: `cd server && deli -- cargo test -p sidereal-core startup`)
+
+## 2. Core executor [depends-on: 1]
+
+- [ ] 2.1 [complex] `operations::run_operator` runs one registered Operator over one Asset version's stored object and records the run in `operation_runs`. When every proposal names a registered schema, is in the Operator's `writes()`, and fits its type (a `count` is zero or more), it stores each value with its provenance (producer id and version, run id, schema version, time) and the schema row, and marks the run `succeeded`. Otherwise — an unknown or ungranted facet, a negative count, one refused proposal among valid ones, `Failed` or `Unsupported`, a panic (reason `the operator stopped`), or cancellation — it marks the run `failed` with a reason that names the cause and stores no value (design decision 3; asset-facets) (verify: `cd server && deli -- cargo test -p sidereal-core operations`)
+
+## 3. Upload and the asset API [depends-on: 2]
+
+- [ ] 3.1 [complex] Uploading a PNG of known size stores an `image.file-size` value equal to its bytes on the new Asset version, written by the image pack's `image.measure-file-size` Operator, which runs after the commit in a spawned task that a client going away does not stop; the server builds its Registry through `register_pack`, and a unit test builds the production Registry (design decision 5; image-upload "Upload records the image's file size"; asset-facets "The image pack records an image's file size") (verify: `cd server && deli -- cargo test -p sidereal-pack-image -p sidereal-server file_size`)
+- [ ] 3.2 [medium] When the file-size run fails, its proposal is refused, or the run cannot be recorded, upload still answers 201 with the existing body and writes one `file-size run failed for asset <id>: <error>` line to the server's log; tests point upload at a test Operator through the `#[doc(hidden)]` `Library::with_registry` and `with_upload_operators` builders (design decision 5; image-upload "A failed file-size run does not fail the upload") (verify: `cd server && deli -- cargo test -p sidereal-server --test assets upload`)
+- [ ] 3.3 [medium] `GET /api/assets/{id}`, inside the session guard, returns the Asset's list entry plus `facets: [{name, label, value, unit}]` for the Asset and its current version, ordered by name, then write time, then id; an empty list for no facets; 404 for an unknown or malformed id; 503 with the library's fixed message when the database is down; 401 and the origin refusal as the other library routes (design decision 6; asset-library) — name its tests `get_asset_…` (verify: `cd server && deli -- cargo test -p sidereal-server --test assets get_asset`)
+
+## 4. The asset page address on the server
+
+- [ ] 4.1 [parallel] [easy] With a web root, `GET /assets/<lowercase uuid>` answers with `index.html`, as `/` does; Vite's `/assets/index-….js` files, an uppercase id, a trailing slash and every other unknown path keep their current answers (design decision 7; compose-instance) (verify: `cd server && deli -- cargo test -p sidereal-server --test web_root`)
+
+## 5. The asset page in the web app
+
+- [ ] 5.1 [complex] The asset page's look is chosen and recorded: draw two or three HTML drafts in `.workspace/asset-page/` that use `web/src/styles/tokens.css` and DESIGN.md's Gallery layout family; stop for the user to pick one; draw the chosen draft on the Penpot page `Options: asset-page` with the `visual-options` skill; add an "Asset page" section under Components in DESIGN.md. A token the draft needs that does not exist goes into DESIGN.md first, then `pnpm tokens` in `web/` regenerates `tokens.css`, and the Deviations Ledger says why (design decision 9) (verify: `cd web && deli -- pnpm design:lint`)
+- [ ] 5.2 [medium] Clicking an image or its name in the Library moves to `/assets/<id>` without a page load (a modified click still opens a new tab), the signed-in view shows the asset page at that path and the Library at any other, Back returns to the Library, and a lost session shows sign-in and keeps the path (design decision 8; asset-page "An image in the Library opens its page", "Ending the session hides the asset page") (verify: `cd web && deli -- pnpm test -- navigation Access Library`)
+- [ ] 5.3 [complex] The asset page fetches `/api/assets/<id>` and shows, as DESIGN.md's "Asset page" section says: loading; not found; failed with Retry; the image, its name and each fact as label, value grouped with commas (`Intl.NumberFormat("en-US")`) and unit; a line saying no facts are recorded; the broken-image message with the name kept; markup in a name or label shown as text; a link back to the Library; a body that does not match the page's id or shape counts as failed (design decision 8; asset-page) (verify: `cd web && deli -- pnpm test -- AssetPage`)
+
+## 6. Journey [depends-on: 3, 4, 5]
+
+- [ ] 6.1 [medium] In the browser journey, Nova uploads an image, opens it from the Library, sees `File size` with its byte count, reloads the page and still sees it, and goes back to the Library (asset-page "The asset page's address survives a reload") (verify: `deli -- mise run e2e`)
+
+## Deviations Ledger
+
