@@ -27,4 +27,4 @@ still holds: no new rows, and the next start's cleanup empties `tmp`. -->
 
 ## 4. Gate
 
-- [ ] 4.1 [easy] The whole project gate passes: formatting, clippy with warnings denied, all server tests, the architecture lint, the OpenSpec strict validation and the web checks (verify: mise run check)
+- [x] 4.1 [easy] The whole project gate passes: formatting, clippy with warnings denied, all server tests, the architecture lint, the OpenSpec strict validation and the web checks (verify: mise run check) (✓ mise run check passed: check-compose, check-server and check-web at 8eb48d7, check-openspec after this spec split)
