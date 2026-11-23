@@ -372,7 +372,7 @@ mod ingest_commit {
     }
 
     #[tokio::test]
-    async fn a_failed_commit_after_reuse_keeps_the_shared_object() {
+    async fn a_retry_after_a_failed_commit_reuses_the_kept_object() {
         use std::os::unix::fs::MetadataExt;
         let fixture = Fixture::new().await;
         break_version_inserts(&fixture).await;
