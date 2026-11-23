@@ -147,8 +147,8 @@ reclaim it, even when no record refers to it. The next startup SHALL leave
 `tmp` empty of the upload's staging file.
 
 #### Scenario: Stopped while the staging file is written or synced, or before publication
-- **GIVEN** no object is stored for the upload's bytes
-- **WHEN** the server process is killed at the step that writes the staging file, syncs it, or publishes it
+- **GIVEN** no object is stored for the upload's bytes, and no other upload stores them before the stop
+- **WHEN** the server process is killed while it writes the staging file, while it syncs it, or just before it renames it into `store`
 - **THEN** no Asset or Asset version for the upload exists, and no object exists at its hash path
 - **AND** after the next startup, `tmp` holds no staging file
 
