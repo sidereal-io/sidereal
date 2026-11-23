@@ -392,3 +392,23 @@ async fn startup_cleanup_of_an_empty_tmp_prints_no_count_line() {
         "{output}"
     );
 }
+
+#[tokio::test]
+async fn startup_cleanup_refuses_a_symlinked_tmp() {
+    let db = TestDatabase::new();
+    let storage = Dir::new("cleanup-link");
+    drop(ready(&db, Some(&storage.0)));
+    let id = stored_id(&db).await;
+    let outside = Dir::new("cleanup-link-target");
+    std::fs::write(outside.0.join("file"), b"keep").unwrap();
+    std::os::unix::fs::symlink(&outside.0, storage.0.join("tmp")).unwrap();
+    let stderr = refused(&db, &storage.0);
+    assert!(stderr.contains("the tmp folder"), "{stderr}");
+    assert_eq!(
+        std::fs::read_link(storage.0.join("tmp")).unwrap(),
+        outside.0
+    );
+    assert_eq!(outside.entries(), ["file"]);
+    assert_eq!(std::fs::read(outside.0.join("file")).unwrap(), b"keep");
+    assert_eq!(stored_id(&db).await, id);
+}
