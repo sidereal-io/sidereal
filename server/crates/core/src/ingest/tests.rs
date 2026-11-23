@@ -406,6 +406,203 @@ mod ingest_commit {
         assert_eq!(fixture.database.assets().await.unwrap(), [first, second]);
     }
 
+    /// One version a test inserts directly, as a database built before this
+    /// change, or another Source, could hold it.
+    struct Row<'a> {
+        id: &'a str,
+        hash: &'a str,
+        source_id: &'a str,
+        ingested_at: &'a str,
+    }
+
+    impl Row<'_> {
+        fn new<'a>(id: &'a str, hash: &'a str, ingested_at: &'a str) -> Row<'a> {
+            Row {
+                id,
+                hash,
+                source_id: "test.recorder",
+                ingested_at,
+            }
+        }
+    }
+
+    /// Insert Asset `id`, named `name`, with `versions`; the last one is its
+    /// current version.
+    async fn insert_asset(fixture: &Fixture, id: &str, name: &str, versions: &[Row<'_>]) {
+        let current = versions.last().unwrap().id;
+        let mut sql = format!(
+            "BEGIN; INSERT INTO public.assets (id, kind, name, current_version_id) \
+             VALUES ('{id}', 'image', '{name}', '{current}');"
+        );
+        for v in versions {
+            sql += &format!(
+                " INSERT INTO public.asset_versions \
+                 (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) \
+                 VALUES ('{}', '{id}', '{}', 3, 'image/x-test', '{}', '1.0.0', '{}');",
+                v.id, v.hash, v.source_id, v.ingested_at
+            );
+        }
+        sql += " COMMIT;";
+        fixture
+            .conn()
+            .await
+            .execute(sqlx::AssertSqlSafe(sql))
+            .await
+            .unwrap();
+    }
+
+    /// Every Asset and Asset version row, as text, in id order.
+    async fn snapshot(fixture: &Fixture) -> String {
+        sqlx::query_scalar(
+            "SELECT coalesce((SELECT string_agg(a::text, ';' ORDER BY a.id) FROM public.assets a), '') \
+             || '|' || coalesce((SELECT string_agg(v::text, ';' ORDER BY v.id) FROM public.asset_versions v), '')",
+        )
+        .fetch_one(&mut fixture.conn().await)
+        .await
+        .unwrap()
+    }
+
+    fn found(outcome: Result<Ingested, IngestError>) -> AssetRecord {
+        match outcome {
+            Ok(Ingested::Found(record)) => record,
+            other => panic!("expected a found Asset, got {other:?}"),
+        }
+    }
+
+    const OLDER: &str = "a0000000-0000-4000-8000-000000000001";
+    const LOW: &str = "00000000-0000-4000-8000-000000000001";
+    const HIGH: &str = "ffffffff-0000-4000-8000-000000000001";
+    const OTHER: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    #[tokio::test]
+    async fn an_upload_finds_the_asset_whose_version_was_ingested_first() {
+        let fixture = Fixture::new().await;
+        fixture.create("nebula.png", b"abc").await;
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[Row::new(
+                "a0000000-0000-4000-8000-0000000000a1",
+                ABC,
+                "2000-01-01T00:00:00Z",
+            )],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(
+            (record.id.to_string().as_str(), record.name.as_str()),
+            (OLDER, "older.png")
+        );
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn among_versions_ingested_together_an_upload_finds_the_lowest_asset_id() {
+        let fixture = Fixture::new().await;
+        let at = "2000-01-01T00:00:00Z";
+        insert_asset(
+            &fixture,
+            HIGH,
+            "high.png",
+            &[Row::new("ffffffff-0000-4000-8000-0000000000a1", ABC, at)],
+        )
+        .await;
+        insert_asset(
+            &fixture,
+            LOW,
+            "low.png",
+            &[Row::new("00000000-0000-4000-8000-0000000000a1", ABC, at)],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(record.id.to_string(), LOW);
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn an_upload_finds_an_asset_whose_matching_version_is_not_current() {
+        let fixture = Fixture::new().await;
+        let current = "a0000000-0000-4000-8000-0000000000a2";
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[
+                Row::new(
+                    "a0000000-0000-4000-8000-0000000000a1",
+                    ABC,
+                    "2000-01-01T00:00:00Z",
+                ),
+                Row::new(current, OTHER, "2000-01-02T00:00:00Z"),
+            ],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(record.id.to_string(), OLDER);
+        assert_eq!(record.current_version_id.to_string(), current);
+        assert_eq!(record.version.content_hash, OTHER);
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn bytes_another_source_brought_in_are_found_and_keep_their_provenance() {
+        let fixture = Fixture::new().await;
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[Row {
+                source_id: "test.other",
+                ..Row::new(
+                    "a0000000-0000-4000-8000-0000000000a1",
+                    ABC,
+                    "2000-01-01T00:00:00Z",
+                )
+            }],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(*fixture.seen.lock().unwrap(), b"abc");
+        assert_eq!(record.id.to_string(), OLDER);
+        assert_eq!(
+            (
+                record.version.source_id.as_str(),
+                record.version.source_version.as_str()
+            ),
+            ("test.other", "1.0.0")
+        );
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn refused_bytes_already_in_the_library_are_still_refused() {
+        let fixture = Fixture::new().await;
+        let rejected = blake3::hash(b"rejected").to_hex().to_string();
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[Row::new(
+                "a0000000-0000-4000-8000-0000000000a1",
+                &rejected,
+                "2000-01-01T00:00:00Z",
+            )],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let outcome = fixture.upload("again.png", b"rejected").await;
+        assert!(
+            matches!(outcome, Err(IngestError::Refused(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
     #[tokio::test]
     async fn a_name_with_traversal_is_display_text_only() {
         let fixture = Fixture::new().await;
