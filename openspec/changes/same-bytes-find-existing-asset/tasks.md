@@ -1,0 +1,27 @@
+<!-- Plain language: Each task must make sense to an agent and reviewer without the planning conversation. Name an observable outcome, its location when needed, and how to verify it. Preserve checkbox syntax and tags. -->
+
+<!-- Run cargo, pnpm, `mise run e2e` and `mise run check` through `deli -- <command>` on this machine, with long timeouts. -->
+
+## 1. Core finds the existing Asset
+
+- [ ] 1.1 [medium] In `server/crates/core`, make `ingest` return `Ingested::Created(AssetRecord)` or `Ingested::Found(AssetRecord)` (design decision 4). In the Asset transaction, look for a version with the candidate's hash before inserting (design decisions 1 and 3). A second upload of the same bytes as `m31-final.png` returns `Found` with the first Asset, unchanged and still named `nebula.png`, and the database still holds one Asset and one version; different bytes return `Created`. Rewrite `a_failed_commit_after_reuse_keeps_the_shared_object` as the design's Risks section says: the first commit fails and keeps the object, then a second upload of the same bytes reuses it and returns `Created`. Update the route's call so the crate builds, still answering 201 for both results until task 2.1 (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core ingest_commit)
+- [ ] 1.2 [medium] An upload finds the oldest matching Asset: with two Assets whose versions share a hash (the test inserts the second one directly), ingest returns the Asset whose version has the earlier `ingested_at`, then the lower Asset id, and both Assets and their versions stay unchanged. It also finds an Asset whose matching version is not its current version (the test inserts that version directly) (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core ingest_commit)
+- [ ] 1.3 [complex] Concurrent uploads of the same new bytes make one Asset: take `pg_advisory_xact_lock` on a new "Asset content" key and the hash's first 8 hex digits before the lookup (design decision 1). The test holds two ingests at a `std::sync::Barrier` in the storage hook on the last directory sync, so both reach the Asset transaction together. Over several rounds with fresh bytes, each round gives exactly one `Created`, one `Found` for the same Asset, and one Asset and one version for the hash (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core ingest_commit)
+
+## 2. The upload route answers 409 [depends-on: 1]
+
+- [ ] 2.1 [parallel] [medium] `POST /api/assets` answers 409 with `{ "asset": entry }` for `Ingested::Found` and 201 for `Created`. In `server/crates/server/tests/assets.rs`, upload `nebula.png`, then the same bytes as `nebula.png` and as `m31-final.png`: the first answer is 201, each repeat is 409 with the first answer's `id`, `kind`, `current_version_id` and `original_url` and `name` `nebula.png`, and `GET /api/assets` still lists one Asset named `nebula.png`. Plain text named `nebula.png` still answers 415 (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-server --test assets upload)
+
+## 3. The library screen
+
+- [ ] 3.1 [medium] In `web/src/Library.tsx`, a 409 answer shows `<chosen name> is already in the library.`, or `<chosen name> is already in the library as <existing name>.` when the body's checked `asset` entry has another name (design decision 5). The body is checked with the same rules as a list entry, and a body with no valid entry gives the shorter notice with no name from the body. The screen shows no `was not uploaded` message, does not request the list again, keeps the Upload button enabled and clears the picker so another file can be chosen at once; names appear as text only (verify: pnpm --dir web test -- Library.test.tsx)
+- [ ] 3.2 [easy] When an upload gets no answer, the screen shows `No answer came back for <chosen name>. It is safe to upload it again: if it was saved, Sidereal will find it.`, loads the list again and sends exactly one upload request. Update the existing test "says the outcome is unknown, and loads the list again, when no answer comes back" (verify: pnpm --dir web test -- Library.test.tsx)
+
+## 4. Journey and gate [depends-on: 2, 3]
+
+- [ ] 4.1 [medium] In `web/e2e/upload.spec.ts`, after Nova uploads `nebula.png` and `nebula.jpg`, Nova uploads `nebula.png`'s bytes again as `m31-final.png` (Playwright `setFiles` with a name and a buffer). The screen shows `m31-final.png is already in the library as nebula.png.`, and the library still shows exactly two images, before and after the restart (verify: mise run e2e)
+- [ ] 4.2 [easy] The whole gate passes: format, lint, unit and integration tests, the architecture lint, strict OpenSpec validation and the web checks (verify: mise run check)
+
+## Deviations Ledger
+
+<!-- Dated notes on small departures from the plan, written during apply. Stop and ask the user about a large one. -->
