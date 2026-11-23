@@ -211,6 +211,73 @@ pub trait Operator: Send + Sync {
     fn id(&self) -> &str;
 }
 
+/// The type of a facet's value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FacetType {
+    /// A whole number from 0 to [`MAX_COUNT`].
+    Count,
+}
+
+/// What a facet's value describes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FacetScope {
+    /// The Asset as a whole, across its versions.
+    Asset,
+    /// One Asset version: one exact set of bytes.
+    AssetVersion,
+}
+
+/// The declaration of one facet, which the pack that declares it owns.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetSchema {
+    /// The facet's name: the owning pack's id, a dot, then the rest, such as
+    /// `"image.file-size"`.
+    pub name: String,
+    /// What a person reads beside the value, such as `"File size"`.
+    pub label: String,
+    pub value_type: FacetType,
+    /// The value's unit, such as `"bytes"`. It may be empty.
+    pub unit: String,
+    /// Raised whenever the label, unit, type or scope changes.
+    pub version: u32,
+    pub scope: FacetScope,
+}
+
+/// A facet schema the Registry keeps, with the pack that declared it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeclaredFacet {
+    pub schema: FacetSchema,
+    /// The id of the pack that declared the schema.
+    pub owner: String,
+}
+
+/// Why the Registry refused a pack. Each error names what it refused.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RegistryError {
+    /// Another declaration already uses this facet name.
+    FacetAlreadyDeclared(String),
+    /// The facet's name does not start with its pack's id and a dot.
+    FacetOutsideNamespace { facet: String, pack: String },
+}
+
+impl fmt::Display for RegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FacetAlreadyDeclared(facet) => {
+                write!(f, "facet {} is already declared", facet.escape_debug())
+            }
+            Self::FacetOutsideNamespace { facet, pack } => write!(
+                f,
+                "facet {} is not in the namespace of pack {}",
+                facet.escape_debug(),
+                pack.escape_debug()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RegistryError {}
+
 /// Exports assets to an external system (e.g. Immich).
 pub trait Sink: Send + Sync {
     /// Stable, namespaced identifier, e.g. `"astro.immich"`.
@@ -225,6 +292,10 @@ pub struct Registry {
     sources: Vec<Box<dyn Source>>,
     operators: Vec<Box<dyn Operator>>,
     sinks: Vec<Box<dyn Sink>>,
+    facets: Vec<DeclaredFacet>,
+    /// The pack being registered, on the staging Registry that
+    /// [`Registry::register_pack`] hands it.
+    pack: Option<String>,
 }
 
 impl Registry {
@@ -246,6 +317,53 @@ impl Registry {
     /// Register a [`Sink`].
     pub fn register_sink(&mut self, sink: Box<dyn Sink>) {
         self.sinks.push(sink);
+    }
+
+    /// Declare a facet schema that the pack being registered owns.
+    pub fn declare_facet(&mut self, schema: FacetSchema) {
+        let owner = self.pack.clone().unwrap_or_default();
+        self.facets.push(DeclaredFacet { schema, owner });
+    }
+
+    /// The kept facet schema with this name.
+    pub fn facet_schema(&self, name: &str) -> Option<&DeclaredFacet> {
+        self.facets.iter().find(|f| f.schema.name == name)
+    }
+
+    /// Register one pack. The pack registers into a staging Registry; only
+    /// when everything it declared and registered passes the checks does it
+    /// join this Registry, so a refused pack adds nothing.
+    pub fn register_pack(&mut self, pack: &dyn Pack) -> Result<(), RegistryError> {
+        let mut staged = Registry {
+            pack: Some(pack.id().to_owned()),
+            ..Registry::default()
+        };
+        pack.register(&mut staged);
+        let pack_id = pack.id();
+        for (index, declared) in staged.facets.iter().enumerate() {
+            let name = &declared.schema.name;
+            if !name
+                .strip_prefix(pack_id)
+                .is_some_and(|rest| rest.starts_with('.'))
+            {
+                return Err(RegistryError::FacetOutsideNamespace {
+                    facet: name.clone(),
+                    pack: pack_id.to_owned(),
+                });
+            }
+            if self.facet_schema(name).is_some()
+                || staged.facets[..index]
+                    .iter()
+                    .any(|f| f.schema.name == *name)
+            {
+                return Err(RegistryError::FacetAlreadyDeclared(name.clone()));
+            }
+        }
+        self.sources.append(&mut staged.sources);
+        self.operators.append(&mut staged.operators);
+        self.sinks.append(&mut staged.sinks);
+        self.facets.append(&mut staged.facets);
+        Ok(())
     }
 
     /// The registered Source with this id.
@@ -554,5 +672,93 @@ mod source_execution {
             run_scripted(|_| Err(SourceError::Unsupported), b"I"),
             Err(ExecutionError::Unsupported)
         );
+    }
+}
+
+#[cfg(test)]
+mod facet_declaration {
+    use super::*;
+
+    /// A pack whose registration is a closure, for one-off declarations.
+    struct TestPack(&'static str, fn(&mut Registry));
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.1)(registry)
+        }
+    }
+
+    fn size(name: &str) -> FacetSchema {
+        FacetSchema {
+            name: name.into(),
+            label: "Size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        }
+    }
+
+    #[test]
+    fn facet_declaration_keeps_every_schema_a_pack_declares() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack("test", |r| {
+                r.declare_facet(size("test.size"));
+                r.declare_facet(FacetSchema {
+                    scope: FacetScope::Asset,
+                    ..size("test.width")
+                });
+            }))
+            .unwrap();
+        let declared = registry.facet_schema("test.size").unwrap();
+        assert_eq!(declared.schema, size("test.size"));
+        assert_eq!(declared.owner, "test");
+        assert_eq!(
+            registry.facet_schema("test.width").unwrap().schema.scope,
+            FacetScope::Asset
+        );
+        assert!(registry.facet_schema("test.missing").is_none());
+    }
+
+    #[test]
+    fn facet_declaration_refuses_a_name_another_pack_declared() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("test.size"))))
+            .unwrap();
+        let error = registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("test.size"))))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.size"), "{error}");
+    }
+
+    #[test]
+    fn facet_declaration_refuses_a_name_declared_twice_by_one_pack() {
+        let error = Registry::new()
+            .register_pack(&TestPack("test", |r| {
+                r.declare_facet(size("test.size"));
+                r.declare_facet(size("test.size"));
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.size"), "{error}");
+    }
+
+    #[test]
+    fn facet_declaration_refuses_a_name_outside_the_pack_namespace() {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("other.size"))))
+            .unwrap_err();
+        assert!(error.to_string().contains("other.size"), "{error}");
+        // A longer pack id that starts with the same letters is another pack.
+        let error = registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("testing.size"))))
+            .unwrap_err();
+        assert!(error.to_string().contains("testing.size"), "{error}");
+        assert!(registry.facet_schema("other.size").is_none());
+        assert!(registry.facet_schema("testing.size").is_none());
     }
 }
