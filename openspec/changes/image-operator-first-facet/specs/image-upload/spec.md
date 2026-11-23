@@ -55,3 +55,31 @@ be recorded. The server SHALL go on answering requests.
 - **WHEN** Nova uploads a PNG and PostgreSQL refuses the run's record after the Asset is saved
 - **THEN** the response is 201 and the Asset and its version remain
 - **AND** the server log has a line that starts `file-size run not recorded for asset <id>:`
+
+## MODIFIED Requirements
+
+### Requirement: The signed-in library supports one-image upload
+
+The Library SHALL show one `Upload` button that opens the file picker
+for one PNG or JPEG. Choosing a file SHALL start its upload at once.
+While it is in progress, the Library SHALL show the chosen filename and send
+no second request. Each committed image SHALL show with its name, as text,
+and its original. A successful upload SHALL refresh the library without a
+page reload. Health, username, sign-out and event-socket behavior SHALL stay
+as they are, and the view SHALL follow DESIGN.md.
+
+#### Scenario: First upload appears
+- **WHEN** Nova presses Upload, chooses `nebula.png`, and the server accepts it
+- **THEN** the library shows `nebula.png` and its image without reloading
+
+#### Scenario: Library after restart
+- **WHEN** Nova opens the signed-in view after the server restarts with the same database and storage
+- **THEN** the library loads and displays the saved image by name
+
+#### Scenario: Upload in progress
+- **WHEN** an upload request is pending and the Library shows
+- **THEN** the Library shows the chosen filename as uploading, and neither a second press nor a second choice sends another request
+
+#### Scenario: Filename contains markup
+- **WHEN** the library contains an image whose display name includes HTML markup
+- **THEN** the name appears as literal text and executes no markup

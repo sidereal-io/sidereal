@@ -25,7 +25,9 @@ id, and without a session. The answer SHALL hold no library data.
 ### Requirement: An asset page address is reserved in the web root
 
 A file or folder in `WEB_ROOT` whose path is an asset page address SHALL NOT
-be served; the address SHALL answer with `index.html`. Every other file in
+be served; the address SHALL answer with `index.html`. A request path that
+is not an asset page address as written, but becomes one once its
+percent-encoding is decoded, SHALL answer 404. Every other file in
 `WEB_ROOT` SHALL still be served at its own path.
 
 #### Scenario: The web shell's own files still load
@@ -38,6 +40,13 @@ be served; the address SHALL answer with `index.html`. Every other file in
 - **AND** a tester has added a file at `assets/0b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091` in it
 - **WHEN** a tester requests `/assets/0b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091`
 - **THEN** the status is 200 and the body equals the `index.html` file in `WEB_ROOT`, not the added file
+
+#### Scenario: An encoded spelling of an asset page address
+- **GIVEN** a server running with `WEB_ROOT` set to a built web shell
+- **AND** a tester has added a file at `assets/0b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091` in it
+- **WHEN** a tester runs `curl -si --path-as-is http://localhost:5000/assets/%30b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091`
+- **THEN** the status is 404
+- **AND** the body is neither the added file nor `index.html`
 
 #### Scenario: Other paths under /assets are not asset pages
 - **GIVEN** a server running with `WEB_ROOT` set to a built web shell

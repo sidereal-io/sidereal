@@ -185,7 +185,15 @@ Registry and against itself:
 - a facet name already declared, or one that does not start with
   `<pack id>.`, is refused with an error that names the facet;
 - an Operator id that another registered Operator already has is refused
-  with an error that names the id.
+  with an error that names the id;
+- a declaration that core could not store is refused with an error that
+  names the facet or the Operator. These checks match migration 5's
+  columns (decision 4): a facet name matches
+  `^[a-z0-9-]+(\.[a-z0-9-]+)+$`; a schema version is from 1 to `i32::MAX`
+  (2,147,483,647), because `facet_schemas.version` is `INTEGER`; a label is
+  not empty; an Operator id and version are not empty; and no label, unit,
+  Operator id or Operator version holds U+0000. So a run never fails on a
+  healthy database because of what its pack declared.
 
 Only when every check passes does it move the staged Sources, Operator
 entries, Sinks and schemas into the live Registry. A refused pack therefore
@@ -433,7 +441,11 @@ Whatever the run's result, the upload answers 201 with the existing body:
 - `OperationError::Unrecorded` writes
   `file-size run not recorded for asset <id>: <error>`. This tells the
   operator that the outcome is unknown, unlike a failed or refused run,
-  which is recorded and stored no value.
+  which is recorded and stored no value. When the run's first insert was
+  refused, nothing of the run exists and the Asset has no facets. When the
+  final commit landed but its answer and the read-back were both lost, the
+  values and the `succeeded` row exist, and reading the Asset returns them.
+  Tests assert `"facets":[]` only for a run that definitely stored nothing.
 
 A join error of the whole task (a panic in core, not in the Operator) is a
 server fault: the handler answers 500 as other upload faults do and logs
@@ -493,6 +505,14 @@ it answers `GET` and `HEAD` with the same `ServeFile` for `index.html` that
 keep working. The match is on the exact text: an uppercase id or a trailing
 slash is not an asset page address. Vite's output folder stays where it is.
 
+`ServeDir` percent-decodes the path before it looks for a file, so
+`/assets/%30b6f3c2e-…` would reach the file at the reserved path
+`assets/0b6f3c2e-…`. The wrapper therefore also decodes the path, with the
+same `percent_decode(…).decode_utf8()` that `ServeDir` uses. When the
+decoded path is an asset page address but the path as written is not, it
+answers 404 itself, and `ServeDir` never sees the request. A `web_root` test
+requests the encoded spelling of the reserved file's address.
+
 An asset page address is reserved. A file or folder in `WEB_ROOT` whose path
 is an asset page address is never served: the address answers with
 `index.html`. Vite names its files with a hash and an extension, so no built
@@ -546,6 +566,13 @@ shows no upload status. The existing `Library.test.tsx` upload tests move
 to rendering through `SignedIn`, or pass the hook's values as props.
 
 Each Library image and its name become one `Link` to `/assets/<id>`.
+
+`SignedIn` renders the page as `<AssetPage key={id} id={id}>`. A history
+jump can go straight from one asset page to another, with no Library in
+between, and React would then keep the first page's state while the second
+loads. The `key` gives each Asset id a fresh `AssetPage`, so the page shows
+only `Loading the image…` until its own answer comes. The upload state lives
+in `SignedIn`, above the key, so it survives the change.
 
 `AssetPage` fetches `/api/assets/<id>` with an `AbortController`, as
 `Library` does, and accepts the body only when `asset.id` equals the page's

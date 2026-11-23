@@ -28,8 +28,8 @@ the asset page SHALL show the Library again.
 An upload that is still sending when Nova opens an asset page SHALL keep
 sending. The asset page SHALL show no upload status. When Nova returns to the
 Library, it SHALL show that upload as it now stands: still in progress, or
-its result. While it is in progress, the Library SHALL send no second upload
-request, as image-upload requires.
+its result. While it is in progress, the signed-in view SHALL send no
+second upload request, on either screen.
 
 #### Scenario: Nova opens an image while an upload is sending
 - **GIVEN** Nova has chosen `m31.png` and its upload request is still pending
@@ -106,6 +106,11 @@ While it waits for the server, the asset page SHALL show
 fails, or the answer is not a valid Asset with facets, it SHALL show
 `The image could not be loaded.` and a Retry button that asks again. A
 failed load SHALL NOT show the no-facts line.
+
+#### Scenario: Nova moves from one asset page to another
+- **GIVEN** the asset page of `nebula.png` has loaded, and the request for `m31.png`'s Asset is still pending
+- **WHEN** the address changes from `nebula.png`'s asset page to `m31.png`'s, through the browser's history
+- **THEN** the page shows `Loading the image…` and no name, image or fact of `nebula.png`
 
 #### Scenario: An Asset that does not exist
 - **WHEN** Nova opens `/assets/<id>` with an id that no Asset has

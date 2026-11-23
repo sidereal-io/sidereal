@@ -32,7 +32,7 @@ SHALL have an empty `facets` array. The response SHALL NOT include
 provenance.
 
 #### Scenario: An Asset with its file size
-- **WHEN** a signed-in administrator reads the Asset of `nebula.png`, uploaded after this change, with 1,234,567 bytes
+- **WHEN** a signed-in administrator reads the Asset of `nebula.png`, uploaded after this change, with 1,234,567 bytes, whose file-size run succeeded
 - **THEN** the response is 200 and its `asset.facets` is `[{"name":"image.file-size","label":"File size","value":1234567,"unit":"bytes"}]`
 
 #### Scenario: An Asset with no facets

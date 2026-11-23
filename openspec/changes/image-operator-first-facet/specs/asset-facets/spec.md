@@ -45,6 +45,29 @@ and a dot.
 - **WHEN** the pack `test` declares a facet named `other.size`
 - **THEN** the Registry refuses the declaration with an error that names `other.size`
 
+### Requirement: The Registry refuses a declaration that core cannot store
+
+The Registry SHALL refuse a pack that declares a facet schema or registers an
+Operator that core could not record. A facet's name SHALL be two or more
+parts of lowercase letters, digits and hyphens, joined by dots. Its version
+SHALL be from 1 to 2,147,483,647. Its label SHALL NOT be empty. An Operator's
+id and version SHALL NOT be empty. No label, unit, id or version SHALL hold a
+zero character (U+0000). The error SHALL name the facet or the Operator.
+
+#### Scenario: A schema version too large to store
+- **WHEN** the pack `test` declares `test.size` at version 2147483648
+- **THEN** the Registry refuses the pack with an error that names `test.size`
+- **AND** the Registry has no schema `test.size`
+
+#### Scenario: A facet name the store does not accept
+- **WHEN** the pack `test` declares `test.Size`
+- **THEN** the Registry refuses the pack with an error that names `test.Size`
+
+#### Scenario: An Operator version with a zero character
+- **WHEN** the pack `test` registers the Operator `test.op` at version `1` U+0000
+- **THEN** the Registry refuses the pack with an error that names `test.op`
+- **AND** the Registry has no Operator `test.op`
+
 ### Requirement: An Operator writes only the facets it declares
 
 An Operator SHALL list the facets it writes when its pack registers it. That
