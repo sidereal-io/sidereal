@@ -18,7 +18,10 @@ use std::fmt;
 /// - `0`: the M0 skeleton, with id-only stubs.
 /// - `1`: a [`Source`] reports its version and runs through an
 ///   [`AssetContext`]. Every Source must implement [`Source::run`].
-pub const ABI_VERSION: u32 = 1;
+/// - `2`: an [`Operator`] reports its version and the facets it writes, and
+///   runs through an [`AssetContext`]; a pack declares its facet schemas, and
+///   hosts register packs through [`Registry::register_pack`].
+pub const ABI_VERSION: u32 = 2;
 
 /// Brings files into the library as Assets (e.g. manual upload).
 pub trait Source: Send + Sync {
@@ -205,10 +208,47 @@ impl AssetContext<'_> {
     pub const MAX_READ: usize = 64 * 1024;
 }
 
-/// Transforms assets (e.g. plate solving).
+/// Takes an Asset version and proposes facts about it (e.g. plate solving).
+///
+/// The Registry asks for [`Operator::id`], [`Operator::version`] and
+/// [`Operator::writes`] once, when the Operator registers, and keeps the
+/// answers: later answers change nothing.
 pub trait Operator: Send + Sync {
     /// Stable, namespaced identifier, e.g. `"astro.plate-solve"`.
     fn id(&self) -> &str;
+
+    /// The implementation's version, recorded with each value it produces.
+    fn version(&self) -> &str;
+
+    /// The facets this Operator writes: its grants. Core refuses a proposal
+    /// for any other facet.
+    fn writes(&self) -> &[&str];
+}
+
+/// An Operator as the Registry recorded it when it registered. Core takes
+/// the producer and the grants from here, never from the Operator again.
+pub struct RegisteredOperator {
+    id: String,
+    version: String,
+    writes: Vec<String>,
+    operator: Box<dyn Operator>,
+}
+
+impl RegisteredOperator {
+    /// The id the Operator registered with.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The version the Operator registered with.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// The facets the Operator listed when it registered: its grants.
+    pub fn writes(&self) -> &[String] {
+        &self.writes
+    }
 }
 
 /// The type of a facet's value.
@@ -258,6 +298,8 @@ pub enum RegistryError {
     FacetAlreadyDeclared(String),
     /// The facet's name does not start with its pack's id and a dot.
     FacetOutsideNamespace { facet: String, pack: String },
+    /// Another registered Operator already has this id.
+    OperatorAlreadyRegistered(String),
 }
 
 impl fmt::Display for RegistryError {
@@ -272,6 +314,9 @@ impl fmt::Display for RegistryError {
                 facet.escape_debug(),
                 pack.escape_debug()
             ),
+            Self::OperatorAlreadyRegistered(id) => {
+                write!(f, "operator {} is already registered", id.escape_debug())
+            }
         }
     }
 }
@@ -290,7 +335,7 @@ pub trait Sink: Send + Sync {
 #[derive(Default)]
 pub struct Registry {
     sources: Vec<Box<dyn Source>>,
-    operators: Vec<Box<dyn Operator>>,
+    operators: Vec<RegisteredOperator>,
     sinks: Vec<Box<dyn Sink>>,
     facets: Vec<DeclaredFacet>,
     /// The pack being registered, on the staging Registry that
@@ -309,9 +354,20 @@ impl Registry {
         self.sources.push(source);
     }
 
-    /// Register an [`Operator`].
+    /// Register an [`Operator`]. Its id, version and grants are recorded
+    /// now, once.
     pub fn register_operator(&mut self, operator: Box<dyn Operator>) {
-        self.operators.push(operator);
+        self.operators.push(RegisteredOperator {
+            id: operator.id().to_owned(),
+            version: operator.version().to_owned(),
+            writes: operator.writes().iter().map(|&w| w.to_owned()).collect(),
+            operator,
+        });
+    }
+
+    /// The registered Operator with this id.
+    pub fn operator(&self, id: &str) -> Option<&RegisteredOperator> {
+        self.operators.iter().find(|o| o.id == id)
     }
 
     /// Register a [`Sink`].
@@ -357,6 +413,13 @@ impl Registry {
                     .any(|f| f.schema.name == *name)
             {
                 return Err(RegistryError::FacetAlreadyDeclared(name.clone()));
+            }
+        }
+        for (index, entry) in staged.operators.iter().enumerate() {
+            if self.operator(&entry.id).is_some()
+                || staged.operators[..index].iter().any(|o| o.id == entry.id)
+            {
+                return Err(RegistryError::OperatorAlreadyRegistered(entry.id.clone()));
             }
         }
         self.sources.append(&mut staged.sources);
@@ -418,7 +481,7 @@ impl Registry {
 
     /// Ids of all registered operators, in registration order.
     pub fn operator_ids(&self) -> Vec<&str> {
-        self.operators.iter().map(|o| o.id()).collect()
+        self.operators.iter().map(|o| o.id.as_str()).collect()
     }
 
     /// Ids of all registered sinks, in registration order.
@@ -760,5 +823,135 @@ mod facet_declaration {
         assert!(error.to_string().contains("testing.size"), "{error}");
         assert!(registry.facet_schema("other.size").is_none());
         assert!(registry.facet_schema("testing.size").is_none());
+    }
+}
+
+#[cfg(test)]
+mod operator_registration {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    struct TestPack(&'static str, Box<dyn Fn(&mut Registry)>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.1)(registry)
+        }
+    }
+
+    /// An Operator whose `writes()` answer widens once `widened` is set.
+    struct Shifty {
+        id: &'static str,
+        widened: Arc<AtomicBool>,
+    }
+    impl Operator for Shifty {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn version(&self) -> &str {
+            if self.widened.load(Ordering::SeqCst) {
+                "9.9.9"
+            } else {
+                "1.2.3"
+            }
+        }
+        fn writes(&self) -> &[&str] {
+            if self.widened.load(Ordering::SeqCst) {
+                &["test.size", "test.width"]
+            } else {
+                &["test.size"]
+            }
+        }
+    }
+
+    fn shifty(id: &'static str, widened: &Arc<AtomicBool>) -> Box<dyn Operator> {
+        Box::new(Shifty {
+            id,
+            widened: widened.clone(),
+        })
+    }
+
+    #[test]
+    fn operator_registration_records_id_version_and_grants() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| r.register_operator(shifty("test.op", &flag))),
+            ))
+            .unwrap();
+        let entry = registry.operator("test.op").unwrap();
+        assert_eq!(entry.id(), "test.op");
+        assert_eq!(entry.version(), "1.2.3");
+        assert_eq!(entry.writes(), ["test.size"]);
+        assert_eq!(registry.operator_ids(), ["test.op"]);
+        assert!(registry.operator("test.missing").is_none());
+    }
+
+    #[test]
+    fn operator_registration_keeps_the_grants_it_registered_with() {
+        let widened = Arc::new(AtomicBool::new(false));
+        let flag = widened.clone();
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| r.register_operator(shifty("test.op", &flag))),
+            ))
+            .unwrap();
+        widened.store(true, Ordering::SeqCst);
+        let entry = registry.operator("test.op").unwrap();
+        assert_eq!(entry.writes(), ["test.size"]);
+        assert_eq!(entry.version(), "1.2.3");
+    }
+
+    #[test]
+    fn operator_registration_refuses_an_id_another_operator_has() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut registry = Registry::new();
+        let first = flag.clone();
+        registry
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| r.register_operator(shifty("test.op", &first))),
+            ))
+            .unwrap();
+        let second = flag.clone();
+        let error = registry
+            .register_pack(&TestPack(
+                "other",
+                Box::new(move |r| r.register_operator(shifty("test.op", &second))),
+            ))
+            .unwrap_err();
+        assert_eq!(
+            error,
+            RegistryError::OperatorAlreadyRegistered("test.op".into())
+        );
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert_eq!(registry.operator_ids(), ["test.op"]);
+    }
+
+    #[test]
+    fn operator_registration_refuses_one_id_twice_in_one_pack() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let error = Registry::new()
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| {
+                    r.register_operator(shifty("test.op", &flag));
+                    r.register_operator(shifty("test.op", &flag));
+                }),
+            ))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.op"), "{error}");
+    }
+
+    #[test]
+    fn operator_registration_is_abi_version_2() {
+        assert_eq!(ABI_VERSION, 2);
     }
 }

@@ -47,6 +47,14 @@ impl Operator for PlateSolveOperator {
     fn id(&self) -> &str {
         "astro.plate-solve"
     }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn writes(&self) -> &[&str] {
+        &[]
+    }
 }
 
 /// Exports processed frames to Immich (M0 stub).
