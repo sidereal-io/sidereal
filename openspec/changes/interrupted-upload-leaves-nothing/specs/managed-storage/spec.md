@@ -66,7 +66,8 @@ fail with 503 and commit no Asset or Asset version.
 When cleanup removed at least one file, the server SHALL print one line that
 says how many, exactly `storage: removed <n> leftover staging files from tmp`,
 with `file` in place of `files` when `<n>` is 1. When cleanup removed nothing,
-the server SHALL print no line about cleanup.
+the server SHALL print no count line. The lines for subfolders left and for
+entries that could not be removed still apply.
 
 #### Scenario: Count of removed files
 - **GIVEN** a paired storage root whose `tmp` holds three regular files
