@@ -842,16 +842,18 @@ mod staging_cleanup {
         assert_eq!(std::fs::read(temp.path.join("tmp")).unwrap(), b"keep");
     }
 
-    /// Makes `tmp` read-only until dropped, so its entries cannot be removed.
-    struct ReadOnly(PathBuf);
-    impl ReadOnly {
-        fn new(path: PathBuf) -> Self {
+    /// Sets the mode of `tmp` until dropped, then restores `0o755`. Mode
+    /// `0o555` keeps its entries from being removed; `0o000` keeps it from
+    /// being listed.
+    struct Mode(PathBuf);
+    impl Mode {
+        fn new(path: PathBuf, mode: u32) -> Self {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o555)).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
             Self(path)
         }
     }
-    impl Drop for ReadOnly {
+    impl Drop for Mode {
         fn drop(&mut self) {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
@@ -864,7 +866,7 @@ mod staging_cleanup {
             return;
         }
         let (temp, store) = leftovers(&["a", "b"]);
-        let _read_only = ReadOnly::new(temp.path.join("tmp"));
+        let _read_only = Mode::new(temp.path.join("tmp"), 0o555);
         assert!(store.remove_leftover_staging().is_ok());
     }
 
@@ -874,7 +876,7 @@ mod staging_cleanup {
             return;
         }
         let (temp, store) = leftovers(&["a", "b"]);
-        let _read_only = ReadOnly::new(temp.path.join("tmp"));
+        let _read_only = Mode::new(temp.path.join("tmp"), 0o555);
         let mut failed = store.remove_leftover_staging().unwrap().failed;
         failed.sort();
         assert_eq!(
@@ -892,25 +894,9 @@ mod staging_cleanup {
             return;
         }
         let (temp, store) = leftovers(&["a"]);
-        let _read_only = ReadOnly::new(temp.path.join("tmp"));
+        let _read_only = Mode::new(temp.path.join("tmp"), 0o555);
         let _ = store.remove_leftover_staging();
         assert_eq!(names(&temp.path.join("tmp")), ["a"]);
-    }
-
-    /// Makes `tmp` unreadable until dropped, so cleanup cannot list it.
-    struct Unreadable(PathBuf);
-    impl Unreadable {
-        fn new(path: PathBuf) -> Self {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
-            Self(path)
-        }
-    }
-    impl Drop for Unreadable {
-        fn drop(&mut self) {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
-        }
     }
 
     #[test]
@@ -919,7 +905,7 @@ mod staging_cleanup {
             return;
         }
         let (temp, store) = leftovers(&["a"]);
-        let unreadable = Unreadable::new(temp.path.join("tmp"));
+        let unreadable = Mode::new(temp.path.join("tmp"), 0o000);
         let result = store.remove_leftover_staging();
         drop(unreadable);
         assert_eq!(
