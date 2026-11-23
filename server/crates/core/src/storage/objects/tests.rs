@@ -833,4 +833,59 @@ mod staging_cleanup {
         );
         assert_eq!(std::fs::read(temp.path.join("tmp")).unwrap(), b"keep");
     }
+
+    /// Makes `tmp` read-only until dropped, so its entries cannot be removed.
+    struct ReadOnly(PathBuf);
+    impl ReadOnly {
+        fn new(path: PathBuf) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o555)).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for ReadOnly {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    #[test]
+    fn an_entry_that_cannot_be_removed_does_not_stop_cleanup() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a", "b"]);
+        let _read_only = ReadOnly::new(temp.path.join("tmp"));
+        assert!(store.remove_leftover_staging().is_ok());
+    }
+
+    #[test]
+    fn every_entry_that_cannot_be_removed_is_named_with_its_reason() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a", "b"]);
+        let _read_only = ReadOnly::new(temp.path.join("tmp"));
+        let mut failed = store.remove_leftover_staging().unwrap().failed;
+        failed.sort();
+        assert_eq!(
+            failed,
+            [
+                ("a".into(), io::ErrorKind::PermissionDenied),
+                ("b".into(), io::ErrorKind::PermissionDenied),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_entry_that_cannot_be_removed_stays_in_tmp() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a"]);
+        let _read_only = ReadOnly::new(temp.path.join("tmp"));
+        let _ = store.remove_leftover_staging();
+        assert_eq!(names(&temp.path.join("tmp")), ["a"]);
+    }
 }

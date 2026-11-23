@@ -504,6 +504,8 @@ pub struct Cleanup {
     pub removed: usize,
     /// The subfolders it left, by their raw names.
     pub kept: Vec<OsString>,
+    /// The entries it could not remove, by their raw names, with the reason.
+    pub failed: Vec<(OsString, io::ErrorKind)>,
 }
 
 impl ObjectStore {
@@ -519,17 +521,23 @@ impl ObjectStore {
         };
         let mut cleanup = Cleanup::default();
         for name in list(tmp.as_fd()).map_err(self.io(Operation::ListTmp))? {
+            let raw = || OsStr::from_bytes(name.to_bytes()).to_owned();
             // Inspected without following a link or opening the entry, so a
             // FIFO cannot block and a link's target is never touched.
-            let found = stat_raw(tmp.as_fd(), &name).map_err(self.io(Operation::RemoveStaging))?;
-            if found.st_mode & libc::S_IFMT == libc::S_IFDIR {
-                cleanup
-                    .kept
-                    .push(OsStr::from_bytes(name.to_bytes()).to_owned());
-                continue;
+            let removed = stat_raw(tmp.as_fd(), &name).and_then(|found| {
+                if found.st_mode & libc::S_IFMT == libc::S_IFDIR {
+                    return Ok(false);
+                }
+                unlink_at(tmp.as_fd(), &name).map(|()| true)
+            });
+            match removed {
+                Ok(true) => cleanup.removed += 1,
+                Ok(false) => cleanup.kept.push(raw()),
+                // Gone already: nothing is left to remove.
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                // One stuck entry does not stop the others.
+                Err(e) => cleanup.failed.push((raw(), e.kind())),
             }
-            unlink_at(tmp.as_fd(), &name).map_err(self.io(Operation::RemoveStaging))?;
-            cleanup.removed += 1;
         }
         Ok(cleanup)
     }
