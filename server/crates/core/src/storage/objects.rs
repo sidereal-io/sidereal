@@ -513,6 +513,8 @@ impl ObjectStore {
         let tmp = match open_folder_at(self.root(), TMP) {
             Ok(tmp) => tmp,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Cleanup::default()),
+            // A link or a file named `tmp` is never followed or removed.
+            Err(e) if is_refused_entry(&e) => return Err(self.error(Problem::Unsafe(Entry::Tmp))),
             Err(e) => return Err(self.io(Operation::OpenDirectory)(e)),
         };
         let mut cleanup = Cleanup::default();

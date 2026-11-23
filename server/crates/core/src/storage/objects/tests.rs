@@ -794,4 +794,43 @@ mod staging_cleanup {
         std::fs::create_dir(temp.path.join("tmp").join(name)).unwrap();
         assert_eq!(store.remove_leftover_staging().unwrap().kept, [name]);
     }
+
+    #[test]
+    fn a_symlinked_tmp_is_refused() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let outside = TempRoot::new();
+        symlink(&outside.path, temp.path.join("tmp")).unwrap();
+        assert_eq!(
+            problem(store.remove_leftover_staging()),
+            Problem::Unsafe(Entry::Tmp)
+        );
+    }
+
+    #[test]
+    fn a_symlinked_tmp_and_its_target_are_left_unchanged() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("file"), b"keep").unwrap();
+        symlink(&outside.path, temp.path.join("tmp")).unwrap();
+        let _ = store.remove_leftover_staging();
+        assert_eq!(
+            std::fs::read_link(temp.path.join("tmp")).unwrap(),
+            outside.path
+        );
+        assert_eq!(std::fs::read(outside.path.join("file")).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn a_tmp_that_is_a_file_is_refused_unchanged() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        std::fs::write(temp.path.join("tmp"), b"keep").unwrap();
+        assert_eq!(
+            problem(store.remove_leftover_staging()),
+            Problem::Unsafe(Entry::Tmp)
+        );
+        assert_eq!(std::fs::read(temp.path.join("tmp")).unwrap(), b"keep");
+    }
 }
