@@ -73,7 +73,7 @@ impl Fixture {
     async fn new() -> Self {
         let db = TestDatabase::new();
         let temp = TempRoot::new();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
                 .await
                 .unwrap();

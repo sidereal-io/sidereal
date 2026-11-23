@@ -51,7 +51,7 @@ mod ingest_staging {
     async fn a_newly_paired_root_holds_only_its_marker() {
         let db = TestDatabase::new();
         let temp = TempRoot::new();
-        let (database, id) =
+        let (database, id, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
                 .await
                 .unwrap();
@@ -170,9 +170,10 @@ mod ingest_staging {
         std::fs::create_dir(&real).unwrap();
         symlink(&real, &link).unwrap();
         let root = StorageRoot::new(&link).unwrap();
-        let (database, id) = initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
-            .await
-            .unwrap();
+        let (database, id, _) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
+                .await
+                .unwrap();
         database.close().await;
         let store = ObjectStore::open(&root, id).unwrap();
         let _staged = staged(&store, b"abc");
@@ -190,9 +191,10 @@ mod ingest_staging {
         let (current, moved) = (temp.path.join("storage"), temp.path.join("moved"));
         std::fs::create_dir(&current).unwrap();
         let root = StorageRoot::new(&current).unwrap();
-        let (database, id) = initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
-            .await
-            .unwrap();
+        let (database, id, _) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
+                .await
+                .unwrap();
         database.close().await;
         std::fs::rename(&current, &moved).unwrap();
         std::fs::create_dir(&current).unwrap();
