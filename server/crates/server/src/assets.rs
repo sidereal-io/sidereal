@@ -141,9 +141,6 @@ async fn list(State(assets): State<Assets>) -> Response {
 async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
     let not_found =
         || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
-    let Some(objects) = assets.library.objects.clone() else {
-        return unavailable();
-    };
     let Ok(id) = uuid::Uuid::try_parse(&id) else {
         return not_found();
     };
@@ -154,6 +151,10 @@ async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Respo
             assets.log.line(&format!("original lookup failed: {error}"));
             return unavailable();
         }
+    };
+    // An Asset is found first, so an unknown id is 404 even without storage.
+    let Some(objects) = assets.library.objects.clone() else {
+        return unavailable();
     };
     let hash = record.version.content_hash.clone();
     let opened = tokio::task::spawn_blocking(move || objects.open_object(&hash)).await;

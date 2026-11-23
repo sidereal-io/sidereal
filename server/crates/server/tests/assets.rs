@@ -965,11 +965,34 @@ mod original {
     }
 
     #[tokio::test]
-    async fn original_without_storage_answers_503() {
+    async fn original_of_an_unknown_asset_without_storage_answers_404() {
         let instance = Instance::without_storage().await;
         let response = instance
             .original("00000000-0000-4000-8000-000000000000")
             .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn original_of_an_asset_on_a_server_without_storage_answers_503() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        // The same database and session, served by a server started
+        // without STORAGE_ROOT.
+        let database =
+            sidereal_core::database::Database::open(instance.db.options.clone(), SECONDS)
+                .await
+                .unwrap();
+        let app = app_with_database(database, AllowedOrigins::default());
+        let response = app
+            .oneshot(
+                Request::get(format!("/api/assets/{id}/original"))
+                    .header(header::COOKIE, &instance.cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
