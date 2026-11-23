@@ -20,7 +20,7 @@
 ## 4. Journey and gate [depends-on: 2, 3]
 
 - [x] 4.1 [medium] In `web/e2e/upload.spec.ts`, after Nova uploads `nebula.png` and `nebula.jpg`, Nova uploads `nebula.png`'s bytes again as `m31-final.png` (Playwright `setFiles` with a name and a buffer). The screen shows `m31-final.png is already in the library as nebula.png.`, and the library still shows exactly two images, before and after the restart (verify: mise run e2e) (✓ mise run e2e passed: 2 tests; mutation check in the Deviations Ledger)
-- [ ] 4.2 [easy] The whole gate passes: format, lint, unit and integration tests, the architecture lint, strict OpenSpec validation and the web checks (verify: mise run check)
+- [x] 4.2 [easy] The whole gate passes: format, lint, unit and integration tests, the architecture lint, strict OpenSpec validation and the web checks (verify: mise run check) (✓ mise run check passed: compose, openspec 14/14, server, arch lint, web 194 tests)
 
 ## Deviations Ledger
 
