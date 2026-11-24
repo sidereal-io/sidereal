@@ -9,7 +9,8 @@ use crate::{
     storage::objects::ObjectStore,
 };
 use sidereal_plugin_abi::{
-    Candidate, FacetProposals, FacetScope, FacetType, FacetValue, Registry, MAX_COUNT,
+    Candidate, ExecutionError, FacetProposals, FacetScope, FacetType, FacetValue, Registry,
+    MAX_COUNT,
 };
 use std::{
     fs::File,
@@ -44,12 +45,18 @@ pub enum OperationError {
     /// Core could not record the run's start, or could not record or read
     /// back how it ended. The outcome is unknown.
     Unrecorded(DatabaseError),
+    /// No Operator with that id is registered; nothing was recorded.
+    UnknownOperator,
+    /// No Asset version has that id; nothing was recorded.
+    UnknownVersion,
 }
 
 impl std::fmt::Display for OperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unrecorded(error) => error.fmt(f),
+            Self::UnknownOperator => f.write_str("no such operator is registered"),
+            Self::UnknownVersion => f.write_str("no such asset version exists"),
         }
     }
 }
@@ -117,13 +124,14 @@ pub async fn run_operator(
 ) -> Result<RunOutcome, OperationError> {
     let entry = registry
         .operator(&run.operator_id)
-        .expect("upload names a registered operator");
+        .ok_or(OperationError::UnknownOperator)?;
     let row: (Uuid, String, i64) = sqlx::query_as(
         "SELECT asset_id, content_hash, byte_size FROM public.asset_versions WHERE id = $1",
     )
     .bind(run.asset_version_id)
-    .fetch_one(database.pool())
-    .await?;
+    .fetch_optional(database.pool())
+    .await?
+    .ok_or(OperationError::UnknownVersion)?;
     let version = Version {
         asset_id: row.0,
         content_hash: row.1,
@@ -143,27 +151,16 @@ pub async fn run_operator(
     .execute(database.pool())
     .await?;
 
-    let objects = objects.clone();
-    let operator_id = run.operator_id.clone();
-    let hash = version.content_hash.clone();
-    let size = version.byte_size;
-    let flag = cancelled.clone();
-    let blocking = registry.clone();
-    let proposals = tokio::task::spawn_blocking(move || {
-        let (file, _) = objects.open_object(&hash).expect("the object opens");
-        blocking.execute_operator(
-            &operator_id,
-            &mut ObjectBytes { file, size },
-            &mut |line| eprintln!("operator {operator_id}: {line:?}"),
-            &|| flag.load(Ordering::SeqCst),
-        )
-    })
-    .await
-    .expect("the operator finishes")
-    .expect("the operator succeeds");
-
+    let proposals = match execute(objects, &registry, &run.operator_id, &version, &cancelled).await
+    {
+        Ok(proposals) => proposals,
+        Err(reason) => return Ok(record_failure(database, run_id, &reason).await?),
+    };
     if let Err(reason) = check(&registry, &proposals) {
         return Ok(record_failure(database, run_id, &reason).await?);
+    }
+    if cancelled.load(Ordering::SeqCst) {
+        return Ok(record_failure(database, run_id, CANCELLED).await?);
     }
     let stored = store(
         database,
@@ -177,6 +174,61 @@ pub async fn run_operator(
     match stored {
         Ok(()) => Ok(RunOutcome::Succeeded),
         Err(reason) => Ok(record_failure(database, run_id, &reason).await?),
+    }
+}
+
+const CANCELLED: &str = "the run was cancelled";
+
+/// On a blocking worker: open the version's object, check that its length
+/// is the version's recorded size, and run the Operator over it. The error
+/// is the reason the run failed.
+async fn execute(
+    objects: &ObjectStore,
+    registry: &Arc<Registry>,
+    operator_id: &str,
+    version: &Version,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<FacetProposals, String> {
+    let objects = objects.clone();
+    let registry = registry.clone();
+    let operator_id = operator_id.to_owned();
+    let hash = version.content_hash.clone();
+    let size = version.byte_size;
+    let cancelled = cancelled.clone();
+    let outcome = tokio::task::spawn_blocking(move || {
+        let (file, length) = objects
+            .open_object(&hash)
+            .map_err(|error| format!("the stored object could not be opened: {error}"))?;
+        if length != size {
+            return Err("the stored object does not match its version".to_owned());
+        }
+        registry
+            .execute_operator(
+                &operator_id,
+                &mut ObjectBytes { file, size },
+                &mut |line| eprintln!("operator {operator_id}: {line:?}"),
+                &|| cancelled.load(Ordering::SeqCst),
+            )
+            .map_err(|error| match error {
+                ExecutionError::Failed(reason) => reason,
+                ExecutionError::Unsupported => "the operator cannot run yet".to_owned(),
+                ExecutionError::Cancelled => CANCELLED.to_owned(),
+                other => other.to_string(),
+            })
+    })
+    .await;
+    outcome.unwrap_or_else(|_| Err("the operator stopped".to_owned()))
+}
+
+/// The reason core records: every zero character removed, because
+/// PostgreSQL text cannot hold one, and never empty. Every update that
+/// records `failed` calls this.
+fn cleaned(reason: &str) -> String {
+    let reason: String = reason.chars().filter(|&c| c != '\0').collect();
+    if reason.trim().is_empty() {
+        "the operator gave no reason".to_owned()
+    } else {
+        reason
     }
 }
 
@@ -207,22 +259,24 @@ fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> 
     Ok(())
 }
 
-/// Record the run `failed` with `reason`, and answer what its row says.
+/// Record the run `failed` with `reason`, cleaned, and answer what its row
+/// says.
 async fn record_failure(
     database: &Database,
     run_id: Uuid,
     reason: &str,
 ) -> Result<RunOutcome, sqlx::Error> {
+    let reason = cleaned(reason);
     sqlx::query(
         "UPDATE public.operation_runs \
          SET status = 'failed', reason = $2, ended_at = greatest(now(), started_at) \
          WHERE id = $1",
     )
     .bind(run_id)
-    .bind(reason)
+    .bind(&reason)
     .execute(database.pool())
     .await?;
-    Ok(RunOutcome::Failed(reason.to_owned()))
+    Ok(RunOutcome::Failed(reason))
 }
 
 /// The kept row of a schema version, in the order core compares it.
@@ -314,6 +368,8 @@ async fn store(
     Ok(Ok(()))
 }
 
+#[cfg(test)]
+mod fails;
 #[cfg(test)]
 mod fixture;
 #[cfg(test)]
