@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { InBar } from "./Bar.tsx";
+import { Link } from "./navigation.tsx";
 import type { Upload } from "./upload.ts";
 import "./Library.css";
 
@@ -64,7 +65,8 @@ async function fetchList(
 }
 
 // One image, whole, at its own shape once it loads. Until then its frame
-// keeps the 3:2 shape that Library.css gives it.
+// keeps the 3:2 shape that Library.css gives it. The image and its name are
+// one link to the image's asset page, named for the image.
 function Picture({ entry }: { entry: Entry }) {
   const [ratio, setRatio] = useState<number | null>(null);
   const [broken, setBroken] = useState(false);
@@ -73,29 +75,36 @@ function Picture({ entry }: { entry: Entry }) {
     ? ({ "--library-ratio": String(ratio) } as CSSProperties)
     : undefined;
   return (
-    <figure className="library-item" style={style}>
-      {broken ? (
-        <p className="library-frame library-broken">
-          This image could not be displayed.
-        </p>
-      ) : (
-        <img
-          className="library-frame"
-          src={entry.originalUrl}
-          alt={entry.name}
-          onLoad={(event) => {
-            const { naturalWidth, naturalHeight } = event.currentTarget;
-            if (naturalWidth > 0 && naturalHeight > 0) {
-              setRatio(naturalWidth / naturalHeight);
-            }
-          }}
-          onError={() => {
-            setBroken(true);
-          }}
-        />
-      )}
-      <figcaption className="library-name">{entry.name}</figcaption>
-    </figure>
+    <Link
+      className="library-item"
+      style={style}
+      to={`/assets/${entry.id}`}
+      aria-label={entry.name}
+    >
+      <figure className="library-figure">
+        {broken ? (
+          <p className="library-frame library-broken">
+            This image could not be displayed.
+          </p>
+        ) : (
+          <img
+            className="library-frame"
+            src={entry.originalUrl}
+            alt={entry.name}
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              if (naturalWidth > 0 && naturalHeight > 0) {
+                setRatio(naturalWidth / naturalHeight);
+              }
+            }}
+            onError={() => {
+              setBroken(true);
+            }}
+          />
+        )}
+        <figcaption className="library-name">{entry.name}</figcaption>
+      </figure>
+    </Link>
   );
 }
 

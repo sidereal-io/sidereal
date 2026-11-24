@@ -48,12 +48,19 @@
   flex-grow: 1000000;
 }
 
+/* Each item is one link to the image's asset page: the image and its name. */
 .library-item {
   /* The 3:2 frame an image keeps until it loads and gives its own shape. */
   --library-ratio: 1.5;
+  display: block;
   flex-basis: calc(var(--library-ratio) * var(--sr-size-300));
   flex-grow: calc(var(--library-ratio) * 100);
   min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.library-figure {
   margin: 0;
 }
 

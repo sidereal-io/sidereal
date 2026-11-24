@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { InBar } from "./Bar.tsx";
+import { Link } from "./navigation.tsx";
 import "./AssetPage.css";
 
 interface Fact {
@@ -84,9 +85,9 @@ async function fetchAsset(
 
 function LibraryLink({ className }: { className?: string }) {
   return (
-    <a className={className} href="/">
+    <Link className={className} to="/">
       Library
-    </a>
+    </Link>
   );
 }
 
@@ -143,12 +144,15 @@ function Details({ asset }: { asset: Asset }) {
 function AssetPage({
   id,
   onSessionLost,
+  notice,
   children,
 }: {
   // The Asset's id, from the page's address.
   id: string;
   // Called when the server says the session has ended.
   onSessionLost: () => void;
+  // A fixed message from the account, such as a failed sign-out.
+  notice?: string | null;
   // The account's items, shown at the end of the top bar.
   children?: ReactNode;
 }) {
@@ -181,6 +185,7 @@ function AssetPage({
         <LibraryLink className="asset-crumb" />
       </InBar>
       <InBar at="end">{children}</InBar>
+      {notice && <p className="asset-status">{notice}</p>}
       {page === "loading" && <p className="asset-status">Loading the image…</p>}
       {page === "not-found" && (
         <p className="asset-status">

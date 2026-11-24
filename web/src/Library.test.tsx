@@ -105,6 +105,22 @@ describe("Library", () => {
     ).toBeNull();
   });
 
+  it("makes each image and its name one link to its asset page", async () => {
+    stubServer({ "GET /api/assets": listAnswer(nebula, andromeda) });
+    showLibrary();
+    await screen.findByRole("img", { name: "nebula.png" });
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/assets/a1",
+      "/assets/a2",
+    ]);
+    const link = screen.getByRole("link", { name: "nebula.png" });
+    expect(link.contains(screen.getByRole("img", { name: "nebula.png" }))).toBe(
+      true,
+    );
+    expect(link.contains(screen.getByText("nebula.png"))).toBe(true);
+  });
+
   it("shows a name holding markup as literal text", async () => {
     stubServer({
       "GET /api/assets": listAnswer(entry("a3", "<b>bold</b>.png")),
@@ -118,7 +134,8 @@ describe("Library", () => {
     stubServer({ "GET /api/assets": listAnswer(nebula) });
     showLibrary();
     const image = await screen.findByRole("img", { name: "nebula.png" });
-    const figure = image.closest("figure");
+    // The link is the grid's item, so it carries the image's shape.
+    const figure = image.closest("a");
     expect(figure?.style.getPropertyValue("--library-ratio")).toBe("");
     Object.defineProperty(image, "naturalWidth", { value: 2000 });
     Object.defineProperty(image, "naturalHeight", { value: 1000 });

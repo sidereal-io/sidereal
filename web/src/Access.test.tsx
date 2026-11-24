@@ -357,6 +357,108 @@ describe("Access", () => {
     expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
   });
 
+  describe("at an asset page address", () => {
+    const id = "0b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091";
+    const address = `/assets/${id}`;
+    const nebula = {
+      asset: {
+        id,
+        kind: "image",
+        name: "nebula.png",
+        current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
+        original_url: `/api/assets/${id}/original`,
+        facets: [
+          {
+            name: "image.file-size",
+            label: "File size",
+            value: 1234567,
+            unit: "bytes",
+          },
+        ],
+      },
+    };
+
+    beforeEach(() => {
+      history.replaceState(null, "", address);
+    });
+
+    afterEach(() => {
+      history.replaceState(null, "", "/");
+    });
+
+    it("shows a signed-out visitor the sign-in form and nothing of the Asset, then the page after sign-in", async () => {
+      const fetch = stubServer({
+        ...signedOut,
+        "POST /api/session": [200, { username: "sam", role: "admin" }],
+        [`GET /api/assets/${id}`]: [200, nebula],
+      });
+      render(<Access />);
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(fetch).not.toHaveBeenCalledWith(
+        `/api/assets/${id}`,
+        expect.anything(),
+      );
+      expect(screen.queryByText("nebula.png")).toBeNull();
+      await submit("Sign in");
+      await screen.findByRole("heading", { name: "nebula.png" });
+      screen.getByText("1,234,567 bytes");
+      expect(location.pathname).toBe(address);
+    });
+
+    it("shows the sign-in form and keeps the address when the session is lost, then the page again", async () => {
+      const answers: Record<string, Answer> = {
+        "GET /api/claim": [200, { open: false }],
+        "GET /api/session": [200, { username: "sam", role: "admin" }],
+        "POST /api/session": [200, { username: "sam", role: "admin" }],
+        [`GET /api/assets/${id}`]: [401, { error: "unauthenticated" }],
+      };
+      stubServer(answers);
+      render(<Access />);
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(screen.queryByRole("article", { name: "Asset" })).toBeNull();
+      expect(location.pathname).toBe(address);
+      answers[`GET /api/assets/${id}`] = [200, nebula];
+      await submit("Sign in");
+      await screen.findByRole("heading", { name: "nebula.png" });
+    });
+
+    it("hides the asset page on sign-out, and its late answer shows nothing", async () => {
+      let answerAsset: (response: Response) => void = () => undefined;
+      const pending = new Promise<Response>((resolve) => {
+        answerAsset = resolve;
+      });
+      const answers: Partial<Record<string, Answer>> = {
+        "GET /api/claim": [200, { open: false }],
+        "GET /api/session": [200, { username: "sam", role: "admin" }],
+        "DELETE /api/session": [204],
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: string, init?: RequestInit) => {
+          if (input === `/api/assets/${id}`) return pending;
+          const answer = answers[`${init?.method ?? "GET"} ${input}`];
+          if (!answer) return Promise.reject(new TypeError("network error"));
+          const [status, body] = answer;
+          return Promise.resolve(
+            body === undefined
+              ? new Response(null, { status })
+              : Response.json(body, { status }),
+          );
+        }),
+      );
+      render(<Access />);
+      await screen.findByText("Loading the image…");
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("button", { name: "Sign in" });
+      await act(async () => {
+        answerAsset(Response.json(nebula));
+        await pending;
+      });
+      expect(screen.queryByText("nebula.png")).toBeNull();
+      expect(screen.queryByRole("img")).toBeNull();
+    });
+  });
+
   it("uses no primitive whose role has a semantic token", () => {
     expect(
       accessCss.match(
