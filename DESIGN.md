@@ -312,6 +312,49 @@ images carry the page, and nothing else competes with them.
   3:2 frame shows the message in `color-text-secondary` inside a
   `color-border-hairline` edge.
 
+### Asset page
+
+The asset page shows one image from the Library at its own address,
+`/assets/<id>`, with the facts Sidereal has recorded about it. Its layout is
+**Side column**: the image takes most of the width, and a plain column beside
+it holds the name and the facts.
+
+- **The top bar** is the one every screen has. After the `/` separator, the
+  screen's name is a `Library` link back to the Library, in
+  `color-text-secondary` at `font-weight-500`; on hover it turns
+  `color-text-body` and is underlined. The right side shows the health, the
+  username and Sign out. The asset page has no Upload button and shows no
+  upload status.
+- **Below the top bar there are only the image and the column,** with a
+  `spacing-32` page margin and `spacing-24` between them.
+- **The image is shown whole,** uncropped, at its own aspect ratio, with square
+  corners. It takes all the width the column leaves.
+- **The column is `size-300` wide** and is plain text on the page: no panel
+  fill, card or border around it. When the window cannot fit the column beside
+  an image at least twice `size-300` wide, the column moves under the image,
+  `spacing-32` below it, and takes the full width.
+- **The name heads the column,** in the mono face at `font-size-14`,
+  `line-height-20` and `font-weight-500`, in `color-text-body`. A long name
+  wraps at any character.
+- **The facts sit `spacing-12` under the name,** one fact per line. Each line is
+  `size-32` tall, with a `border-width-1` `color-border-hairline` rule above the
+  first line and below every line. The label is on the left, in body-md and
+  `color-text-secondary`. The value and its unit are on the right, in the mono
+  face at `font-size-14` and `line-height-20`, in `color-text-body`, with
+  tabular figures. Values group digits in threes with commas, such as
+  `1,234,567 bytes`.
+- **No facts:** when no facts are recorded, the column shows the name and one
+  line of body-md `color-text-secondary` text in place of the facts:
+  `No facts are recorded for this image.`
+- **An image that cannot display keeps its name and facts.** Its 3:2 frame
+  shows `This image could not be displayed.` in `color-text-secondary` inside a
+  `color-border-hairline` edge, as in the Library.
+- **Every other state is one quiet line of `color-text-secondary` text** under
+  the top bar, with the `spacing-32` page margin: loading, an image that is not
+  in the library, which adds the `Library` link, and a page that failed to
+  load, which adds a quiet Retry button.
+- **The page shows no provenance:** no producer, run or time.
+
 ## Do's and Don'ts
 
 - **Do** use `violet` only for the primary action, the current selection, focus,
