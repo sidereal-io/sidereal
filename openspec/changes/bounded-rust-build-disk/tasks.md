@@ -20,7 +20,7 @@
 ## 4. Integration [depends-on: 3]
 
 - [x] 4.1 [medium] The gate passes with the new profile, and the server binary still builds for `dev` and `e2e`, with the PostgreSQL fixture up and `TEST_DATABASE_URL` set (verify: `mise run check && cargo build -p sidereal-server --manifest-path server/Cargo.toml`) (✓ mise run check and cargo build -p sidereal-server passed)
-- [ ] 4.2 [easy] The pull request description records the size of `server/target/` from an empty folder after `cargo clippy --all-targets -- -D warnings` then `cargo test --no-run` in `server/`, before and after the profile, with the commands, and the sccache decision with its numbers from design.md (verify: `gh pr view --json body -q .body > .workspace/pr-body.md && grep -qF 'cargo clippy --all-targets -- -D warnings' .workspace/pr-body.md && grep -qF 'cargo test --no-run' .workspace/pr-body.md && grep -q sccache .workspace/pr-body.md && test "$(grep -oE '[0-9.]+ GiB' .workspace/pr-body.md | wc -l)" -ge 2`)
+- [x] 4.2 [easy] The pull request description records the size of `server/target/` from an empty folder after `cargo clippy --all-targets -- -D warnings` then `cargo test --no-run` in `server/`, before and after the profile, with the commands, and the sccache decision with its numbers from design.md (verify: `gh pr view --json body -q .body > .workspace/pr-body.md && grep -qF 'cargo clippy --all-targets -- -D warnings' .workspace/pr-body.md && grep -qF 'cargo test --no-run' .workspace/pr-body.md && grep -q sccache .workspace/pr-body.md && test "$(grep -oE '[0-9.]+ GiB' .workspace/pr-body.md | wc -l)" -ge 2`) (✓ verify command passed)
 
 ## Deviations Ledger
 
