@@ -81,7 +81,12 @@ mise run check-server    # Server checks: format, clippy, tests, dependency-dire
 mise run check-web       # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 mise run instance-verify     # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
 mise run external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
+mise run target-clean        # Delete this worktree's server/target/ when it is over a size limit (not part of the gate)
 ```
+
+`mise run target-clean` keeps each worktree's Rust build output under a size
+limit, 4096 MiB unless you set `SIDEREAL_TARGET_LIMIT_MIB`. See
+[Cleaning up build output](#cleaning-up-build-output).
 
 `mise run check` runs its four parts one at a time, in the order above, and stops
 at the first one that fails. Without mise, run the same four commands by hand: see
@@ -252,6 +257,7 @@ branch's hook without asking. After you read the branch's changes, run
    | `e2e` | `sh scripts/e2e.sh` |
    | `instance-verify` | `sh scripts/instance-verify.sh` |
    | `external-db-verify` | `sh scripts/external-db-verify.sh` |
+   | `target-clean` | `sh server/scripts/target-clean.sh` |
 
    For example, prepare the fixture and run the stack:
 
@@ -313,6 +319,53 @@ full-debug output next to the lighter output, and the next ordinary build
 does not remove it. So `server/target/` grows by about one full-debug build.
 When you finish debugging, run `mise run target-clean`, which
 [Cleaning up build output](#cleaning-up-build-output) describes.
+
+#### Cleaning up build output
+
+Cargo never deletes old build output by itself. After a dependency update, a
+branch switch or a new Rust release, the old files stay next to the new ones,
+so `server/target/` keeps growing.
+
+`mise run target-clean` measures this worktree's `server/target/`. When the
+folder is larger than a size limit, it deletes the whole folder. Otherwise it
+keeps it. Either way it prints the folder's size and the limit. Without mise,
+run `sh server/scripts/target-clean.sh` from the repo root.
+
+- **The limit is 4096 MiB.** That is a little over twice one fresh build, so a
+  worktree can hold one build plus one older generation, which a dependency
+  update or a new Rust release leaves behind.
+- **Set another limit** in `SIDEREAL_TARGET_LIMIT_MIB`, as a whole number of
+  MiB, for example `SIDEREAL_TARGET_LIMIT_MIB=2048 mise run target-clean`. Any
+  other value stops the task with an error, and it deletes nothing.
+- **The limit applies per worktree, and only when `target-clean` runs.** It is
+  a threshold, not a cap: between runs a worktree can grow past it, so ten
+  worktrees can hold more than ten times the limit. To choose a limit, start
+  from your free disk. Keep about 2 GiB for each build that runs at the same
+  time, then divide what is left by the number of worktrees. For example, with
+  40 GiB free and four builds at once, 32 GiB is left; across eight worktrees
+  that is 4 GiB, or 4096 MiB, each.
+- **Run it only when no build runs in that worktree.** A build that runs
+  during the clean-up fails; run it again. Other worktrees are never touched.
+  The next build after a deletion starts from scratch.
+- **Output from before the lighter profile,** about 3.1 GiB, stays under the
+  default limit, so `target-clean` keeps it. To delete it once, run
+  `SIDEREAL_TARGET_LIMIT_MIB=0 mise run target-clean`.
+
+`target-clean` deletes only this checkout's own `server/target/`. It ignores
+`CARGO_TARGET_DIR` and never runs `cargo clean`, so it never touches a build
+folder somewhere else. `mise run check` does not run it. It deletes nothing,
+and exits with an error, when:
+
+- `server/target` is a symbolic link.
+- `server`, `server/target` or a folder inside `server/target` is a mount
+  point. `rm -rf` would cross into it, and could empty another file system or
+  another checkout's build folder. The task finds mount points in the output
+  of `mount`, and also refuses when it cannot read that output.
+- The checkout's path holds a space, tab, newline or backslash. `mount` prints
+  these characters escaped, so the task cannot check the path for mount
+  points. Move the checkout to a path without those characters.
+- It cannot measure the folder. When deleting fails part way, it says that the
+  folder may be partly deleted; the next build rebuilds what is missing.
 
 ### Moving from the Nix shell
 
