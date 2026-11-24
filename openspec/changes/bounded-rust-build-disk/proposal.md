@@ -5,10 +5,10 @@ Each worktree's `server/target/` grows to several GiB, and a machine that runs m
 ## What Changes
 
 - Add a lighter development build profile to `server/Cargo.toml`: line tables only for our own crates, and no debug information for dependencies (D1). It applies to every contributor and to CI, and covers the debug build, `cargo test` and `cargo clippy --all-targets`. The release build keeps Cargo's default, which already has no debug information. One fresh build measured 1.8 GiB with these settings, against 3.1 GiB today.
-- Add a `target-clean` development task. It deletes this worktree's `server/target/` only when the folder is over a size limit, which a contributor can change. It runs as `mise run target-clean`, or as one plain command without mise. `mise run check` does not run it (D3).
+- Add a `target-clean` development task. It deletes this worktree's `server/target/` only when the folder is over a size limit, which a contributor can change. It refuses a folder it cannot delete safely, a link or a mount point, and stops without deleting anything if it cannot measure the folder. The limit applies to each worktree. It runs as `mise run target-clean`, or as one plain command without mise. `mise run check` does not run it (D3).
 - Document in `CONTRIBUTING.md`:
   - why the profile is lighter, and how to get full debug information back for a debugging session (D1);
-  - the clean-up task, its size limit and its plain command (D3);
+  - the clean-up task, its size limit, how to choose a limit for many worktrees, and its plain command (D3);
   - one build folder shared by all worktrees, only as a personal option, with its trade-off (D4);
   - sccache, only as a personal option, with the decision the measurements support (D2).
 - Record the measurements behind each choice, sccache included, in the design and the pull request (D2, D5). Nothing in the gate measures disk size (D5).

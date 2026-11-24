@@ -20,11 +20,11 @@ Each task SHALL have a description, which `mise tasks ls` prints.
 
 ### Requirement: A task deletes the Rust build output once it is over a size limit
 
-`mise run target-clean` SHALL measure the repo's `server/target/` folder. When the folder is larger than the size limit, the task SHALL delete it. When the folder is at or under the limit, the task SHALL leave it in place. Either way it SHALL print the folder's size and the limit, in MiB, and exit with status 0.
+`mise run target-clean` SHALL measure the repo's `server/target/` folder. The folder's size is the disk space that `du -sk` reports for it, rounded up to whole MiB. When the folder is larger than the size limit, the task SHALL delete it. When the folder is at or under the limit, the task SHALL leave it in place. Either way it SHALL print the folder's size and the limit, in MiB, and exit with status 0.
 
 #### Scenario: The folder is over the limit
 
-- **GIVEN** a `server/target/` folder that holds a 2 MiB file
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
 - **THEN** the command exits with status 0
 - **AND** `server/target/` no longer exists
@@ -32,11 +32,20 @@ Each task SHALL have a description, which `mise tasks ls` prints.
 
 #### Scenario: The folder is under the limit
 
-- **GIVEN** a `server/target/` folder that holds a 2 MiB file
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=10 mise run target-clean` at the repo root
 - **THEN** the command exits with status 0
 - **AND** the 2 MiB file is still in `server/target/`
 - **AND** the output names the folder's size, the limit of 10 MiB, and that the folder was kept
+
+#### Scenario: The folder is at the limit
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** `SIDEREAL_TARGET_LIMIT_MIB` set to the folder's size: the `du -sk` value for `server/target`, rounded up to whole MiB
+- **WHEN** a contributor runs `mise run target-clean` at the repo root
+- **THEN** the command exits with status 0
+- **AND** the 2 MiB file is still in `server/target/`
+- **AND** the output says that the folder was kept
 
 #### Scenario: There is no build output
 
@@ -45,20 +54,40 @@ Each task SHALL have a description, which `mise tasks ls` prints.
 - **THEN** the command exits with status 0
 - **AND** the output says there is nothing to delete
 
+### Requirement: The clean-up task stops safely when it cannot measure or delete the folder
+
+When `mise run target-clean` cannot measure the `server/target/` folder, the task SHALL delete nothing and exit with a non-zero status. When deleting the folder fails, the task SHALL exit with a non-zero status, and its error output SHALL say that the folder may be partly deleted.
+
+#### Scenario: The size cannot be measured
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** a `du` command first on `PATH` that exits with a non-zero status
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the 2 MiB file is still in `server/target/`
+
+#### Scenario: The folder cannot be deleted
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** an `rm` command first on `PATH` that exits with a non-zero status
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the error output says that the folder may be partly deleted
+
 ### Requirement: Contributors can change the clean-up size limit
 
 The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL be able to set another limit, as a whole number of MiB, in the `SIDEREAL_TARGET_LIMIT_MIB` environment variable. When that variable holds anything else, the task SHALL delete nothing and exit with a non-zero status.
 
 #### Scenario: The default limit
 
-- **GIVEN** a `server/target/` folder that holds a 2 MiB file, and no `SIDEREAL_TARGET_LIMIT_MIB` in the environment
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data, and no `SIDEREAL_TARGET_LIMIT_MIB` in the environment
 - **WHEN** a contributor runs `mise run target-clean` at the repo root
 - **THEN** the output names a limit of 4096 MiB
 - **AND** the 2 MiB file is still in `server/target/`
 
 #### Scenario: The limit is not a whole number
 
-- **GIVEN** a `server/target/` folder that holds a 2 MiB file
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=2G mise run target-clean` at the repo root
 - **THEN** the command exits with a non-zero status
 - **AND** the error output names `SIDEREAL_TARGET_LIMIT_MIB`
@@ -66,21 +95,29 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 
 ### Requirement: The clean-up task deletes only this checkout's build folder
 
-`mise run target-clean` SHALL delete nothing but the repo's own `server/target/` folder. It SHALL ignore `CARGO_TARGET_DIR` and any Cargo setting that moves the build output elsewhere. When `server/target` is a symbolic link, the task SHALL delete nothing and exit with a non-zero status.
+`mise run target-clean` SHALL delete nothing but the repo's own `server/target/` folder. It SHALL ignore `CARGO_TARGET_DIR` and any Cargo setting that moves the build output elsewhere. When `server/target` is a symbolic link, the task SHALL delete nothing and exit with a non-zero status. When `server/target`, or any folder inside it, is a mount point, the task SHALL delete nothing and exit with a non-zero status.
 
 #### Scenario: A personal build folder elsewhere is left alone
 
-- **GIVEN** no `server/target/` folder, and `CARGO_TARGET_DIR` set to another folder that holds a 2 MiB file
+- **GIVEN** no `server/target/` folder, and `CARGO_TARGET_DIR` set to another folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
 - **THEN** the command exits with status 0
 - **AND** the 2 MiB file is still in the folder that `CARGO_TARGET_DIR` names
 
 #### Scenario: The build folder is a link
 
-- **GIVEN** `server/target` is a symbolic link to another folder that holds a 2 MiB file
+- **GIVEN** `server/target` is a symbolic link to another folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
 - **THEN** the command exits with a non-zero status
 - **AND** the link and the 2 MiB file both still exist
+
+#### Scenario: The build folder is a mount point
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** a `df` command first on `PATH` that reports `server/target` as its own mount point, different from the mount point of `server`
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the 2 MiB file is still in `server/target/`
 
 ### Requirement: The gate does not clean the build output
 

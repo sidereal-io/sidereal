@@ -21,8 +21,15 @@
 
 #### Scenario: A test build uses the light settings
 
-- **WHEN** a contributor runs `cargo test --no-run -v -p sidereal-plugin-abi` in `server/` after `cargo clean -p sidereal-plugin-abi`
-- **THEN** the compiler command for the `sidereal_plugin_abi` crate contains `-C debuginfo=line-tables-only`
+- **WHEN** a contributor runs `cargo test --no-run -v -p sidereal-plugin-abi` in `server/`, with `CARGO_TARGET_DIR` set to a new empty folder
+- **THEN** the command succeeds
+- **AND** the compiler command for the `sidereal_plugin_abi` crate contains `-C debuginfo=line-tables-only`
+
+#### Scenario: A dependency builds without debug information
+
+- **WHEN** a contributor runs `cargo build -v -p libc` in `server/`, with `CARGO_TARGET_DIR` set to a new empty folder
+- **THEN** the command succeeds
+- **AND** the compiler command for the `libc` crate contains no `-C debuginfo`
 
 ### Requirement: Contributors can turn full debug information back on
 
@@ -30,6 +37,7 @@
 
 #### Scenario: The documented command restores full debug information
 
-- **WHEN** a contributor runs, in `server/`, the command line that `CONTRIBUTING.md` gives for full debug information, with `-v` added and `-p sidereal-plugin-abi` as the package, after `cargo clean -p sidereal-plugin-abi`
-- **THEN** the compiler command for the `sidereal_plugin_abi` crate contains `-C debuginfo=2`
-- **AND** `git status --porcelain` prints nothing
+- **WHEN** a contributor runs, in `server/` with `CARGO_TARGET_DIR` set to a new empty folder, the command line that `CONTRIBUTING.md` gives for full debug information, with `build -v -p sidereal-plugin-abi -p libc` as the command
+- **THEN** the command succeeds
+- **AND** the compiler commands for the `sidereal_plugin_abi` crate and the `libc` crate both contain `-C debuginfo=2`
+- **AND** `git status --porcelain` prints the same before and after the command
