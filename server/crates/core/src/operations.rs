@@ -113,6 +113,55 @@ fn json(value: FacetValue) -> serde_json::Value {
     }
 }
 
+/// One stored facet value as a reader sees it: no provenance, and the label
+/// and unit of the schema version it was written under.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetEntry {
+    pub name: String,
+    pub label: String,
+    pub value: i64,
+    pub unit: String,
+}
+
+impl Database {
+    /// The facet values of the Asset `asset_id` and of its version
+    /// `version_id`, ordered by facet name, then write time, then id.
+    pub async fn facets(
+        &self,
+        asset_id: Uuid,
+        version_id: Uuid,
+    ) -> Result<Vec<FacetEntry>, DatabaseError> {
+        let rows: Vec<(String, String, String, serde_json::Value, String)> = sqlx::query_as(
+            "SELECT v.facet, s.label, s.value_type, v.value, s.unit \
+             FROM public.facet_values v \
+             JOIN public.facet_schemas s ON s.name = v.facet AND s.version = v.schema_version \
+             WHERE v.asset_id = $1 OR v.asset_version_id = $2 \
+             ORDER BY v.facet, v.written_at, v.id",
+        )
+        .bind(asset_id)
+        .bind(version_id)
+        .fetch_all(self.pool())
+        .await?;
+        rows.into_iter()
+            .map(|(name, label, value_type, value, unit)| {
+                // Only core writes these rows, and only counts exist: any
+                // other stored value is a damaged database, not a fact.
+                let value = match value_type.as_str() {
+                    "count" => value.as_i64().filter(|n| (0..=MAX_COUNT).contains(n)),
+                    _ => None,
+                }
+                .ok_or(DatabaseError::Schema)?;
+                Ok(FacetEntry {
+                    name,
+                    label,
+                    value,
+                    unit,
+                })
+            })
+            .collect()
+    }
+}
+
 /// Run the Operator that `run` names over its Asset version, record the run,
 /// and store its values when every proposal passes.
 pub async fn run_operator(

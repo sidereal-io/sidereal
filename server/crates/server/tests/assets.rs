@@ -1418,3 +1418,182 @@ mod web_fallback {
         assert_eq!(body_text(home).await, INDEX);
     }
 }
+
+mod get_asset {
+    use super::*;
+
+    impl Instance {
+        async fn read(&self, id: &str) -> Response {
+            self.get(&format!("/api/assets/{id}"), Some(&self.cookie))
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_wraps_the_list_entry_with_its_facets() {
+        let instance = Instance::new().await;
+        instance.upload("nebula.png", PNG).await;
+        let listed = json(instance.list().await).await["assets"][0].clone();
+        let response = instance.read(listed["id"].as_str().unwrap()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json(response).await;
+        let fields: Vec<_> = body.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(fields, ["asset"]);
+        let mut asset = body["asset"].clone();
+        assert!(asset["facets"].is_array());
+        asset.as_object_mut().unwrap().remove("facets");
+        assert_eq!(asset, listed);
+    }
+
+    #[tokio::test]
+    async fn get_asset_returns_the_file_size_without_provenance() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.png", &png_of_size(1_234_567)).await).await;
+        let response = instance
+            .read(uploaded["asset"]["id"].as_str().unwrap())
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["asset"]["facets"],
+            serde_json::json!([{
+                "name": "image.file-size",
+                "label": "File size",
+                "value": 1_234_567,
+                "unit": "bytes"
+            }])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_asset_with_no_facets_has_an_empty_list() {
+        let instance =
+            Instance::with_library(|library| library.with_upload_operators(vec![])).await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        let response = instance
+            .read(uploaded["asset"]["id"].as_str().unwrap())
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["asset"]["facets"],
+            serde_json::json!([])
+        );
+    }
+
+    /// Values of the Asset and its current version are listed by name, then
+    /// write time, then id, each with its own schema version's label and
+    /// unit; a value of another version is not.
+    #[tokio::test]
+    async fn get_asset_orders_facets_and_reads_each_with_its_own_schema() {
+        let instance =
+            Instance::with_library(|library| library.with_upload_operators(vec![])).await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        let asset = uploaded["asset"]["id"].as_str().unwrap().to_owned();
+        let version = uploaded["asset"]["current_version_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        instance
+            .execute(&format!(
+                "INSERT INTO public.asset_versions (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) \
+                 SELECT '00000000-0000-4000-8000-0000000000f1', asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at \
+                 FROM public.asset_versions WHERE id = '{version}';
+                 INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
+                 SELECT '00000000-0000-4000-8000-0000000000e1', 'test.op', '1', '{version}', id, 'succeeded', now(), now() FROM public.users;
+                 INSERT INTO public.facet_schemas VALUES \
+                   ('test.b', 1, 'test', 'B one', 'count', 'px', 'asset_version'), \
+                   ('test.b', 2, 'test', 'B two', 'count', 'mm', 'asset_version'), \
+                   ('test.a', 1, 'test', 'A', 'count', '', 'asset');
+                 INSERT INTO public.facet_values (id, facet, schema_version, asset_id, asset_version_id, value, producer_id, producer_version, run_id, written_at) VALUES \
+                   ('00000000-0000-4000-8000-000000000003', 'test.b', 2, NULL, '{version}', '3', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-02T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000002', 'test.b', 1, NULL, '{version}', '2', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-01T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000005', 'test.b', 1, NULL, '{version}', '5', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-02T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000001', 'test.a', 1, '{asset}', NULL, '1', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-03T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000009', 'test.a', 1, NULL, '00000000-0000-4000-8000-0000000000f1', '9', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-01T00:00:00Z');"
+            ))
+            .await;
+        let response = instance.read(&asset).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["asset"]["facets"],
+            serde_json::json!([
+                {"name": "test.a", "label": "A", "value": 1, "unit": ""},
+                {"name": "test.b", "label": "B one", "value": 2, "unit": "px"},
+                {"name": "test.b", "label": "B two", "value": 3, "unit": "mm"},
+                {"name": "test.b", "label": "B one", "value": 5, "unit": "px"},
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_asset_of_an_unknown_or_malformed_id_is_404() {
+        let instance = Instance::new().await;
+        instance.upload("nebula.png", PNG).await;
+        for id in ["00000000-0000-4000-8000-000000000000", "not-an-id"] {
+            let response = instance.read(id).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{id}");
+            let body = body_text(response).await;
+            assert!(
+                !body.contains("nebula") && !body.contains("facets"),
+                "{id}: {body}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_answers_503_when_the_database_fails_after_the_session_check() {
+        for broken in ["assets", "facet_values"] {
+            let instance = Instance::new().await;
+            let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+            instance
+                .execute(&format!("ALTER TABLE public.{broken} RENAME TO moved_away"))
+                .await;
+            let response = instance
+                .read(uploaded["asset"]["id"].as_str().unwrap())
+                .await;
+            assert_eq!(
+                response.status(),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{broken}"
+            );
+            assert_eq!(
+                body_text(response).await,
+                r#"{"error":"the library is unavailable; try again later"}"#,
+                "{broken}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_without_a_valid_session_answers_401_with_no_metadata() {
+        for (case, sql) in INVALID_SESSIONS {
+            let instance = Instance::new().await;
+            let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+            let cookie = match sql {
+                Some(sql) => Some(instance.with_session(sql).await),
+                None => None,
+            };
+            let id = uploaded["asset"]["id"].as_str().unwrap();
+            let response = instance.get(&format!("/api/assets/{id}"), cookie).await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{case}");
+            let body = body_text(response).await;
+            assert!(
+                !body.contains("nebula") && !body.contains("facets"),
+                "{case}: {body}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_from_another_origin_is_not_refused() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        let id = uploaded["asset"]["id"].as_str().unwrap();
+        let request = Request::get(format!("/api/assets/{id}"))
+            .header(header::COOKIE, &instance.cookie)
+            .header(header::HOST, "photos.example")
+            .header(header::ORIGIN, "https://elsewhere.example")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(instance.send(request).await.status(), StatusCode::OK);
+    }
+}

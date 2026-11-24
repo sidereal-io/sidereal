@@ -136,6 +136,7 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
                 .layer::<_, Infallible>(RequestBodyLimitLayer::new(TRANSPORT_LIMIT))
                 .get(list),
         )
+        .route("/api/assets/{id}", get(read))
         .route("/api/assets/{id}/original", get(original))
         .with_state(Assets {
             database,
@@ -167,6 +168,47 @@ async fn list(State(assets): State<Assets>) -> Response {
             unavailable()
         }
     }
+}
+
+/// One Asset with the facet values of the Asset and its current version.
+/// A database failure is 503, so it never reads as a missing Asset or as an
+/// Asset with no facets.
+async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
+    let not_found =
+        || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
+    let Ok(id) = uuid::Uuid::try_parse(&id) else {
+        return not_found();
+    };
+    let failed = |error: &dyn std::fmt::Display| {
+        assets.log.line(&format!("asset read failed: {error}"));
+        unavailable()
+    };
+    let record = match assets.database.asset(id).await {
+        Ok(Some(record)) => record,
+        Ok(None) => return not_found(),
+        Err(error) => return failed(&error),
+    };
+    let facets = match assets
+        .database
+        .facets(record.id, record.current_version_id)
+        .await
+    {
+        Ok(facets) => facets,
+        Err(error) => return failed(&error),
+    };
+    let mut asset = entry(&record);
+    asset["facets"] = facets
+        .iter()
+        .map(|facet| {
+            json!({
+                "name": facet.name,
+                "label": facet.label,
+                "value": facet.value,
+                "unit": facet.unit,
+            })
+        })
+        .collect();
+    Json(json!({ "asset": asset })).into_response()
 }
 
 /// The bytes stored at the current version's hash path. Every failure found
