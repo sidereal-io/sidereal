@@ -1,6 +1,9 @@
 #!/bin/sh
 # Deletes this checkout's Rust build output, server/target/, when it is
-# larger than a size limit, and keeps it otherwise.
+# larger than a size limit, and keeps it otherwise. It deletes nothing
+# when server/target is a link, when server, server/target or a folder
+# inside it is a mount point, or when it cannot measure the folder.
+# CONTRIBUTING.md explains the limit.
 #
 #   sh server/scripts/target-clean.sh
 #   SIDEREAL_TARGET_LIMIT_MIB=2048 sh server/scripts/target-clean.sh
@@ -77,12 +80,14 @@ case $found in
 esac
 
 # du -sk reports the disk space allocated, in KiB; round up to MiB.
-kib=$(du -sk "$target")
+kib=$(du -sk "$target") || die "cannot measure $target: du failed. Deleting nothing."
 kib=${kib%%[!0-9]*}
+[ -n "$kib" ] || die "cannot measure $target: du printed no size. Deleting nothing."
 mib=$(((kib + 1023) / 1024))
 
 if [ "$mib" -gt "$limit" ]; then
-  rm -rf -- "$target"
+  rm -rf -- "$target" ||
+    die "deleting $target failed; the folder may be partly deleted. Its next build rebuilds what is missing."
   say "$target is $mib MiB, over the limit of $limit MiB: deleted it"
 else
   say "$target is $mib MiB, at or under the limit of $limit MiB: kept it"

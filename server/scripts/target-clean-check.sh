@@ -283,6 +283,32 @@ expect_status_nonzero
 expect_err "space, tab, newline or backslash"
 expect_kept "$repo/server/target"
 
+# --- Failures while measuring or deleting -------------------------------
+
+new_case du-fails
+fill "$repo/server/target"
+stub du "echo 'du: stub failure' >&2; exit 1"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "cannot measure"
+expect_kept "$repo/server/target"
+
+# du exits 0 but prints no size.
+new_case du-prints-nothing
+fill "$repo/server/target"
+stub du "exit 0"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "cannot measure"
+expect_kept "$repo/server/target"
+
+new_case rm-fails
+fill "$repo/server/target"
+stub rm "echo 'rm: stub failure' >&2; exit 1"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "may be partly deleted"
+
 if [ "$failures" -ne 0 ]; then
   echo "target-clean-check: $failures failure(s)" >&2
   exit 1
