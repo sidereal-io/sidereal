@@ -42,6 +42,8 @@ uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.7", features = ["fs", "limit"] }
+# Decodes a request path as the file service does, to guard asset page addresses.
+percent-encoding = "2"
 # The error type the transport limit raises, so upload can tell it apart.
 http-body-util = "0.1"
 argon2 = "0.6"

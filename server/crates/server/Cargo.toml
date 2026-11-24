@@ -25,6 +25,8 @@ tokio = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 tower-http = { workspace = true }
+percent-encoding = { workspace = true }
+tower = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 futures-util = { workspace = true }
@@ -32,4 +34,3 @@ http-body-util = { workspace = true }
 
 [dev-dependencies]
 tokio-tungstenite = { workspace = true }
-tower = { workspace = true }

@@ -1363,6 +1363,7 @@ dependencies = [
  "futures-util",
  "http-body-util",
  "libc",
+ "percent-encoding",
  "serde_json",
  "sidereal-core",
  "sidereal-pack-astro",

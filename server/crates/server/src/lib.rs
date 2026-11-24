@@ -1,11 +1,18 @@
 //! The HTTP shell exposes fixed liveness and readiness responses, and the
 //! built web shell when the operator names its folder.
 use access::limit::Limiter;
-use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use axum::{
+    extract::{Request, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+    Json, Router,
+};
 use config::{AllowedOrigins, TrustedProxies};
 use serde_json::{json, Value};
 use sidereal_core::database::Database;
 use std::{path::Path, sync::Arc};
+use tower::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
 
 pub mod access;
@@ -90,16 +97,47 @@ pub fn app_with_library(
 /// `/` answers with `index.html`. Every other folder path is not found: no
 /// redirect, no folder index, and no fallback to `index.html`. The file
 /// services answer 405 to methods other than `GET` and `HEAD`.
+///
+/// An asset page address, `/assets/<id>` with a lowercase Asset id, also
+/// answers with `index.html`, so the page's address survives a reload. Such
+/// an address is reserved: a file at that path is never served, and a path
+/// that becomes one only once percent-decoded is not found.
 pub fn with_web_root(router: Router, web_root: Option<&Path>) -> Router {
     let Some(web_root) = web_root else {
         return router;
     };
+    let index = ServeFile::new(web_root.join("index.html"));
     let files = ServeDir::new(web_root)
         .append_index_html_on_directories(false)
         .redirect_to_trailing_slash(false);
+    let shell = index.clone();
     router
-        .route_service("/", ServeFile::new(web_root.join("index.html")))
-        .fallback_service(files)
+        .route_service("/", index)
+        .fallback(move |request: Request| async move {
+            let path = request.uri().path();
+            if is_asset_page(path) {
+                return shell.oneshot(request).await.into_response();
+            }
+            // The file service decodes the path before it looks for a file.
+            let decoded = percent_encoding::percent_decode(path.as_bytes()).decode_utf8();
+            if decoded.is_ok_and(|decoded| is_asset_page(&decoded)) {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            files.oneshot(request).await.into_response()
+        })
+}
+
+/// Whether `path` is exactly `/assets/` and a lowercase Asset id: hexadecimal
+/// digits in groups of 8, 4, 4, 4 and 12, joined by hyphens.
+fn is_asset_page(path: &str) -> bool {
+    let Some(id) = path.strip_prefix("/assets/") else {
+        return false;
+    };
+    id.len() == 36
+        && id.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_digit() || (b'a'..=b'f').contains(&b),
+        })
 }
 
 /// Resolve every request's scheme and client address, refusing forwarded
