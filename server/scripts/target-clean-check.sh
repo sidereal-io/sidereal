@@ -67,6 +67,27 @@ expect_gone() {
   [ ! -e "$1" ] || fail "$1 still exists"
 }
 
+# stub NAME BODY: writes a command NAME, running BODY, into $bin, which
+# a case puts first on the clean-up script's PATH.
+stub() {
+  bin=$fx/bin/$label
+  mkdir -p "$bin"
+  printf '#!/bin/sh\n%s\n' "$2" >"$bin/$1"
+  chmod +x "$bin/$1"
+}
+
+# stub_mount LINE: a mount that prints a root mount, then LINE.
+stub_mount() {
+  mkdir -p "$fx/bin/$label"
+  printf '%s\n' "/dev/sda1 on / type ext4 (rw,relatime)" "$1" >"$fx/bin/$label/table"
+  stub mount "cat \"$fx/bin/$label/table\""
+}
+
+# phys DIR: DIR's physical path, as mount prints it.
+phys() {
+  (CDPATH= cd -P -- "$1" && pwd -P)
+}
+
 # The folder's size as the script measures it: du -sk, rounded up to MiB.
 size_mib() {
   kib=$(du -sk "$1")
@@ -136,6 +157,131 @@ run_clean SIDEREAL_TARGET_LIMIT_MIB=010
 expect_status_zero
 expect_kept "$repo/server/target"
 expect_out "limit of 10 MiB"
+
+# --- Only this checkout's own folder ------------------------------------
+
+new_case cargo-target-dir-elsewhere
+fill "$fx/elsewhere"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 CARGO_TARGET_DIR="$fx/elsewhere"
+expect_status_zero
+expect_kept "$fx/elsewhere"
+
+# A cargo first on PATH records any call: cargo clean would follow
+# CARGO_TARGET_DIR and could delete a shared folder.
+new_case no-cargo-clean
+fill "$repo/server/target"
+stub cargo "touch \"$fx/cargo-called\"; exit 1"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_zero
+expect_gone "$repo/server/target"
+[ ! -e "$fx/cargo-called" ] || fail "the script called cargo"
+
+new_case link
+fill "$fx/link-dest"
+ln -s "$fx/link-dest" "$repo/server/target"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+expect_status_nonzero
+expect_err "symbolic link"
+[ -L "$repo/server/target" ] || fail "the link was deleted"
+expect_kept "$fx/link-dest"
+
+# The script finds the repo from its own path, not the current folder.
+new_case run-from-elsewhere
+fill "$repo/server/target"
+mkdir -p "$fx/elsewhere-cwd/server/target"
+set +e
+(cd "$fx/elsewhere-cwd" && SIDEREAL_TARGET_LIMIT_MIB=1 sh "$repo/server/scripts/target-clean.sh") >"$fx/out" 2>"$fx/err"
+status=$?
+set -e
+expect_status_zero
+expect_gone "$repo/server/target"
+[ -d "$fx/elsewhere-cwd/server/target" ] || fail "the current folder's server/target was deleted"
+
+# --- Mount points -------------------------------------------------------
+# A real mount needs root, so a mount first on PATH prints a mount table
+# with a root line and the case's line, in the form Linux prints.
+
+new_case mount-target
+fill "$repo/server/target"
+stub_mount "/dev/sdb1 on $(phys "$repo/server/target") type ext4 (rw,relatime)"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "mount point"
+expect_kept "$repo/server/target"
+
+new_case mount-inside-target
+fill "$repo/server/target"
+mkdir -p "$repo/server/target/debug/cache"
+stub_mount "/dev/sdb1 on $(phys "$repo/server/target")/debug/cache type none (rw,bind)"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "mount point"
+expect_kept "$repo/server/target"
+
+new_case mount-server
+fill "$repo/server/target"
+stub_mount "/dev/sdb1 on $(phys "$repo/server") type ext4 (rw,relatime)"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "mount point"
+expect_kept "$repo/server/target"
+
+# macOS and the BSDs print "<source> on <mount point> (<fs>, <options>)".
+new_case mount-target-bsd
+fill "$repo/server/target"
+stub_mount "/dev/disk3s1 on $(phys "$repo/server/target") (apfs, local)"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "mount point"
+expect_kept "$repo/server/target"
+
+new_case mount-fails
+fill "$repo/server/target"
+stub mount "echo 'mount: stub failure' >&2; exit 1"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "'mount' failed"
+expect_kept "$repo/server/target"
+
+new_case mount-prints-nothing
+fill "$repo/server/target"
+stub mount "exit 0"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_nonzero
+expect_err "'mount' printed nothing"
+expect_kept "$repo/server/target"
+
+# A mount at the repo root makes the whole checkout one tree, so the
+# folder is still this checkout's own.
+new_case mount-repo-root
+fill "$repo/server/target"
+stub_mount "/dev/sdb1 on $(phys "$repo") type ext4 (rw,relatime)"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_zero
+expect_gone "$repo/server/target"
+
+new_case mount-sibling
+fill "$repo/server/target"
+mkdir -p "$repo/server/target-other"
+stub_mount "/dev/sdb1 on $(phys "$repo/server/target-other") type ext4 (rw,relatime)"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1 PATH="$bin:$PATH"
+expect_status_zero
+expect_gone "$repo/server/target"
+
+# mount prints a space as \040, so the script cannot match such a path.
+new_case "path with space"
+fill "$repo/server/target"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+expect_status_nonzero
+expect_err "space, tab, newline or backslash"
+expect_kept "$repo/server/target"
+
+new_case 'path\with-backslash'
+fill "$repo/server/target"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+expect_status_nonzero
+expect_err "space, tab, newline or backslash"
+expect_kept "$repo/server/target"
 
 if [ "$failures" -ne 0 ]; then
   echo "target-clean-check: $failures failure(s)" >&2
