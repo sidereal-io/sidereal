@@ -356,7 +356,7 @@ run `sh server/scripts/target-clean.sh` from the repo root.
 folder somewhere else. `mise run check` does not run it. It deletes nothing,
 and exits with an error, when:
 
-- `server/target` is a symbolic link.
+- `server` or `server/target` is a symbolic link.
 - `server`, `server/target` or a folder inside `server/target` is a mount
   point. `rm -rf` would cross into it, and could empty another file system or
   another checkout's build folder. The task finds mount points in the output

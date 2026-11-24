@@ -95,7 +95,7 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 
 ### Requirement: The clean-up task deletes only this checkout's build folder
 
-`mise run target-clean` SHALL delete nothing but the repo's own `server/target/` folder. It SHALL ignore `CARGO_TARGET_DIR` and any Cargo setting that moves the build output elsewhere. When `server/target` is a symbolic link, the task SHALL delete nothing and exit with a non-zero status.
+`mise run target-clean` SHALL delete nothing but the repo's own `server/target/` folder. It SHALL ignore `CARGO_TARGET_DIR` and any Cargo setting that moves the build output elsewhere. When `server` or `server/target` is a symbolic link, the task SHALL delete nothing and exit with a non-zero status.
 
 #### Scenario: A personal build folder elsewhere is left alone
 
@@ -107,6 +107,13 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 #### Scenario: The build folder is a link
 
 - **GIVEN** `server/target` is a symbolic link to another folder that holds a 2 MiB file of random data
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the link and the 2 MiB file both still exist
+
+#### Scenario: The server folder is a link
+
+- **GIVEN** `server` is a symbolic link to another checkout's `server` folder, whose `server/target/` holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
 - **THEN** the command exits with a non-zero status
 - **AND** the link and the 2 MiB file both still exist

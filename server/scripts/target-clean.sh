@@ -1,8 +1,9 @@
 #!/bin/sh
 # Deletes this checkout's Rust build output, server/target/, when it is
 # larger than a size limit, and keeps it otherwise. It deletes nothing
-# when server/target is a link, when server, server/target or a folder
-# inside it is a mount point, or when it cannot measure the folder.
+# when server or server/target is a link, when server, server/target or
+# a folder inside it is a mount point, or when it cannot measure the
+# folder.
 # CONTRIBUTING.md explains the limit.
 #
 #   sh server/scripts/target-clean.sh
@@ -35,7 +36,11 @@ if [ "${#limit}" -gt 15 ]; then
 fi
 
 # Deleting a link would free nothing, and following it could delete a
-# folder that other checkouts share.
+# folder that other checkouts share. A link at server would make
+# server/target another checkout's folder.
+if [ -L "$root/server" ]; then
+  die "$root/server is a symbolic link, not this checkout's own folder. Deleting nothing."
+fi
 if [ -L "$target" ]; then
   die "$target is a symbolic link, not this checkout's own folder. Deleting nothing."
 fi

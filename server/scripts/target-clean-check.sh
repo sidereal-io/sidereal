@@ -185,6 +185,19 @@ expect_err "symbolic link"
 [ -L "$repo/server/target" ] || fail "the link was deleted"
 expect_kept "$fx/link-dest"
 
+# A link at server would make server/target another checkout's folder.
+new_case server-link
+mkdir -p "$fx/server-link-dest/server/scripts"
+cp "$root/server/scripts/target-clean.sh" "$fx/server-link-dest/server/scripts/"
+fill "$fx/server-link-dest/server/target"
+rm -rf "$repo/server"
+ln -s "$fx/server-link-dest/server" "$repo/server"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+expect_status_nonzero
+expect_err "symbolic link"
+[ -L "$repo/server" ] || fail "the link was deleted"
+expect_kept "$fx/server-link-dest/server/target"
+
 # The script finds the repo from its own path, not the current folder.
 new_case run-from-elsewhere
 fill "$repo/server/target"

@@ -105,7 +105,7 @@ The task is `[tasks.target-clean]` in `mise.toml`. It runs one POSIX `sh` script
 
 1. Finds the repo root from its own path, so it works whatever folder it starts in, and only ever looks at `<root>/server/target`.
 2. Reads `SIDEREAL_TARGET_LIMIT_MIB`, default 4096. Anything but a whole number stops it with an error that names the variable, before it measures anything.
-3. Stops with an error, deleting nothing, if `server/target` is a symbolic link. Deleting the link would free nothing, and following it could delete a folder that other checkouts share.
+3. Stops with an error, deleting nothing, if `server` or `server/target` is a symbolic link. Deleting the link would free nothing, and following it could delete a folder that other checkouts share. A link at `server` would make `server/target` another checkout's build folder.
 4. Prints that there is nothing to delete if the folder is missing.
 5. Stops with an error, deleting nothing, if `server`, `server/target` or any folder inside `server/target` is a mount point. `rm -rf` crosses mount points, and POSIX gives it no option to stay on one file system, so a bind-mounted folder that other worktrees share would lose its contents. A bind mount from the same file system has the same device number as its parent, so device checks such as `find -xdev` cannot see it. The script reads the system mount table instead:
    - It resolves the folder's physical path with `cd -P server/target && pwd -P`, and the physical path of `server` with `cd -P server && pwd -P`.
