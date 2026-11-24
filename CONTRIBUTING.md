@@ -367,6 +367,27 @@ and exits with an error, when:
 - It cannot measure the folder. When deleting fails part way, it says that the
   folder may be partly deleted; the next build rebuilds what is missing.
 
+#### Personal options
+
+The project sets neither of these. Each one suits some machines and not
+others, so set it in your own environment or in `mise.local.toml` if you want
+it.
+
+- **One build folder for all worktrees.** Set `CARGO_TARGET_DIR` to a folder
+  outside your checkouts, and Cargo stores each dependency's build once. But
+  Cargo locks the folder for each build, so builds in different worktrees wait
+  for each other. Branches with different dependencies or Rust releases also
+  replace each other's output, so each switch rebuilds. `target-clean` does
+  not clean this folder.
+- **sccache,** a compiler cache shared by all worktrees. Set
+  `RUSTC_WRAPPER=sccache`, and limit its cache with `SCCACHE_CACHE_SIZE`,
+  which is 10 GiB by default. It makes first builds faster, which helps most
+  in a new worktree: in one measurement a build of the gate's Rust checks
+  took 40 s instead of 53 s in a new checkout, and 18 s at the same path. It
+  saves no disk. Cargo still writes the full output into each worktree's
+  `server/target/`, and sccache keeps its own cache on top, about 240 MiB for
+  this workspace.
+
 ### Moving from the Nix shell
 
 The repo no longer has a Nix shell or an `.envrc`. If you used them, do this
