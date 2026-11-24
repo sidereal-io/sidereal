@@ -1,0 +1,125 @@
+/*
+ * The asset page, in the Side column layout that DESIGN.md describes: the
+ * image takes most of the width, whole and uncropped, and a plain column
+ * `size-300` wide beside it holds the name and one fact per line. When the
+ * window is too narrow for both, the column wraps under the image and takes
+ * the full width. The page margin comes from the app's main area.
+ */
+
+/* The screen's name in the top bar is a link back to the Library. */
+.asset-crumb {
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  font-weight: var(--sr-font-weight-500);
+  text-decoration: none;
+}
+
+.asset-crumb::before {
+  content: "/";
+  margin-right: var(--sr-spacing-12);
+  color: var(--sr-obsidian-600);
+  font-weight: var(--sr-font-weight-400);
+}
+
+.asset-crumb:hover {
+  color: var(--sr-color-text-body);
+  text-decoration: underline;
+}
+
+/* Every state other than the Asset is one quiet line of text. */
+.asset-status {
+  margin: 0;
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+}
+
+.asset-status a {
+  color: var(--sr-color-text-body);
+}
+
+.asset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sr-spacing-32) var(--sr-spacing-24);
+}
+
+/* Grows over the column; wraps once it would be narrower than two columns. */
+.asset-frame {
+  flex: 1000 1 calc(2 * var(--sr-size-300));
+  min-width: 0;
+  margin: 0;
+}
+
+/* Square corners and no cropping, so the image's edges stay visible. */
+.asset-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.asset-broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 2;
+  box-sizing: border-box;
+  margin: 0;
+  border: var(--sr-border-width-1) solid var(--sr-color-border-hairline);
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  text-align: center;
+}
+
+.asset-details {
+  display: flex;
+  flex: 1 0 var(--sr-size-300);
+  flex-direction: column;
+  gap: var(--sr-spacing-12);
+  min-width: 0;
+}
+
+.asset-name {
+  margin: 0;
+  color: var(--sr-color-text-body);
+  font-family: var(--sr-font-family-mono);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  font-weight: var(--sr-font-weight-500);
+  overflow-wrap: anywhere;
+}
+
+.asset-facts {
+  margin: 0;
+  border-top: var(--sr-border-width-1) solid var(--sr-color-border-hairline);
+}
+
+.asset-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sr-spacing-12);
+  min-height: var(--sr-size-32);
+  border-bottom: var(--sr-border-width-1) solid var(--sr-color-border-hairline);
+}
+
+/* body-md */
+.asset-fact dt {
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+}
+
+.asset-fact dd {
+  margin: 0;
+  color: var(--sr-color-text-body);
+  font-family: var(--sr-font-family-mono);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
