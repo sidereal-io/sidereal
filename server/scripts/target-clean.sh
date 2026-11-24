@@ -14,7 +14,22 @@ die() {
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
 target=$root/server/target
-limit=$SIDEREAL_TARGET_LIMIT_MIB
+
+# The limit is checked before anything is measured, so a bad value never
+# deletes. Set but empty counts as a bad value.
+limit=${SIDEREAL_TARGET_LIMIT_MIB-4096}
+case $limit in
+  '' | *[!0-9]*)
+    die "SIDEREAL_TARGET_LIMIT_MIB must be a whole number of MiB, such as 4096; got '$limit'. Deleting nothing."
+    ;;
+esac
+# Drop leading zeros, so 010 reads as ten. 0 stays 0.
+limit=${limit#"${limit%%[!0]*}"}
+limit=${limit:-0}
+# Larger numbers overflow the shell's arithmetic; no disk is that large.
+if [ "${#limit}" -gt 15 ]; then
+  die "SIDEREAL_TARGET_LIMIT_MIB is too large; use at most 15 digits. Deleting nothing."
+fi
 
 if [ ! -e "$target" ]; then
   say "there is no $target: nothing to delete"

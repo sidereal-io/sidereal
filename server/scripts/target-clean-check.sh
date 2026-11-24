@@ -109,6 +109,34 @@ run_clean SIDEREAL_TARGET_LIMIT_MIB=1
 expect_status_zero
 expect_out "nothing to delete"
 
+# --- The limit ----------------------------------------------------------
+
+new_case default-limit
+fill "$repo/server/target"
+run_clean
+expect_status_zero
+expect_kept "$repo/server/target"
+expect_out "limit of 4096 MiB"
+
+n=0
+for bad in 2G -1 1.5 ' 1' '' 1234567890123456; do
+  n=$((n + 1))
+  new_case "invalid-limit-$n"
+  fill "$repo/server/target"
+  run_clean SIDEREAL_TARGET_LIMIT_MIB="$bad"
+  expect_status_nonzero
+  expect_err "SIDEREAL_TARGET_LIMIT_MIB"
+  expect_kept "$repo/server/target"
+done
+
+# Leading zeros are a whole number, read as decimal, not octal.
+new_case leading-zeros
+fill "$repo/server/target"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=010
+expect_status_zero
+expect_kept "$repo/server/target"
+expect_out "limit of 10 MiB"
+
 if [ "$failures" -ne 0 ]; then
   echo "target-clean-check: $failures failure(s)" >&2
   exit 1
