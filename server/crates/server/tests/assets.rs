@@ -1597,3 +1597,150 @@ mod get_asset {
         assert_eq!(instance.send(request).await.status(), StatusCode::OK);
     }
 }
+
+mod upload_run {
+    use super::*;
+
+    /// An Operator `test.op` that writes `test.size`, run by `script`.
+    struct Scripted(fn(&mut AssetContext<'_>) -> Result<(), OperatorError>);
+    impl Operator for Scripted {
+        fn id(&self) -> &str {
+            "test.op"
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn writes(&self) -> &[&str] {
+            &["test.size"]
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            (self.0)(context)
+        }
+    }
+
+    /// Upload `nebula.png` to a server whose upload runs `script`; check the
+    /// 201 and its body against the library list; answer the Asset's id.
+    async fn uploaded(instance: &Instance) -> String {
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = json(response).await;
+        let listed = json(instance.list().await).await["assets"].clone();
+        assert_eq!(listed, serde_json::json!([body["asset"]]));
+        body["asset"]["id"].as_str().unwrap().to_owned()
+    }
+
+    async fn facets(instance: &Instance, id: &str) -> Value {
+        let response = instance
+            .get(&format!("/api/assets/{id}"), Some(&instance.cookie))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        json(response).await["asset"]["facets"].clone()
+    }
+
+    /// The one run's status and reason.
+    async fn run(instance: &Instance) -> (String, Option<String>) {
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        sqlx::query_as("SELECT status, reason FROM public.operation_runs")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn upload_run_that_fails_still_answers_201() {
+        let instance = Instance::with_library(running(Scripted(|_| {
+            Err(OperatorError::Failed("could not read the header".into()))
+        })))
+        .await;
+        let id = uploaded(&instance).await;
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        assert_eq!(
+            run(&instance).await,
+            ("failed".into(), Some("could not read the header".into()))
+        );
+        let line = format!("file-size run failed for asset {id}: could not read the header");
+        assert!(instance.logged().contains(&line), "{:?}", instance.logged());
+    }
+
+    #[tokio::test]
+    async fn upload_run_whose_operator_panics_still_answers_201() {
+        let instance =
+            Instance::with_library(running(Scripted(|_| panic!("the operator broke")))).await;
+        let id = uploaded(&instance).await;
+        assert_eq!(
+            run(&instance).await,
+            ("failed".into(), Some("the operator stopped".into()))
+        );
+        // The server answers the next request.
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        assert_eq!(instance.list().await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn upload_run_whose_proposal_is_refused_still_answers_201() {
+        let instance = Instance::with_library(running(Scripted(|context| {
+            context
+                .propose_facet("test.size", FacetValue::Integer(-1))
+                .map_err(|_| OperatorError::Failed("proposal".into()))
+        })))
+        .await;
+        let id = uploaded(&instance).await;
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        let (status, reason) = run(&instance).await;
+        assert_eq!(status, "failed");
+        assert!(reason.unwrap().contains("test.size"));
+    }
+
+    #[tokio::test]
+    async fn upload_run_whose_first_insert_is_refused_still_answers_201() {
+        let instance = Instance::new().await;
+        instance
+            .execute("ALTER TABLE public.operation_runs ADD CONSTRAINT refuse_all CHECK (false)")
+            .await;
+        let id = uploaded(&instance).await;
+        assert_eq!(instance.rows().await, 2);
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        let prefix = format!("file-size run not recorded for asset {id}:");
+        assert!(
+            instance
+                .logged()
+                .iter()
+                .any(|line| line.starts_with(&prefix)),
+            "{:?}",
+            instance.logged()
+        );
+    }
+
+    /// Every update of a run is refused, so core cannot record or read back
+    /// how it ended: the outcome is unknown, and only the answer and the log
+    /// line are certain.
+    #[tokio::test]
+    async fn upload_run_whose_outcome_is_unknown_still_answers_201() {
+        let instance = Instance::new().await;
+        instance
+            .execute(
+                "CREATE FUNCTION public.refuse_update() RETURNS trigger LANGUAGE plpgsql \
+                 AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$; \
+                 CREATE TRIGGER refuse_update BEFORE UPDATE ON public.operation_runs \
+                 FOR EACH ROW EXECUTE FUNCTION public.refuse_update();",
+            )
+            .await;
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let id = json(response).await["asset"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let prefix = format!("file-size run not recorded for asset {id}:");
+        assert!(
+            instance
+                .logged()
+                .iter()
+                .any(|line| line.starts_with(&prefix)),
+            "{:?}",
+            instance.logged()
+        );
+    }
+}
