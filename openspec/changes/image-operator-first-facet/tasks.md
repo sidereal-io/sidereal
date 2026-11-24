@@ -40,7 +40,7 @@
 
 ## 6. Journey [depends-on: 3, 4, 5]
 
-- [ ] 6.1 [medium] In the browser journey, Nova uploads an image, opens it from the Library, sees `File size` with its byte count, reloads the page and still sees it, and goes back to the Library (asset-page "The asset page's address survives a reload") (verify: `deli -- mise run e2e`)
+- [x] 6.1 [medium] In the browser journey, Nova uploads an image, opens it from the Library, sees `File size` with its byte count, reloads the page and still sees it, and goes back to the Library (asset-page "The asset page's address survives a reload") (verify: `deli -- mise run e2e`) (✓ `deli -- mise run e2e` passed, 3 tests; `deli -- mise run check` passed)
 
 ## Deviations Ledger
 

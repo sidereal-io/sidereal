@@ -1,11 +1,12 @@
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
 
 // The first-image journey, on the stack that `mise run e2e` makes for this
 // run: Nova claims the instance, signs in, uploads a real PNG and JPEG, and
-// still sees both after the runner restarts the server. The Rust process
+// still sees both after the runner restarts the server. Then Nova opens the
+// PNG's asset page and reads its file size, before and after a reload. The Rust process
 // test (server/crates/server/tests/journey.rs) checks ids and bytes; this
 // test checks what Nova sees.
 const runDir = process.env.SIDEREAL_E2E_RUN_DIR ?? "";
@@ -72,4 +73,36 @@ test("Nova uploads a PNG and a JPEG and sees them after a restart", async ({
 
   await page.reload();
   for (const name of images) await expectShown(page, name);
+});
+
+test("Nova opens an image's page, reads its file size, reloads it and goes back", async ({
+  page,
+}) => {
+  const name = "nebula.png";
+  const bytes = new Intl.NumberFormat("en-US").format(
+    statSync(join(fixtures, name)).size,
+  );
+  const fileSize = page.getByRole("definition");
+
+  await page.goto("/");
+  await signIn(page, "Sign in");
+  await expectShown(page, name);
+
+  await page.getByRole("link", { name }).click();
+  await expect(page).toHaveURL(/\/assets\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { name })).toBeVisible();
+  await expectShown(page, name);
+  await expect(page.getByRole("term")).toHaveText("File size");
+  await expect(fileSize).toHaveText(`${bytes} bytes`);
+
+  const address = page.url();
+  await page.reload();
+  await expect(page).toHaveURL(address);
+  await expect(page.getByRole("heading", { name })).toBeVisible();
+  await expect(fileSize).toHaveText(`${bytes} bytes`);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("region", { name: "Library" })).toBeVisible();
+  for (const image of images) await expectShown(page, image);
 });
