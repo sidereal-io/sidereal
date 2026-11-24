@@ -129,14 +129,21 @@ Alternatives:
 
 ### 6. No other file changes
 
-The CI workflow, the `Dockerfile` and the scripts behind `dev`, `e2e`, `instance-verify` and `external-db-verify` keep their commands: they run Cargo, and Cargo reads the profile from the manifest. No decision here needs an ADR: each one is a few lines of configuration or documentation, and undoing any of them costs one pull request.
+The CI workflow, the `Dockerfile` and the scripts behind `dev`, `e2e`, `instance-verify` and `external-db-verify` keep their commands: they run Cargo, and Cargo reads the profile from the manifest. Each route that D6 lists has a check that runs it with the new profile:
+
+| Route | What runs it |
+|---|---|
+| Debug build, `cargo test`, `cargo clippy --all-targets`, `mise run check` | Task 4.1 runs the gate, and CI's `server` job runs `mise run check-server` on every pull request. |
+| `dev` and `e2e` | Both start the server with `cargo run -p sidereal-server` (`scripts/dev.sh`, and the `webServer` entry in `web/playwright.config.ts` that `scripts/e2e.sh` uses). Task 4.1 builds the same package. CI's `e2e` job builds it and runs `mise run e2e` on every pull request. |
+| Release build, `instance-verify`, `external-db-verify` | Both checks build the app image, which runs `cargo build --release` in the `Dockerfile`. The plan sets no release setting, and the scenario "Only the dev profile is set" checks that. |
+| Hand-install route without mise | It runs the same scripts and Cargo commands, which read the same manifest. The check script runs the plain `target-clean` command with no mise. | No decision here needs an ADR: each one is a few lines of configuration or documentation, and undoing any of them costs one pull request.
 
 ## Risks / Trade-offs
 
 - [A contributor needs a debugger with local variables, and finds none] → `CONTRIBUTING.md` gives the override in decision 2, next to why the profile is lighter.
 - [`target-clean` runs while a build in the same worktree is running, and breaks that build] → `CONTRIBUTING.md` says to run it only when no build runs in that worktree. A scheduler's idle check cannot rule out a build that starts during the clean-up. Rerunning the broken build fixes it. Each worktree has its own folder, so other worktrees are never affected.
 - [`server/target`, or a folder inside it, is a mount point, and `rm -rf` would empty the other file system] → the script reads the mount table, refuses it and deletes nothing (decision 5, step 5).
-- [A checkout whose path holds a space, tab, newline or backslash can never be cleaned by `target-clean`] → the script says why it refuses. `CONTRIBUTING.md` says so, and the contributor deletes `server/target` by hand or moves the checkout.
+- [A checkout whose path holds a space, tab, newline or backslash can never be cleaned by `target-clean`] → the script says why it refuses. `CONTRIBUTING.md` says so, and gives the safe next step: move the checkout to a path without those characters. Deleting `server/target` by hand would skip the mount check, so `CONTRIBUTING.md` does not suggest it.
 - [Many worktrees each stay just under the limit, or grow past it between runs, and still fill the disk] → the limit is a per-worktree threshold, not a cap. `CONTRIBUTING.md` says how to choose a limit from the free disk, the builds that run at once and the number of worktrees (decision 5).
 - [Deleting the folder makes that worktree's next build start from scratch] → this happens only above the limit, at most about one cold build's time. It is the trade-off D3 accepted.
 - [The first build after the change rebuilds everything, on every machine and in CI] → once. The CI cache key changes with `Cargo.toml`, so CI saves a new, smaller cache after its first run.
