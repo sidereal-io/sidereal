@@ -303,8 +303,8 @@ use it:
   shows no local variables and no types.
 - Dependencies build with no debug information.
 
-One fresh build of the gate's Rust checks then takes about 1.8 GiB, against
-3.1 GiB with Cargo's default profile. The release build does not change.
+One fresh build of the gate's Rust checks then takes about 1.3 GiB, against
+3.3 GiB with Cargo's default profile. The release build does not change.
 
 To use a debugger with local variables, build with full debug information
 for that session. Run this in `server/`, with the Cargo command you need,
@@ -331,9 +331,9 @@ folder is larger than a size limit, it deletes the whole folder. Otherwise it
 keeps it. Either way it prints the folder's size and the limit. Without mise,
 run `sh server/scripts/target-clean.sh` from the repo root.
 
-- **The limit is 4096 MiB.** That is a little over twice one fresh build, so a
-  worktree can hold one build plus one older generation, which a dependency
-  update or a new Rust release leaves behind.
+- **The limit is 4096 MiB.** That is about three fresh builds, so a worktree
+  can hold its current build plus the older output that a dependency update,
+  a branch switch or a new Rust release leaves behind.
 - **Set another limit** in `SIDEREAL_TARGET_LIMIT_MIB`, as a whole number of
   MiB, for example `SIDEREAL_TARGET_LIMIT_MIB=2048 mise run target-clean`. Any
   other value stops the task with an error, and it deletes nothing.
@@ -347,7 +347,7 @@ run `sh server/scripts/target-clean.sh` from the repo root.
 - **Run it only when no build runs in that worktree.** A build that runs
   during the clean-up fails; run it again. Other worktrees are never touched.
   The next build after a deletion starts from scratch.
-- **Output from before the lighter profile,** about 3.1 GiB, stays under the
+- **Output from before the lighter profile,** about 3.3 GiB, stays under the
   default limit, so `target-clean` keeps it. To delete it once, run
   `SIDEREAL_TARGET_LIMIT_MIB=0 mise run target-clean`.
 
