@@ -124,3 +124,9 @@ run = "sh scripts/instance-verify.sh"
 [tasks.external-db-verify]
 description = "Check TLS startup and recreation against a separate disposable PostgreSQL service"
 run = "sh scripts/external-db-verify.sh"
+
+# Deletes only this worktree's server/target/, and only above the limit.
+# `mise run check` never runs it, so a gate run never deletes build output.
+[tasks.target-clean]
+description = "Delete this worktree's server/target/ when it is over SIDEREAL_TARGET_LIMIT_MIB (default 4096)"
+run = "sh server/scripts/target-clean.sh"
