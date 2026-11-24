@@ -170,14 +170,20 @@ pub async fn run_operator(
         &version,
         &proposals,
     )
-    .await?;
+    .await;
     match stored {
-        Ok(()) => Ok(RunOutcome::Succeeded),
-        Err(reason) => Ok(record_failure(database, run_id, &reason).await?),
+        Ok(Ok(())) => Ok(RunOutcome::Succeeded),
+        Ok(Err(reason)) => Ok(record_failure(database, run_id, &reason).await?),
+        // The transaction failed, or its commit's answer was lost, so core
+        // cannot tell whether the values landed. The conditional update
+        // changes the row only when they did not; otherwise core reads back
+        // what the row says.
+        Err(_) => Ok(record_failure(database, run_id, VALUES_NOT_STORED).await?),
     }
 }
 
 const CANCELLED: &str = "the run was cancelled";
+const VALUES_NOT_STORED: &str = "the values could not be stored";
 
 /// On a blocking worker: open the version's object, check that its length
 /// is the version's recorded size, and run the Operator over it. The error
@@ -260,23 +266,35 @@ fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> 
 }
 
 /// Record the run `failed` with `reason`, cleaned, and answer what its row
-/// says.
+/// says. A run that already ended keeps its row: this then reads it back.
 async fn record_failure(
     database: &Database,
     run_id: Uuid,
     reason: &str,
 ) -> Result<RunOutcome, sqlx::Error> {
     let reason = cleaned(reason);
-    sqlx::query(
+    let updated = sqlx::query(
         "UPDATE public.operation_runs \
          SET status = 'failed', reason = $2, ended_at = greatest(now(), started_at) \
-         WHERE id = $1",
+         WHERE id = $1 AND status = 'running'",
     )
     .bind(run_id)
     .bind(&reason)
     .execute(database.pool())
     .await?;
-    Ok(RunOutcome::Failed(reason))
+    if updated.rows_affected() == 1 {
+        return Ok(RunOutcome::Failed(reason));
+    }
+    let (status, kept): (String, Option<String>) =
+        sqlx::query_as("SELECT status, reason FROM public.operation_runs WHERE id = $1")
+            .bind(run_id)
+            .fetch_one(database.pool())
+            .await?;
+    match (status.as_str(), kept) {
+        ("succeeded", _) => Ok(RunOutcome::Succeeded),
+        ("failed", Some(kept)) => Ok(RunOutcome::Failed(kept)),
+        _ => Err(sqlx::Error::RowNotFound),
+    }
 }
 
 /// The kept row of a schema version, in the order core compares it.
@@ -357,19 +375,25 @@ async fn store(
         .execute(&mut *tx)
         .await?;
     }
-    sqlx::query(
+    let ended = sqlx::query(
         "UPDATE public.operation_runs \
-         SET status = 'succeeded', ended_at = greatest(now(), started_at) WHERE id = $1",
+         SET status = 'succeeded', ended_at = greatest(now(), started_at) \
+         WHERE id = $1 AND status = 'running'",
     )
     .bind(run_id)
     .execute(&mut *tx)
     .await?;
+    if ended.rows_affected() != 1 {
+        return Ok(Err("the run had already ended".to_owned()));
+    }
     tx.commit().await?;
     Ok(Ok(()))
 }
 
 #[cfg(test)]
 mod fails;
+#[cfg(test)]
+mod finished;
 #[cfg(test)]
 mod fixture;
 #[cfg(test)]
