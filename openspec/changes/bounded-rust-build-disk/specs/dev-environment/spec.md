@@ -29,7 +29,8 @@
 
 - **WHEN** a contributor runs `cargo build -v -p libc` in `server/`, with `CARGO_TARGET_DIR` set to a new empty folder
 - **THEN** the command succeeds
-- **AND** the compiler command for the `libc` crate contains no `-C debuginfo`
+- **AND** the compiler command for the `libc` crate contains no `-C debuginfo=` option
+- **AND** `-C strip=debuginfo`, which Cargo adds when debug information is off, does not count as a `-C debuginfo=` option
 
 ### Requirement: Contributors can turn full debug information back on
 

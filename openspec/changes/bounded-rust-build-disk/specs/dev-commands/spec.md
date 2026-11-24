@@ -95,7 +95,7 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 
 ### Requirement: The clean-up task deletes only this checkout's build folder
 
-`mise run target-clean` SHALL delete nothing but the repo's own `server/target/` folder. It SHALL ignore `CARGO_TARGET_DIR` and any Cargo setting that moves the build output elsewhere. When `server/target` is a symbolic link, the task SHALL delete nothing and exit with a non-zero status. When `server/target`, or any folder inside it, is a mount point, the task SHALL delete nothing and exit with a non-zero status.
+`mise run target-clean` SHALL delete nothing but the repo's own `server/target/` folder. It SHALL ignore `CARGO_TARGET_DIR` and any Cargo setting that moves the build output elsewhere. When `server/target` is a symbolic link, the task SHALL delete nothing and exit with a non-zero status.
 
 #### Scenario: A personal build folder elsewhere is left alone
 
@@ -111,10 +111,37 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 - **THEN** the command exits with a non-zero status
 - **AND** the link and the 2 MiB file both still exist
 
+### Requirement: The clean-up task refuses mount points
+
+When `server/target`, or any folder inside it, is a mount point, `mise run target-clean` SHALL delete nothing and exit with a non-zero status. The task SHALL find mount points in the system mount table, which `mount` prints. When it cannot read that table, or when the folder's physical path holds a space, tab, newline or backslash, which `mount` prints escaped, the task SHALL delete nothing and exit with a non-zero status.
+
 #### Scenario: The build folder is a mount point
 
 - **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
-- **AND** a `df` command first on `PATH` that reports `server/target` as its own mount point, different from the mount point of `server`
+- **AND** a `mount` command first on `PATH` whose output lists the physical path of `server/target` as a mount point
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the 2 MiB file is still in `server/target/`
+
+#### Scenario: A folder inside the build folder is a mount point
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** a `mount` command first on `PATH` whose output lists the physical path of `server/target/debug/cache` as a mount point
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the 2 MiB file is still in `server/target/`
+
+#### Scenario: The mount table cannot be read
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** a `mount` command first on `PATH` that exits with a non-zero status
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the 2 MiB file is still in `server/target/`
+
+#### Scenario: The build folder's path holds a space
+
+- **GIVEN** a repo checkout inside a folder whose name holds a space, with a `server/target/` folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
 - **THEN** the command exits with a non-zero status
 - **AND** the 2 MiB file is still in `server/target/`

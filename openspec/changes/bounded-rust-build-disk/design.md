@@ -37,8 +37,10 @@
 
 - **Primary test seam:** a new POSIX `sh` check script, `server/scripts/target-clean-check.sh`. It builds each case of the `target-clean` spec in a scratch copy of the repo layout, under `mktemp -d`, runs the clean-up script there, and asserts the exit status, the output and what is left on disk. It needs no Rust toolchain and no Docker. It follows the pattern of `scripts/dev-supervisor-check.sh`, which also makes its fixture with `mktemp -d` (line 15), and like that script runs by hand: `sh server/scripts/target-clean-check.sh`.
   - Fixture files are written with `dd if=/dev/urandom`, so a sparse file or a compressing file system cannot make them measure smaller than 2 MiB.
-  - Cases that need a failing or unusual system command put a stub first on `PATH` for the clean-up script only: a `du` that exits non-zero, an `rm` that exits non-zero, and a `df` that reports `server/target` as its own mount point. A real mount needs root, so the stub `df` stands in for it.
-- **Existing seams reused:** the profile is checked the way its spec scenarios say: by reading `server/Cargo.toml`, and by verbose builds in a new empty `CARGO_TARGET_DIR`, whose compiler commands show the `-C debuginfo` value. `cargo test --no-run -v -p sidereal-plugin-abi` covers a workspace crate. `cargo build -v -p libc` covers a dependency, because `sidereal-plugin-abi` has no dependencies of its own. Each build writes its output to a log file and is checked for success before the log is searched, so a failed build fails the check. `mise run check` proves the gate still passes with the new profile, and `openspec validate` covers the spec deltas.
+  - Cases that need a failing or unusual system command put a stub first on `PATH` for the clean-up script only: a `du` that exits non-zero, an `rm` that exits non-zero, a `mount` that lists `server/target` as a mount point, a `mount` that lists `server/target/debug/cache`, and a `mount` that exits non-zero. A real mount needs root, so the stub `mount` stands in for it. The stub prints the fixture's physical path, from `pwd -P`, in the form that `mount` uses.
+  - One case builds the fixture under a folder whose name holds a space, and expects a refusal.
+  - One real run through mise covers the task's entry point: `SIDEREAL_TARGET_LIMIT_MIB=not-a-number mise run target-clean` in the real checkout. It deletes nothing, because the script checks the limit before it measures anything (decision 5, step 2). It fails if the task cannot find the script, for example because it sets the wrong `dir`, or if the task overrides the caller's `SIDEREAL_TARGET_LIMIT_MIB`.
+- **Existing seams reused:** the profile is checked the way its spec scenarios say: by reading `server/Cargo.toml`, and by verbose builds in a new empty `CARGO_TARGET_DIR`, whose compiler commands show the `-C debuginfo=` value. Cargo adds `-C strip=debuginfo` to a dependency's command when its debug information is off. That option is not a `-C debuginfo=` value, so the checks match only `-C debuginfo=`. `cargo test --no-run -v -p sidereal-plugin-abi` covers a workspace crate. `cargo build -v -p libc` covers a dependency, because `sidereal-plugin-abi` has no dependencies of its own. Each build writes its output to a log file and is checked for success before the log is searched, so a failed build fails the check. `mise run check` proves the gate still passes with the new profile, and `openspec validate` covers the spec deltas.
 
 ## Scrutiny Tier & Blast Radius
 
@@ -105,9 +107,12 @@ The task is `[tasks.target-clean]` in `mise.toml`. It runs one POSIX `sh` script
 2. Reads `SIDEREAL_TARGET_LIMIT_MIB`, default 4096. Anything but a whole number stops it with an error that names the variable, before it measures anything.
 3. Stops with an error, deleting nothing, if `server/target` is a symbolic link. Deleting the link would free nothing, and following it could delete a folder that other checkouts share.
 4. Prints that there is nothing to delete if the folder is missing.
-5. Stops with an error, deleting nothing, if `server/target` or any folder inside it is a mount point. `rm -rf` crosses mount points, and POSIX gives it no option to stay on one file system, so a bind-mounted folder that other worktrees share would lose its contents. The script finds a mount point in two ways:
-   - `df -P server/target` and `df -P server` name different mount points, so `server/target` is a mount point;
-   - `find server/target -xdev` lists fewer entries than `find server/target`, so a folder inside it is a mount point.
+5. Stops with an error, deleting nothing, if `server/target` or any folder inside it is a mount point. `rm -rf` crosses mount points, and POSIX gives it no option to stay on one file system, so a bind-mounted folder that other worktrees share would lose its contents. A bind mount from the same file system has the same device number as its parent, so device checks such as `find -xdev` cannot see it. The script reads the system mount table instead:
+   - It resolves the folder's physical path with `cd -P server/target && pwd -P`.
+   - It runs `mount` with no arguments. Linux prints `<source> on <mount point> type <fs> (<options>)`, and macOS and the BSDs print `<source> on <mount point> (<fs>, <options>)`. Both list every mount, bind mounts included.
+   - It refuses when any line holds ` on <path> ` or ` on <path>/`. That covers the folder itself and every folder inside it, on any file system.
+   - It refuses when `mount` fails or prints nothing, so it never deletes when it cannot tell.
+   - It refuses when the physical path holds a space, a tab, a newline or a backslash. `mount` prints those characters escaped, for example `\040` for a space, so the script cannot compare the path reliably. It refuses in doubt rather than guess.
 6. Measures the folder with `du -sk`, which is POSIX and reports the disk space allocated, and rounds up to whole MiB. If `du` fails, the script stops with an error and deletes nothing.
 7. Deletes the folder with `rm -rf` when it is larger than the limit, and keeps it otherwise. It prints the size, the limit and which of the two it did. If `rm -rf` fails, the script exits with an error that says the folder may be partly deleted.
 
@@ -115,7 +120,7 @@ The script never calls `cargo clean`: Cargo would follow `CARGO_TARGET_DIR` or a
 
 The default limit, 4096 MiB, is a little over twice the lighter profile's 1.8 GiB. A worktree can hold one full build plus one older generation, which is what a dependency bump or a new Rust release leaves behind. A third generation pushes it over the limit. `SIDEREAL_TARGET_LIMIT_MIB` lets a machine with less disk choose a lower limit, the same way `SIDEREAL_DB_PORT` lets a contributor choose the fixture's port.
 
-The limit applies to each worktree, so N worktrees can hold up to N × the limit. On a machine with many worktrees, choose `SIDEREAL_TARGET_LIMIT_MIB` from the free disk divided by the number of worktrees, minus room for the builds that are running. `CONTRIBUTING.md` gives the same guidance. A scheduler that checks that a worktree is idle before it runs `target-clean` can still race a build that starts during the clean-up. That build fails, and rerunning it fixes it.
+The limit is a threshold that applies only when `target-clean` runs. Between runs, a worktree can grow past it, so N worktrees can hold more than N × the limit. To choose a limit, keep room for the builds that run at the same time, about 2 GiB each with the lighter profile, then divide what is left by the number of worktrees. `CONTRIBUTING.md` gives the same guidance. A scheduler that checks that a worktree is idle before it runs `target-clean` can still race a build that starts during the clean-up. That build fails, and rerunning it fixes it.
 
 Alternatives:
 
@@ -130,12 +135,13 @@ The CI workflow, the `Dockerfile` and the scripts behind `dev`, `e2e`, `instance
 
 - [A contributor needs a debugger with local variables, and finds none] → `CONTRIBUTING.md` gives the override in decision 2, next to why the profile is lighter.
 - [`target-clean` runs while a build in the same worktree is running, and breaks that build] → `CONTRIBUTING.md` says to run it only when no build runs in that worktree. A scheduler's idle check cannot rule out a build that starts during the clean-up. Rerunning the broken build fixes it. Each worktree has its own folder, so other worktrees are never affected.
-- [`server/target`, or a folder inside it, is a mount point, and `rm -rf` would empty the other file system] → the script refuses it and deletes nothing (decision 5, step 5).
-- [Many worktrees each stay just under the limit and still fill the disk] → the limit is per worktree. `CONTRIBUTING.md` says how to choose a limit from the free disk and the number of worktrees (decision 5).
+- [`server/target`, or a folder inside it, is a mount point, and `rm -rf` would empty the other file system] → the script reads the mount table, refuses it and deletes nothing (decision 5, step 5).
+- [A checkout whose path holds a space, tab, newline or backslash can never be cleaned by `target-clean`] → the script says why it refuses. `CONTRIBUTING.md` says so, and the contributor deletes `server/target` by hand or moves the checkout.
+- [Many worktrees each stay just under the limit, or grow past it between runs, and still fill the disk] → the limit is a per-worktree threshold, not a cap. `CONTRIBUTING.md` says how to choose a limit from the free disk, the builds that run at once and the number of worktrees (decision 5).
 - [Deleting the folder makes that worktree's next build start from scratch] → this happens only above the limit, at most about one cold build's time. It is the trade-off D3 accepted.
 - [The first build after the change rebuilds everything, on every machine and in CI] → once. The CI cache key changes with `Cargo.toml`, so CI saves a new, smaller cache after its first run.
 - [The measured sizes depend on today's dependencies and Rust release] → the spec checks the profile settings, not a size (D5). The pull request records the numbers and the commands, so anyone can repeat them.
 
 ## Migration & Rollback
 
-No data or runtime changes. Contributors pull the change; their next build rebuilds once with the new profile. Output built under the old profile stays in `server/target/` until `target-clean` or `cargo clean` deletes it, so the first `target-clean` after the change is likely to delete the folder. Rollback is reverting the pull request.
+No data or runtime changes. Contributors pull the change; their next build rebuilds once with the new profile. Output built under the old profile, about 3.1 GiB, is under the default limit, so `target-clean` keeps it. A contributor short of disk runs `SIDEREAL_TARGET_LIMIT_MIB=0 mise run target-clean` once, before the first build after this change. `CONTRIBUTING.md` says so. Rollback is reverting the pull request.
