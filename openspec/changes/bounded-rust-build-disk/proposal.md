@@ -1,10 +1,10 @@
 ## Why
 
-Each worktree's `server/target/` grows to several GiB, and a machine that runs many agents in parallel, each in its own worktree, runs out of disk. One fresh build under Cargo's default profile takes 3.1 GiB, mostly debug information, and Cargo never deletes old output, so a worktree keeps growing after that.
+Each worktree's `server/target/` grows to several GiB, and a machine that runs many agents in parallel, each in its own worktree, runs out of disk. One fresh build under Cargo's default profile takes 3.1 GiB, much of it debug information, and Cargo never deletes old output, so a worktree keeps growing after that.
 
 ## What Changes
 
-- Add a lighter development build profile to `server/Cargo.toml`: line tables only for our own crates, and no debug information for dependencies (D1). It applies to every contributor and to CI, and covers the debug build, `cargo test` and `cargo clippy --all-targets`. The release build keeps Cargo's default, which already has no debug information. One fresh build measured 1.3 GiB with these settings.
+- Add a lighter development build profile to `server/Cargo.toml`: line tables only for our own crates, and no debug information for dependencies (D1). It applies to every contributor and to CI, and covers the debug build, `cargo test` and `cargo clippy --all-targets`. The release build keeps Cargo's default, which already has no debug information. One fresh build measured 1.8 GiB with these settings, against 3.1 GiB today.
 - Add a `target-clean` development task. It deletes this worktree's `server/target/` only when the folder is over a size limit, which a contributor can change. It runs as `mise run target-clean`, or as one plain command without mise. `mise run check` does not run it (D3).
 - Document in `CONTRIBUTING.md`:
   - why the profile is lighter, and how to get full debug information back for a debugging session (D1);
