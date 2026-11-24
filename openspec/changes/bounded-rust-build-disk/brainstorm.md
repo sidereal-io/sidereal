@@ -21,4 +21,4 @@ https://github.com/sidereal-io/sidereal/issues/543
 - **Clean-up rule:** Scope item 3 left open whether a retention rule was needed. The story now adds a size-limited clean-up task that runs outside the gate (D3).
 - **No automated size check:** proof is measured sizes in the pull request and a spec scenario on the profile settings, not a check in `mise run check` (D5).
 
-Confirmed by user: no
+Confirmed by user: yes
