@@ -76,7 +76,7 @@ When `mise run target-clean` cannot measure the `server/target/` folder, the tas
 
 ### Requirement: Contributors can change the clean-up size limit
 
-The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL be able to set another limit, as a whole number of MiB, in the `SIDEREAL_TARGET_LIMIT_MIB` environment variable. When that variable holds anything else, the task SHALL delete nothing and exit with a non-zero status.
+The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL be able to set another limit, as a whole number of MiB of at most 15 digits after leading zeros, in the `SIDEREAL_TARGET_LIMIT_MIB` environment variable. When that variable holds anything else, the task SHALL delete nothing and exit with a non-zero status.
 
 #### Scenario: The default limit
 
@@ -89,6 +89,14 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 
 - **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=2G mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the error output names `SIDEREAL_TARGET_LIMIT_MIB`
+- **AND** the 2 MiB file is still in `server/target/`
+
+#### Scenario: The limit has more than 15 digits
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1234567890123456 mise run target-clean` at the repo root
 - **THEN** the command exits with a non-zero status
 - **AND** the error output names `SIDEREAL_TARGET_LIMIT_MIB`
 - **AND** the 2 MiB file is still in `server/target/`

@@ -335,8 +335,10 @@ run `sh server/scripts/target-clean.sh` from the repo root.
   can hold its current build plus the older output that a dependency update,
   a branch switch or a new Rust release leaves behind.
 - **Set another limit** in `SIDEREAL_TARGET_LIMIT_MIB`, as a whole number of
-  MiB, for example `SIDEREAL_TARGET_LIMIT_MIB=2048 mise run target-clean`. Any
-  other value stops the task with an error, and it deletes nothing.
+  MiB of at most 15 digits, for example
+  `SIDEREAL_TARGET_LIMIT_MIB=2048 mise run target-clean`. Any other value stops
+  the task with an error, and it deletes nothing. To keep the folder whatever
+  its size, don't run `target-clean`.
 - **The limit applies per worktree, and only when `target-clean` runs.** It is
   a threshold, not a cap: between runs a worktree can grow past it, so ten
   worktrees can hold more than ten times the limit. To choose a limit, start
