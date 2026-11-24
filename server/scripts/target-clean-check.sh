@@ -296,10 +296,19 @@ expect_status_nonzero
 expect_err "space, tab, newline or backslash"
 expect_kept "$repo/server/target"
 
-# $(...) drops trailing newlines, so a checkout path that ends in one
-# could turn into a sibling checkout's path. The sibling must survive.
 nl=$(printf '\nx')
 nl=${nl%x}
+for name in "path$(printf '\t')with-tab" "path${nl}with-newline"; do
+  new_case "$name"
+  fill "$repo/server/target"
+  run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+  expect_status_nonzero
+  expect_err "space, tab, newline or backslash"
+  expect_kept "$repo/server/target"
+done
+
+# $(...) drops trailing newlines, so a checkout path that ends in one
+# could turn into a sibling checkout's path. The sibling must survive.
 new_case trailing-newline
 fill "$repo/server/target"
 new_case "trailing-newline$nl"
