@@ -11,12 +11,21 @@ use sidereal_core::{
     database::{initialize, initialize_with_storage},
     storage::{objects::ObjectStore, StorageRoot},
 };
+use sidereal_pack_image::ImagePack;
+use sidereal_plugin_abi::{
+    AssetContext, FacetSchema, FacetScope, FacetType, FacetValue, Operator, OperatorError, Pack,
+    Registry,
+};
 use sidereal_server::{
-    app_with_database, app_with_library, config::AllowedOrigins, Library, Tuning,
+    app_with_database, app_with_library, config::AllowedOrigins, Library, Log, Tuning,
 };
 use sqlx::{Connection, PgConnection};
 use std::{
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 use tower::ServiceExt;
@@ -80,10 +89,17 @@ struct Instance {
     storage: Option<Dir>,
     app: Router,
     cookie: String,
+    /// Every line the server wrote to its operational log.
+    lines: Arc<Mutex<Vec<String>>>,
 }
 
 impl Instance {
     async fn new() -> Self {
+        Self::with_library(|library| library).await
+    }
+
+    /// A server whose production `Library` the test changes first.
+    async fn with_library(change: impl FnOnce(Library) -> Library) -> Self {
         let db = TestDatabase::new();
         let storage = Dir::new();
         let root = StorageRoot::new(&storage.0).unwrap();
@@ -92,13 +108,24 @@ impl Instance {
                 .await
                 .unwrap();
         let objects = ObjectStore::open(&root, paired).unwrap();
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let written = lines.clone();
         let app = app_with_library(
             database.clone(),
             AllowedOrigins::default(),
-            Tuning::default(),
-            Library::new(Some(objects)),
+            Tuning {
+                log: Log::new(move |line| written.lock().unwrap().push(line.to_owned())),
+                ..Tuning::default()
+            },
+            change(Library::new(Some(objects))),
         );
-        Self::signed_in(db, Some(storage), app).await
+        let mut instance = Self::signed_in(db, Some(storage), app).await;
+        instance.lines = lines;
+        instance
+    }
+
+    fn logged(&self) -> Vec<String> {
+        self.lines.lock().unwrap().clone()
     }
 
     /// A server started without `STORAGE_ROOT`.
@@ -138,6 +165,7 @@ impl Instance {
                     storage,
                     app,
                     cookie,
+                    lines: Arc::default(),
                 };
             }
         }
@@ -709,6 +737,186 @@ mod upload {
         assert_eq!(instance.rows().await, 0);
         assert_eq!(files(instance.storage()), before);
         assert!(!instance.storage().join("tmp").exists());
+    }
+}
+
+/// A pack `test` whose Operators upload runs in place of the file-size
+/// Operator. It declares the facet `test.size`, a count in bytes.
+struct UploadPack(Mutex<Vec<Box<dyn Operator>>>);
+impl Pack for UploadPack {
+    fn id(&self) -> &str {
+        "test"
+    }
+    fn register(&self, registry: &mut Registry) {
+        registry.declare_facet(FacetSchema {
+            name: "test.size".into(),
+            label: "Size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        });
+        for operator in self.0.lock().unwrap().drain(..) {
+            registry.register_operator(operator);
+        }
+    }
+}
+
+/// Make upload run `operator`, registered beside the image pack.
+fn running(operator: impl Operator + 'static) -> impl FnOnce(Library) -> Library {
+    move |library| {
+        let id = operator.id().to_owned();
+        let mut registry = Registry::new();
+        registry.register_pack(&ImagePack).unwrap();
+        registry
+            .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
+            .unwrap();
+        library
+            .with_registry(registry)
+            .with_upload_operators(vec![id])
+    }
+}
+
+/// Proposes the version's size as `test.size`, once `release` is set.
+struct Blocking {
+    started: Arc<AtomicBool>,
+    release: Arc<AtomicBool>,
+}
+impl Operator for Blocking {
+    fn id(&self) -> &str {
+        "test.block"
+    }
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn writes(&self) -> &[&str] {
+        &["test.size"]
+    }
+    fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        self.started.store(true, Ordering::SeqCst);
+        let deadline = std::time::Instant::now() + SECONDS;
+        while !self.release.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let size = context.candidate_size() as i64;
+        context
+            .propose_facet("test.size", FacetValue::Integer(size))
+            .map_err(|_| OperatorError::Failed("proposal".into()))
+    }
+}
+
+impl Instance {
+    /// The answer to `sql`, a boolean query, once it is true, or a panic
+    /// after ten seconds.
+    async fn eventually(&self, sql: &str) {
+        let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+        let deadline = tokio::time::Instant::now() + SECONDS;
+        loop {
+            let done: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.to_owned()))
+                .fetch_one(&mut conn)
+                .await
+                .unwrap();
+            if done {
+                return;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "never true: {sql}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Start uploading `bytes` as `nebula.png` in its own task.
+    fn start_upload(&self, bytes: &[u8]) -> tokio::task::JoinHandle<Response> {
+        let request = self
+            .upload_request()
+            .body(Body::from(multipart(
+                &[Part::file("file", "nebula.png", "image/png", bytes)],
+                true,
+                b"",
+            )))
+            .unwrap();
+        let app = self.app.clone();
+        tokio::spawn(async move { app.oneshot(request).await.unwrap() })
+    }
+}
+
+mod upload_disconnect {
+    use super::*;
+
+    #[tokio::test]
+    async fn upload_disconnect_while_the_asset_commits_still_saves_and_runs() {
+        let instance = Instance::new().await;
+        let mut locker = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        sqlx::raw_sql("BEGIN; LOCK TABLE public.assets IN ACCESS EXCLUSIVE MODE")
+            .execute(&mut locker)
+            .await
+            .unwrap();
+        let upload = instance.start_upload(PNG);
+        // The upload's insert waits on the lock: ingest has passed its last
+        // cancellation check.
+        instance
+            .eventually(
+                "SELECT count(*) > 0 FROM pg_locks \
+                 WHERE relation = 'public.assets'::regclass AND NOT granted",
+            )
+            .await;
+        upload.abort();
+        assert!(upload.await.unwrap_err().is_cancelled());
+        sqlx::raw_sql("ROLLBACK")
+            .execute(&mut locker)
+            .await
+            .unwrap();
+        instance
+            .eventually(
+                "SELECT count(*) = 1 FROM public.operation_runs \
+                 WHERE operator_id = 'image.measure-file-size' AND status = 'succeeded'",
+            )
+            .await;
+        assert_eq!(instance.rows().await, 2);
+        instance
+            .eventually(&format!(
+                "SELECT count(*) = 1 FROM public.facet_values \
+                 WHERE facet = 'image.file-size' AND value = '{}'::jsonb",
+                PNG.len()
+            ))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn upload_disconnect_during_the_run_still_ends_it_succeeded() {
+        let started = Arc::new(AtomicBool::new(false));
+        let release = Arc::new(AtomicBool::new(false));
+        let instance = Instance::with_library(running(Blocking {
+            started: started.clone(),
+            release: release.clone(),
+        }))
+        .await;
+        let upload = instance.start_upload(PNG);
+        let deadline = tokio::time::Instant::now() + SECONDS;
+        while !started.load(Ordering::SeqCst) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the run never started"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        upload.abort();
+        assert!(upload.await.unwrap_err().is_cancelled());
+        release.store(true, Ordering::SeqCst);
+        instance
+            .eventually(
+                "SELECT count(*) = 1 FROM public.operation_runs \
+                 WHERE operator_id = 'test.block' AND status = 'succeeded'",
+            )
+            .await;
+        instance
+            .eventually(&format!(
+                "SELECT count(*) = 1 FROM public.facet_values \
+                 WHERE facet = 'test.size' AND value = '{}'::jsonb",
+                PNG.len()
+            ))
+            .await;
     }
 }
 
