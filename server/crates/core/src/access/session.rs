@@ -85,6 +85,7 @@ impl Database {
             return Ok(None);
         }
         let user = User {
+            id,
             username: username.to_owned(),
             role,
         };
@@ -97,15 +98,15 @@ impl Database {
     /// ones nobody presents again.
     pub async fn session(&self, token: &str) -> Result<Option<User>, Unavailable> {
         let hash = digest(token);
-        let found: Option<(String, String, bool, bool)> = sqlx::query_as(
-            "SELECT u.username, u.role, s.expires_at <= now(), s.last_used_at <= now() - make_interval(secs => $2) \
+        let found: Option<(i64, String, String, bool, bool)> = sqlx::query_as(
+            "SELECT u.id, u.username, u.role, s.expires_at <= now(), s.last_used_at <= now() - make_interval(secs => $2) \
              FROM public.sessions s JOIN public.users u ON u.id = s.user_id WHERE s.token_hash = $1",
         )
         .bind(&hash)
         .bind(REFRESH_AFTER.as_secs_f64())
         .fetch_optional(self.pool())
         .await?;
-        let Some((username, role, expired, stale)) = found else {
+        let Some((id, username, role, expired, stale)) = found else {
             return Ok(None);
         };
         if expired {
@@ -126,7 +127,7 @@ impl Database {
             .await?;
         }
         let role = Role::parse(&role).ok_or(Unavailable)?;
-        Ok(Some(User { username, role }))
+        Ok(Some(User { id, username, role }))
     }
 
     /// Whether a token still names an unexpired administrator session.
@@ -290,8 +291,15 @@ mod tests {
         }
     }
 
-    fn sam() -> User {
+    /// The claimed administrator, with the id its row has.
+    async fn sam(db: &TestDatabase) -> User {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let id = sqlx::query_scalar("SELECT id FROM public.users WHERE username = 'sam'")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
         User {
+            id,
             username: "sam".into(),
             role: Role::Admin,
         }
@@ -339,7 +347,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(user, sam());
+        assert_eq!(user, sam(&db).await);
     }
 
     #[tokio::test]
@@ -431,7 +439,10 @@ mod tests {
         let db = TestDatabase::new();
         let database = claimed(&db).await;
         let (_, token) = database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
-        assert_eq!(database.session(token.as_str()).await, Ok(Some(sam())));
+        assert_eq!(
+            database.session(token.as_str()).await,
+            Ok(Some(sam(&db).await))
+        );
     }
 
     #[tokio::test]
@@ -458,7 +469,10 @@ mod tests {
         let database = claimed(&db).await;
         let (_, token) = database.sign_in("sam", PASSWORD).await.unwrap().unwrap();
         on_sessions(&db, "WITH moved AS (UPDATE public.sessions SET last_used_at = now() - interval '29 days', expires_at = now() + interval '1 day' RETURNING 1) SELECT true FROM moved").await;
-        assert_eq!(database.session(token.as_str()).await, Ok(Some(sam())));
+        assert_eq!(
+            database.session(token.as_str()).await,
+            Ok(Some(sam(&db).await))
+        );
         assert!(on_sessions(&db, "SELECT bool_and(last_used_at > now() - interval '1 minute' AND expires_at >= now() + interval '30 days' - interval '1 minute') FROM public.sessions").await);
     }
 
