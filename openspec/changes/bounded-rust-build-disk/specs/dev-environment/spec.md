@@ -38,7 +38,7 @@
 
 #### Scenario: The documented command restores full debug information
 
-- **WHEN** a contributor runs, in `server/` with `CARGO_TARGET_DIR` set to a new empty folder, the command line that `CONTRIBUTING.md` gives for full debug information, with `build -v -p sidereal-plugin-abi -p libc` as the command
-- **THEN** the command succeeds
+- **WHEN** a contributor runs, in `server/` with `CARGO_TARGET_DIR` set to a new empty folder, the command line that `CONTRIBUTING.md` gives for full debug information, once with `build -v -p sidereal-plugin-abi` as the command and once with `build -v -p libc`
+- **THEN** both commands succeed
 - **AND** the compiler commands for the `sidereal_plugin_abi` crate and the `libc` crate both contain `-C debuginfo=2`
 - **AND** `git status --porcelain` prints the same before and after the command

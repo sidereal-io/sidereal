@@ -280,6 +280,40 @@ from your system's package manager:
 
 See [server setup](server/README.md) for container-free test prerequisites.
 
+### Rust build output
+
+Each worktree builds the server into its own `server/target/` folder. On a
+machine with many worktrees, these folders can fill the disk. This section
+says how the project keeps them small, and what you can do.
+
+#### Lighter debug information in development builds
+
+`server/Cargo.toml` sets the `dev` profile to build with less debug
+information. `cargo build`, `cargo run`, `cargo test` and `cargo clippy` all
+use it:
+
+- Our own crates keep line tables only. Panic backtraces and profilers still
+  show file names and line numbers. A debugger can still step by line, but
+  shows no local variables and no types.
+- Dependencies build with no debug information.
+
+One fresh build of the gate's Rust checks then takes about 1.8 GiB, against
+3.1 GiB with Cargo's default profile. The release build does not change.
+
+To use a debugger with local variables, build with full debug information
+for that session. Run this in `server/`, with the Cargo command you need,
+such as `build`, `test` or `run -p sidereal-server`, in place of `<command>`:
+
+```
+cargo --config 'profile.dev.debug="full"' --config 'profile.dev.package."*".debug="full"' <command>
+```
+
+It changes no committed file, and works with or without mise. Cargo keeps the
+full-debug output next to the lighter output, and the next ordinary build
+does not remove it. So `server/target/` grows by about one full-debug build.
+When you finish debugging, run `mise run target-clean`, which
+[Cleaning up build output](#cleaning-up-build-output) describes.
+
 ### Moving from the Nix shell
 
 The repo no longer has a Nix shell or an `.envrc`. If you used them, do this
