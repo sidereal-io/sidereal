@@ -8,7 +8,9 @@ use crate::{
     database::{Database, DatabaseError},
     storage::objects::ObjectStore,
 };
-use sidereal_plugin_abi::{Candidate, FacetProposals, FacetScope, FacetType, FacetValue, Registry};
+use sidereal_plugin_abi::{
+    Candidate, FacetProposals, FacetScope, FacetType, FacetValue, Registry, MAX_COUNT,
+};
 use std::{
     fs::File,
     os::unix::fs::FileExt,
@@ -160,7 +162,10 @@ pub async fn run_operator(
     .expect("the operator finishes")
     .expect("the operator succeeds");
 
-    store(
+    if let Err(reason) = check(&registry, &proposals) {
+        return Ok(record_failure(database, run_id, &reason).await?);
+    }
+    let stored = store(
         database,
         &registry,
         run_id,
@@ -169,11 +174,64 @@ pub async fn run_operator(
         &proposals,
     )
     .await?;
-    Ok(RunOutcome::Succeeded)
+    match stored {
+        Ok(()) => Ok(RunOutcome::Succeeded),
+        Err(reason) => Ok(record_failure(database, run_id, &reason).await?),
+    }
 }
 
+/// Check every proposal against the Registry before any is stored: its
+/// facet has a schema, it is in the Operator's registered grants, and its
+/// value fits the schema's type. The reason names the first facet refused.
+fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> {
+    for proposal in &proposals.proposals {
+        let name = &proposal.name;
+        let Some(declared) = registry.facet_schema(name) else {
+            return Err(format!("facet {name} has no registered schema"));
+        };
+        if !proposals.grants.iter().any(|grant| grant == name) {
+            return Err(format!(
+                "facet {name} is not granted to {}",
+                proposals.producer_id
+            ));
+        }
+        match (declared.schema.value_type, proposal.value) {
+            (FacetType::Count, FacetValue::Integer(n)) if (0..=MAX_COUNT).contains(&n) => {}
+            (FacetType::Count, FacetValue::Integer(n)) => {
+                return Err(format!(
+                    "facet {name} is a count from 0 to {MAX_COUNT}, not {n}"
+                ))
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Record the run `failed` with `reason`, and answer what its row says.
+async fn record_failure(
+    database: &Database,
+    run_id: Uuid,
+    reason: &str,
+) -> Result<RunOutcome, sqlx::Error> {
+    sqlx::query(
+        "UPDATE public.operation_runs \
+         SET status = 'failed', reason = $2, ended_at = greatest(now(), started_at) \
+         WHERE id = $1",
+    )
+    .bind(run_id)
+    .bind(reason)
+    .execute(database.pool())
+    .await?;
+    Ok(RunOutcome::Failed(reason.to_owned()))
+}
+
+/// The kept row of a schema version, in the order core compares it.
+type KeptSchema = (String, String, String, String, String);
+
 /// In one transaction: keep each used schema version, insert every value
-/// against the subject its scope names, and mark the run `succeeded`.
+/// against the subject its scope names, and mark the run `succeeded`. A kept
+/// schema version that differs from the running declaration refuses the run
+/// (the inner error) and stores nothing.
 async fn store(
     database: &Database,
     registry: &Registry,
@@ -181,12 +239,12 @@ async fn store(
     version_id: Uuid,
     version: &Version,
     proposals: &FacetProposals,
-) -> Result<(), sqlx::Error> {
+) -> Result<Result<(), String>, sqlx::Error> {
     let mut tx = database.pool().begin().await?;
     for proposal in &proposals.proposals {
         let declared = registry
             .facet_schema(&proposal.name)
-            .expect("the facet has a schema");
+            .expect("check found the schema");
         let schema = &declared.schema;
         sqlx::query(
             "INSERT INTO public.facet_schemas \
@@ -202,6 +260,27 @@ async fn store(
         .bind(scope_text(schema.scope))
         .execute(&mut *tx)
         .await?;
+        let kept: KeptSchema = sqlx::query_as(
+            "SELECT owner_pack, label, value_type, unit, scope FROM public.facet_schemas \
+             WHERE name = $1 AND version = $2",
+        )
+        .bind(&schema.name)
+        .bind(schema.version as i32)
+        .fetch_one(&mut *tx)
+        .await?;
+        let running: KeptSchema = (
+            declared.owner.clone(),
+            schema.label.clone(),
+            type_text(schema.value_type).into(),
+            schema.unit.clone(),
+            scope_text(schema.scope).into(),
+        );
+        if kept != running {
+            return Ok(Err(format!(
+                "facet {} version {} changed without a new version",
+                schema.name, schema.version
+            )));
+        }
         let (asset_id, asset_version_id) = match schema.scope {
             FacetScope::Asset => (Some(version.asset_id), None),
             FacetScope::AssetVersion => (None, Some(version_id)),
@@ -231,10 +310,13 @@ async fn store(
     .bind(run_id)
     .execute(&mut *tx)
     .await?;
-    tx.commit().await
+    tx.commit().await?;
+    Ok(Ok(()))
 }
 
 #[cfg(test)]
 mod fixture;
+#[cfg(test)]
+mod refuses;
 #[cfg(test)]
 mod stores;
