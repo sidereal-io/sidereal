@@ -104,6 +104,11 @@ expect_status_zero
 expect_kept "$repo/server/target"
 expect_out "kept"
 
+new_case no-folder
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+expect_status_zero
+expect_out "nothing to delete"
+
 if [ "$failures" -ne 0 ]; then
   echo "target-clean-check: $failures failure(s)" >&2
   exit 1

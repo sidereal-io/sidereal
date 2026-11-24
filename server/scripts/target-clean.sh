@@ -16,6 +16,11 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
 target=$root/server/target
 limit=$SIDEREAL_TARGET_LIMIT_MIB
 
+if [ ! -e "$target" ]; then
+  say "there is no $target: nothing to delete"
+  exit 0
+fi
+
 # du -sk reports the disk space allocated, in KiB; round up to MiB.
 kib=$(du -sk "$target")
 kib=${kib%%[!0-9]*}
