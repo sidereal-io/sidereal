@@ -3,8 +3,9 @@
 //!
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
-//! the Asset. Every refusal has a fixed body, so no path or driver error
-//! reaches a client; the operational log names the cause.
+//! the Asset, and then runs the file-size Operator over the new version.
+//! Every refusal has a fixed body, so no path or driver error reaches a
+//! client; the operational log names the cause.
 use crate::access::Log;
 use axum::{
     body::{Body, BodyDataStream, Bytes},
@@ -23,14 +24,16 @@ use futures_util::{Stream, StreamExt};
 use http_body_util::LengthLimitError;
 use serde_json::{json, Value};
 use sidereal_core::{
+    access::User,
     assets::AssetRecord,
     database::Database,
     ingest::{ingest, IngestError},
-    storage::objects::{ObjectStore, StageError, Staging, MAX_UPLOAD_BYTES},
+    operations::{run_operator, OperationError, RunOutcome, RunRequest},
+    storage::objects::{ObjectStore, StageError, Staged, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
-use sidereal_pack_image::{ImagePack, MANUAL_UPLOAD};
-use sidereal_plugin_abi::{Pack, Registry};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD};
+use sidereal_plugin_abi::Registry;
 use std::{
     convert::Infallible,
     io::Read,
@@ -54,24 +57,55 @@ const WRITE_CHUNK: usize = 1024 * 1024;
 pub type OriginalReader = Arc<dyn Fn(std::fs::File) -> Box<dyn Read + Send> + Send + Sync>;
 
 /// What the Asset routes work with: the object store, when the server has
-/// managed storage, and the Registry of every compiled-in pack.
+/// managed storage, the Registry of every compiled-in pack, and the
+/// Operators that upload runs over each new version.
 #[derive(Clone)]
 pub struct Library {
     objects: Option<ObjectStore>,
     registry: Arc<Registry>,
+    upload_operators: Vec<String>,
     reader: OriginalReader,
 }
 
 impl Library {
     /// The production Registry, with `objects` when `STORAGE_ROOT` is set.
+    ///
+    /// # Panics
+    ///
+    /// When a compiled-in pack is refused. That is a build defect, which
+    /// the server's unit tests find before any start.
     pub fn new(objects: Option<ObjectStore>) -> Self {
         let mut registry = Registry::new();
-        AstroPack.register(&mut registry);
-        ImagePack.register(&mut registry);
+        for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &ImagePack] {
+            if let Err(error) = registry.register_pack(pack) {
+                panic!("a compiled-in pack was refused: {error}");
+            }
+        }
         Self {
             objects,
             registry: Arc::new(registry),
+            upload_operators: vec![FILE_SIZE.to_owned()],
             reader: Arc::new(|file| Box::new(file)),
+        }
+    }
+
+    /// Use `registry` in place of the production one, so a test can register
+    /// its own Operators.
+    #[doc(hidden)]
+    pub fn with_registry(self, registry: Registry) -> Self {
+        Self {
+            registry: Arc::new(registry),
+            ..self
+        }
+    }
+
+    /// Run `operators`, in order, over each uploaded version, in place of
+    /// the file-size Operator.
+    #[doc(hidden)]
+    pub fn with_upload_operators(self, operators: Vec<String>) -> Self {
+        Self {
+            upload_operators: operators,
+            ..self
         }
     }
 
@@ -328,6 +362,12 @@ async fn upload(
         .objects
         .clone()
         .ok_or(UploadError::NoStorage)?;
+    // The session guard put the signed-in user here; the run records them.
+    let actor = request
+        .extensions()
+        .get::<User>()
+        .map(|user| user.id)
+        .ok_or(UploadError::Failed)?;
     let (parts, body) = request.into_parts();
     let body = SharedBody(Arc::new(Mutex::new(body.into_data_stream())));
     let request = Request::from_parts(parts, Body::from_stream(body.clone()));
@@ -390,8 +430,39 @@ async fn upload(
         .map_err(|e| failed(&e))?;
     let cancelled = Arc::new(AtomicBool::new(false));
     let _cancel = CancelOnDrop(cancelled.clone());
-    let objects = assets.library.objects.as_ref().expect("checked above");
-    match ingest(
+    // One task saves the Asset and then runs the upload's Operators. A
+    // spawned task keeps running when the request is dropped, so once it has
+    // started, a client that goes away stops neither the commit nor the run.
+    let task = tokio::spawn(save(assets.clone(), actor, name, staged, cancelled));
+    match task.await {
+        Ok(Ok(record)) => Ok((
+            StatusCode::CREATED,
+            Json(json!({ "asset": entry(&record) })),
+        )),
+        Ok(Err(IngestError::Refused(_))) => Err(UploadError::Unsupported),
+        Ok(Err(IngestError::EmptyName)) => Err(UploadError::Malformed),
+        Ok(Err(error)) => Err(failed(&error)),
+        Err(_) => Err(failed(&"the upload task stopped")),
+    }
+}
+
+/// Ingest `staged`, then run each upload Operator over the new version, with
+/// `actor` as the user who started the run. `cancelled` reaches ingest only:
+/// the runs get their own flag, which nothing sets. A run's result never
+/// fails the upload; this task logs it, since the request may be gone.
+async fn save(
+    assets: Assets,
+    actor: i64,
+    name: String,
+    staged: Staged,
+    cancelled: Arc<AtomicBool>,
+) -> Result<AssetRecord, IngestError> {
+    let objects = assets
+        .library
+        .objects
+        .as_ref()
+        .expect("checked before staging");
+    let record = ingest(
         &assets.database,
         objects,
         assets.library.registry.clone(),
@@ -400,16 +471,34 @@ async fn upload(
         staged,
         cancelled,
     )
-    .await
-    {
-        Ok(record) => Ok((
-            StatusCode::CREATED,
-            Json(json!({ "asset": entry(&record) })),
-        )),
-        Err(IngestError::Refused(_)) => Err(UploadError::Unsupported),
-        Err(IngestError::EmptyName) => Err(UploadError::Malformed),
-        Err(error) => Err(failed(&error)),
+    .await?;
+    for operator in &assets.library.upload_operators {
+        let outcome = run_operator(
+            &assets.database,
+            objects,
+            assets.library.registry.clone(),
+            RunRequest {
+                operator_id: operator.clone(),
+                asset_version_id: record.version.id,
+                actor,
+            },
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await;
+        let id = record.id;
+        match outcome {
+            Ok(RunOutcome::Succeeded) => {}
+            Ok(RunOutcome::Failed(reason)) => assets
+                .log
+                .line(&format!("file-size run failed for asset {id}: {reason}")),
+            Err(error @ OperationError::Unrecorded(_))
+            | Err(error @ OperationError::UnknownOperator)
+            | Err(error @ OperationError::UnknownVersion) => assets.log.line(&format!(
+                "file-size run not recorded for asset {id}: {error}"
+            )),
+        }
     }
+    Ok(record)
 }
 
 /// Write `bytes` to staging on a blocking worker.
@@ -436,4 +525,17 @@ async fn blocking<T: Send + 'static>(
     tokio::task::spawn_blocking(work)
         .await
         .map_err(|_| UploadError::Failed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_production_registry_runs_the_file_size_operator_on_upload() {
+        let library = Library::new(None);
+        assert!(library.registry.operator(FILE_SIZE).is_some());
+        assert!(library.registry.source(MANUAL_UPLOAD).is_some());
+        assert_eq!(library.upload_operators, [FILE_SIZE]);
+    }
 }

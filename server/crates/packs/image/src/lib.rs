@@ -8,11 +8,23 @@
 //! It does not decode them: an image with a valid signature but damaged
 //! content is still recognized, and the browser reports when it cannot show
 //! it.
+//!
+//! Its file-size Operator records how many bytes an Asset version holds, as
+//! the facet `image.file-size`.
 
-use sidereal_plugin_abi::{AssetContext, AssetProposal, Pack, Registry, Source, SourceError};
+use sidereal_plugin_abi::{
+    AssetContext, AssetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Operator,
+    OperatorError, Pack, Registry, Source, SourceError,
+};
 
 /// The id of the manual-upload Source.
 pub const MANUAL_UPLOAD: &str = "image.manual-upload";
+
+/// The id of the file-size Operator.
+pub const FILE_SIZE: &str = "image.measure-file-size";
+
+/// The facet the file-size Operator writes: an Asset version's size in bytes.
+pub const FILE_SIZE_FACET: &str = "image.file-size";
 
 /// The refusal a Source run gives for bytes that are neither PNG nor JPEG.
 pub const UNSUPPORTED: &str = "only PNG and JPEG images are supported";
@@ -27,6 +39,15 @@ impl Pack for ImagePack {
 
     fn register(&self, registry: &mut Registry) {
         registry.register_source(Box::new(ManualUpload));
+        registry.declare_facet(FacetSchema {
+            name: FILE_SIZE_FACET.into(),
+            label: "File size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        });
+        registry.register_operator(Box::new(MeasureFileSize));
     }
 }
 
@@ -66,5 +87,31 @@ impl Source for ManualUpload {
         context
             .propose_asset(AssetProposal::new("image", media_type))
             .map_err(|_| SourceError::Failed("the proposal was refused".into()))
+    }
+}
+
+/// Records an Asset version's size in bytes. It reads no bytes: the size is
+/// the fact, and the host has checked that the stored object has that size.
+struct MeasureFileSize;
+
+impl Operator for MeasureFileSize {
+    fn id(&self) -> &str {
+        FILE_SIZE
+    }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn writes(&self) -> &[&str] {
+        &[FILE_SIZE_FACET]
+    }
+
+    fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        let size = i64::try_from(context.candidate_size())
+            .map_err(|_| OperatorError::Failed("the version is too large to count".into()))?;
+        context
+            .propose_facet(FILE_SIZE_FACET, FacetValue::Integer(size))
+            .map_err(|_| OperatorError::Failed("the proposal was refused".into()))
     }
 }

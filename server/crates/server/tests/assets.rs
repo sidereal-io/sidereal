@@ -277,6 +277,50 @@ mod upload {
     }
 
     #[tokio::test]
+    async fn upload_records_the_file_size_of_a_png_of_known_size() {
+        let instance = Instance::new().await;
+        let response = instance.upload("nebula.png", &png_of_size(1_234_567)).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let asset = &json(response).await["asset"];
+        let version = asset["current_version_id"].as_str().unwrap();
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        let (facet, value, on_version, on_asset, producer, producer_version): (
+            String,
+            Value,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+        ) = sqlx::query_as(
+            "SELECT facet, value, asset_version_id::text, asset_id::text, producer_id, producer_version \
+             FROM public.facet_values",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(facet, "image.file-size");
+        assert_eq!(value, serde_json::json!(1_234_567));
+        assert_eq!(on_version.as_deref(), Some(version));
+        assert_eq!(on_asset, None);
+        assert_eq!(producer, "image.measure-file-size");
+        assert_eq!(producer_version, env!("CARGO_PKG_VERSION"));
+        let (operator, status, actor): (String, String, String) = sqlx::query_as(
+            "SELECT r.operator_id, r.status, u.username FROM public.operation_runs r \
+             JOIN public.users u ON u.id = r.actor_user_id WHERE r.asset_version_id = $1::uuid",
+        )
+        .bind(version)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(
+            (operator.as_str(), status.as_str(), actor.as_str()),
+            ("image.measure-file-size", "succeeded", "sam")
+        );
+    }
+
+    #[tokio::test]
     async fn upload_publishes_the_original_bytes() {
         let instance = Instance::new().await;
         instance.upload("nebula.png", PNG).await;
