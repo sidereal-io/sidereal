@@ -16,7 +16,13 @@ die() {
   exit 1
 }
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
+# $(...) drops every trailing newline, which could turn a checkout path
+# ending in one into a sibling checkout's path. The x keeps them; then
+# only pwd's own newline is removed.
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P && echo x) ||
+  die "cannot find the repo root. Deleting nothing."
+root=${root%x}
+root=${root%?}
 target=$root/server/target
 
 # The limit is checked before anything is measured, so a bad value never

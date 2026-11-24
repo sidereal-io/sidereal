@@ -296,6 +296,20 @@ expect_status_nonzero
 expect_err "space, tab, newline or backslash"
 expect_kept "$repo/server/target"
 
+# $(...) drops trailing newlines, so a checkout path that ends in one
+# could turn into a sibling checkout's path. The sibling must survive.
+nl=$(printf '\nx')
+nl=${nl%x}
+new_case trailing-newline
+fill "$repo/server/target"
+new_case "trailing-newline$nl"
+fill "$repo/server/target"
+run_clean SIDEREAL_TARGET_LIMIT_MIB=1
+expect_status_nonzero
+expect_err "space, tab, newline or backslash"
+expect_kept "$repo/server/target"
+expect_kept "$fx/cases/trailing-newline/server/target"
+
 # --- Failures while measuring or deleting -------------------------------
 
 new_case du-fails
