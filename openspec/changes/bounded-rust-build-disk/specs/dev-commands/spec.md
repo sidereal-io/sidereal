@@ -113,7 +113,7 @@ The size limit of `mise run target-clean` SHALL be 4096 MiB. A contributor SHALL
 
 ### Requirement: The clean-up task refuses mount points
 
-When `server/target`, or any folder inside it, is a mount point, `mise run target-clean` SHALL delete nothing and exit with a non-zero status. The task SHALL find mount points in the system mount table, which `mount` prints. When it cannot read that table, or when the folder's physical path holds a space, tab, newline or backslash, which `mount` prints escaped, the task SHALL delete nothing and exit with a non-zero status.
+When `server`, `server/target`, or any folder inside `server/target`, is a mount point, `mise run target-clean` SHALL delete nothing and exit with a non-zero status. The task SHALL find mount points in the system mount table, which `mount` prints. When it cannot read that table, or when the folder's physical path holds a space, tab, newline or backslash, which `mount` prints escaped, the task SHALL delete nothing and exit with a non-zero status.
 
 #### Scenario: The build folder is a mount point
 
@@ -127,6 +127,14 @@ When `server/target`, or any folder inside it, is a mount point, `mise run targe
 
 - **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
 - **AND** a `mount` command first on `PATH` whose output lists the physical path of `server/target/debug/cache` as a mount point
+- **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
+- **THEN** the command exits with a non-zero status
+- **AND** the 2 MiB file is still in `server/target/`
+
+#### Scenario: The server folder is a mount point
+
+- **GIVEN** a `server/target/` folder that holds a 2 MiB file of random data
+- **AND** a `mount` command first on `PATH` whose output lists the physical path of `server` as a mount point
 - **WHEN** a contributor runs `SIDEREAL_TARGET_LIMIT_MIB=1 mise run target-clean` at the repo root
 - **THEN** the command exits with a non-zero status
 - **AND** the 2 MiB file is still in `server/target/`
