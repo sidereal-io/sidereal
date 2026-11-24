@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { InBar } from "./Bar.tsx";
+import type { Upload } from "./upload.ts";
 import "./Library.css";
 
 interface Entry {
@@ -62,52 +63,6 @@ async function fetchList(
   }
 }
 
-// Why an upload was refused, in fixed words. The server's own words never
-// reach the screen.
-function refusal(status: number): string {
-  switch (status) {
-    case 413:
-      return "it is larger than the 100 MiB limit.";
-    case 415:
-      return "only PNG and JPEG images are supported.";
-    case 400:
-      return "choose one PNG or JPEG file and try again.";
-    default:
-      return "the server could not save it. Try again later.";
-  }
-}
-
-// Sends one file as the multipart field `file`. Never retried: a lost
-// answer after the server saved the file cannot be told from a failure,
-// so no answer at all is "unconfirmed", never a refusal.
-async function sendFile(
-  file: File,
-  signal: AbortSignal,
-): Promise<
-  "saved" | "unconfirmed" | { refused: string } | typeof sessionEnded
-> {
-  try {
-    const body = new FormData();
-    body.append("file", file);
-    const response = await fetch("/api/assets", {
-      method: "POST",
-      body,
-      signal,
-    });
-    if (response.status === 201) return "saved";
-    if (response.status === 401) return sessionEnded;
-    return { refused: refusal(response.status) };
-  } catch {
-    return "unconfirmed";
-  }
-}
-
-type Upload =
-  | { kind: "idle" }
-  | { kind: "sending"; name: string }
-  | { kind: "refused"; name: string; reason: string }
-  | { kind: "unconfirmed"; name: string };
-
 // One image, whole, at its own shape once it loads. Until then its frame
 // keeps the 3:2 shape that Library.css gives it.
 function Picture({ entry }: { entry: Entry }) {
@@ -147,32 +102,29 @@ function Picture({ entry }: { entry: Entry }) {
 function Library({
   onSessionLost,
   notice,
+  upload,
+  onUpload,
+  saved,
   children,
 }: {
   // Called when the server says the session has ended.
   onSessionLost: () => void;
   // A fixed message from the account, such as a failed sign-out.
   notice?: string | null;
+  // The signed-in view's upload, which goes on while another screen shows.
+  upload: Upload;
+  // Sends a chosen file, unless another is still on its way.
+  onUpload: (file: File) => void;
+  // Goes up after each upload the server may have saved.
+  saved: number;
   // The account's items, shown in the top bar after the Library's own.
   children?: ReactNode;
 }) {
   const [list, setList] = useState<List>("loading");
-  // Each change loads the list again.
+  // Each change loads the list again, as does each upload that may have
+  // been saved, even one that ended while another screen showed.
   const [generation, setGeneration] = useState(0);
-  const [upload, setUpload] = useState<Upload>({ kind: "idle" });
   const pickerRef = useRef<HTMLInputElement>(null);
-  // Set while a file is on its way, so a second choice sends nothing.
-  const sendingRef = useRef(false);
-  // Aborted when the Library goes away, so a late answer changes nothing.
-  const uploadsRef = useRef<AbortController>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    uploadsRef.current = controller;
-    return () => {
-      controller.abort();
-    };
-  }, []);
 
   useEffect(() => {
     // Aborted when the Library goes away or loads again, so a late answer
@@ -186,29 +138,7 @@ function Library({
     return () => {
       controller.abort();
     };
-  }, [generation, onSessionLost]);
-
-  async function send(file: File) {
-    const signal = uploadsRef.current?.signal;
-    if (sendingRef.current || !signal) return;
-    sendingRef.current = true;
-    setUpload({ kind: "sending", name: file.name });
-    const result = await sendFile(file, signal);
-    sendingRef.current = false;
-    if (signal.aborted) return;
-    if (result === sessionEnded) {
-      onSessionLost();
-    } else if (result === "saved") {
-      setUpload({ kind: "idle" });
-      setGeneration((value) => value + 1);
-    } else if (result === "unconfirmed") {
-      // The file may have been saved, so the list loads again to show it.
-      setUpload({ kind: "unconfirmed", name: file.name });
-      setGeneration((value) => value + 1);
-    } else {
-      setUpload({ kind: "refused", name: file.name, reason: result.refused });
-    }
-  }
+  }, [generation, saved, onSessionLost]);
 
   function retry() {
     setList("loading");
@@ -241,7 +171,7 @@ function Library({
           const file = event.currentTarget.files?.[0];
           // Cleared, so the same file can be chosen again after a refusal.
           event.currentTarget.value = "";
-          if (file) void send(file);
+          if (file) onUpload(file);
         }}
       />
       {upload.kind === "sending" && (

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./Access.css";
 import { watchSession } from "./eventsSocket.ts";
-import Library from "./Library.tsx";
+import SignedIn from "./SignedIn.tsx";
 
 type View =
   "loading" | "unclaimed" | "signed-out" | "failed" | { username: string };
@@ -211,7 +211,7 @@ function Access() {
     );
   }
   return (
-    <Library onSessionLost={sessionLost} notice={message}>
+    <SignedIn onSessionLost={sessionLost} notice={message}>
       <span className="access-user">{view.username}</span>
       <button
         className="button-quiet"
@@ -220,7 +220,7 @@ function Access() {
       >
         Sign out
       </button>
-    </Library>
+    </SignedIn>
   );
 }
 

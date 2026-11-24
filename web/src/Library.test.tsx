@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Library from "./Library.tsx";
+import SignedIn from "./SignedIn.tsx";
 
 type Answer = [status: number, body?: unknown];
 
@@ -61,8 +62,9 @@ const listAnswer = (...assets: unknown[]): Answer => [200, { assets }];
 
 const button = (name: string) => screen.queryByRole("button", { name });
 
+// The Library as the signed-in view shows it, with the upload above it.
 function showLibrary(onSessionLost = vi.fn()) {
-  render(<Library onSessionLost={onSessionLost} />);
+  render(<SignedIn onSessionLost={onSessionLost} />);
   return onSessionLost;
 }
 
@@ -107,7 +109,7 @@ describe("Library", () => {
     stubServer({
       "GET /api/assets": listAnswer(entry("a3", "<b>bold</b>.png")),
     });
-    const { container } = render(<Library onSessionLost={vi.fn()} />);
+    const { container } = render(<SignedIn onSessionLost={vi.fn()} />);
     await screen.findByText("<b>bold</b>.png");
     expect(container.querySelector("b")).toBeNull();
   });
@@ -212,7 +214,7 @@ describe("Library", () => {
       vi.fn(() => late.promise),
     );
     const onSessionLost = vi.fn();
-    const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+    const { unmount } = render(<SignedIn onSessionLost={onSessionLost} />);
     await screen.findByText("Loading the library…");
     unmount();
     // Even an answer that would end the session is ignored.
@@ -221,6 +223,45 @@ describe("Library", () => {
       await late.promise;
     });
     expect(onSessionLost).not.toHaveBeenCalled();
+  });
+
+  it("loads the list again when the saved count goes up", async () => {
+    const fetch = stubServer({
+      "GET /api/assets": [listAnswer(), listAnswer(nebula)],
+    });
+    const props = {
+      onSessionLost: vi.fn(),
+      upload: { kind: "idle" } as const,
+      onUpload: vi.fn(),
+    };
+    const { rerender } = render(<Library {...props} saved={0} />);
+    await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    rerender(<Library {...props} saved={0} />);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    rerender(<Library {...props} saved={1} />);
+    await screen.findByRole("img", { name: "nebula.png" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands a chosen file to onUpload and shows the upload it is given", async () => {
+    stubServer({ "GET /api/assets": listAnswer() });
+    const onUpload = vi.fn();
+    render(
+      <Library
+        onSessionLost={vi.fn()}
+        upload={{ kind: "sending", name: "m31.png" }}
+        onUpload={onUpload}
+        saved={0}
+      />,
+    );
+    await screen.findByText("Uploading m31.png…");
+    expect(button("Upload")?.hasAttribute("disabled")).toBe(true);
+    const file = new File(["x"], "m42.png", { type: "image/png" });
+    const input =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onUpload).toHaveBeenCalledWith(file);
   });
 
   describe("upload", () => {
@@ -392,7 +433,7 @@ describe("Library", () => {
             : Promise.resolve(Response.json({ assets: [] })),
         ),
       );
-      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      const { container } = render(<SignedIn onSessionLost={vi.fn()} />);
       await screen.findByRole("button", { name: "Upload" });
       choose(new File(["x"], "<b>m42</b>.png", { type: "image/png" }));
       await screen.findByText("Uploading <b>m42</b>.png…");
@@ -421,7 +462,7 @@ describe("Library", () => {
       );
       vi.stubGlobal("fetch", fetch);
       const onSessionLost = vi.fn();
-      const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+      const { unmount } = render(<SignedIn onSessionLost={onSessionLost} />);
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText("Uploading nebula.png…");
