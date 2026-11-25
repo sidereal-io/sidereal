@@ -303,11 +303,11 @@ images carry the page, and nothing else competes with them.
 - **The filename sits under each image,** `spacing-12` below it, in the mono
   face at `font-size-14`, `line-height-20` and `font-weight-400`, in
   `color-text-body`. It is the image's only label.
-- **Upload is one primary button.** It opens the file picker, and choosing a
-  file starts the upload at once.
+- **Upload is one primary button.** It opens the file picker, and choosing
+  files starts their upload at once.
 - **Every other state is one quiet line of `color-text-secondary` text** under
-  the top bar: loading, uploading, a refused file, and a list that failed to
-  load, which adds a quiet Retry button. An empty library shows one plain line
+  the top bar: loading, each picked file's line (waiting, uploading, or its
+  result), and a list that failed to load, which adds a quiet Retry button. An empty library shows one plain line
   in the grid's place. An image that cannot display keeps its name, and its
   3:2 frame shows the message in `color-text-secondary` inside a
   `color-border-hairline` edge.
