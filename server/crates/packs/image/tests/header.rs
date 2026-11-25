@@ -659,3 +659,42 @@ fn jpeg_read_three_bytes_at_a_time_gives_the_same_answer() {
         Ok(header("JPEG", 6000, 4000))
     );
 }
+
+/// A candidate whose second read fails and whose other reads succeed.
+struct FailsOnSecondRead(Bytes);
+
+impl Candidate for FailsOnSecondRead {
+    fn size(&self) -> u64 {
+        self.0.size()
+    }
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.0.reads == 1 {
+            self.0.reads += 1;
+            return Err(std::io::Error::other("the disk could not be read"));
+        }
+        self.0.read_at(offset, buf)
+    }
+}
+
+/// A read that fails part way through a segment must not let the decoder go
+/// on with bytes the candidate never gave, so the run fails.
+#[test]
+fn jpeg_whose_candidate_read_fails_fails() {
+    for before in [
+        icc(&[0x55]).repeat(10_000),
+        icc_segments(256 * 1024),
+        padding(64 * 1024 - 3),
+    ] {
+        let mut candidate =
+            FailsOnSecondRead(Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480))));
+        let outcome = registry()
+            .execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| false)
+            .map(|run| run.proposals);
+        assert_eq!(
+            outcome,
+            failed(JPEG_UNREADABLE),
+            "{} bytes before",
+            before.len()
+        );
+    }
+}

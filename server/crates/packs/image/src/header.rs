@@ -119,6 +119,9 @@ struct CandidateReader<'c, 'a> {
     windows: [Window; 2],
     /// The window filled last.
     newest: usize,
+    /// A `read_candidate` call failed. Every later read fails too, so a
+    /// decoder never goes on past bytes the candidate did not give.
+    failed: bool,
 }
 
 impl<'c, 'a> CandidateReader<'c, 'a> {
@@ -130,6 +133,7 @@ impl<'c, 'a> CandidateReader<'c, 'a> {
             end,
             windows: Default::default(),
             newest: 0,
+            failed: false,
         }
     }
 
@@ -186,6 +190,9 @@ impl Read for CandidateReader<'_, '_> {
 
 impl BufRead for CandidateReader<'_, '_> {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        if self.failed {
+            return Err(unreadable());
+        }
         if self.position >= self.end {
             return Ok(&[]);
         }
@@ -200,10 +207,14 @@ impl BufRead for CandidateReader<'_, '_> {
                 let window = &mut self.windows[index];
                 window.start = self.position;
                 window.bytes.resize(len, 0);
-                let n = self
+                let Ok(n) = self
                     .context
                     .read_candidate(self.position, &mut window.bytes)
-                    .map_err(|_| io::Error::other("the candidate could not be read"))?;
+                else {
+                    window.bytes.clear();
+                    self.failed = true;
+                    return Err(unreadable());
+                };
                 window.bytes.truncate(n);
                 self.newest = index;
                 if n == 0 {
@@ -222,6 +233,10 @@ impl BufRead for CandidateReader<'_, '_> {
     fn consume(&mut self, amount: usize) {
         self.position = self.position.saturating_add(amount as u64);
     }
+}
+
+fn unreadable() -> io::Error {
+    io::Error::other("the candidate could not be read")
 }
 
 impl Seek for CandidateReader<'_, '_> {
