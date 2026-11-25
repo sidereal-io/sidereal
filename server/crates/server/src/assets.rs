@@ -499,9 +499,10 @@ async fn upload(
 
 /// Ingest `staged`. When that makes a new Asset, run each upload Operator over
 /// its version, with `actor` as the user who started the run. `cancelled`
-/// reaches ingest only: the runs get their own flag, which nothing sets. A
-/// run's result never fails the upload; this task logs it, since the request
-/// may be gone.
+/// reaches ingest only: the runs get their own flag, which nothing sets. Each
+/// run is independent: a failed run never stops the next one, and never
+/// fails the upload. This task logs each failure under its Operator's id,
+/// since the request may be gone.
 async fn save(
     assets: Assets,
     actor: i64,
@@ -546,11 +547,11 @@ async fn save(
             Ok(RunOutcome::Succeeded) => {}
             Ok(RunOutcome::Failed(reason)) => assets
                 .log
-                .line(&format!("file-size run failed for asset {id}: {reason}")),
+                .line(&format!("{operator} run failed for asset {id}: {reason}")),
             Err(error @ OperationError::Unrecorded(_))
             | Err(error @ OperationError::UnknownOperator)
             | Err(error @ OperationError::UnknownVersion) => assets.log.line(&format!(
-                "file-size run not recorded for asset {id}: {error}"
+                "{operator} run not recorded for asset {id}: {error}"
             )),
         }
     }

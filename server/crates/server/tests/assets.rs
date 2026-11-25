@@ -1878,7 +1878,7 @@ mod upload_run {
             run(&instance).await,
             ("failed".into(), Some("could not read the header".into()))
         );
-        let line = format!("file-size run failed for asset {id}: could not read the header");
+        let line = format!("test.op run failed for asset {id}: could not read the header");
         assert!(instance.logged().contains(&line), "{:?}", instance.logged());
     }
 
@@ -1920,14 +1920,10 @@ mod upload_run {
         let id = uploaded(&instance).await;
         assert_eq!(instance.rows().await, 2);
         assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
-        let prefix = format!("file-size run not recorded for asset {id}:");
-        assert!(
-            instance
-                .logged()
-                .iter()
-                .any(|line| line.starts_with(&prefix)),
-            "{:?}",
-            instance.logged()
+        assert_not_recorded(
+            &instance,
+            &id,
+            &["image.measure-file-size", "image.read-header"],
         );
     }
 
@@ -1951,14 +1947,142 @@ mod upload_run {
             .as_str()
             .unwrap()
             .to_owned();
-        let prefix = format!("file-size run not recorded for asset {id}:");
-        assert!(
-            instance
-                .logged()
-                .iter()
-                .any(|line| line.starts_with(&prefix)),
-            "{:?}",
-            instance.logged()
+        assert_eq!(instance.rows().await, 2);
+        assert_not_recorded(
+            &instance,
+            &id,
+            &["image.measure-file-size", "image.read-header"],
         );
+    }
+
+    /// The log has a `<operator> run not recorded for asset <id>:` line for
+    /// each of `operators`.
+    fn assert_not_recorded(instance: &Instance, id: &str, operators: &[&str]) {
+        let logged = instance.logged();
+        for operator in operators {
+            let prefix = format!("{operator} run not recorded for asset {id}:");
+            assert!(
+                logged.iter().any(|line| line.starts_with(&prefix)),
+                "{prefix} {logged:?}"
+            );
+        }
+    }
+
+    /// 1,000 bytes that start with the JPEG signature: the Source accepts
+    /// them, and the header Operator cannot read a frame header.
+    fn start_of_a_jpeg() -> Vec<u8> {
+        let mut bytes =
+            b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00".to_vec();
+        bytes.resize(1_000, 0);
+        bytes
+    }
+
+    /// Every run of the Asset's version, by Operator id: its status and
+    /// reason.
+    async fn runs(instance: &Instance) -> Vec<(String, String, Option<String>)> {
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        sqlx::query_as(
+            "SELECT operator_id, status, reason FROM public.operation_runs ORDER BY operator_id",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn upload_run_of_an_unreadable_header_still_records_the_file_size() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded_ids("m31.jpg", &start_of_a_jpeg()).await;
+        assert_eq!(
+            instance.facets_of(&id).await,
+            serde_json::json!([upload_facets(1_000, "JPEG")[0]])
+        );
+        assert_eq!(
+            runs(&instance).await,
+            [
+                ("image.measure-file-size".into(), "succeeded".into(), None),
+                (
+                    "image.read-header".into(),
+                    "failed".into(),
+                    Some("the JPEG header could not be read".into())
+                ),
+            ]
+        );
+        let line = format!(
+            "image.read-header run failed for asset {id}: the JPEG header could not be read"
+        );
+        assert!(instance.logged().contains(&line), "{:?}", instance.logged());
+    }
+
+    #[tokio::test]
+    async fn upload_run_of_an_unreadable_header_whose_outcome_cannot_be_recorded_answers_201() {
+        let instance = Instance::new().await;
+        instance
+            .execute(
+                "CREATE FUNCTION public.refuse_update() RETURNS trigger LANGUAGE plpgsql \
+                 AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$; \
+                 CREATE TRIGGER refuse_update BEFORE UPDATE ON public.operation_runs \
+                 FOR EACH ROW EXECUTE FUNCTION public.refuse_update();",
+            )
+            .await;
+        let (id, _) = instance.uploaded_ids("m31.jpg", &start_of_a_jpeg()).await;
+        assert_eq!(instance.rows().await, 2);
+        let header_values: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM public.facet_values \
+             WHERE facet IN ('image.format', 'image.width', 'image.height')",
+        )
+        .fetch_one(
+            &mut PgConnection::connect_with(&instance.db.options)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(header_values, 0);
+        let header_run = runs(&instance)
+            .await
+            .into_iter()
+            .find(|run| run.0 == "image.read-header")
+            .unwrap();
+        assert_eq!((header_run.1.as_str(), header_run.2), ("running", None));
+        assert_not_recorded(&instance, &id, &["image.read-header"]);
+    }
+
+    #[tokio::test]
+    async fn upload_run_of_the_file_size_that_fails_still_records_the_header() {
+        let instance = Instance::new().await;
+        instance
+            .execute(
+                "CREATE FUNCTION public.refuse_file_size() RETURNS trigger LANGUAGE plpgsql \
+                 AS $$ BEGIN \
+                   IF NEW.facet = 'image.file-size' THEN RAISE EXCEPTION 'refused'; END IF; \
+                   RETURN NEW; \
+                 END $$; \
+                 CREATE TRIGGER refuse_file_size BEFORE INSERT ON public.facet_values \
+                 FOR EACH ROW EXECUTE FUNCTION public.refuse_file_size();",
+            )
+            .await;
+        let (id, _) = instance.uploaded_ids("nebula.png", PNG).await;
+        assert_eq!(
+            instance.facets_of(&id).await,
+            serde_json::json!(upload_facets(PNG.len(), "PNG").as_array().unwrap()[1..])
+        );
+        assert_eq!(
+            runs(&instance).await,
+            [
+                (
+                    "image.measure-file-size".into(),
+                    "failed".into(),
+                    Some("the values could not be stored".into())
+                ),
+                ("image.read-header".into(), "succeeded".into(), None),
+            ]
+        );
+        let line = format!(
+            "image.measure-file-size run failed for asset {id}: the values could not be stored"
+        );
+        assert!(instance.logged().contains(&line), "{:?}", instance.logged());
     }
 }
