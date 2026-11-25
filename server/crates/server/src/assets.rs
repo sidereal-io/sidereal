@@ -171,7 +171,8 @@ async fn list(State(assets): State<Assets>) -> Response {
     }
 }
 
-/// One Asset with the facet values of the Asset and its current version.
+/// One Asset with its current version's media type and the facet values of
+/// the Asset and that version.
 /// A database failure is 503, so it never reads as a missing Asset or as an
 /// Asset with no facets.
 async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
@@ -198,6 +199,7 @@ async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response 
         Err(error) => return failed(&error),
     };
     let mut asset = entry(&record);
+    asset["media_type"] = json!(record.version.media_type);
     asset["facets"] = facets
         .iter()
         .map(|facet| {

@@ -1645,8 +1645,66 @@ mod get_asset {
         assert_eq!(fields, ["asset"]);
         let mut asset = body["asset"].clone();
         assert!(asset["facets"].is_array());
+        assert_eq!(asset["media_type"], "image/png");
         asset.as_object_mut().unwrap().remove("facets");
+        asset.as_object_mut().unwrap().remove("media_type");
         assert_eq!(asset, listed);
+    }
+
+    impl Instance {
+        /// The Asset `GET /api/assets/{id}` returns for a new upload of
+        /// `bytes` as `name`.
+        async fn read_upload(&self, name: &str, bytes: &[u8]) -> Value {
+            let (id, _) = self.uploaded_ids(name, bytes).await;
+            let response = self.read(&id).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            json(response).await["asset"].clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_gives_a_png_its_media_type() {
+        let instance = Instance::new().await;
+        let asset = instance.read_upload("nebula.png", PNG).await;
+        assert_eq!(asset["media_type"], "image/png");
+    }
+
+    #[tokio::test]
+    async fn get_asset_gives_a_jpeg_its_media_type() {
+        let instance = Instance::new().await;
+        let asset = instance.read_upload("nebula.jpg", JPEG).await;
+        assert_eq!(asset["media_type"], "image/jpeg");
+    }
+
+    #[tokio::test]
+    async fn get_asset_gives_png_bytes_named_jpg_the_png_media_type() {
+        let instance = Instance::new().await;
+        let asset = instance.read_upload("m31.jpg", PNG).await;
+        assert_eq!(asset["media_type"], "image/png");
+        let dimensions: Vec<_> = asset["facets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|facet| facet["name"] != "image.file-size")
+            .map(|facet| (facet["name"].clone(), facet["value"].clone()))
+            .collect();
+        assert_eq!(
+            dimensions,
+            [
+                (serde_json::json!("image.height"), serde_json::json!(24)),
+                (serde_json::json!("image.width"), serde_json::json!(32)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn media_type_is_neither_in_the_upload_body_nor_in_the_list() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        assert!(uploaded["asset"].get("media_type").is_none(), "{uploaded}");
+        let listed = json(instance.list().await).await;
+        assert_eq!(listed["assets"][0]["id"], uploaded["asset"]["id"]);
+        assert!(listed["assets"][0].get("media_type").is_none(), "{listed}");
     }
 
     #[tokio::test]
