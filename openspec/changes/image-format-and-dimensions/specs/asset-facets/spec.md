@@ -81,13 +81,11 @@ three values in one run.
 ### Requirement: A header that cannot be read fails the header run
 
 When the header Operator cannot read a width and a height from the version's
-bytes, its run SHALL fail, and core SHALL store none of its values. The
-reason SHALL be `the PNG header could not be read` for a version that starts
-with the PNG signature, `the JPEG header could not be read` for a version
-that starts with the JPEG signature, and `the image format is not
-recognized` for any other version. A width or height of zero counts as
-unreadable. The header Operator's failure SHALL NOT change any other
-Operator's run or values.
+bytes, its run SHALL fail and store no value. The reason SHALL be `the PNG
+header could not be read` when the bytes start with the PNG signature, `the
+JPEG header could not be read` when they start with the JPEG signature, and
+`the image format is not recognized` otherwise. A width or height of zero is
+unreadable. The failure SHALL NOT change another Operator's run or values.
 
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
@@ -173,13 +171,12 @@ SHALL store none of that run's proposals.
 ### Requirement: A stored value keeps the schema it was written under
 
 Core SHALL keep each facet schema version that a stored value was written
-under, unchanged, with the allowed values of a choice. A value SHALL be read
-with the label and unit of its own schema version. When a pack declares a
-schema version that core already keeps, with a different label, unit, value
-type, scope or owner, or with different allowed values or the same allowed
-values in another order, core SHALL record a run that writes that facet as
-failed, with a reason that names the facet and its version, and SHALL store
-none of its values.
+under, unchanged, with a choice's allowed values. A value SHALL be read with
+the label and unit of its own schema version. When a pack declares a kept
+schema version with a different label, unit, value type, scope, owner, or
+allowed values or their order, core SHALL record a run that writes that
+facet as failed, with a reason that names the facet and its version, and
+SHALL store none of its values.
 
 #### Scenario: A facet changed without a new version
 - **WHEN** a value of `test.size` at schema version 1 with the unit `bytes` is stored, and a later build declares `test.size` version 1 with the unit `KiB` and runs an Operator that writes it

@@ -6,12 +6,11 @@
 
 The `facets` array SHALL hold one entry for each facet value of the Asset
 and of its current version, ordered by facet name. Each entry SHALL hold
-`name`, `label`, `value` and `unit`, with the label and unit taken from the
-schema version the value was written under. A count's `value` SHALL be a
-JSON number, and a choice's `value` SHALL be a JSON string. A facet with no
-unit SHALL have the empty string as its `unit`. An Asset with no facet
-values SHALL have an empty `facets` array. The response SHALL NOT include
-provenance.
+`name`, `label`, `value` and `unit`, with the label and unit of the schema
+version the value was written under. A count's `value` SHALL be a JSON
+number and a choice's a JSON string. A facet with no unit SHALL have the
+`unit` `""`. An Asset with no facet values SHALL have an empty `facets`
+array. The response SHALL NOT include provenance.
 
 #### Scenario: An Asset with its file size
 - **WHEN** a signed-in administrator reads the Asset of `nebula.png`, uploaded before this change, with 1,234,567 bytes, whose file-size run succeeded
