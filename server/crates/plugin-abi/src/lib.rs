@@ -519,10 +519,12 @@ impl Registry {
             ..Registry::default()
         };
         pack.register(&mut staged);
-        // Every schema the pack declared is owned by the id read above, even
-        // if the pack replaced its staging Registry.
+        // A schema declared after the pack replaced its staging Registry has
+        // no owner yet; it is the pack's. A nested pack's schemas keep theirs.
         for declared in &mut staged.facets {
-            declared.owner.clone_from(&pack_id);
+            if declared.owner.is_empty() {
+                declared.owner.clone_from(&pack_id);
+            }
         }
         let pack_id = pack_id.as_str();
         for (index, declared) in staged.facets.iter().enumerate() {
@@ -1065,6 +1067,31 @@ mod facet_declaration {
             *registry = Registry::new();
             registry.declare_facet(size("test.size"));
         }
+    }
+
+    /// A pack `test` that registers the pack `test.child` while it registers.
+    struct Parent;
+    impl Pack for Parent {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            registry
+                .register_pack(&TestPack("test.child", |r| {
+                    r.declare_facet(size("test.child.size"))
+                }))
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn facet_declaration_keeps_a_nested_packs_owner() {
+        let mut registry = Registry::new();
+        registry.register_pack(&Parent).unwrap();
+        assert_eq!(
+            registry.facet_schema("test.child.size").unwrap().owner,
+            "test.child"
+        );
     }
 
     #[test]
