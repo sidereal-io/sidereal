@@ -10,7 +10,9 @@
 //! it.
 //!
 //! Its file-size Operator records how many bytes an Asset version holds, as
-//! the facet `image.file-size`.
+//! the facet `image.file-size`. Its header Operator records an image's
+//! format and pixel dimensions, as `image.format`, `image.width` and
+//! `image.height`.
 
 use sidereal_plugin_abi::{
     AssetContext, AssetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Operator,
@@ -25,6 +27,19 @@ pub const FILE_SIZE: &str = "image.measure-file-size";
 
 /// The facet the file-size Operator writes: an Asset version's size in bytes.
 pub const FILE_SIZE_FACET: &str = "image.file-size";
+
+/// The id of the header Operator.
+pub const READ_HEADER: &str = "image.read-header";
+
+/// The facet the header Operator writes for an image's format: `PNG` or
+/// `JPEG`.
+pub const FORMAT_FACET: &str = "image.format";
+
+/// The facet the header Operator writes for an image's width in pixels.
+pub const WIDTH_FACET: &str = "image.width";
+
+/// The facet the header Operator writes for an image's height in pixels.
+pub const HEIGHT_FACET: &str = "image.height";
 
 /// The refusal a Source run gives for bytes that are neither PNG nor JPEG.
 pub const UNSUPPORTED: &str = "only PNG and JPEG images are supported";
@@ -48,11 +63,84 @@ impl Pack for ImagePack {
             scope: FacetScope::AssetVersion,
         });
         registry.register_operator(Box::new(MeasureFileSize));
+        registry.declare_facet(FacetSchema {
+            name: FORMAT_FACET.into(),
+            label: "Format".into(),
+            value_type: FacetType::Choice(vec![
+                Format::Png.name().into(),
+                Format::Jpeg.name().into(),
+            ]),
+            unit: String::new(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        });
+        for (name, label) in [(WIDTH_FACET, "Width"), (HEIGHT_FACET, "Height")] {
+            registry.declare_facet(FacetSchema {
+                name: name.into(),
+                label: label.into(),
+                value_type: FacetType::Count,
+                unit: "pixels".into(),
+                version: 1,
+                scope: FacetScope::AssetVersion,
+            });
+        }
+        registry.register_operator(Box::new(ReadHeader));
     }
 }
 
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 const JPEG_SIGNATURE: &[u8] = b"\xff\xd8\xff";
+
+/// An image format the pack recognizes from its leading bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Format {
+    Png,
+    Jpeg,
+}
+
+impl Format {
+    /// The format whose signature `head` starts with, if any.
+    fn of(head: &[u8]) -> Option<Self> {
+        if head.starts_with(PNG_SIGNATURE) {
+            Some(Self::Png)
+        } else if head.starts_with(JPEG_SIGNATURE) {
+            Some(Self::Jpeg)
+        } else {
+            None
+        }
+    }
+
+    /// The format's name, as `image.format` stores it.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Png => "PNG",
+            Self::Jpeg => "JPEG",
+        }
+    }
+
+    fn media_type(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+        }
+    }
+}
+
+/// The candidate's first bytes, up to the length of the longest signature.
+/// Fewer when the candidate is shorter; `None` when a read fails.
+fn head(context: &mut AssetContext<'_>) -> Option<Vec<u8>> {
+    let mut head = vec![0; PNG_SIGNATURE.len()];
+    let mut read = 0;
+    while read < head.len() {
+        match context.read_candidate(read as u64, &mut head[read..]) {
+            Ok(0) => break,
+            Ok(n) => read += n,
+            Err(_) => return None,
+        }
+    }
+    head.truncate(read);
+    Some(head)
+}
 
 /// Brings one file a person chose into the library.
 struct ManualUpload;
@@ -67,25 +155,11 @@ impl Source for ManualUpload {
     }
 
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), SourceError> {
-        let mut head = [0; PNG_SIGNATURE.len()];
-        let mut read = 0;
-        while read < head.len() {
-            match context.read_candidate(read as u64, &mut head[read..]) {
-                Ok(0) => break,
-                Ok(n) => read += n,
-                Err(_) => return Err(SourceError::Failed("could not read the candidate".into())),
-            }
-        }
-        let head = &head[..read];
-        let media_type = if head.starts_with(PNG_SIGNATURE) {
-            "image/png"
-        } else if head.starts_with(JPEG_SIGNATURE) {
-            "image/jpeg"
-        } else {
-            return Err(SourceError::Refused(UNSUPPORTED.into()));
-        };
+        let head = head(context)
+            .ok_or_else(|| SourceError::Failed("could not read the candidate".into()))?;
+        let format = Format::of(&head).ok_or_else(|| SourceError::Refused(UNSUPPORTED.into()))?;
         context
-            .propose_asset(AssetProposal::new("image", media_type))
+            .propose_asset(AssetProposal::new("image", format.media_type()))
             .map_err(|_| SourceError::Failed("the proposal was refused".into()))
     }
 }
@@ -113,5 +187,27 @@ impl Operator for MeasureFileSize {
         context
             .propose_facet(FILE_SIZE_FACET, FacetValue::Integer(size))
             .map_err(|_| OperatorError::Failed("the proposal was refused".into()))
+    }
+}
+
+/// Records an image's format, width and height, read from its header. It
+/// decodes no pixel data and ignores any EXIF orientation.
+struct ReadHeader;
+
+impl Operator for ReadHeader {
+    fn id(&self) -> &str {
+        READ_HEADER
+    }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn writes(&self) -> &[&str] {
+        &[FORMAT_FACET, WIDTH_FACET, HEIGHT_FACET]
+    }
+
+    fn run(&self, _context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        Err(OperatorError::Unsupported)
     }
 }
