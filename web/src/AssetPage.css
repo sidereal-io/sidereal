@@ -124,6 +124,7 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
   /* A media type the page does not know shows exactly as the server
-     returns it, spaces included. */
+     returns it, spaces included, and a long one wraps at any character. */
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

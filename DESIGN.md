@@ -342,7 +342,8 @@ it holds the name and the facts.
   `color-text-secondary`. The value and its unit are on the right, in the mono
   face at `font-size-14` and `line-height-20`, in `color-text-body`, with
   tabular figures. Values group digits in threes with commas, such as
-  `1,234,567 bytes`.
+  `1,234,567 bytes`. A long value wraps at any character, so it never
+  runs past the column.
 - **No facts:** when no facts are recorded, the column shows the name and one
   line of body-md `color-text-secondary` text in place of the facts:
   `No facts are recorded for this image.`
