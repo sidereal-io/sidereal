@@ -12,11 +12,12 @@ import Library from "./Library.tsx";
 // What the first check finds.
 type Found = "unclaimed" | "signed-out" | "failed" | { username: string };
 
-// A signed-in view carries the controller of its own session signal.
+// A signed-in view carries the controller of its own session signal, and
+// the number of that controller, which keys its Library.
 type View =
   | "loading"
   | Exclude<Found, object>
-  | { username: string; session: AbortController };
+  | { username: string; session: AbortController; key: number };
 
 // A status this section does not expect means the same as no answer.
 class Unexpected extends Error {}
@@ -53,15 +54,19 @@ async function probe(): Promise<Found> {
 // Every end of a signed-in view aborts its controller, so one not yet
 // aborted belongs to the view on screen. A second sign-in that answers then,
 // as after a double submit, keeps it: the Library stays mounted, and a pick
-// it started must still stop when the session ends.
+// it started must still stop when the session ends. A new controller gets
+// the next number, so its view gets a fresh Library even if React never
+// showed the sign-in form in between.
 function signedInView(
   current: RefObject<AbortController | null>,
+  made: RefObject<number>,
   username: string,
 ): View {
   const live = current.current;
   const session = live && !live.signal.aborted ? live : new AbortController();
+  if (session !== live) made.current += 1;
   current.current = session;
-  return { username, session };
+  return { username, session, key: made.current };
 }
 
 type Credentials = { username: string; password: string };
@@ -159,6 +164,8 @@ function Access() {
   // same call that learns the session ended, before the view changes, so
   // the Library sends nothing more even before it goes away.
   const sessionRef = useRef<AbortController>(null);
+  // How many session controllers this screen has made.
+  const madeRef = useRef(0);
 
   useEffect(() => {
     let stopped = false;
@@ -166,7 +173,7 @@ function Access() {
       if (stopped) return;
       setView(
         typeof next === "object"
-          ? signedInView(sessionRef, next.username)
+          ? signedInView(sessionRef, madeRef, next.username)
           : next,
       );
     });
@@ -215,7 +222,7 @@ function Access() {
       if (!isObject(body) || typeof body.username !== "string") {
         throw new Unexpected();
       }
-      show(signedInView(sessionRef, body.username));
+      show(signedInView(sessionRef, madeRef, body.username));
     } catch {
       setMessage("Something went wrong");
     }
@@ -263,6 +270,7 @@ function Access() {
   }
   return (
     <Library
+      key={view.key}
       onSessionLost={sessionLost}
       session={view.session.signal}
       notice={message}

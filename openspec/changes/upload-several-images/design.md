@@ -144,7 +144,10 @@ session check or from a sign-in, and passes its signal to `Library` as the
 required prop `session`. A sign-in that answers while a signed-in view is
 still on screen, as after a double press of Sign in, keeps that view's
 controller: React keeps the Library mounted, and a pick it started must
-still stop when the session ends. It aborts it in the same call that learns
+still stop when the session ends. Each new controller gets the next number,
+which keys the Library. A sign-in that answers in the same render as the
+sign-out before it therefore gets a fresh Library, not one whose aborted
+pick still holds Upload disabled. It aborts it in the same call that learns
 the session ended, before it sets the signed-out view:
 
 - in `signOut`, when the answer is 204 or 401 and the view that sent the

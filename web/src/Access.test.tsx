@@ -703,18 +703,20 @@ describe("Access", () => {
       expect(screen.queryByText("Something went wrong")).toBeNull();
     });
 
+    const sam = () =>
+      Response.json({ username: "sam", role: "admin" }, { status: 200 });
+
     // Two presses of Sign in before either answers. The first answer shows
-    // the Library, and Nova picks files before the second answer comes.
-    it("stops a pick on sign-out after a second sign-in answers", async () => {
-      const server = heldServer({ signedIn: false });
+    // the Library, and Nova picks a.png and b.png before the second answers.
+    async function pickBeforeTheSecondSignIn(
+      server: ReturnType<typeof heldServer>,
+    ) {
       render(<Access />);
       await submit("Sign in");
       fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
       await waitFor(() => {
         server.signIn(1);
       });
-      const sam = () =>
-        Response.json({ username: "sam", role: "admin" }, { status: 200 });
       await act(async () => {
         server.signIn(0).answer(sam());
         await server.signIn(0).promise;
@@ -724,6 +726,11 @@ describe("Access", () => {
       await waitFor(() => {
         expect(server.sent()).toEqual(["a.png"]);
       });
+    }
+
+    it("stops a pick on sign-out after a second sign-in answers", async () => {
+      const server = heldServer({ signedIn: false });
+      await pickBeforeTheSecondSignIn(server);
       await act(async () => {
         server.signIn(1).answer(sam());
         await server.signIn(1).promise;
@@ -736,6 +743,31 @@ describe("Access", () => {
       });
       await screen.findByRole("button", { name: "Sign in" });
       expect(server.sent()).toEqual(["a.png"]);
+    });
+
+    // The sign-out ends the first view's session, and the second sign-in
+    // answers before React shows the sign-in form.
+    it("gives a sign-in that answers with the sign-out a fresh Library", async () => {
+      const server = heldServer({ signedIn: false });
+      await pickBeforeTheSecondSignIn(server);
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      // A body that reads at once, so both answers land before React
+      // renders again.
+      const samAtOnce = {
+        status: 200,
+        json: () => Promise.resolve({ username: "sam", role: "admin" }),
+      } as Response;
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        server.signIn(1).answer(samAtOnce);
+        await server.signOut().promise;
+        await server.signIn(1).promise;
+      });
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      expect(lines()).toEqual([]);
+      expect(
+        screen.getByRole("button", { name: "Upload" }).hasAttribute("disabled"),
+      ).toBe(false);
     });
 
     it("gives a new sign-in a fresh session signal", async () => {
