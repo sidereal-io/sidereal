@@ -138,20 +138,19 @@ Alternative: send all files at once with `Promise.all`. Rejected by D2.
 
 ### `Access` aborts a session signal as soon as it learns the session ended
 
-`Access` keeps one `AbortController` for each signed-in view, in a ref. It
-makes a new one each time it shows the signed-in view, from the first
-session check or from a sign-in, and passes its signal to `Library` as the
-required prop `session`. Whether a sign-in's answer reuses the controller
-depends only on whether the controller has been aborted, not on what is on
-screen. A controller not yet aborted belongs to the signed-in view, so a
-sign-in that answers then, as after a double press of Sign in, keeps it:
-React keeps the Library mounted, and a pick it started must still stop when
-the session ends. An aborted controller is never reused. Each new controller
-gets the next number, which keys the Library, so a sign-in that answers in
-the same render as the sign-out before it gets a fresh Library, not one
-whose aborted pick still holds Upload disabled. `Access` aborts the
-controller in the same call that learns the session ended, before it sets
-the signed-out view:
+`Access` keeps one `AbortController` for each signed-in view, in a ref, and
+passes its signal to `Library` as the required prop `session`. Each time it
+shows the signed-in view, from the first session check or from a sign-in, it
+follows one rule. If the ref holds a controller whose signal is not aborted,
+it reuses that controller and the Library keeps its key. That happens when a
+second sign-in answers after a double press of Sign in: React keeps the
+Library mounted, and a pick it started must still stop when the session
+ends. Otherwise it makes a new controller, which gets the next number as the
+Library's key, even if React has not yet shown the sign-in form. A sign-in
+that answers in the same render as the sign-out before it therefore gets a
+fresh Library, not one whose aborted pick still holds Upload disabled.
+`Access` aborts the controller in the same call that learns the session
+ended, before it sets the signed-out view:
 
 - in `signOut`, when the answer is 204 or 401 and the view that sent the
   sign-out is still current;
