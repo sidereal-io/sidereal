@@ -385,6 +385,34 @@ describe("Library", () => {
       expect(container.querySelector("b")).toBeNull();
     });
 
+    it("replaces the last pick's lines with the next pick's", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [409],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("b.png is already in the library.");
+      choose(named("c.png"));
+      await screen.findByText("c.png is already in the library.");
+      expect(lines()).toEqual(["c.png is already in the library."]);
+    });
+
+    it("keeps the last lines when the picker is cancelled", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [409],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"));
+      await screen.findByText("a.png is already in the library.");
+      choose();
+      expect(lines()).toEqual(["a.png is already in the library."]);
+      expect(uploads(fetch)).toHaveLength(1);
+    });
+
     it("shows the filename while pending and sends no second request", async () => {
       const pending = deferred();
       const fetch = vi.fn((_input: string, init?: RequestInit) =>
