@@ -323,6 +323,13 @@ its tokens.
 - **Deploy:** no migration. The branch's migration 6 and its baseline are
   removed before merge (task 7.2), so `main` never holds them and a database
   keeps five migration records.
+- **A database that ran an earlier build of this branch:** a database that
+  already applied migration 6, such as one used to preview this pull request
+  before task 7.2, holds six migration records. The server refuses it at
+  startup with `incompatible migration history`, because this build has five
+  migrations. To test this build, use a fresh database (for this worktree's
+  fixture, `mise run db-clean`, then `mise run db-up`), or restore a backup
+  taken before migration 6 ran. Do not reuse that database.
 - **Data:** no backfill (D9). Assets saved before this change keep only the
   facts they have, and show their format from the media type they already
   hold.
