@@ -101,6 +101,15 @@ test("Nova opens an image's page, reads its file size, reloads it and goes back"
   await expect(page.getByRole("heading", { name })).toBeVisible();
   await expect(fileSize).toHaveText(`${bytes} bytes`);
 
+  // On a phone-width window the column fits inside the window.
+  await page.setViewportSize({ width: 320, height: 640 });
+  await expect
+    .poll(async () => {
+      const box = await page.getByRole("heading", { name }).boundingBox();
+      return box === null ? Infinity : box.x + box.width;
+    })
+    .toBeLessThanOrEqual(320);
+
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("region", { name: "Library" })).toBeVisible();

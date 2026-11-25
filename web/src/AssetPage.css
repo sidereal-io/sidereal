@@ -75,9 +75,10 @@
   text-align: center;
 }
 
+/* Shrinks below its width only when the window is narrower than the column. */
 .asset-details {
   display: flex;
-  flex: 1 0 var(--sr-size-300);
+  flex: 1 1 var(--sr-size-300);
   flex-direction: column;
   gap: var(--sr-spacing-12);
   min-width: 0;
