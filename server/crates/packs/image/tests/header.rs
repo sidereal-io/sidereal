@@ -1,6 +1,6 @@
 //! The header Operator, through the public contract only: it reads an image's
-//! format and pixel dimensions from its leading bytes.
-use sidereal_pack_image::{ImagePack, FORMAT_FACET, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
+//! pixel dimensions from its leading bytes.
+use sidereal_pack_image::{ImagePack, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
 use sidereal_plugin_abi::{
     Candidate, ExecutionError, FacetProposal, FacetSchema, FacetScope, FacetType, FacetValue,
     Registry,
@@ -21,19 +21,8 @@ fn declared(name: &str) -> FacetSchema {
 }
 
 #[test]
-fn schema_of_the_format_is_a_choice_of_png_or_jpeg() {
-    assert_eq!(FORMAT_FACET, "image.format");
-    assert_eq!(
-        declared(FORMAT_FACET),
-        FacetSchema {
-            name: "image.format".into(),
-            label: "Format".into(),
-            value_type: FacetType::Choice(vec!["PNG".into(), "JPEG".into()]),
-            unit: String::new(),
-            version: 1,
-            scope: FacetScope::AssetVersion,
-        }
-    );
+fn registry_has_no_format_schema() {
+    assert!(registry().facet_schema("image.format").is_none());
 }
 
 #[test]
@@ -69,14 +58,11 @@ fn schema_of_the_height_is_a_count_of_pixels() {
 }
 
 #[test]
-fn schema_names_are_the_three_facets_the_header_operator_lists() {
+fn schema_names_are_the_two_facets_the_header_operator_lists() {
     assert_eq!(READ_HEADER, "image.read-header");
     let registry = registry();
     let entry = registry.operator(READ_HEADER).unwrap();
-    assert_eq!(
-        entry.writes(),
-        ["image.format", "image.width", "image.height"]
-    );
+    assert_eq!(entry.writes(), ["image.width", "image.height"]);
     assert_eq!(entry.version(), env!("CARGO_PKG_VERSION"));
 }
 
@@ -125,14 +111,10 @@ fn read_header(candidate: &mut Bytes) -> Result<Vec<FacetProposal>, ExecutionErr
         .map(|run| run.proposals)
 }
 
-/// What the header Operator proposes for an image of `format`, `width` by
-/// `height` pixels.
-fn header(format: &str, width: i64, height: i64) -> Vec<FacetProposal> {
+/// What the header Operator proposes for an image of `width` by `height`
+/// pixels.
+fn header(width: i64, height: i64) -> Vec<FacetProposal> {
     vec![
-        FacetProposal {
-            name: "image.format".into(),
-            value: FacetValue::Text(format.into()),
-        },
         FacetProposal {
             name: "image.width".into(),
             value: FacetValue::Integer(width),
@@ -194,10 +176,10 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 }
 
 #[test]
-fn png_header_gives_its_format_width_and_height() {
+fn png_header_gives_its_width_and_height() {
     assert_eq!(
         read_header(&mut Bytes::new(png(4096, 2160))),
-        Ok(header("PNG", 4096, 2160))
+        Ok(header(4096, 2160))
     );
 }
 
@@ -210,7 +192,7 @@ fn png_with_200000_text_chunks_after_its_header_costs_one_read() {
         bytes.extend_from_slice(&text);
     }
     let mut candidate = Bytes::new(bytes);
-    assert_eq!(read_header(&mut candidate), Ok(header("PNG", 640, 480)));
+    assert_eq!(read_header(&mut candidate), Ok(header(640, 480)));
     assert_eq!(candidate.reads, 1);
 }
 
@@ -218,7 +200,7 @@ fn png_with_200000_text_chunks_after_its_header_costs_one_read() {
 fn png_read_three_bytes_at_a_time_gives_the_same_answer() {
     assert_eq!(
         read_header(&mut Bytes::reading_at_most(png(4096, 2160), 3)),
-        Ok(header("PNG", 4096, 2160))
+        Ok(header(4096, 2160))
     );
 }
 
@@ -257,7 +239,7 @@ fn png_whose_header_checksum_does_not_match_fails() {
     let bytes = png(4096, 2160);
     assert_eq!(
         read_header(&mut Bytes::new(bytes.clone())),
-        Ok(header("PNG", 4096, 2160))
+        Ok(header(4096, 2160))
     );
     let mut damaged = bytes;
     let last = damaged.len() - 1;
@@ -417,10 +399,10 @@ fn padding(mut total: usize) -> Vec<u8> {
 }
 
 #[test]
-fn jpeg_baseline_gives_its_format_width_and_height() {
+fn jpeg_baseline_gives_its_width_and_height() {
     assert_eq!(
         read_header(&mut Bytes::new(jpeg(6000, 4000))),
-        Ok(header("JPEG", 6000, 4000))
+        Ok(header(6000, 4000))
     );
 }
 
@@ -428,7 +410,7 @@ fn jpeg_baseline_gives_its_format_width_and_height() {
 fn jpeg_progressive_gives_its_width_and_height() {
     assert_eq!(
         read_header(&mut Bytes::new(jpeg_with(&[], &frame(0xc2, 8, 1920, 1080)))),
-        Ok(header("JPEG", 1920, 1080))
+        Ok(header(1920, 1080))
     );
 }
 
@@ -436,7 +418,7 @@ fn jpeg_progressive_gives_its_width_and_height() {
 fn jpeg_wider_than_16384_pixels_gives_its_width_and_height() {
     assert_eq!(
         read_header(&mut Bytes::new(jpeg(20_000, 12_000))),
-        Ok(header("JPEG", 20_000, 12_000))
+        Ok(header(20_000, 12_000))
     );
 }
 
@@ -448,7 +430,7 @@ fn jpeg_with_exif_and_icc_before_its_frame_header_gives_its_width_and_height() {
             &before,
             &frame(0xc0, 8, 6000, 4000)
         ))),
-        Ok(header("JPEG", 6000, 4000))
+        Ok(header(6000, 4000))
     );
 }
 
@@ -461,7 +443,7 @@ fn jpeg_rotated_by_its_exif_orientation_keeps_its_stored_width_and_height() {
             &before,
             &frame(0xc0, 8, 6000, 4000)
         ))),
-        Ok(header("JPEG", 6000, 4000))
+        Ok(header(6000, 4000))
     );
 }
 
@@ -545,7 +527,7 @@ fn jpeg_whose_scan_ends_at(end: usize) -> Vec<u8> {
 fn jpeg_whose_scan_segment_ends_at_the_limit_gives_its_width_and_height() {
     assert_eq!(
         read_header(&mut Bytes::new(jpeg_whose_scan_ends_at(LIMIT))),
-        Ok(header("JPEG", 640, 480))
+        Ok(header(640, 480))
     );
 }
 
@@ -572,7 +554,7 @@ fn jpeg_of_tiny_segments_and_fill_bytes_costs_a_bounded_number_of_reads() {
     let bytes = jpeg_with(&before, &frame(0xc0, 8, 640, 480));
     let size = bytes.len();
     let mut candidate = Bytes::new(bytes);
-    assert_eq!(read_header(&mut candidate), Ok(header("JPEG", 640, 480)));
+    assert_eq!(read_header(&mut candidate), Ok(header(640, 480)));
     assert!(
         candidate.reads <= read_bound(size),
         "{} reads",
@@ -586,7 +568,7 @@ fn jpeg_of_64_full_exif_segments_costs_a_bounded_number_of_reads() {
     let bytes = jpeg_with(&before, &frame(0xc0, 8, 6000, 4000));
     let size = bytes.len();
     let mut candidate = Bytes::new(bytes);
-    assert_eq!(read_header(&mut candidate), Ok(header("JPEG", 6000, 4000)));
+    assert_eq!(read_header(&mut candidate), Ok(header(6000, 4000)));
     assert!(
         candidate.reads <= read_bound(size),
         "{} reads",
@@ -599,7 +581,7 @@ fn jpeg_whose_scan_lies_in_its_first_window_costs_at_most_2_reads() {
     let mut bytes = jpeg(6000, 4000);
     bytes.resize(4 * 1024 * 1024, 0x12);
     let mut candidate = Bytes::new(bytes);
-    assert_eq!(read_header(&mut candidate), Ok(header("JPEG", 6000, 4000)));
+    assert_eq!(read_header(&mut candidate), Ok(header(6000, 4000)));
     assert!(candidate.reads <= 2, "{} reads", candidate.reads);
 }
 
@@ -644,7 +626,7 @@ fn jpeg_whose_segment_lengths_cross_a_window_boundary_gives_its_width_and_height
             &before,
             &frame(0xc0, 8, 640, 480)
         ))),
-        Ok(header("JPEG", 640, 480))
+        Ok(header(640, 480))
     );
 }
 
@@ -656,7 +638,7 @@ fn jpeg_read_three_bytes_at_a_time_gives_the_same_answer() {
             jpeg_with(&before, &frame(0xc0, 8, 6000, 4000)),
             3
         )),
-        Ok(header("JPEG", 6000, 4000))
+        Ok(header(6000, 4000))
     );
 }
 

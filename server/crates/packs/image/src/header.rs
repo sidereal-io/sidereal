@@ -1,7 +1,7 @@
-//! The header Operator: an image's format, width and height, read from its
-//! header by the decoders the `image` crate uses, called directly. It decodes
-//! no pixel data and ignores any EXIF orientation.
-use crate::{Format, FORMAT_FACET, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
+//! The header Operator: an image's width and height, read from its header by
+//! the decoders the `image` crate uses, called directly. It decodes no pixel
+//! data and ignores any EXIF orientation.
+use crate::{Format, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
 use sidereal_plugin_abi::{AssetContext, FacetValue, Operator, OperatorError};
 use std::io::{self, BufRead, Read, Seek, SeekFrom};
 
@@ -32,7 +32,7 @@ impl Operator for ReadHeader {
     }
 
     fn writes(&self) -> &[&str] {
-        &[FORMAT_FACET, WIDTH_FACET, HEIGHT_FACET]
+        &[WIDTH_FACET, HEIGHT_FACET]
     }
 
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
@@ -53,7 +53,6 @@ impl Operator for ReadHeader {
         .filter(|&(width, height)| width > 0 && height > 0)
         .ok_or_else(unreadable)?;
         for (name, value) in [
-            (FORMAT_FACET, FacetValue::Text(format.name().into())),
             (WIDTH_FACET, FacetValue::Integer(width.into())),
             (HEIGHT_FACET, FacetValue::Integer(height.into())),
         ] {

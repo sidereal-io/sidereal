@@ -10,9 +10,9 @@
 //! it.
 //!
 //! Its file-size Operator records how many bytes an Asset version holds, as
-//! the facet `image.file-size`. Its header Operator records an image's
-//! format and pixel dimensions, as `image.format`, `image.width` and
-//! `image.height`.
+//! the facet `image.file-size`. Its header Operator records an image's pixel
+//! dimensions, as `image.width` and `image.height`. The format is not a
+//! facet: the Source sets each version's media type from its bytes.
 
 mod header;
 
@@ -33,10 +33,6 @@ pub const FILE_SIZE_FACET: &str = "image.file-size";
 
 /// The id of the header Operator.
 pub const READ_HEADER: &str = "image.read-header";
-
-/// The facet the header Operator writes for an image's format: `PNG` or
-/// `JPEG`.
-pub const FORMAT_FACET: &str = "image.format";
 
 /// The facet the header Operator writes for an image's width in pixels.
 pub const WIDTH_FACET: &str = "image.width";
@@ -66,17 +62,6 @@ impl Pack for ImagePack {
             scope: FacetScope::AssetVersion,
         });
         registry.register_operator(Box::new(MeasureFileSize));
-        registry.declare_facet(FacetSchema {
-            name: FORMAT_FACET.into(),
-            label: "Format".into(),
-            value_type: FacetType::Choice(vec![
-                Format::Png.name().into(),
-                Format::Jpeg.name().into(),
-            ]),
-            unit: String::new(),
-            version: 1,
-            scope: FacetScope::AssetVersion,
-        });
         for (name, label) in [(WIDTH_FACET, "Width"), (HEIGHT_FACET, "Height")] {
             registry.declare_facet(FacetSchema {
                 name: name.into(),
@@ -113,7 +98,7 @@ impl Format {
         }
     }
 
-    /// The format's name, as `image.format` stores it.
+    /// The format's name, as the header Operator's failure reasons give it.
     fn name(self) -> &'static str {
         match self {
             Self::Png => "PNG",
