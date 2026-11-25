@@ -49,12 +49,17 @@ async function probe(): Promise<Found> {
   }
 }
 
-// A signed-in view with a new session signal, which becomes the current one.
+// A signed-in view and its session signal, which becomes the current one.
+// Every end of a signed-in view aborts its controller, so one not yet
+// aborted belongs to the view on screen. A second sign-in that answers then,
+// as after a double submit, keeps it: the Library stays mounted, and a pick
+// it started must still stop when the session ends.
 function signedInView(
   current: RefObject<AbortController | null>,
   username: string,
 ): View {
-  const session = new AbortController();
+  const live = current.current;
+  const session = live && !live.signal.aborted ? live : new AbortController();
   current.current = session;
   return { username, session };
 }

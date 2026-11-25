@@ -393,9 +393,11 @@ describe("Access", () => {
     type Held = ReturnType<typeof held>;
 
     // A server where sam is signed in, the list is empty, and every upload
-    // and sign-out waits for the test.
-    function heldServer() {
+    // and sign-out waits for the test. Signed out, it starts at the sign-in
+    // form, and every sign-in waits for the test too.
+    function heldServer({ signedIn = true } = {}) {
       const uploads: (Held & { name: string })[] = [];
+      const signIns: Held[] = [];
       const signOuts: (Held & { signal: AbortSignal | null | undefined })[] =
         [];
       const fetch = vi.fn((input: string, init?: RequestInit) => {
@@ -404,6 +406,16 @@ describe("Access", () => {
           const file = (init?.body as FormData).get("file") as File;
           const request = { ...held(), name: file.name };
           uploads.push(request);
+          return request.promise;
+        }
+        if (!signedIn && key === "GET /api/session") {
+          return Promise.resolve(
+            Response.json({ error: "unauthenticated" }, { status: 401 }),
+          );
+        }
+        if (!signedIn && key === "POST /api/session") {
+          const request = held();
+          signIns.push(request);
           return request.promise;
         }
         if (key === "DELETE /api/session") {
@@ -436,7 +448,12 @@ describe("Access", () => {
         if (!request) throw new Error("no sign-out was sent");
         return request;
       };
-      return { lists, sent, upload, signOut };
+      const signIn = (index: number) => {
+        const request = signIns.at(index);
+        if (!request) throw new Error(`sign-in ${String(index)} was not sent`);
+        return request;
+      };
+      return { lists, sent, upload, signOut, signIn };
     }
 
     const saved = () => Response.json({}, { status: 201 });
@@ -684,6 +701,41 @@ describe("Access", () => {
       });
       screen.getByRole("region", { name: "Library" });
       expect(screen.queryByText("Something went wrong")).toBeNull();
+    });
+
+    // Two presses of Sign in before either answers. The first answer shows
+    // the Library, and Nova picks files before the second answer comes.
+    it("stops a pick on sign-out after a second sign-in answers", async () => {
+      const server = heldServer({ signedIn: false });
+      render(<Access />);
+      await submit("Sign in");
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await waitFor(() => {
+        server.signIn(1);
+      });
+      const sam = () =>
+        Response.json({ username: "sam", role: "admin" }, { status: 200 });
+      await act(async () => {
+        server.signIn(0).answer(sam());
+        await server.signIn(0).promise;
+      });
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      await act(async () => {
+        server.signIn(1).answer(sam());
+        await server.signIn(1).promise;
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.sent()).toEqual(["a.png"]);
     });
 
     it("gives a new sign-in a fresh session signal", async () => {
