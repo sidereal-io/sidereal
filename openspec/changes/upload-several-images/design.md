@@ -14,8 +14,12 @@ All of this change is in the library screen, `web/src/Library.tsx`. Today:
 - `sendingRef` blocks a second choice while a request is open. The Upload
   button is disabled while the state is `sending`.
 - `uploadsRef` holds an `AbortController` that is aborted when the Library
-  unmounts. `Access.tsx` unmounts the Library when Nova signs out or the
-  session ends, so an aborted signal means "the session ended".
+  unmounts. `Access.tsx` unmounts the Library once it knows the session has
+  ended: the sign-out has answered 204 or 401, a library request has called
+  `onSessionLost`, or the events connection has reported the end. It keeps
+  the Library mounted while the sign-out request is pending, and after a
+  sign-out that fails. So an aborted signal means "the screen knows the
+  session ended", which is the moment D12 names.
 - A saved file or a lost answer bumps `generation`, which loads the list
   again. The list effect aborts the previous list request on each bump.
 
@@ -49,7 +53,11 @@ The server keeps one file per request (D1), so nothing changes outside
 - **Existing seams reused:** `stubServer` and `deferred` in
   `Library.test.tsx`. `stubServer` gains one way to say "this turn gets no
   answer", so one list of answers can mix 201, 409, 415 and a lost answer
-  in the order the files are sent. The end-to-end journey in
+  in the order the files are sent. The sign-out during a pick is tested
+  through `Access` in `web/src/Access.test.tsx`, because only `Access` holds
+  the pending sign-out: it renders `Access` with a stubbed `fetch` whose
+  upload and `DELETE /api/session` answers the test releases. The end-to-end
+  journey in
   `web/e2e/upload.spec.ts` picks its two fixture images in one pick, which
   proves the browser's `multiple` picker reaches the same code.
 
@@ -57,7 +65,8 @@ The server keeps one file per request (D1), so nothing changes outside
 
 - **Tier:** low
 - **Blast radius:** the library screen in `web/` (`Library.tsx`,
-  `Library.css` and their tests), the upload end-to-end test, and the
+  `Library.css` and their tests), one new test in `Access.test.tsx`, the
+  upload end-to-end test, and the
   Library section of `DESIGN.md`. No API, schema, server, session or
   authorization code changes.
 
@@ -101,7 +110,27 @@ waiting lines, then for each file:
 After the last file, it clears `sendingRef`. A sequential `for … of` with
 `await` gives the one-at-a-time order (D2) without a queue object.
 
+The loop stops sending exactly when the signal is aborted, which is when
+`Access` unmounts the Library (see Context). While a sign-out is pending the
+loop goes on (D12). A file sent then reaches the server's session guard
+([ADR-015](../../../docs/decisions/ADR-015-opaque-database-sessions.md)),
+which either saves it under the still-valid session or answers 401. A 401
+takes step 4. When the sign-out then answers, the abort also ends the
+request in flight, and step 3 drops its result. No new sign-out state is
+needed in `Library`.
+
 Alternative: send all files at once with `Promise.all`. Rejected by D2.
+
+### The list reloads after a saved file or a lost answer
+
+Step 5 bumps `generation`, and the list effect loads the list once for each
+`generation` value that React commits. React can batch two bumps that come
+in the same task into one render, so two answers that come back together
+can share one load. The spec allows this (D13): it asks for a load that
+starts after each saved file or lost answer, not one load per answer. So no
+counter or forced load per answer is added. The tests release answers one
+at a time with `deferred`, and wait for each answer's line before the next,
+so each counted load belongs to one answer.
 
 ### Upload is disabled while any line is waiting or sending
 
@@ -151,6 +180,14 @@ the screen can change again freely. No ADR is needed.
   next pick clears them.
 - [Upload stays disabled for the whole of a long pick (D4).] → Accepted for
   now. Each line shows which file is on its way and how many wait.
+- [Each saved file reloads the whole list, and the list has no paging
+  (D6, D10).] → Accepted. A pick of n files that are all saved can start up
+  to n list requests, and each one returns the whole, growing library. The
+  list effect aborts the browser's previous list request on each bump, but
+  the server may already be answering it, so the server's work is not
+  saved. Answers that come back together may share one load (D13), which
+  lowers the count only by chance. Paging the list, or one load at the end
+  of a pick, is for a later change.
 - [A list reload after each saved file could race the next file's answer.]
   → The list effect already aborts its previous request on each
   `generation` bump, so only the newest list shows.

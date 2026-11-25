@@ -12,9 +12,7 @@
 
 The signed-in view SHALL show one `Upload` button that opens the file picker
 for one or more PNG or JPEG files. Choosing files SHALL start their upload at
-once. The view SHALL send the chosen files one at a time, in the order
-picked, as one upload request each. It SHALL send a file only after the file
-before it has an answer or has ended without one. Each committed image SHALL
+once, as "The chosen files go one at a time" says. Each committed image SHALL
 show with its name, as text, and its original. Each saved file SHALL refresh
 the library without a page reload. Health, username, sign-out and
 event-socket behavior SHALL stay as they are, and the view SHALL follow
@@ -23,11 +21,6 @@ DESIGN.md.
 #### Scenario: First upload appears
 - **WHEN** Nova presses Upload, chooses `nebula.png`, and the server accepts it
 - **THEN** the library shows `nebula.png` and its image without reloading
-
-#### Scenario: Files go in turn
-- **WHEN** Nova picks `a.png`, `b.png` and `c.png` in one pick, and the server answers each upload only when the test says so
-- **THEN** exactly one upload request is pending at any time
-- **AND** the requests carry `a.png`, then `b.png`, then `c.png`, each as the only file in its request
 
 #### Scenario: Several new images appear
 - **WHEN** Nova picks `nebula.png` and `m31.jpg` in one pick, and the server accepts both
@@ -67,27 +60,57 @@ be able to choose and upload other files.
 - **THEN** the Upload button is enabled and the list is not requested again
 
 #### Scenario: A repeat in the middle of a pick
-- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, and the server answers 201, then 409, then 201
-- **THEN** the list is requested three times in all: once when the library opens, once after `a.png` and once after `c.png`
+- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, and the test releases the answers 201, 409 and 201 one at a time, each only after the screen shows the line for the answer before it
+- **THEN** a list request starts after the answer for `a.png` and another after the answer for `c.png`
+- **AND** no list request starts between the answer for `b.png` and the answer for `c.png`
 
 ## ADDED Requirements
+
+### Requirement: The chosen files go one at a time
+
+The library screen SHALL send the chosen files one at a time, in the order
+picked, as one upload request each. It SHALL send a file only after the file
+before it has an answer or has ended without one.
+
+#### Scenario: Files go in turn
+- **WHEN** Nova picks `a.png`, `b.png` and `c.png` in one pick, and the server answers each upload only when the test says so
+- **THEN** exactly one upload request is pending at any time
+- **AND** the requests carry `a.png`, then `b.png`, then `c.png`, each as the only file in its request
+
+### Requirement: The list loads again after a saved file or a lost answer
+
+After each saved file, and after each file whose upload ended without an
+answer, the library screen SHALL start a list request without a page reload.
+Answers that come back before that request starts MAY share it. A 409 SHALL
+start none, as "A repeat upload does not load the list again" says.
+
+#### Scenario: A lost answer in the middle of a pick
+- **WHEN** Nova picks `a.png` and `b.png`, the upload of `a.png` ends without an answer, and the upload of `b.png` is pending
+- **THEN** a list request has started after the lost answer for `a.png`, before `b.png` has its answer
 
 ### Requirement: Each chosen file has a line that shows its progress
 
 The library screen SHALL show one line for each file in the current pick, in
 the order picked. A file not yet sent SHALL read `<name> is waiting.` A file
 on its way SHALL read `Uploading <name>…`. A saved file SHALL read
-`<name> was uploaded.` A refused file, a file already in the library, and a
-file whose upload ended without an answer SHALL read the messages that
-"Upload refusals are clear and recoverable", "The library screen says when
-an image is already there" and "A lost upload answer says another upload is
-safe" define. Each line SHALL stay until Nova next picks files. The next pick
-SHALL replace every line with the lines of its own files. A pick of one file
-SHALL follow the same rules. Every name SHALL appear as text only.
+`<name> was uploaded.` Any other file SHALL read the message for its answer:
+"A refused file's line says why", "The library screen says when an image is
+already there" and "A lost upload answer says another upload is safe" define
+them. Every name SHALL appear as text only.
 
 #### Scenario: Lines while the second file uploads
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, the server accepts `a.png`, and the upload of `b.png` is pending
 - **THEN** the screen shows `a.png was uploaded.`, `Uploading b.png…` and `c.png is waiting.`, in that order
+
+#### Scenario: A waiting filename contains markup
+- **WHEN** Nova picks `a.png` and `<b>m42</b>.png`, and the upload of `a.png` is pending
+- **THEN** the screen shows `<b>m42</b>.png is waiting.` as literal text and no `b` element
+
+### Requirement: A pick's lines stay until the next pick
+
+Each line SHALL stay until Nova next picks files. The next pick SHALL replace
+every line with the lines of its own files. A pick of one file SHALL follow
+the same rules.
 
 #### Scenario: One file's line stays after its answer
 - **WHEN** Nova picks only `nebula.png`, and the server accepts it
@@ -97,9 +120,18 @@ SHALL follow the same rules. Every name SHALL appear as text only.
 - **WHEN** every file in Nova's pick of `a.png` and `b.png` has an answer, and Nova then picks `c.png`
 - **THEN** the screen shows a line for `c.png` and no line for `a.png` or `b.png`
 
-#### Scenario: A waiting filename contains markup
-- **WHEN** Nova picks `a.png` and `<b>m42</b>.png`, and the upload of `a.png` is pending
-- **THEN** the screen shows `<b>m42</b>.png is waiting.` as literal text and no `b` element
+### Requirement: A refused file's line says why
+
+A refused file's line SHALL read `<name> was not uploaded: <reason>`. The
+`<reason>` SHALL be `it is larger than the 100 MiB limit.` for 413,
+`only PNG and JPEG images are supported.` for 415,
+`choose one PNG or JPEG file and try again.` for 400, and
+`the server could not save it. Try again later.` for any other refusal.
+These are the words the screen shows for a refusal today.
+
+#### Scenario: Each kind of refusal
+- **WHEN** Nova picks `a.png`, `b.png`, `c.png` and `d.png`, and the server answers 413, 415, 400 and 503
+- **THEN** the lines read `a.png was not uploaded: it is larger than the 100 MiB limit.`, `b.png was not uploaded: only PNG and JPEG images are supported.`, `c.png was not uploaded: choose one PNG or JPEG file and try again.` and `d.png was not uploaded: the server could not save it. Try again later.`, in that order
 
 ### Requirement: One file's answer does not stop the others
 
@@ -129,14 +161,31 @@ its answer, the Upload button SHALL be enabled again.
 
 ### Requirement: Ending the session stops the files not yet sent
 
-When the session ends while files in a pick are still waiting, the library
-screen SHALL NOT send them. The library and every file's line SHALL be
+Once the library screen knows the session has ended, it SHALL NOT send any
+more files of the pick. The screen knows when Nova's sign-out has answered
+204 or 401, when an upload or list request answers 401, or when the events
+connection says the session ended. An upload that answers 401 SHALL move the
+screen to the sign-in form. The library and every file's line SHALL be
 hidden, as "Ending the session hides library data" requires.
 
 #### Scenario: An upload answers 401
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, and the upload of `a.png` answers 401
-- **THEN** the screen reports the lost session, and no upload request is sent for `b.png` or `c.png`
+- **THEN** the screen moves to the sign-in form, and no upload request is sent for `b.png` or `c.png`
+
+### Requirement: A pending sign-out does not stop the pick
+
+Until the screen knows the session has ended, it SHALL go on sending the
+files in turn, including while a sign-out is still pending. A file sent then
+is either saved under the session, which is still valid, or refused by the
+server with 401. A sign-out that fails leaves the session, so the pick SHALL
+go on.
 
 #### Scenario: Nova signs out during a pick
-- **WHEN** Nova picks `a.png` and `b.png`, and signs out while the upload of `a.png` is pending
-- **THEN** the library and the lines disappear, no upload request is sent for `b.png`, and a later answer for `a.png` shows nothing
+- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `a.png` is pending, `a.png` answers 201 while the sign-out is still pending, and the sign-out answers 204 while the upload of `b.png` is pending
+- **THEN** the screen shows the sign-in form, and the library and the lines are gone
+- **AND** upload requests were sent for `a.png` and `b.png` only, and no request is sent for `c.png`
+- **AND** a later answer for `b.png` shows nothing and starts no list request
+
+#### Scenario: A failed sign-out leaves the pick going
+- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, and the sign-out answers 500
+- **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and both files get their lines

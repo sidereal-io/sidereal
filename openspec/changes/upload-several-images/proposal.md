@@ -15,12 +15,19 @@ alone.
   lost answer each keep a line until Nova next picks files (D3, D5, D9). A
   pick of one file is not a special case (D11).
 - One file's refusal, 409 or lost answer does not stop the files after it
-  (D8). There is no limit on how many files a pick holds (D10).
+  (D8). There is no limit on how many files a pick holds (D10). Only one
+  upload is open at a time, but each saved file reloads the whole list, and
+  that cost is accepted.
 - Upload stays disabled until every chosen file has an answer (D4). This
   replaces the rule that another file can be chosen at once after a 409.
 - The list reloads after each saved file and after each file that got no
-  answer. A file found already in the library reloads nothing (D6).
-- When the session ends, files not yet sent are not sent (D7).
+  answer. Answers that come back before that reload starts may share it. A
+  file found already in the library reloads nothing (D6, D13).
+- Once the screen knows the session has ended, files not yet sent are not
+  sent (D7). It knows when the sign-out has answered, a request has answered
+  401, or the events connection says so. Until then the pick goes on, and the
+  server's session check refuses any file sent after the session is gone
+  (D12).
 - Cut from the story: a percentage of bytes sent. Out, as the story says:
   drag and drop, and folder upload (#358).
 
@@ -47,7 +54,8 @@ None.
 - `web/src/Library.tsx`: the picker takes several files, a queue sends them
   in turn, and the single upload state becomes a list of per-file lines.
 - `web/src/Library.css`: the per-file lines, from existing tokens.
-- `web/src/Library.test.tsx` and `web/e2e/upload.spec.ts`: tests for several
-  files, and the tests whose rules change.
+- `web/src/Library.test.tsx`, `web/src/Access.test.tsx` and
+  `web/e2e/upload.spec.ts`: tests for several files, a sign-out during a
+  pick, and the tests whose rules change.
 - `DESIGN.md`: the Library's upload wording says files, not a file.
 - No server, API, database or dependency change.
