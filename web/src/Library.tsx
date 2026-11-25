@@ -209,7 +209,7 @@ function Library({
   // One line for each file of the last pick, in pick order.
   const [lines, setLines] = useState<Line[]>([]);
   const pickerRef = useRef<HTMLInputElement>(null);
-  // Set while a file is on its way, so a second choice sends nothing.
+  // Set while a pick is on its way, so a second choice sends nothing.
   const sendingRef = useRef(false);
   // Aborted when the Library goes away, so a late answer changes nothing.
   const uploadsRef = useRef<AbortController>(null);
@@ -235,6 +235,11 @@ function Library({
       controller.abort();
     };
   }, [generation, onSessionLost]);
+
+  // Upload waits until every file of the pick has its answer.
+  const busy = lines.some(
+    (line) => line.kind === "waiting" || line.kind === "sending",
+  );
 
   // Sends the files of one pick in turn, each only after the one before it
   // has an answer or has ended without one.
@@ -291,7 +296,7 @@ function Library({
         <button
           className="button-primary"
           type="button"
-          disabled={lines.some((line) => line.kind === "sending")}
+          disabled={busy}
           onClick={() => pickerRef.current?.click()}
         >
           Upload

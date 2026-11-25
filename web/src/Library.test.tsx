@@ -566,28 +566,33 @@ describe("Library", () => {
     });
 
     it("shows the filename while pending and sends no second request", async () => {
-      const pending = deferred();
-      const fetch = vi.fn((_input: string, init?: RequestInit) =>
-        init?.method === "POST"
-          ? pending.promise
-          : Promise.resolve(Response.json({ assets: [] })),
-      );
-      vi.stubGlobal("fetch", fetch);
+      const { fetch } = heldUploads(2);
       showLibrary();
       const upload = await screen.findByRole("button", { name: "Upload" });
-      choose(png());
-      await screen.findByText("Uploading nebula.png…");
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
       expect(upload.hasAttribute("disabled")).toBe(true);
       fireEvent.click(upload);
-      choose(png());
+      choose(named("c.png"));
       expect(uploads(fetch)).toHaveLength(1);
-      await act(async () => {
-        pending.answer(Response.json({ asset: nebula }, { status: 201 }));
-        await pending.promise;
-      });
-      await waitFor(() => {
-        expect(upload.hasAttribute("disabled")).toBe(false);
-      });
+      expect(lines()).toEqual(["Uploading a.png…", "b.png is waiting."]);
+    });
+
+    it("enables Upload only once every file of the pick has its answer", async () => {
+      const { fetch, release } = heldUploads(2);
+      showLibrary();
+      const upload = await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await screen.findByText("a.png was uploaded.");
+      expect(upload.hasAttribute("disabled")).toBe(true);
+      expect(uploads(fetch)).toHaveLength(2);
+      await release(1, new Response(null, { status: 415 }));
+      await screen.findByText(
+        "b.png was not uploaded: only PNG and JPEG images are supported.",
+      );
+      expect(upload.hasAttribute("disabled")).toBe(false);
     });
 
     it("shows the new image after success, without a page reload", async () => {
