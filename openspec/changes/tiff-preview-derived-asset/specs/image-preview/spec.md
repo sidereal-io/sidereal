@@ -67,7 +67,7 @@ SHALL ignore every later image in a TIFF.
 ### Requirement: The preview Operator decodes these TIFF types
 
 The preview Operator SHALL decode the first image in classic TIFF or BigTIFF
-of either byte order when it has interleaved grayscale (black is zero) or
+of either byte order when it has interleaved grayscale or
 RGB samples in strips or tiles. It SHALL support unsigned 8-bit or 16-bit
 integers and 32-bit floats, uncompressed or with LZW, Deflate or PackBits.
 A predictor SHALL be absent or suit the codec and samples: horizontal
@@ -76,6 +76,10 @@ for unsigned integers, floating-point for floats.
 #### Scenario: A big-endian BigTIFF
 - **WHEN** core runs the preview Operator over a stored big-endian BigTIFF version that holds one 16-bit RGB image, compressed with Deflate
 - **THEN** its run is `succeeded` and the version has a preview
+
+#### Scenario: A white-is-zero TIFF
+- **WHEN** core runs the preview Operator over a white-is-zero 8-bit grayscale TIFF with regions whose sample values are 0 and 255
+- **THEN** the preview decodes to regions within 8 of white and black, respectively
 
 #### Scenario: An LZW TIFF with a predictor
 - **WHEN** core runs the preview Operator over a stored little-endian TIFF version that holds one 8-bit RGB image in tiles, compressed with LZW with a horizontal predictor
@@ -171,6 +175,14 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 - **WHEN** core runs the preview Operator over a baseline JPEG that ends without its end-of-image marker
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
+#### Scenario: A baseline JPEG ends before all components
+- **WHEN** core runs the preview Operator over a three-component baseline JPEG whose EOI follows only the first component scan
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+
+#### Scenario: A PNG has pixels but no IEND
+- **WHEN** core runs the preview Operator over a PNG whose complete image data is followed by an ancillary chunk and no IEND
+- **THEN** its run is `failed` with the reason `the PNG image could not be decoded`
+
 #### Scenario: Bytes that do not match the media type
 - **WHEN** core runs the preview Operator over a stored version whose media type is `image/tiff` and whose bytes are a PNG
 - **THEN** its run is `failed` with the reason `the TIFF image could not be decoded`
@@ -202,10 +214,13 @@ SHALL come before the memory limit.
 The preview Operator SHALL limit each decode to 512 MiB (536,870,912 bytes),
 including pixels, metadata and scratch space. If the header shows that
 the decoded pixels cannot fit, it SHALL reject the image before pixel
-decoding. During
-decoding, it SHALL refuse any allocation that would exceed the budget.
+decoding. During decoding, it SHALL refuse any allocation that would exceed the budget.
 Core SHALL record the run `failed` with the reason
 `the image needs more than 512 MiB to decode`.
+
+#### Scenario: A TIFF fits the budget despite its large output buffer
+- **WHEN** core runs the preview Operator over a valid 16,384 by 6,400 RGB8 TIFF whose decode fits the budget
+- **THEN** the preview run is `succeeded` and the version has a preview at the original dimensions
 
 #### Scenario: A TIFF just over the limit
 - **WHEN** core runs the preview Operator over a stored 16-bit RGB TIFF version whose header gives 15,000 by 6,000 pixels (540,000,000 bytes of decoded pixels)
@@ -240,6 +255,18 @@ accept later requests and SHALL NOT publish a partial preview.
 - **WHEN** a preview decoder stops unexpectedly after returning part of a JPEG
 - **THEN** core records its preview run as failed and publishes no preview for the original
 - **AND** a later valid upload can complete with a preview
+
+### Requirement: A stalled preview run releases the preview slot
+
+The preview Operator SHALL stop a decoder that has not exited after two
+minutes. Core SHALL record the preview run as `failed` with the reason
+`the preview decoder timed out`. The server SHALL keep the original and
+allow the next preview to run.
+
+#### Scenario: A stalled preview decoder
+- **WHEN** a preview decoder is still alive at its deadline, even if its output has closed
+- **THEN** the preview run is `failed` with the timeout reason
+- **AND** a later valid upload completes with a preview
 
 ### Requirement: A preview gets no runs of its own
 

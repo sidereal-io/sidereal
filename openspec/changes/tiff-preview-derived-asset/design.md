@@ -421,39 +421,55 @@ it sets up, and the header run must succeed for every TIFF (D4).
   seekable file as standard input and the recorded media type as an argument.
   It receives no storage path or inherited environment. It writes JPEG chunks
   to standard output. The runner drains them through a bounded buffer into
-  the context's staging output. A bounded read handoff lets it detect
-  cancellation even when the child emits no bytes. On cancellation, failure
-  or rejected output, kill and reap the helper and discard the staging.
-  Accept the output only after a successful exit. A parent exit closes a
-  liveness pipe watched by the helper, so a child that has no output yet
-  still terminates if its supervisor disappears.
-- **Packaging.** The helper is a Rust binary in the server package that calls
-  the image pack for decoding. Build and ship it beside the server in the
-  container. Resolve it from the server executable's directory. The dev
-  launcher builds both binaries before starting the server. Document the
-  same prerequisite for manual builds. Integration tests
-  locate the Cargo-built helper and exercise the same runner as production.
-- **Memory ceiling.** Only the helper installs the budget allocator. Its
-  ceiling is 512 MiB for the whole preview job, covering input buffering,
-  decoded pixels, directory and marker data, scratch and encoding. Reserve
-  16 MiB within that ceiling for the worker's fixed overhead and thread
-  stacks. Charge live Rust allocations against the rest before requesting
-  them from the system, including both buffers during reallocations.
-  Charge from process start and use a dedicated, allocation-free exit
-  status on budget exhaustion. Run single-threaded decode and encode with
-  the one fixed-stack liveness watcher. Keep dependencies on the Rust
-  allocator. On Linux also set a 512 MiB address-space limit before
-  entering the codecs. The accounting allocator supplies the same
-  application-level budget on macOS without relying on that OS limit.
+  the context's staging output. Discard standard error. Only the supervisor
+  keeps the write end of a liveness pipe, and the helper exits when its read
+  end reaches EOF. Start a 120-second deadline at spawn. Check the deadline
+  and cancellation while waiting for output and while waiting for exit
+  after stdout closes. Kill and reap the helper on cancellation, deadline
+  or output failure. Accept staged output only after EOF and a successful,
+  reaped exit. Hold the preview permit until the supervisor is done.
+- **Packaging.** Build and ship the helper beside the server. Resolve it
+  from the server executable's directory. The dev launcher builds both
+  binaries before starting the server. Document the same prerequisite for
+  manual builds. Run the database-free helper integration suite on
+  `ubuntu-latest` and `macos-15` in CI's `preview-worker` job. Run a
+  preview smoke test as the shipped container user in `instance-verify`.
+  Run `scripts/dev-supervisor-check.sh` after changing the launch command.
+- **Decoder memory ceiling.** Request a 2 MiB decoder-thread stack.
+  Before reading input, get the stack size from the operating system and
+  charge the full reported size, including platform rounding. Refuse
+  startup if that size is unavailable, zero or greater than 4 MiB.
+  Subtract it from 512 MiB and round the remainder down to an OS page
+  boundary. Map that remainder once for the fixed-capacity heap.
+  Refuse to enter the decoder if the mapping fails. Every Rust allocation
+  on that thread, including zeroed allocations and growth, uses
+  `linked_list_allocator::Heap` over the mapping. Free-list records,
+  alignment and simultaneous old and new buffers occupy the same mapping.
+  There is no fallback from the mapping to the system allocator.
+  Allocation refusal exits with the budget status without allocating.
+  All byte-dependent work, including metadata parsing, decoder
+  construction, conversions, and encoding, stays on this one thread.
+  The file and output buffers used by those operations are also charged
+  to it. The bootstrap and liveness watcher use fixed-size state and never
+  receive candidate bytes. Executable mappings and this fixed supervisor
+  state are process overhead outside the decoder working-memory budget.
+  Keep codecs and their dependencies on the Rust allocator with no native
+  codec, worker threads or separate mappings. Review that property when
+  dependencies or codec features change.
 - **Preflight.** From bounded headers, check the dimensions (each side at
   most 65,500) and that the minimum known pixel allocation fits the
   available allocation budget, using checked arithmetic before invoking
   a pixel decoder. Reject incompatible TIFF
-  types here. The helper's budget also covers allocations after preflight,
+  types after checking dimensions and before constructing the decoder.
+  Read dimensions before metadata that may need heap space. The helper's
+  budget also covers allocations after preflight,
   including the TIFF constructor, predictor scratch, multiple-scan
-  baseline and progressive JPEGs and metadata between scans. Keep library
-  limits where they offer a tighter bound. No separate allowance is added
-  on top of the 512 MiB.
+  baseline and progressive JPEGs and metadata between scans. Set PNG's
+  resource limit and TIFF's decoding and intermediate buffer limits to
+  the arena capacity so codec defaults do not reject supported layouts.
+  The arena enforces the combined limit. A codec limit refusal maps to the
+  budget reason. An operating-system failure outside an explicit budget
+  refusal maps to the worker failure reason.
 - **TIFF.** Read only width and height for the host header Operator.
   The helper reads preview eligibility tags separately, with a small
   limit on arrays of sample properties. Check strip and tile offset and
@@ -461,31 +477,42 @@ it sets up, and the header run must succeed for every TIFF (D4).
   These layout arrays use the memory budget and can exceed 64 entries.
   Accept absent Predictor or `1` for no prediction, `2` for unsigned
   integers and `3` for floats where compatible with the compression.
-  Use `tiff` with only its LZW and Deflate features enabled.
+  Accept white-is-zero along with black-is-zero. Let the TIFF decoder
+  invert white-is-zero pixels before scaling to 8-bit. Use `tiff` with
+  only its LZW and Deflate features enabled.
 - **JPEG and PNG.** Keep JPEG's 8 MiB bound for frame-header reads, then
   rewind to the full input with explicit zune-jpeg dimension options and
   strict mode. Verify that the first image ends with an EOI marker at a
   valid scan boundary, respecting segment lengths, byte stuffing and
-  restart markers. Keep PNG's `EXPAND` with 16-bit samples and enable
-  the decoder's resource limits.
+  restart markers. Require every baseline frame component in a completed
+  scan before accepting EOI. Keep PNG's `EXPAND` with 16-bit samples and
+  call `Reader::finish()` after decoding so the file must reach IEND.
 - **Preview output.** Decode into one `Pixels` buffer. `Rows` maps each
   row to 8-bit Luma or RGB according to the spec. Encode a quality-90
   baseline JPEG with 4:4:4 sampling and standard Huffman tables. Stream it
   without buffering a whole JPEG. An unexpected helper exit is a preview
   failure and never completes the proposal. Separate exit statuses identify
   a decode budget rejection, unsupported TIFF, oversized dimensions and
-  invalid image data. The host distinguishes candidate read failure,
-  cancellation and output storage failure using the existing context.
-- **Tests.** Run the real helper at a smaller, injected budget on Linux
-  and macOS. Verify the fixed reserve and budget on both in the worker
-  integration tests. Prove budget exhaustion can occur before the TIFF constructor
-  completes and during a decode. Separately, stop a test helper after some bytes are staged.
-  Assert that the next preview succeeds and that no failed output is published. Test the
-  allocator's accounting for reallocations. Test a TIFF with more than 64
-  tiles, floating-point strips and padded tiles, and an incompatible
-  predictor. Test a baseline JPEG with multiple component scans, APP
-  metadata between scans, and a missing EOI. For header preflight rejection,
-  instrument entry to pixel decoding and use an input with actual pixel data.
+  invalid image data. Use the spec's failure reason for each status.
+  Report the first host failure that caused shutdown even if the process
+  later exits with a signal. A candidate read error records
+  `the stored file could not be read`, deadline records
+  `the preview decoder timed out`, and other unexpected exits record
+  `the preview decoder stopped`. Cancellation and output write failure
+  preserve their existing context and core reasons.
+- **Tests.** In the worker integration suite, test with a smaller mapping
+  and assert the allocator refuses an oversized zeroed allocation and
+  overlapping growth. Check stack sizes on both platforms. Test real
+  budget exhaustion during TIFF construction and decode. Exercise a
+  helper that stalls before output, closes stdout and stalls, or fails
+  after returning some bytes. In every case verify that the next preview
+  can run and no failed output is published. Cover white-is-zero,
+  floating-point strips and padded tiles, more than 64 tiles, an
+  incompatible predictor, and a valid TIFF whose pixels exceed 256 MiB.
+  Test JPEG separate component scans, inter-scan metadata, missing EOI and
+  EOI before all baseline components. Test PNG with complete pixels but
+  missing IEND. For a preflight refusal, instrument entry to pixel
+  decoding and use an input with actual pixel data.
 
 ### 9. The server runs one preview at a time and passes the Source's refusal on
 
@@ -541,7 +568,8 @@ types. It is more API than one picker needs today.
 ## Risks / Trade-offs
 
 - [A codec uses memory before a caller limit applies or during pixel decode]
-  → the helper charges allocations from process entry, and its exit cannot
+  → the decoder performs all file-dependent allocations inside its fixed
+  arena, and the helper's exit cannot
   publish a partial preview or interrupt the server.
 - [Copying input to a seekable temporary file costs I/O and disk space]
   → copy in fixed chunks, keep at most one copy per running preview and
@@ -549,7 +577,8 @@ types. It is more API than one picker needs today.
 - [Several uploads at once each decode a large image] → decision 9 allows one
   preview run at a time per server.
 - [A large TIFF makes the upload's answer late (D7)] → the web keeps the
-  file's line at `Uploading` until the answer comes; no timeout is added.
+  file's line at `Uploading` until the answer comes. The helper has a
+  deadline so later previews can proceed.
 - [Every new upload stores a second object (D1)] → accepted. A JPEG at
   quality 90 is usually much smaller than a 16-bit TIFF.
 - [A JPEG original loses a little quality in its preview] → accepted:

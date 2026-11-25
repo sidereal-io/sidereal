@@ -29,8 +29,10 @@ and an exit status. The host stages the bytes through the Asset context
 and publishes them only after success.
 
 The helper enforces its memory budget from the start of decoding. It
-charges live allocations, including scratch space and overlapping
-allocations during growth, before granting them. It reports budget
+gives all decoding and encoding work one bounded stack and one
+fixed-capacity heap. Pixels, metadata, scratch, and allocator overhead
+share that heap. The helper runs file-dependent code only inside this
+boundary, and the heap has no fallback. It reports budget
 exhaustion with a dedicated exit status. The host treats any other
 unexpected exit as a failed run and discards the staged output.
 
@@ -46,8 +48,8 @@ unexpected exit as a failed run and discards the staged output.
   path or database credentials. Core still grants access and owns all
   persistent writes.
 - The packaging and tests must include the helper wherever the server
-  runs. The host must reap it on cancellation and check its exit status
-  before accepting any bytes it returned.
+  runs. The host must reap it on cancellation or timeout and check its
+  exit status before accepting any bytes it returned.
 
 ## Alternatives Considered
 
