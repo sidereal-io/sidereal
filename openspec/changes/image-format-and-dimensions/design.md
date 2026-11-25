@@ -10,9 +10,12 @@
   the file's signature, not its name, and refuses bytes that are not PNG or
   JPEG. Core reads it into `AssetRecord.version.media_type`
   (`server/crates/core/src/assets.rs`). No response returns it yet.
-- Under ADR-008 one pack owns a facet's schema, and only it may write the
-  facet. A format facet owned by `packs/image` could therefore never hold
-  FITS or XISF from `packs/astro` (D3).
+- Under ADR-008 one pack owns a facet's schema, and the schema fixes the
+  facet's type, which for a closed choice includes its list of allowed
+  values. Another pack may write values under that schema only with a
+  producer grant, and only values the schema allows. So `packs/astro` could
+  record FITS or XISF in a format facet owned by `packs/image` only if
+  `packs/image` listed them (D3).
 - `server/crates/packs/image/src/lib.rs` has the Source and the file-size
   Operator `image.measure-file-size`. The pack depends on `plugin-abi` and no
   other Sidereal crate, and `server/scripts/check-arch.sh` enforces that. A
