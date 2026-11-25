@@ -38,3 +38,9 @@ They run in order.
   `view.session.signal` to `Library`. `sessionRef` still points at the
   current view's controller, set in the same call that makes the view, so
   `signOut` and `sessionLost` abort it as the design says.
+- 2026-11-24, task 2.3: strict `openspec validate` failed the gate on the
+  delta requirement "A pending sign-out does not stop the pick": its text
+  was over 500 characters. Its last sentence, about a sign-out answer that
+  arrives after its signed-in view has ended, is now the requirement "A late
+  sign-out answer changes nothing", with the two late-answer scenarios under
+  it. Every sentence and scenario keeps its words, so no guarantee changes.

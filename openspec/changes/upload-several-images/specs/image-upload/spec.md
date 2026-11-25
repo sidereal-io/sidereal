@@ -189,9 +189,7 @@ the session once, when each request arrives. So a file it admits gets its
 usual answer, and a file that arrives after the session is gone gets 401,
 which ends the pick as "Ending the session stops the files not yet sent"
 says. A sign-out that fails or gets no answer tells the screen nothing about
-the session, so the pick SHALL go on. A sign-out answer that arrives after
-the signed-in view it came from has ended SHALL change nothing: it SHALL NOT
-stop any file, change the view or show a notice.
+the session, so the pick SHALL go on.
 
 #### Scenario: Nova signs out during a pick
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `a.png` is pending, `a.png` answers 201 while the sign-out is still pending, and the sign-out answers 204 while the upload of `b.png` is pending
@@ -210,6 +208,12 @@ stop any file, change the view or show a notice.
 #### Scenario: A sign-out with no answer, then an upload answers 401
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `a.png` is pending, the sign-out request ends without an answer, `a.png` answers 201, and `b.png` answers 401
 - **THEN** the screen shows the sign-in form, and no upload request is sent for `c.png`
+
+### Requirement: A late sign-out answer changes nothing
+
+A sign-out answer that arrives after the signed-in view it came from has
+ended SHALL change nothing: it SHALL NOT stop any file, change the view or
+show a notice.
 
 #### Scenario: A late sign-out answer leaves the next sign-in alone
 - **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, the events connection says the session ended before the sign-out answers, Nova signs in again and picks `c.png` and `d.png`, the old sign-out answers 204 while the upload of `c.png` is pending, and the uploads of `c.png` and `d.png` both answer 201
