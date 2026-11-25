@@ -11,9 +11,12 @@ import Library from "./Library.tsx";
 
 type Answer = [status: number, body?: unknown];
 
-// One answer, or a list of answers given in turn (the last one repeats).
+// A turn in a list of answers that gets no answer, like a network error.
+const noAnswer = Symbol("no answer");
+
+// One answer, or a list of turns given in turn (the last one repeats).
 // A request with no answer fails like a network error.
-type Answers = Partial<Record<string, Answer | Answer[]>>;
+type Answers = Partial<Record<string, Answer | (Answer | typeof noAnswer)[]>>;
 
 function stubServer(answers: Answers) {
   const asked = new Map<string, number>();
@@ -23,10 +26,14 @@ function stubServer(answers: Answers) {
     if (!entry) return Promise.reject(new TypeError("network error"));
     const turn = asked.get(key) ?? 0;
     asked.set(key, turn + 1);
-    const list = (
-      Array.isArray(entry[0]) ? entry : [entry]
-    ) as readonly Answer[];
-    const [status, body] = list[Math.min(turn, list.length - 1)];
+    const list = (typeof entry[0] === "number" ? [entry] : entry) as readonly (
+      Answer | typeof noAnswer
+    )[];
+    const answer = list[Math.min(turn, list.length - 1)];
+    if (answer === noAnswer) {
+      return Promise.reject(new TypeError("network error"));
+    }
+    const [status, body] = answer;
     return Promise.resolve(
       body === undefined
         ? new Response(null, { status })
@@ -61,8 +68,11 @@ const listAnswer = (...assets: unknown[]): Answer => [200, { assets }];
 
 const button = (name: string) => screen.queryByRole("button", { name });
 
-function showLibrary(onSessionLost = vi.fn()) {
-  render(<Library onSessionLost={onSessionLost} />);
+// A session signal that Access never aborts.
+const live = () => new AbortController().signal;
+
+function showLibrary(onSessionLost = vi.fn(), session = live()) {
+  render(<Library onSessionLost={onSessionLost} session={session} />);
   return onSessionLost;
 }
 
@@ -107,7 +117,9 @@ describe("Library", () => {
     stubServer({
       "GET /api/assets": listAnswer(entry("a3", "<b>bold</b>.png")),
     });
-    const { container } = render(<Library onSessionLost={vi.fn()} />);
+    const { container } = render(
+      <Library onSessionLost={vi.fn()} session={live()} />,
+    );
     await screen.findByText("<b>bold</b>.png");
     expect(container.querySelector("b")).toBeNull();
   });
@@ -212,7 +224,9 @@ describe("Library", () => {
       vi.fn(() => late.promise),
     );
     const onSessionLost = vi.fn();
-    const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+    const { unmount } = render(
+      <Library onSessionLost={onSessionLost} session={live()} />,
+    );
     await screen.findByText("Loading the library…");
     unmount();
     // Even an answer that would end the session is ignored.
@@ -229,6 +243,11 @@ describe("Library", () => {
         type: "image/png",
       });
 
+    const named = (name: string) =>
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, {
+        type: "image/png",
+      });
+
     // The file input the Upload button opens.
     const picker = () => {
       const input =
@@ -237,8 +256,43 @@ describe("Library", () => {
       return input;
     };
 
-    function choose(file: File) {
-      fireEvent.change(picker(), { target: { files: [file] } });
+    function choose(...files: File[]) {
+      fireEvent.change(picker(), { target: { files } });
+    }
+
+    // The text of each line in the list of uploads, in order.
+    const lines = () =>
+      Array.from(
+        screen.getByRole("list", { name: "Uploads" }).querySelectorAll("li"),
+        (item) => item.textContent,
+      );
+
+    const listRequests = (fetch: ReturnType<typeof vi.fn>) =>
+      fetch.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/assets" && !(init as RequestInit | undefined)?.method,
+      );
+
+    // A server whose list is empty and whose uploads each answer only when
+    // the test releases them, in the order they are sent.
+    function heldUploads(count: number) {
+      const held = Array.from({ length: count }, deferred);
+      let sent = 0;
+      const fetch = vi.fn((_input: string, init?: RequestInit) => {
+        if (init?.method !== "POST") {
+          return Promise.resolve(Response.json({ assets: [] }));
+        }
+        const next = held.at(sent++);
+        return next ? next.promise : Promise.reject(new TypeError("extra"));
+      });
+      vi.stubGlobal("fetch", fetch);
+      const release = async (index: number, response: Response) => {
+        await act(async () => {
+          held[index]?.answer(response);
+          await held[index]?.promise;
+        });
+      };
+      return { fetch, release };
     }
 
     const uploads = (fetch: ReturnType<typeof vi.fn>) =>
@@ -256,7 +310,7 @@ describe("Library", () => {
       fireEvent.click(upload);
       expect(click).toHaveBeenCalledTimes(1);
       expect(picker().accept).toBe("image/png,image/jpeg");
-      expect(picker().multiple).toBe(false);
+      expect(picker().multiple).toBe(true);
     });
 
     it("sends the chosen file at once, as the multipart field file", async () => {
@@ -277,29 +331,263 @@ describe("Library", () => {
       expect([...(body as FormData).keys()]).toEqual(["file"]);
     });
 
-    it("shows the filename while pending and sends no second request", async () => {
-      const pending = deferred();
-      const fetch = vi.fn((_input: string, init?: RequestInit) =>
-        init?.method === "POST"
-          ? pending.promise
-          : Promise.resolve(Response.json({ assets: [] })),
-      );
-      vi.stubGlobal("fetch", fetch);
+    it("sends the files of one pick in turn, one request at a time", async () => {
+      const { fetch, release } = heldUploads(3);
       showLibrary();
-      const upload = await screen.findByRole("button", { name: "Upload" });
-      choose(png());
-      await screen.findByText("Uploading nebula.png…");
-      expect(upload.hasAttribute("disabled")).toBe(true);
-      fireEvent.click(upload);
-      choose(png());
+      await screen.findByRole("button", { name: "Upload" });
+      const files = [named("a.png"), named("b.png"), named("c.png")];
+      choose(...files);
+      for (const [index, file] of files.entries()) {
+        await waitFor(() => {
+          expect(uploads(fetch)).toHaveLength(index + 1);
+        });
+        const body = (uploads(fetch)[index]?.[1] as RequestInit)
+          .body as FormData;
+        expect(body.get("file")).toBe(file);
+        expect([...body.keys()]).toEqual(["file"]);
+        // The next file waits until this one has its answer.
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(uploads(fetch)).toHaveLength(index + 1);
+        await release(index, Response.json({ asset: nebula }, { status: 201 }));
+      }
+      await waitFor(() => {
+        expect(
+          screen
+            .getByRole("button", { name: "Upload" })
+            .hasAttribute("disabled"),
+        ).toBe(false);
+      });
+      expect(uploads(fetch)).toHaveLength(3);
+    });
+
+    it("shows one line for each file of a pick, in pick order", async () => {
+      const second = deferred();
+      let sent = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) => {
+          if (init?.method !== "POST") {
+            return Promise.resolve(Response.json({ assets: [] }));
+          }
+          sent += 1;
+          return sent === 1
+            ? Promise.resolve(Response.json({ asset: nebula }, { status: 201 }))
+            : second.promise;
+        }),
+      );
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"), named("c.png"));
+      await screen.findByText("Uploading b.png…");
+      expect(lines()).toEqual([
+        "a.png was uploaded.",
+        "Uploading b.png…",
+        "c.png is waiting.",
+      ]);
+      const items = screen
+        .getByRole("list", { name: "Uploads" })
+        .querySelectorAll("li");
+      for (const item of items) {
+        expect(item.className).toBe("library-status");
+      }
+    });
+
+    it("shows a waiting filename holding markup as literal text", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) =>
+          init?.method === "POST"
+            ? new Promise<Response>(() => undefined)
+            : Promise.resolve(Response.json({ assets: [] })),
+        ),
+      );
+      const { container } = render(
+        <Library onSessionLost={vi.fn()} session={live()} />,
+      );
+      await screen.findByRole("button", { name: "Upload" });
+      choose(
+        named("a.png"),
+        new File(["x"], "<b>m42</b>.png", { type: "image/png" }),
+      );
+      await screen.findByText("<b>m42</b>.png is waiting.");
+      expect(container.querySelector("b")).toBeNull();
+    });
+
+    it("replaces the last pick's lines with the next pick's", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [409],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("b.png is already in the library.");
+      choose(named("c.png"));
+      await screen.findByText("c.png is already in the library.");
+      expect(lines()).toEqual(["c.png is already in the library."]);
+    });
+
+    it("keeps the last lines when the picker is cancelled", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [409],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"));
+      await screen.findByText("a.png is already in the library.");
+      choose();
+      expect(lines()).toEqual(["a.png is already in the library."]);
       expect(uploads(fetch)).toHaveLength(1);
-      await act(async () => {
-        pending.answer(Response.json({ asset: nebula }, { status: 201 }));
-        await pending.promise;
+    });
+
+    it("sends every file of a pick, whatever the answers before it", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [[415], [409], noAnswer, [201, { asset: nebula }]],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      const files = ["a.png", "b.png", "c.png", "d.png"].map(named);
+      choose(...files);
+      await screen.findByText("d.png was uploaded.");
+      expect(
+        uploads(fetch).map(([, init]) =>
+          ((init as RequestInit).body as FormData).get("file"),
+        ),
+      ).toEqual(files);
+      expect(lines()).toEqual([
+        "a.png was not uploaded: only PNG and JPEG images are supported.",
+        "b.png is already in the library.",
+        "No answer came back for c.png. It is safe to upload it again: if it was saved, Sidereal will find it.",
+        "d.png was uploaded.",
+      ]);
+    });
+
+    it("gives each refused file of a pick its own reason", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [[413], [415], [400], [503]],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(...["a.png", "b.png", "c.png", "d.png"].map(named));
+      await screen.findByText(/^d\.png was not uploaded/);
+      expect(lines()).toEqual([
+        "a.png was not uploaded: it is larger than the 100 MiB limit.",
+        "b.png was not uploaded: only PNG and JPEG images are supported.",
+        "c.png was not uploaded: choose one PNG or JPEG file and try again.",
+        "d.png was not uploaded: the server could not save it. Try again later.",
+      ]);
+    });
+
+    it("loads the list again after each saved file, not after a 409", async () => {
+      const { fetch, release } = heldUploads(3);
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"), named("c.png"));
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(1);
+      });
+      const before = listRequests(fetch).length;
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await waitFor(() => {
+        expect(listRequests(fetch)).toHaveLength(before + 1);
       });
       await waitFor(() => {
-        expect(upload.hasAttribute("disabled")).toBe(false);
+        expect(uploads(fetch)).toHaveLength(2);
       });
+      await release(1, new Response(null, { status: 409 }));
+      await screen.findByText("b.png is already in the library.");
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(3);
+      });
+      expect(listRequests(fetch)).toHaveLength(before + 1);
+      await release(2, Response.json({ asset: nebula }, { status: 201 }));
+      await waitFor(() => {
+        expect(listRequests(fetch)).toHaveLength(before + 2);
+      });
+    });
+
+    it("loads the list again after a lost answer, before the next file answers", async () => {
+      let sent = 0;
+      const held = deferred();
+      const fetch = vi.fn((_input: string, init?: RequestInit) => {
+        if (init?.method !== "POST") {
+          return Promise.resolve(Response.json({ assets: [] }));
+        }
+        sent += 1;
+        return sent === 1
+          ? Promise.reject(new TypeError("network error"))
+          : held.promise;
+      });
+      vi.stubGlobal("fetch", fetch);
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      const before = listRequests(fetch).length;
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading b.png…");
+      await waitFor(() => {
+        expect(listRequests(fetch)).toHaveLength(before + 1);
+      });
+      screen.getByText("Uploading b.png…");
+    });
+
+    it("shows every saved file of a pick by name", async () => {
+      const saved: unknown[] = [];
+      const known = new Map([
+        ["nebula.png", nebula],
+        ["m31.jpg", andromeda],
+      ]);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) => {
+          if (init?.method !== "POST") {
+            return Promise.resolve(Response.json({ assets: [...saved] }));
+          }
+          const file = (init.body as FormData).get("file") as File;
+          const asset = known.get(file.name);
+          saved.push(asset);
+          return Promise.resolve(Response.json({ asset }, { status: 201 }));
+        }),
+      );
+      showLibrary();
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      choose(named("nebula.png"), named("m31.jpg"));
+      await screen.findByRole("img", { name: "nebula.png" });
+      await screen.findByRole("img", { name: "m31.jpg" });
+    });
+
+    it("shows the filename while pending and sends no second request", async () => {
+      const { fetch } = heldUploads(2);
+      showLibrary();
+      const upload = await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      expect(upload.hasAttribute("disabled")).toBe(true);
+      fireEvent.click(upload);
+      choose(named("c.png"));
+      expect(uploads(fetch)).toHaveLength(1);
+      expect(lines()).toEqual(["Uploading a.png…", "b.png is waiting."]);
+    });
+
+    it("enables Upload only once every file of the pick has its answer", async () => {
+      const { fetch, release } = heldUploads(2);
+      showLibrary();
+      const upload = await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await screen.findByText("a.png was uploaded.");
+      expect(upload.hasAttribute("disabled")).toBe(true);
+      expect(uploads(fetch)).toHaveLength(2);
+      await release(1, new Response(null, { status: 415 }));
+      await screen.findByText(
+        "b.png was not uploaded: only PNG and JPEG images are supported.",
+      );
+      expect(upload.hasAttribute("disabled")).toBe(false);
     });
 
     it("shows the new image after success, without a page reload", async () => {
@@ -311,7 +599,7 @@ describe("Library", () => {
       await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
       choose(png());
       await screen.findByRole("img", { name: "nebula.png" });
-      expect(screen.queryByText(/Uploading/)).toBeNull();
+      expect(lines()).toEqual(["nebula.png was uploaded."]);
       expect(
         fetch.mock.calls.filter(
           ([url, init]) => url === "/api/assets" && !init?.method,
@@ -362,6 +650,87 @@ describe("Library", () => {
       });
     });
 
+    it.each([
+      ["nebula.png", "nebula.png is already in the library."],
+      [
+        "m31-final.png",
+        "m31-final.png is already in the library as nebula.png.",
+      ],
+    ])(
+      "says %s is already in the library when the upload answers 409",
+      async (chosen, notice) => {
+        const fetch = stubServer({
+          "GET /api/assets": listAnswer(nebula),
+          "POST /api/assets": [409, { asset: nebula }],
+        });
+        showLibrary();
+        await screen.findByRole("img", { name: "nebula.png" });
+        choose(named(chosen));
+        await screen.findByText(notice);
+        expect(document.body.textContent).not.toContain("was not uploaded");
+        expect(screen.queryByText(/Uploading/)).toBeNull();
+        expect(listRequests(fetch)).toHaveLength(1);
+        expect(screen.getAllByRole("img")).toHaveLength(1);
+        // Nova can choose another file straight away.
+        expect(
+          screen
+            .getByRole("button", { name: "Upload" })
+            .hasAttribute("disabled"),
+        ).toBe(false);
+        expect(picker().value).toBe("");
+        choose(png());
+        await waitFor(() => {
+          expect(uploads(fetch)).toHaveLength(2);
+        });
+      },
+    );
+
+    it.each([
+      ["no body", undefined],
+      ["a body with no asset", { other: nebula }],
+      ["an entry with no name", { asset: { ...nebula, name: 3 } }],
+      ["an entry with an empty name", { asset: { ...nebula, name: "" } }],
+      [
+        "an entry with no current version",
+        { asset: { ...nebula, current_version_id: undefined } },
+      ],
+      [
+        "an original URL that names another Asset",
+        { asset: { ...nebula, original_url: "/api/assets/a2/original" } },
+      ],
+      ["a list instead of an entry", { asset: [nebula] }],
+    ])(
+      "gives the short notice, with no name from the body, for a 409 with %s",
+      async (_, body) => {
+        stubServer({
+          "GET /api/assets": listAnswer(),
+          "POST /api/assets": [409, body],
+        });
+        showLibrary();
+        await screen.findByRole("button", { name: "Upload" });
+        choose(named("m31-final.png"));
+        await screen.findByText("m31-final.png is already in the library.");
+        expect(document.body.textContent).not.toContain("nebula.png");
+        expect(document.body.textContent).not.toContain("was not uploaded");
+      },
+    );
+
+    it("shows an existing name holding markup as literal text", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [409, { asset: entry("a3", "<b>bold</b>.png") }],
+      });
+      const { container } = render(
+        <Library onSessionLost={vi.fn()} session={live()} />,
+      );
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("m31-final.png"));
+      await screen.findByText(
+        "m31-final.png is already in the library as <b>bold</b>.png.",
+      );
+      expect(container.querySelector("b")).toBeNull();
+    });
+
     it("says the outcome is unknown, and loads the list again, when no answer comes back", async () => {
       // The server saved the file, but its answer was lost on the way.
       const fetch = stubServer({
@@ -371,7 +740,7 @@ describe("Library", () => {
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText(
-        "No answer came back for nebula.png. It may have been saved: check the library before you upload it again.",
+        "No answer came back for nebula.png. It is safe to upload it again: if it was saved, Sidereal will find it.",
       );
       expect(document.body.textContent).not.toContain("was not uploaded");
       await screen.findByRole("img", { name: "nebula.png" });
@@ -380,6 +749,8 @@ describe("Library", () => {
           ([url, init]) => url === "/api/assets" && !init?.method,
         ),
       ).toHaveLength(2);
+      // The screen never sends the file again by itself.
+      expect(uploads(fetch)).toHaveLength(1);
     });
 
     it("shows a filename holding markup as literal text", async () => {
@@ -392,7 +763,9 @@ describe("Library", () => {
             : Promise.resolve(Response.json({ assets: [] })),
         ),
       );
-      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      const { container } = render(
+        <Library onSessionLost={vi.fn()} session={live()} />,
+      );
       await screen.findByRole("button", { name: "Upload" });
       choose(new File(["x"], "<b>m42</b>.png", { type: "image/png" }));
       await screen.findByText("Uploading <b>m42</b>.png…");
@@ -412,6 +785,63 @@ describe("Library", () => {
       });
     });
 
+    it("sends no more files of the pick after an upload answers 401", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [401, { error: "unauthenticated" }],
+      });
+      const onSessionLost = showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"), named("c.png"));
+      await waitFor(() => {
+        expect(onSessionLost).toHaveBeenCalledTimes(1);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(uploads(fetch)).toHaveLength(1);
+    });
+
+    it("sends no more files once the session signal is aborted", async () => {
+      const { fetch, release } = heldUploads(2);
+      const session = new AbortController();
+      const onSessionLost = showLibrary(vi.fn(), session.signal);
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      const lists = listRequests(fetch).length;
+      session.abort();
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(uploads(fetch)).toHaveLength(1);
+      expect(lines()).toEqual(["Uploading a.png…", "b.png is waiting."]);
+      expect(listRequests(fetch)).toHaveLength(lists);
+      expect(onSessionLost).not.toHaveBeenCalled();
+      screen.getByRole("region", { name: "Library" });
+    });
+
+    it("sends no more files once the Library is gone", async () => {
+      const { fetch, release } = heldUploads(2);
+      const onSessionLost = vi.fn();
+      const { unmount } = render(
+        <Library onSessionLost={onSessionLost} session={live()} />,
+      );
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      const lists = listRequests(fetch).length;
+      unmount();
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(uploads(fetch)).toHaveLength(1);
+      expect(listRequests(fetch)).toHaveLength(lists);
+      expect(onSessionLost).not.toHaveBeenCalled();
+    });
+
     it("ignores an upload that answers after the library is gone", async () => {
       const pending = deferred();
       const fetch = vi.fn((_input: string, init?: RequestInit) =>
@@ -421,7 +851,9 @@ describe("Library", () => {
       );
       vi.stubGlobal("fetch", fetch);
       const onSessionLost = vi.fn();
-      const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+      const { unmount } = render(
+        <Library onSessionLost={onSessionLost} session={live()} />,
+      );
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText("Uploading nebula.png…");

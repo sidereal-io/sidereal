@@ -27,26 +27,46 @@ function isObject(body: unknown): body is Record<string, unknown> {
   return typeof body === "object" && body !== null;
 }
 
-// The entries of a list body, or null when the body is not a list. Nothing
-// else from the body is kept, and the names are only ever shown as text.
+// One Asset entry, as the list and a repeat upload's answer hold it, or
+// null when it is not a valid entry. Nothing else from it is kept, and the
+// name is only ever shown as text.
+function toEntry(item: unknown): Entry | null {
+  if (
+    !isObject(item) ||
+    typeof item.id !== "string" ||
+    typeof item.name !== "string" ||
+    typeof item.current_version_id !== "string" ||
+    typeof item.original_url !== "string" ||
+    !ORIGINAL_URL.test(item.original_url) ||
+    item.original_url !== `/api/assets/${item.id}/original`
+  ) {
+    return null;
+  }
+  return { id: item.id, name: item.name, originalUrl: item.original_url };
+}
+
+// The entries of a list body, or null when the body is not a list or holds
+// an entry that is not valid.
 function entries(body: unknown): Entry[] | null {
   if (!isObject(body) || !Array.isArray(body.assets)) return null;
   const list: Entry[] = [];
   for (const item of body.assets as unknown[]) {
-    if (
-      !isObject(item) ||
-      typeof item.id !== "string" ||
-      typeof item.name !== "string" ||
-      typeof item.current_version_id !== "string" ||
-      typeof item.original_url !== "string" ||
-      !ORIGINAL_URL.test(item.original_url) ||
-      item.original_url !== `/api/assets/${item.id}/original`
-    ) {
-      return null;
-    }
-    list.push({ id: item.id, name: item.name, originalUrl: item.original_url });
+    const checked = toEntry(item);
+    if (!checked) return null;
+    list.push(checked);
   }
   return list;
+}
+
+// The name of the Asset a repeat upload found, or null when the answer's
+// body holds no valid entry or names it with nothing to show.
+async function foundName(response: Response): Promise<string | null> {
+  try {
+    const body: unknown = await response.json();
+    return isObject(body) ? toEntry(body.asset)?.name || null : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchList(
@@ -79,34 +99,61 @@ function refusal(status: number): string {
 
 // Sends one file as the multipart field `file`. Never retried: a lost
 // answer after the server saved the file cannot be told from a failure,
-// so no answer at all is "unconfirmed", never a refusal.
+// so no answer at all is "unconfirmed", never a refusal. A 409 means the
+// bytes are already in the library: `found` holds that Asset's name.
 async function sendFile(
   file: File,
   signal: AbortSignal,
 ): Promise<
-  "saved" | "unconfirmed" | { refused: string } | typeof sessionEnded
+  | "saved"
+  | "unconfirmed"
+  | { refused: string }
+  | { found: string | null }
+  | typeof sessionEnded
 > {
+  let response: Response;
   try {
     const body = new FormData();
     body.append("file", file);
-    const response = await fetch("/api/assets", {
+    response = await fetch("/api/assets", {
       method: "POST",
       body,
       signal,
     });
-    if (response.status === 201) return "saved";
-    if (response.status === 401) return sessionEnded;
-    return { refused: refusal(response.status) };
   } catch {
     return "unconfirmed";
   }
+  if (response.status === 201) return "saved";
+  if (response.status === 401) return sessionEnded;
+  if (response.status === 409) return { found: await foundName(response) };
+  return { refused: refusal(response.status) };
 }
 
-type Upload =
-  | { kind: "idle" }
-  | { kind: "sending"; name: string }
-  | { kind: "refused"; name: string; reason: string }
-  | { kind: "unconfirmed"; name: string };
+// One picked file's line: waiting, on its way, or its answer.
+type Line =
+  | { name: string; kind: "waiting" | "sending" | "saved" | "unconfirmed" }
+  | { name: string; kind: "refused"; reason: string }
+  | { name: string; kind: "found"; existing: string | null };
+
+// The words of one line. Every name is shown as text only.
+function lineText(line: Line): string {
+  switch (line.kind) {
+    case "waiting":
+      return `${line.name} is waiting.`;
+    case "sending":
+      return `Uploading ${line.name}…`;
+    case "saved":
+      return `${line.name} was uploaded.`;
+    case "unconfirmed":
+      return `No answer came back for ${line.name}. It is safe to upload it again: if it was saved, Sidereal will find it.`;
+    case "refused":
+      return `${line.name} was not uploaded: ${line.reason}`;
+    case "found":
+      return line.existing === null || line.existing === line.name
+        ? `${line.name} is already in the library.`
+        : `${line.name} is already in the library as ${line.existing}.`;
+  }
+}
 
 // One image, whole, at its own shape once it loads. Until then its frame
 // keeps the 3:2 shape that Library.css gives it.
@@ -146,11 +193,15 @@ function Picture({ entry }: { entry: Entry }) {
 
 function Library({
   onSessionLost,
+  session,
   notice,
   children,
 }: {
   // Called when the server says the session has ended.
   onSessionLost: () => void;
+  // Aborted as soon as the account learns the session has ended, so no
+  // more files are sent, even before the Library goes away.
+  session: AbortSignal;
   // A fixed message from the account, such as a failed sign-out.
   notice?: string | null;
   // The account's items, shown in the top bar after the Library's own.
@@ -159,9 +210,10 @@ function Library({
   const [list, setList] = useState<List>("loading");
   // Each change loads the list again.
   const [generation, setGeneration] = useState(0);
-  const [upload, setUpload] = useState<Upload>({ kind: "idle" });
+  // One line for each file of the last pick, in pick order.
+  const [lines, setLines] = useState<Line[]>([]);
   const pickerRef = useRef<HTMLInputElement>(null);
-  // Set while a file is on its way, so a second choice sends nothing.
+  // Set while a pick is on its way, so a second choice sends nothing.
   const sendingRef = useRef(false);
   // Aborted when the Library goes away, so a late answer changes nothing.
   const uploadsRef = useRef<AbortController>(null);
@@ -188,26 +240,51 @@ function Library({
     };
   }, [generation, onSessionLost]);
 
-  async function send(file: File) {
-    const signal = uploadsRef.current?.signal;
-    if (sendingRef.current || !signal) return;
+  // Upload waits until every file of the pick has its answer.
+  const busy = lines.some(
+    (line) => line.kind === "waiting" || line.kind === "sending",
+  );
+
+  // Sends the files of one pick in turn, each only after the one before it
+  // has an answer or has ended without one.
+  async function send(files: File[]) {
+    const uploads = uploadsRef.current?.signal;
+    if (sendingRef.current || !uploads) return;
+    const signal = AbortSignal.any([session, uploads]);
+    // Read afresh after each await: an abort can come at any time.
+    const stopped = () => signal.aborted;
     sendingRef.current = true;
-    setUpload({ kind: "sending", name: file.name });
-    const result = await sendFile(file, signal);
-    sendingRef.current = false;
-    if (signal.aborted) return;
-    if (result === sessionEnded) {
-      onSessionLost();
-    } else if (result === "saved") {
-      setUpload({ kind: "idle" });
-      setGeneration((value) => value + 1);
-    } else if (result === "unconfirmed") {
-      // The file may have been saved, so the list loads again to show it.
-      setUpload({ kind: "unconfirmed", name: file.name });
-      setGeneration((value) => value + 1);
-    } else {
-      setUpload({ kind: "refused", name: file.name, reason: result.refused });
+    // A new pick replaces the last pick's lines.
+    setLines(files.map((file) => ({ name: file.name, kind: "waiting" })));
+    const mark = (index: number, line: Line) => {
+      setLines((current) =>
+        current.map((old, at) => (at === index ? line : old)),
+      );
+    };
+    for (const [index, file] of files.entries()) {
+      if (stopped()) return;
+      const name = file.name;
+      mark(index, { name, kind: "sending" });
+      const result = await sendFile(file, signal);
+      if (stopped()) return;
+      if (result === sessionEnded) {
+        onSessionLost();
+        return;
+      } else if (result === "saved") {
+        mark(index, { name, kind: "saved" });
+        setGeneration((value) => value + 1);
+      } else if (result === "unconfirmed") {
+        // The file may have been saved, so the list loads again to show it.
+        mark(index, { name, kind: "unconfirmed" });
+        setGeneration((value) => value + 1);
+      } else if ("found" in result) {
+        // Nothing changed in the library, so the list is not loaded again.
+        mark(index, { name, kind: "found", existing: result.found });
+      } else {
+        mark(index, { name, kind: "refused", reason: result.refused });
+      }
     }
+    sendingRef.current = false;
   }
 
   function retry() {
@@ -224,7 +301,7 @@ function Library({
         <button
           className="button-primary"
           type="button"
-          disabled={upload.kind === "sending"}
+          disabled={busy}
           onClick={() => pickerRef.current?.click()}
         >
           Upload
@@ -236,27 +313,25 @@ function Library({
         type="file"
         accept="image/png,image/jpeg"
         aria-label="Image to upload"
+        multiple
         hidden
         onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          // Cleared, so the same file can be chosen again after a refusal.
+          // Copied first: clearing the value can empty the list it read.
+          const files = [...(event.currentTarget.files ?? [])];
+          // Cleared, so the same files can be chosen again after a refusal.
           event.currentTarget.value = "";
-          if (file) void send(file);
+          if (files.length > 0) void send(files);
         }}
       />
-      {upload.kind === "sending" && (
-        <p className="library-status">Uploading {upload.name}…</p>
-      )}
-      {upload.kind === "refused" && (
-        <p className="library-status">
-          {upload.name} was not uploaded: {upload.reason}
-        </p>
-      )}
-      {upload.kind === "unconfirmed" && (
-        <p className="library-status">
-          No answer came back for {upload.name}. It may have been saved: check
-          the library before you upload it again.
-        </p>
+      {lines.length > 0 && (
+        <ul className="library-uploads" aria-label="Uploads">
+          {lines.map((line, index) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- A pick's lines are only ever replaced whole, so an index is stable.
+            <li key={index} className="library-status">
+              {lineText(line)}
+            </li>
+          ))}
+        </ul>
       )}
       {notice && <p className="library-status">{notice}</p>}
       {list === "loading" && (
