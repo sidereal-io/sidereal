@@ -79,9 +79,9 @@ After a successful upload saves the Asset, and before it answers, the server
 SHALL run the image pack's file-size Operator over the new version, with the
 uploading administrator as the user who started the run. The 201 answer
 SHALL keep its existing body. When the run succeeded, reading the Asset
-after the 201 SHALL return its file size; when it did not, the requirement
-"A failed Operator run does not fail the upload" applies. Images saved
-before this change SHALL get no file size.
+after the 201 SHALL return its file size; when it did not, "A failed
+Operator run does not fail the upload" applies. Images saved before Sidereal
+recorded file sizes SHALL get no file size.
 
 #### Scenario: A new upload has its file size
 - **WHEN** Nova uploads a PNG of 1,234,567 bytes, its file-size run succeeds, and the server answers 201
