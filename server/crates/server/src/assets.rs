@@ -4,7 +4,7 @@
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
 //! the Asset, or finds the Asset that already holds the bytes (409). A new
-//! Asset then has the file-size Operator run over its version. Every refusal
+//! Asset then has the file-size and header Operators run over its version. Every refusal
 //! has a fixed body, so no path or driver error reaches a client; the
 //! operational log names the cause.
 use crate::access::Log;
@@ -33,7 +33,7 @@ use sidereal_core::{
     storage::objects::{ObjectStore, StageError, Staged, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
-use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD, READ_HEADER};
 use sidereal_plugin_abi::{FacetValue, Registry};
 use std::{
     convert::Infallible,
@@ -85,7 +85,7 @@ impl Library {
         Self {
             objects,
             registry: Arc::new(registry),
-            upload_operators: vec![FILE_SIZE.to_owned()],
+            upload_operators: vec![FILE_SIZE.to_owned(), READ_HEADER.to_owned()],
             reader: Arc::new(|file| Box::new(file)),
         }
     }
@@ -101,7 +101,7 @@ impl Library {
     }
 
     /// Run `operators`, in order, over each uploaded version, in place of
-    /// the file-size Operator.
+    /// the file-size and header Operators.
     #[doc(hidden)]
     pub fn with_upload_operators(self, operators: Vec<String>) -> Self {
         Self {
@@ -588,10 +588,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_production_registry_runs_the_file_size_operator_on_upload() {
+    fn the_production_registry_runs_the_file_size_and_header_operators_on_upload() {
         let library = Library::new(None);
         assert!(library.registry.operator(FILE_SIZE).is_some());
+        assert!(library.registry.operator(READ_HEADER).is_some());
         assert!(library.registry.source(MANUAL_UPLOAD).is_some());
-        assert_eq!(library.upload_operators, [FILE_SIZE]);
+        assert_eq!(library.upload_operators, [FILE_SIZE, READ_HEADER]);
     }
 }

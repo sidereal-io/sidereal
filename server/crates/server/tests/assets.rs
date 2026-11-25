@@ -11,7 +11,7 @@ use sidereal_core::{
     database::{initialize, initialize_with_storage},
     storage::{objects::ObjectStore, StorageRoot},
 };
-use sidereal_pack_image::ImagePack;
+use sidereal_pack_image::{ImagePack, FILE_SIZE};
 use sidereal_plugin_abi::{
     AssetContext, FacetSchema, FacetScope, FacetType, FacetValue, Operator, OperatorError, Pack,
     Registry,
@@ -280,6 +280,40 @@ async fn json(response: Response) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
+/// The four facets upload records for a 32 by 24 PNG or JPEG of `size`
+/// bytes, as the API returns them.
+fn upload_facets(size: usize, format: &str) -> Value {
+    serde_json::json!([
+        {"name": "image.file-size", "label": "File size", "value": size, "unit": "bytes"},
+        {"name": "image.format", "label": "Format", "value": format, "unit": ""},
+        {"name": "image.height", "label": "Height", "value": 24, "unit": "pixels"},
+        {"name": "image.width", "label": "Width", "value": 32, "unit": "pixels"},
+    ])
+}
+
+impl Instance {
+    /// Upload `bytes` as `name`, which must make a new Asset; its id and
+    /// its version's id.
+    async fn uploaded_ids(&self, name: &str, bytes: &[u8]) -> (String, String) {
+        let response = self.upload(name, bytes).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let asset = &json(response).await["asset"];
+        (
+            asset["id"].as_str().unwrap().to_owned(),
+            asset["current_version_id"].as_str().unwrap().to_owned(),
+        )
+    }
+
+    /// The facets `GET /api/assets/{id}` returns.
+    async fn facets_of(&self, id: &str) -> Value {
+        let response = self
+            .get(&format!("/api/assets/{id}"), Some(&self.cookie))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        json(response).await["asset"]["facets"].clone()
+    }
+}
+
 /// `PNG` padded with zero bytes to `size`; its signature still says PNG.
 fn png_of_size(size: usize) -> Vec<u8> {
     let mut bytes = PNG.to_vec();
@@ -323,7 +357,7 @@ mod upload {
             String,
         ) = sqlx::query_as(
             "SELECT facet, value, asset_version_id::text, asset_id::text, producer_id, producer_version \
-             FROM public.facet_values",
+             FROM public.facet_values WHERE facet = 'image.file-size'",
         )
         .fetch_one(&mut conn)
         .await
@@ -336,7 +370,8 @@ mod upload {
         assert_eq!(producer_version, env!("CARGO_PKG_VERSION"));
         let (operator, status, actor): (String, String, String) = sqlx::query_as(
             "SELECT r.operator_id, r.status, u.username FROM public.operation_runs r \
-             JOIN public.users u ON u.id = r.actor_user_id WHERE r.asset_version_id = $1::uuid",
+             JOIN public.users u ON u.id = r.actor_user_id \
+             WHERE r.asset_version_id = $1::uuid AND r.operator_id = 'image.measure-file-size'",
         )
         .bind(version)
         .fetch_one(&mut conn)
@@ -346,6 +381,105 @@ mod upload {
             (operator.as_str(), status.as_str(), actor.as_str()),
             ("image.measure-file-size", "succeeded", "sam")
         );
+    }
+
+    #[tokio::test]
+    async fn upload_of_a_png_records_its_format_and_dimensions() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded_ids("nebula.png", PNG).await;
+        assert_eq!(
+            instance.facets_of(&id).await,
+            upload_facets(PNG.len(), "PNG")
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_records_the_header_values_with_their_producer_and_run() {
+        let instance = Instance::new().await;
+        let (_, version) = instance.uploaded_ids("nebula.png", PNG).await;
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        let runs: Vec<(String, String, String)> = sqlx::query_as(
+            "SELECT r.id::text, r.status, u.username FROM public.operation_runs r \
+             JOIN public.users u ON u.id = r.actor_user_id \
+             WHERE r.asset_version_id = $1::uuid AND r.operator_id = 'image.read-header'",
+        )
+        .bind(&version)
+        .fetch_all(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(runs.len(), 1, "{runs:?}");
+        let (run, status, actor) = &runs[0];
+        assert_eq!((status.as_str(), actor.as_str()), ("succeeded", "sam"));
+        let values: Vec<(String, String, String, String)> = sqlx::query_as(
+            "SELECT facet, producer_id, producer_version, run_id::text FROM public.facet_values \
+             WHERE asset_version_id = $1::uuid AND facet <> 'image.file-size' ORDER BY facet",
+        )
+        .bind(&version)
+        .fetch_all(&mut conn)
+        .await
+        .unwrap();
+        let expected: Vec<_> = ["image.format", "image.height", "image.width"]
+            .into_iter()
+            .map(|facet| {
+                (
+                    facet.to_owned(),
+                    "image.read-header".to_owned(),
+                    env!("CARGO_PKG_VERSION").to_owned(),
+                    run.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(values, expected);
+    }
+
+    #[tokio::test]
+    async fn upload_of_a_jpeg_records_its_format_and_dimensions() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded_ids("nebula.jpg", JPEG).await;
+        assert_eq!(
+            instance.facets_of(&id).await,
+            upload_facets(JPEG.len(), "JPEG")
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_of_png_bytes_named_jpg_records_png() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded_ids("m31.jpg", PNG).await;
+        assert_eq!(
+            instance.facets_of(&id).await,
+            upload_facets(PNG.len(), "PNG")
+        );
+    }
+
+    /// An Asset saved before the header Operator ran on upload has only its
+    /// file size, and nothing runs the header Operator over it later.
+    #[tokio::test]
+    async fn upload_from_before_the_header_operator_keeps_only_its_file_size() {
+        let instance = Instance::with_library(|library| {
+            library.with_upload_operators(vec![FILE_SIZE.to_owned()])
+        })
+        .await;
+        let (id, version) = instance.uploaded_ids("nebula.png", PNG).await;
+        assert_eq!(
+            instance.facets_of(&id).await,
+            serde_json::json!([upload_facets(PNG.len(), "PNG")[0]])
+        );
+        let header_runs: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM public.operation_runs \
+             WHERE asset_version_id = $1::uuid AND operator_id = 'image.read-header'",
+        )
+        .bind(&version)
+        .fetch_one(
+            &mut PgConnection::connect_with(&instance.db.options)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(header_runs, 0);
     }
 
     #[tokio::test]
@@ -1489,12 +1623,7 @@ mod get_asset {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             json(response).await["asset"]["facets"],
-            serde_json::json!([{
-                "name": "image.file-size",
-                "label": "File size",
-                "value": 1_234_567,
-                "unit": "bytes"
-            }])
+            upload_facets(1_234_567, "PNG")
         );
     }
 
