@@ -14,6 +14,9 @@
 //! format and pixel dimensions, as `image.format`, `image.width` and
 //! `image.height`.
 
+mod header;
+
+use header::ReadHeader;
 use sidereal_plugin_abi::{
     AssetContext, AssetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Operator,
     OperatorError, Pack, Registry, Source, SourceError,
@@ -187,27 +190,5 @@ impl Operator for MeasureFileSize {
         context
             .propose_facet(FILE_SIZE_FACET, FacetValue::Integer(size))
             .map_err(|_| OperatorError::Failed("the proposal was refused".into()))
-    }
-}
-
-/// Records an image's format, width and height, read from its header. It
-/// decodes no pixel data and ignores any EXIF orientation.
-struct ReadHeader;
-
-impl Operator for ReadHeader {
-    fn id(&self) -> &str {
-        READ_HEADER
-    }
-
-    fn version(&self) -> &str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    fn writes(&self) -> &[&str] {
-        &[FORMAT_FACET, WIDTH_FACET, HEIGHT_FACET]
-    }
-
-    fn run(&self, _context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
-        Err(OperatorError::Unsupported)
     }
 }

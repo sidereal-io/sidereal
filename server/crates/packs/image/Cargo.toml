@@ -9,3 +9,5 @@ license.workspace = true
 # enforces this (ADR-002).
 [dependencies]
 sidereal-plugin-abi = { workspace = true }
+# Reads a PNG's header: its signature and IHDR chunk, and nothing after.
+png = { workspace = true }
