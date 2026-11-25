@@ -70,6 +70,10 @@ three values in one run.
 - **WHEN** core runs the header Operator over a stored progressive JPEG version whose frame header gives a width of 1,920 and a height of 1,080 pixels
 - **THEN** the version's `image.format` is `JPEG`, its `image.width` is 1920 and its `image.height` is 1080
 
+#### Scenario: A JPEG wider than 16,384 pixels
+- **WHEN** core runs the header Operator over a stored baseline JPEG version whose frame header gives a width of 20,000 and a height of 12,000 pixels
+- **THEN** the version's `image.format` is `JPEG`, its `image.width` is 20000 and its `image.height` is 12000
+
 #### Scenario: A JPEG whose metadata comes before its frame header
 - **WHEN** core runs the header Operator over a stored JPEG version that holds a 60,000-byte EXIF segment and an ICC profile segment before a frame header that gives 6,000 by 4,000 pixels
 - **THEN** the version's `image.width` is 6000 and its `image.height` is 4000
@@ -80,13 +84,13 @@ three values in one run.
 
 ### Requirement: A header that cannot be read fails the header run
 
-When the header Operator cannot read a width and a height from the version's
-bytes, its run SHALL fail and store no value. The reason SHALL be `the PNG
-header could not be read` or `the JPEG header could not be read`, by the
-bytes' signature, or `the image format is not recognized` for neither. A
-cut-off or malformed header, a PNG header checksum that does not match, and
-a width or height of zero are unreadable. The
-failure SHALL NOT change another Operator's run or values.
+When the header Operator cannot read a width and a height from the bytes,
+its run SHALL fail, store no value and change no other run. The reason SHALL
+be `the PNG header could not be read` or `the JPEG header could not be read`,
+by signature, or `the image format is not recognized` for neither. A header
+is unreadable when it is cut off, malformed or damaged, gives a zero width
+or height, is a JPEG kind the reader does not support, or holds over 32 MiB
+before a PNG's image data.
 
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
@@ -106,6 +110,11 @@ failure SHALL NOT change another Operator's run or values.
 - **WHEN** core runs the header Operator over a stored PNG version whose header gives a width of 0 pixels
 - **THEN** its run is `failed` with the reason `the PNG header could not be read`
 
+#### Scenario: A PNG with more than 32 MiB before its image data
+- **WHEN** core runs the header Operator over a stored PNG version whose header gives 640 by 480 pixels and is followed by a 33 MiB text chunk before its image data
+- **THEN** its run is `failed` with the reason `the PNG header could not be read`
+- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+
 #### Scenario: A JPEG with no frame header before its image data
 - **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and reaches its start-of-scan marker with no frame header before it
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
@@ -114,6 +123,11 @@ failure SHALL NOT change another Operator's run or values.
 #### Scenario: A JPEG cut off inside a segment
 - **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and ends partway through a segment before any frame header
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
+
+#### Scenario: A lossless JPEG
+- **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and has a lossless (`0xC3`) frame header that gives 640 by 480 pixels
+- **THEN** its run is `failed` with the reason `the JPEG header could not be read`
+- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
 
 #### Scenario: Bytes of neither format
 - **WHEN** core runs the header Operator over a stored version whose bytes start with neither the PNG nor the JPEG signature

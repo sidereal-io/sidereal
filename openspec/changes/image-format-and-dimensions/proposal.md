@@ -73,8 +73,9 @@ None.
   allowed values to `facet_schemas`, with its schema baseline. The startup
   tests and `scripts/instance-verify.sh` expect six migrations.
 - `server/crates/packs/image`: three facet schemas and the header Operator,
-  which reads PNG and JPEG headers with the pure-Rust `image` crate, the
-  pack's first crates.io dependency (PNG and JPEG features only).
+  which reads PNG headers with the pure-Rust `image` crate (PNG feature
+  only) and JPEG headers with `zune-jpeg`, the JPEG decoder `image` uses.
+  These are the pack's first crates.io dependencies.
 - `server/crates/server`: the upload's Operator list, its log lines and the
   facet JSON.
 - `web/src/AssetPage.tsx`: accepts and shows text values, and an empty unit.
