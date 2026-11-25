@@ -203,3 +203,52 @@ async fn a_kept_schema_with_another_type_or_owner_is_refused() {
         );
     }
 }
+
+fn propose_text(
+    context: &mut AssetContext<'_>,
+    name: &str,
+    text: &str,
+) -> Result<(), OperatorError> {
+    context
+        .propose_facet(name, FacetValue::Text(text.into()))
+        .map_err(|_| OperatorError::Failed("proposal".into()))
+}
+
+/// A Registry where `test.op` writes `test.kind`, a choice of `PNG` or
+/// `JPEG`, and `test.size`, a count, and runs `script`.
+async fn writes_kind(script: fn(&mut AssetContext<'_>) -> Result<(), OperatorError>) -> Fixture {
+    Fixture::new(move |r| {
+        r.declare_facet(choice("test.kind", &["PNG", "JPEG"]));
+        r.declare_facet(count("test.size"));
+        r.register_operator(op(&["test.kind", "test.size"], script));
+    })
+    .await
+}
+
+#[tokio::test]
+async fn a_choice_the_schema_does_not_allow_is_refused() {
+    let fixture = writes_kind(|c| propose_text(c, "test.kind", "GIF")).await;
+    let reason = refused(&fixture).await;
+    assert!(reason.contains("test.kind"), "{reason}");
+}
+
+#[tokio::test]
+async fn a_choice_in_another_letter_case_is_refused() {
+    let fixture = writes_kind(|c| propose_text(c, "test.kind", "png")).await;
+    let reason = refused(&fixture).await;
+    assert!(reason.contains("test.kind"), "{reason}");
+}
+
+#[tokio::test]
+async fn text_for_a_count_is_refused() {
+    let fixture = writes_kind(|c| propose_text(c, "test.size", "12")).await;
+    let reason = refused(&fixture).await;
+    assert!(reason.contains("test.size"), "{reason}");
+}
+
+#[tokio::test]
+async fn a_number_for_a_choice_is_refused() {
+    let fixture = writes_kind(|c| propose(c, "test.kind", 1)).await;
+    let reason = refused(&fixture).await;
+    assert!(reason.contains("test.kind"), "{reason}");
+}

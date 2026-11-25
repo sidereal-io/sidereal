@@ -210,3 +210,21 @@ async fn a_run_keeps_its_schema_versions_in_name_order() {
     assert_eq!(outcome.unwrap(), RunOutcome::Succeeded);
     assert_eq!(fixture.values().await.len(), 2);
 }
+
+#[tokio::test]
+async fn an_allowed_choice_is_stored_as_a_json_string() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(choice("test.kind", &["PNG", "JPEG"]));
+        r.register_operator(op(&["test.kind"], |context| {
+            context
+                .propose_facet("test.kind", FacetValue::Text("PNG".into()))
+                .map_err(|_| OperatorError::Failed("p".into()))
+        }));
+    })
+    .await;
+    let version = fixture.version(b"abc").await;
+    assert_eq!(fixture.run(&version).await.unwrap(), RunOutcome::Succeeded);
+    let values = fixture.values().await;
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].value, serde_json::json!("PNG"));
+}

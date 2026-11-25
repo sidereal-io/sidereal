@@ -108,6 +108,14 @@ fn type_text(value_type: &FacetType) -> &'static str {
     }
 }
 
+/// The allowed values a schema row keeps: a choice's, or none.
+fn allowed_values(value_type: &FacetType) -> Option<&[String]> {
+    match value_type {
+        FacetType::Count => None,
+        FacetType::Choice(allowed) => Some(allowed),
+    }
+}
+
 fn json(value: &FacetValue) -> serde_json::Value {
     match value {
         FacetValue::Integer(n) => (*n).into(),
@@ -311,7 +319,18 @@ fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> 
                     "facet {name} is a count from 0 to {MAX_COUNT}, not {n}"
                 ))
             }
-            _ => return Err(format!("facet {name} does not accept this value")),
+            (FacetType::Choice(allowed), FacetValue::Text(text)) if allowed.contains(text) => {}
+            // The proposed text is left out: an Operator's text is unbounded.
+            (FacetType::Choice(allowed), FacetValue::Text(_)) => {
+                return Err(format!(
+                    "facet {name} is a choice of {}, and the text is none of them",
+                    allowed.join(", ")
+                ))
+            }
+            (FacetType::Count, _) => return Err(format!("facet {name} is a count, not text")),
+            (FacetType::Choice(_), _) => {
+                return Err(format!("facet {name} is a choice, not a number"))
+            }
         }
     }
     Ok(())
@@ -381,8 +400,8 @@ async fn store(
         let schema = &declared.schema;
         sqlx::query(
             "INSERT INTO public.facet_schemas \
-             (name, version, owner_pack, label, value_type, unit, scope) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (name, version) DO NOTHING",
+             (name, version, owner_pack, label, value_type, unit, scope, allowed_values) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (name, version) DO NOTHING",
         )
         .bind(&schema.name)
         .bind(schema.version as i32)
@@ -391,6 +410,7 @@ async fn store(
         .bind(type_text(&schema.value_type))
         .bind(&schema.unit)
         .bind(scope_text(schema.scope))
+        .bind(allowed_values(&schema.value_type))
         .execute(&mut *tx)
         .await?;
         let kept: KeptSchema = sqlx::query_as(

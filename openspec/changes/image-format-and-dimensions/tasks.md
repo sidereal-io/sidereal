@@ -11,7 +11,7 @@
 
 ## 2. Core checks, keeps and reads choices [depends-on: 1]
 
-- [ ] 2.1 [medium] `run_operator`'s proposal check stores the text `PNG` for a choice facet that allows `PNG` and `JPEG`, as the JSON string `"PNG"` in `facet_values.value`, and records the run `failed`, with a reason that names the facet and no value stored, for the text `GIF`, the text `png`, the text `12` for a count facet, and `FacetValue::Integer(1)` for a choice facet (design decision 4; asset-facets "Core checks every proposal before it stores any") — needs the database fixture (verify: `cd server && deli -- cargo test -p sidereal-core -- operations::refuses operations::stores`)
+- [x] 2.1 [medium] `run_operator`'s proposal check stores the text `PNG` for a choice facet that allows `PNG` and `JPEG`, as the JSON string `"PNG"` in `facet_values.value`, and records the run `failed`, with a reason that names the facet and no value stored, for the text `GIF`, the text `png`, the text `12` for a count facet, and `FacetValue::Integer(1)` for a choice facet (design decision 4; asset-facets "Core checks every proposal before it stores any") — needs the database fixture (verify: `cd server && deli -- cargo test -p sidereal-core -- operations::refuses operations::stores`) (✓ `cargo test -p sidereal-core -- operations::refuses operations::stores` passed, 19 tests; full core suite passed)
 - [ ] 2.2 [medium] `store` writes a choice schema's allowed values into the new `facet_schemas` row and compares them, in order, with the kept row: once `test.kind` version 1 (`a`, `b`) has a stored value, a build that declares version 1 as `a`, `b`, `c`, or as `b`, `a`, fails its run with the reason `facet test.kind version 1 changed without a new version` and stores nothing; a build that declares version 2 as `a`, `b`, `c` stores `c` under version 2, and the version 1 value still reads back (design decision 3; asset-facets "A stored value keeps the schema it was written under") — needs the database fixture (verify: `cd server && deli -- cargo test -p sidereal-core -- operations::refuses operations::stores`)
 - [ ] 2.3 [medium] Reading an Asset returns a choice as a JSON string: `Database::facets` selects `allowed_values`, gives `FacetEntry.value` as a `FacetValue`, reads a choice only when its stored value is a string in the kept allowed values, and returns `DatabaseError::Schema` otherwise; `GET /api/assets/{id}` maps `Integer` to a JSON number and `Text` to a JSON string, with `"unit": ""` for a facet with no unit. A test that inserts a choice schema row and value finds `{"name":…,"label":…,"value":"PNG","unit":""}` in the facets, in name order, and a test that stores a choice value outside its kept allowed values gets 503 (design decisions 4 and 6; asset-library "Reading an Asset returns its facets without provenance") — needs the database fixture (verify: `cd server && deli -- cargo test -p sidereal-server --test assets get_asset`)
 
@@ -36,3 +36,11 @@
 - [ ] 6.1 [medium] In the browser journey (`web/e2e/upload.spec.ts`), Nova opens `nebula.png` from the Library and sees the terms `File size`, `Format`, `Height` and `Width` in that order, with `<bytes> bytes`, `PNG`, `24 pixels` and `32 pixels`, before and after a reload; the whole gate passes (asset-page "A new upload's page"; image-upload "A new upload has its format and dimensions") (verify: `deli -- mise run e2e`, then `deli -- mise run check`)
 
 ## Deviations Ledger
+
+- **2.1 writes a choice's allowed values into the new `facet_schemas` row.**
+  Task 2.2 names this, but migration 6's check refuses a `choice` row with
+  no allowed values, so 2.1 could not store `PNG` without it. 2.2 adds the
+  comparison with the kept row and its tests.
+- **A refused choice's reason leaves out the proposed text.** It reads
+  `facet <name> is a choice of PNG, JPEG, and the text is none of them`, so
+  an Operator's unbounded text never lands in the run's reason.
