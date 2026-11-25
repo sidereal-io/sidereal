@@ -169,19 +169,24 @@ async fn a_run_keeps_its_schema_versions_in_name_order() {
     .unwrap();
     let (outcome, took_a_first) = tokio::join!(fixture.run(&version), async {
         let mut watcher = fixture.conn().await;
-        loop {
-            let waiting: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM pg_stat_activity \
-                 WHERE wait_event_type = 'Lock' AND datname = current_database()",
-            )
-            .fetch_one(&mut watcher)
-            .await
-            .unwrap();
-            if waiting > 0 {
-                break;
+        // A run that ends before it waits on a lock fails the test here.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                let waiting: i64 = sqlx::query_scalar(
+                    "SELECT count(*) FROM pg_stat_activity \
+                     WHERE wait_event_type = 'Lock' AND datname = current_database()",
+                )
+                .fetch_one(&mut watcher)
+                .await
+                .unwrap();
+                if waiting > 0 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
             }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        })
+        .await
+        .expect("the run never waited on test.b");
         // The run waits on `test.b`. It already holds `test.a` only if it
         // keeps schemas in name order.
         sqlx::query("SET LOCAL lock_timeout = '500ms'")
