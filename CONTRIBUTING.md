@@ -81,7 +81,12 @@ mise run check-server    # Server checks: format, clippy, tests, dependency-dire
 mise run check-web       # Web checks: types, lint, format, DESIGN.md lint, token drift, unit tests
 mise run instance-verify     # Build the app image and check a disposable Compose instance (Docker required; not part of the gate)
 mise run external-db-verify  # Check external TLS startup and retained state after recreation (Docker required; not part of the gate)
+mise run target-clean        # Delete this worktree's server/target/ when it is over a size limit (not part of the gate)
 ```
+
+`mise run target-clean` keeps each worktree's Rust build output under a size
+limit, 4096 MiB unless you set `SIDEREAL_TARGET_LIMIT_MIB`. See
+[Cleaning up build output](#cleaning-up-build-output).
 
 `mise run check` runs its four parts one at a time, in the order above, and stops
 at the first one that fails. Without mise, run the same four commands by hand: see
@@ -252,6 +257,7 @@ branch's hook without asking. After you read the branch's changes, run
    | `e2e` | `sh scripts/e2e.sh` |
    | `instance-verify` | `sh scripts/instance-verify.sh` |
    | `external-db-verify` | `sh scripts/external-db-verify.sh` |
+   | `target-clean` | `sh server/scripts/target-clean.sh` |
 
    For example, prepare the fixture and run the stack:
 
@@ -279,6 +285,110 @@ from your system's package manager:
   error that names them. `server` and `web` on their own need neither.
 
 See [server setup](server/README.md) for container-free test prerequisites.
+
+### Rust build output
+
+Each worktree builds the server into its own `server/target/` folder. On a
+machine with many worktrees, these folders can fill the disk. This section
+says how the project keeps them small, and what you can do.
+
+#### Lighter debug information in development builds
+
+`server/Cargo.toml` sets the `dev` profile to build with less debug
+information. `cargo build`, `cargo run`, `cargo test` and `cargo clippy` all
+use it:
+
+- Our own crates keep line tables only. Panic backtraces and profilers still
+  show file names and line numbers. A debugger can still step by line, but
+  shows no local variables and no types.
+- Dependencies build with no debug information.
+
+One fresh build of the gate's Rust checks then takes about 1.3 GiB, against
+3.3 GiB with Cargo's default profile. The release build does not change.
+
+To use a debugger with local variables, build with full debug information
+for that session. Run this in `server/`, with the Cargo command you need,
+such as `build`, `test` or `run -p sidereal-server`, in place of `<command>`:
+
+```
+cargo --config 'profile.dev.debug="full"' --config 'profile.dev.package."*".debug="full"' <command>
+```
+
+It changes no committed file, and works with or without mise. Cargo keeps the
+full-debug output next to the lighter output, and the next ordinary build
+does not remove it. So `server/target/` grows by about one full-debug build.
+When you finish debugging, run `mise run target-clean`, which
+[Cleaning up build output](#cleaning-up-build-output) describes.
+
+#### Cleaning up build output
+
+Cargo never deletes old build output by itself. After a dependency update, a
+branch switch or a new Rust release, the old files stay next to the new ones,
+so `server/target/` keeps growing.
+
+`mise run target-clean` measures this worktree's `server/target/`. When the
+folder is larger than a size limit, it deletes the whole folder. Otherwise it
+keeps it. Either way it prints the folder's size and the limit. Without mise,
+run `sh server/scripts/target-clean.sh` from the repo root.
+
+- **The limit is 4096 MiB.** That is about three fresh builds, so a worktree
+  can hold its current build plus the older output that a dependency update,
+  a branch switch or a new Rust release leaves behind.
+- **Set another limit** in `SIDEREAL_TARGET_LIMIT_MIB`, as a whole number of
+  MiB of at most 15 digits, for example
+  `SIDEREAL_TARGET_LIMIT_MIB=2048 mise run target-clean`. Any other value stops
+  the task with an error, and it deletes nothing. To keep the folder whatever
+  its size, don't run `target-clean`.
+- **The limit applies per worktree, and only when `target-clean` runs.** It is
+  a threshold, not a cap: between runs a worktree can grow past it, so ten
+  worktrees can hold more than ten times the limit. To choose a limit, start
+  from your free disk. Keep about 2 GiB for each build that runs at the same
+  time, then divide what is left by the number of worktrees. For example, with
+  40 GiB free and four builds at once, 32 GiB is left; across eight worktrees
+  that is 4 GiB, or 4096 MiB, each.
+- **Run it only when no build runs in that worktree.** A build that runs
+  during the clean-up fails; run it again. Other worktrees are never touched.
+  The next build after a deletion starts from scratch.
+- **Output from before the lighter profile,** about 3.3 GiB, stays under the
+  default limit, so `target-clean` keeps it. To delete it once, run
+  `SIDEREAL_TARGET_LIMIT_MIB=0 mise run target-clean`.
+
+`target-clean` deletes only this checkout's own `server/target/`. It ignores
+`CARGO_TARGET_DIR` and never runs `cargo clean`, so it never touches a build
+folder somewhere else. `mise run check` does not run it. It deletes nothing,
+and exits with an error, when:
+
+- `server` or `server/target` is a symbolic link.
+- `server`, `server/target` or a folder inside `server/target` is a mount
+  point. `rm -rf` would cross into it, and could empty another file system or
+  another checkout's build folder. The task finds mount points in the output
+  of `mount`, and also refuses when it cannot read that output.
+- The checkout's path holds a space, tab, newline or backslash. `mount` prints
+  these characters escaped, so the task cannot check the path for mount
+  points. Move the checkout to a path without those characters.
+- It cannot measure the folder. When deleting fails part way, it says that the
+  folder may be partly deleted; the next build rebuilds what is missing.
+
+#### Personal options
+
+The project sets neither of these. Each one suits some machines and not
+others, so set it in your own environment or in `mise.local.toml` if you want
+it.
+
+- **One build folder for all worktrees.** Set `CARGO_TARGET_DIR` to a folder
+  outside your checkouts, and Cargo stores each dependency's build once. But
+  Cargo locks the folder for each build, so builds in different worktrees wait
+  for each other. Branches with different dependencies or Rust releases also
+  replace each other's output, so each switch rebuilds. `target-clean` does
+  not clean this folder.
+- **sccache,** a compiler cache shared by all worktrees. Set
+  `RUSTC_WRAPPER=sccache`, and limit its cache with `SCCACHE_CACHE_SIZE`,
+  which is 10 GiB by default. It makes first builds faster, which helps most
+  in a new worktree: in one measurement a build of the gate's Rust checks
+  took 40 s instead of 53 s in a new checkout, and 18 s at the same path. It
+  saves no disk. Cargo still writes the full output into each worktree's
+  `server/target/`, and sccache keeps its own cache on top, about 240 MiB for
+  this workspace.
 
 ### Moving from the Nix shell
 
