@@ -29,7 +29,8 @@ All of this change is in the library screen, `web/src/Library.tsx`. Today:
 
 The server keeps one file per request (D1), so nothing changes outside
 `web/` and `DESIGN.md`. In `web/`, the change is in `Library.tsx`, plus the
-session signal in `Access.tsx` (D14).
+session signal in `Access.tsx` (D14) and the check that a sign-out answer
+still belongs to the current view (D15).
 
 ## Goals / Non-Goals
 
@@ -64,7 +65,10 @@ session signal in `Access.tsx` (D14).
   `web/src/Access.test.tsx`, because only `Access` aborts the real signal: it
   renders `Access` with a stubbed `fetch` whose upload and
   `DELETE /api/session` answers the test releases, and the events socket
-  stub the file already uses. The end-to-end
+  stub the file already uses. Where an upload answer must reach the loop
+  before React commits the view change, the test ends the session and
+  releases the answer inside one `act` scope, so the Library's unmount
+  signal alone cannot make the test pass. The end-to-end
   journey in
   `web/e2e/upload.spec.ts` picks its two fixture images in one pick, which
   proves the browser's `multiple` picker reaches the same code.
@@ -75,8 +79,9 @@ session signal in `Access.tsx` (D14).
 - **Blast radius:** the library screen in `web/` (`Library.tsx`,
   `Library.css` and their tests), the session signal in `Access.tsx` and its
   new tests in `Access.test.tsx`, the upload end-to-end test, and the
-  Library section of `DESIGN.md`. No API, schema, server, session or
-  authorization code changes.
+  Library section of `DESIGN.md`. In `Access.tsx`, `signOut` also ignores
+  an answer that arrives after its signed-in view has ended. No API,
+  schema, server, session or authorization code changes.
 
 ## Decisions
 
@@ -139,11 +144,23 @@ session check or from a sign-in, and passes its signal to `Library` as the
 required prop `session`. It aborts it in the same call that learns the
 session ended, before it sets the signed-out view:
 
-- in `signOut`, when the answer is 204 or 401;
+- in `signOut`, when the answer is 204 or 401 and the view that sent the
+  sign-out is still current;
 - in `sessionLost`, which the events connection and the Library's own 401
   answers call.
 
 A sign-out that answers anything else, or no answer, aborts nothing (D12).
+
+`signOut` reads the ref's controller when it starts, before it sends the
+`DELETE`, and keeps it. When the answer comes, it acts only if that
+controller is still the one in the ref and is not aborted. Otherwise the
+view the sign-out came from has already ended, for example because the
+events connection ended the session and Nova then signed in again. Then it
+ignores the answer: it aborts nothing, sets no view and shows no notice
+(D15). A 204 or 401 that arrives late therefore cannot stop the next view's
+pick or send Nova back to the sign-in form, and a late 500 cannot put
+"Something went wrong" on the next view. Today `signOut` applies its answer
+with no such check (`web/src/Access.tsx:185-191`); this change adds it.
 
 The abort runs in the same promise callback that reads the answer, so it
 comes before any render. The loop's next check (step 1 or step 3) then sees
@@ -156,6 +173,11 @@ answer, and the session end hides the list.
 Alternative: abort the Library's signal only in its unmount cleanup, as
 today. Rejected: React runs that cleanup at the commit after the view
 changes, and an upload answer can arrive before it (see Context).
+
+Alternative: abort only the captured controller, but still set the
+signed-out view on a late answer, as today, and file the stale view change
+as a separate bug. Rejected (D15): Nova would still be sent to the sign-in
+form in the middle of a new pick.
 
 ### The list reloads after a saved file or a lost answer
 

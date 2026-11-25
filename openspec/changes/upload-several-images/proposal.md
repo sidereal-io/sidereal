@@ -31,6 +31,10 @@ alone.
   arrives: a file it admits gets its usual answer, and a file that arrives
   after the session is gone gets 401. A sign-out that fails or gets no
   answer tells the screen nothing, so the pick goes on (D12).
+- A sign-out answer that arrives after its signed-in view has ended, for
+  example after the events connection ended the session and Nova signed in
+  again, changes nothing: it stops no files, changes no view and shows no
+  notice (D15).
 - Cut from the story: a percentage of bytes sent. Out, as the story says:
   drag and drop, and folder upload (#358).
 
@@ -58,10 +62,12 @@ None.
   in turn, and the single upload state becomes a list of per-file lines.
 - `web/src/Access.tsx`: keeps an abort signal for the signed-in view, passes
   it to the Library, and aborts it as soon as it learns the session ended.
+  A sign-out acts on its answer only while the view that sent it is still
+  current.
 - `web/src/Library.css`: the per-file lines, from existing tokens.
 - `web/src/Library.test.tsx`, `web/src/Access.test.tsx` and
   `web/e2e/upload.spec.ts`: tests for several files, a sign-out during a
-  pick, the events connection ending a pick, and the tests whose rules
-  change.
+  pick, the events connection ending a pick, a late sign-out answer, and
+  the tests whose rules change.
 - `DESIGN.md`: the Library's upload wording says files, not a file.
 - No server, API, database or dependency change.

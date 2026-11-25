@@ -21,12 +21,13 @@ https://github.com/sidereal-io/sidereal/issues/531
 | D12 | If Nova presses Sign out while files are still waiting, when does the screen stop sending them? | Once the screen knows the session has ended: the sign-out has answered, an upload or list request has answered 401, or the events connection says so. A file sent while the sign-out is still pending gets the answer the server gives when the request arrives: its usual answer while the session is still valid, or 401 once it is gone, and the screen then reports the lost session. A sign-out that fails or gets no answer tells the screen nothing about the session, so the pick goes on. | User |
 | D13 | Must every saved file or lost answer cause its own reload of the list? | No. The list reloads after a saved file or a lost answer, and answers that come back before that reload starts may share it. | User |
 | D14 | How does the screen stop at once when it learns the session has ended? | `Access` keeps an abort signal for the signed-in view and passes it to `Library`. It aborts the signal in the same call that learns the session ended (the sign-out answered 204 or 401, or `sessionLost` ran for a library request or the events connection), before it changes the view. The upload loop checks the signal before each send. | User |
+| D15 | What does a sign-out answer do when it arrives after the signed-in view it came from has ended? | Nothing. `signOut` captures the signed-in view's controller when it starts, and acts on its answer only while that controller is still the current one and not aborted. Otherwise it ignores the answer: no abort, no view change, no notice. So a late answer can neither stop a later pick nor send Nova back to the sign-in form. | User |
 
 ## Changes from the story
 
 - Cut: a percentage of bytes sent for each file. "Progress" means each file's state (D3).
 - Out, as the story says: drag and drop, and folder upload (#358).
 
-D12 and D13, and the corrected reason in D10, are the user's answers to the plan review's first round. D14 is the user's answer to its second round. That round also corrected D12's wording: the server checks the session once, when a request arrives, so a file it admits gets its usual answer, not only "saved" or 401.
+D12 and D13, and the corrected reason in D10, are the user's answers to the plan review's first round. D14 is the user's answer to its second round, and D15 the user's answer to its third. The second round also corrected D12's wording: the server checks the session once, when a request arrives, so a file it admits gets its usual answer, not only "saved" or 401.
 
 Confirmed by user: yes

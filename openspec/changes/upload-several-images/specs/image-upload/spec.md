@@ -189,7 +189,9 @@ the session once, when each request arrives. So a file it admits gets its
 usual answer, and a file that arrives after the session is gone gets 401,
 which ends the pick as "Ending the session stops the files not yet sent"
 says. A sign-out that fails or gets no answer tells the screen nothing about
-the session, so the pick SHALL go on.
+the session, so the pick SHALL go on. A sign-out answer that arrives after
+the signed-in view it came from has ended SHALL change nothing: it SHALL NOT
+stop any file, change the view or show a notice.
 
 #### Scenario: Nova signs out during a pick
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `a.png` is pending, `a.png` answers 201 while the sign-out is still pending, and the sign-out answers 204 while the upload of `b.png` is pending
@@ -198,9 +200,21 @@ the session, so the pick SHALL go on.
 - **AND** a later answer for `b.png` shows nothing and starts no list request
 
 #### Scenario: A failed sign-out leaves the pick going
-- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, and the sign-out answers 500
-- **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and both files get their lines
+- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, the sign-out answers 500, the uploads of `a.png` and `b.png` both answer 201, and the events connection stays open
+- **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and the lines read `a.png was uploaded.` and `b.png was uploaded.`
 
 #### Scenario: A sign-out with no answer leaves the pick going
-- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, and the sign-out request ends without an answer
-- **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and both files get their lines
+- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, the sign-out request ends without an answer, the uploads of `a.png` and `b.png` both answer 201, and the events connection stays open
+- **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and the lines read `a.png was uploaded.` and `b.png was uploaded.`
+
+#### Scenario: A sign-out with no answer, then an upload answers 401
+- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `a.png` is pending, the sign-out request ends without an answer, `a.png` answers 201, and `b.png` answers 401
+- **THEN** the screen shows the sign-in form, and no upload request is sent for `c.png`
+
+#### Scenario: A late sign-out answer leaves the next sign-in alone
+- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, the events connection says the session ended before the sign-out answers, Nova signs in again and picks `c.png` and `d.png`, the old sign-out answers 204 while the upload of `c.png` is pending, and the uploads of `c.png` and `d.png` both answer 201
+- **THEN** the library stays, with no notice, the upload request for `d.png` is sent once `c.png` has its answer, and the lines read `c.png was uploaded.` and `d.png was uploaded.`
+
+#### Scenario: A late failed sign-out shows no notice
+- **WHEN** Nova presses Sign out, the events connection says the session ended before the sign-out answers, Nova signs in again, and the old sign-out then answers 500
+- **THEN** the library stays and shows no notice
