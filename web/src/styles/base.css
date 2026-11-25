@@ -6,6 +6,69 @@
 body {
   margin: 0;
   background-color: var(--sr-obsidian-950);
-  color: var(--sr-obsidian-100);
+  color: var(--sr-color-text-body);
   font-family: var(--sr-font-family-sans);
+}
+
+h1,
+p {
+  margin: 0;
+}
+
+/*
+ * Buttons shared by every screen. A primary button is the one filled action
+ * of a view; a quiet button has no fill and shows the ghost tint on hover.
+ */
+.button-primary,
+.button-quiet {
+  display: inline-flex;
+  align-items: center;
+  height: var(--sr-size-32);
+  padding: 0 var(--sr-spacing-12);
+  border: none;
+  border-radius: var(--sr-radius-4);
+  font-family: var(--sr-font-family-sans);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  font-weight: var(--sr-font-weight-500);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.button-primary {
+  background-color: var(--sr-color-action-primary);
+  color: var(--sr-color-text-on-action);
+}
+
+.button-primary:hover:enabled {
+  box-shadow: 0 0 var(--sr-blur-14)
+    color-mix(
+      in srgb,
+      var(--sr-violet-500) calc(var(--sr-opacity-45) * 100%),
+      transparent
+    );
+}
+
+.button-primary:disabled {
+  cursor: default;
+}
+
+.button-quiet {
+  background: none;
+  color: var(--sr-color-text-secondary);
+}
+
+.button-quiet:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--sr-white) calc(var(--sr-opacity-4) * 100%),
+    transparent
+  );
+  color: var(--sr-color-text-body);
+}
+
+.button-primary:focus-visible,
+.button-quiet:focus-visible {
+  outline: var(--sr-border-width-1) solid var(--sr-color-focus-ring);
+  outline-offset: var(--sr-border-width-1);
 }

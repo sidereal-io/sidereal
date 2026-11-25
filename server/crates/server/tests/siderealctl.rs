@@ -572,6 +572,58 @@ mod in_process {
         }
     }
 
+    /// The application tables, and the rows of each one except `users` and
+    /// `sessions`, which the access acts themselves change.
+    async fn stored_beyond_access(db: &TestDatabase) -> (Vec<String>, Vec<String>) {
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT schemaname || '.' || tablename FROM pg_tables \
+             WHERE schemaname NOT IN ('pg_catalog', 'information_schema') ORDER BY 1",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap();
+        let mut rows = Vec::new();
+        for table in tables
+            .iter()
+            .filter(|t| !matches!(t.as_str(), "public.users" | "public.sessions"))
+        {
+            let quoted = table
+                .split('.')
+                .map(|part| format!("\"{}\"", part.replace('"', "\"\"")))
+                .collect::<Vec<_>>()
+                .join(".");
+            rows.push(
+                sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                    "SELECT '{table}: ' || coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text), '[]')::text FROM {quoted} t"
+                )))
+                .fetch_one(&mut conn)
+                .await
+                .unwrap(),
+            );
+        }
+        conn.close().await.unwrap();
+        (tables, rows)
+    }
+
+    #[tokio::test]
+    async fn security_events_store_nothing() {
+        let db = TestDatabase::new();
+        let app = router(&db).await;
+        let before = stored_beyond_access(&db).await;
+        claim(&app, "sam", PASSWORD).await;
+        let cookie = signed_in(&app).await;
+        assert_eq!(
+            sign_in(&app, "sam", "wrong-horse-battery").await,
+            StatusCode::UNAUTHORIZED
+        );
+        let signed_out = send_with(&app, "DELETE", "/api/session", None, Some(&cookie)).await;
+        assert_eq!(signed_out.status(), StatusCode::NO_CONTENT);
+        let outcome = reset(&db, &[NEW_PASSWORD, NEW_PASSWORD]).await;
+        assert_eq!(outcome.status, 0, "{}", outcome.err);
+        assert_eq!(stored_beyond_access(&db).await, before);
+    }
+
     #[tokio::test]
     async fn in_process_a_create_writes_its_event_line() {
         let db = TestDatabase::new();

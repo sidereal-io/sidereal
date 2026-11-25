@@ -87,8 +87,8 @@ The server SHALL never reset the database or execute downgrade migrations.
 
 #### Scenario: First startup
 - **WHEN** Sam starts the server against an empty dedicated database
-- **THEN** the database contains the Sidereal identity row and three successful migration records
-- **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, `users` and `sessions`
+- **THEN** the database contains the Sidereal identity row and five successful migration records
+- **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, `users`, `sessions`, `assets`, `asset_versions`, `facet_schemas`, `facet_values` and `operation_runs`
 
 #### Scenario: Repeated startup
 - **WHEN** Sam restarts against an initialized database
@@ -109,6 +109,15 @@ The server SHALL never reset the database or execute downgrade migrations.
 - **WHEN** a database holding the first two migrations starts under the new binary
 - **THEN** the first two migration records remain identical, a third successful record exists, and the `users` and `sessions` tables are empty
 
+#### Scenario: Upgrade adds the asset tables
+- **WHEN** a database holding the first three migrations, with a claimed user, starts under the new binary
+- **THEN** the first three migration records remain identical, a fourth successful record exists, the `assets` and `asset_versions` tables are empty, and the user row is unchanged
+
+#### Scenario: Upgrade adds the facet tables
+- **WHEN** a database holding the first four migrations, with a claimed user and one Asset and its version, starts under the new binary
+- **THEN** the first four migration records remain identical, a fifth successful record exists, and the `facet_schemas`, `facet_values` and `operation_runs` tables are empty
+- **AND** the user, Asset and version rows are unchanged
+
 ### Requirement: Each migration runs in one transaction
 
 Each bundled migration SHALL run in one transaction, including its essential migration record fields.
@@ -122,7 +131,7 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: Concurrent startup
 - **WHEN** two servers start against the same empty database
-- **THEN** both complete startup and exactly three successful migration records exist
+- **THEN** both complete startup and exactly five successful migration records exist
 
 ### Requirement: Migration timing metadata is best-effort
 
@@ -413,4 +422,3 @@ Readiness lines SHALL hold no password, user name, connection string, or raw dat
 - **GIVEN** a server started with a distinctive password
 - **WHEN** PostgreSQL stops and readiness reports not ready
 - **THEN** standard error contains neither the password nor the connection string
-

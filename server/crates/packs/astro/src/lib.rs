@@ -5,10 +5,13 @@
 //! use — and never against `core` internals. That direction is enforced by
 //! `server/scripts/check-arch.sh`.
 //!
-//! M0 is registration only: the components below are id-bearing stubs with no
-//! behaviour yet (no FITS reading, no plate solving, no ingest).
+//! The components below are id-bearing stubs with no behaviour yet (no FITS
+//! reading, no plate solving, no ingest). The FITS Source and the
+//! plate-solve Operator say so when run.
 
-use sidereal_plugin_abi::{Operator, Pack, Registry, Sink, Source};
+use sidereal_plugin_abi::{
+    AssetContext, Operator, OperatorError, Pack, Registry, Sink, Source, SourceError,
+};
 
 /// The astrophotography domain pack.
 pub struct AstroPack;
@@ -25,11 +28,19 @@ impl Pack for AstroPack {
     }
 }
 
-/// Reads FITS/XISF frames into assets (M0 stub).
+/// Reads FITS/XISF frames into assets (stub).
 struct FitsSource;
 impl Source for FitsSource {
     fn id(&self) -> &str {
         "astro.fits"
+    }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn run(&self, _context: &mut AssetContext<'_>) -> Result<(), SourceError> {
+        Err(SourceError::Unsupported)
     }
 }
 
@@ -38,6 +49,18 @@ struct PlateSolveOperator;
 impl Operator for PlateSolveOperator {
     fn id(&self) -> &str {
         "astro.plate-solve"
+    }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn writes(&self) -> &[&str] {
+        &[]
+    }
+
+    fn run(&self, _context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        Err(OperatorError::Unsupported)
     }
 }
 

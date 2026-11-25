@@ -41,10 +41,33 @@ describe("buildTokensCss on DESIGN.md", () => {
     );
   });
 
-  it("writes one property per primitive, and nothing else", () => {
-    const names = properties(css).map(([name]) => name);
+  it("writes one property per primitive", () => {
+    const names = properties(css)
+      .filter(([, value]) => !value.startsWith("var("))
+      .map(([name]) => name);
     const expected = primitiveKeys().map((key) => `--sr-${key}`);
     expect(names).toEqual(expected);
+  });
+
+  it("writes one property per semantic token, and nothing else", () => {
+    const names = properties(css)
+      .filter(([, value]) => value.startsWith("var("))
+      .map(([name]) => name);
+    const extension = frontMatter["x-sidereal"];
+    const semantic =
+      isMap(extension) && isMap(extension.semantic) ? extension.semantic : {};
+    expect(names).toEqual(Object.keys(semantic).map((key) => `--sr-${key}`));
+  });
+
+  it.each([
+    ["--sr-color-action-primary", "var(--sr-violet-600)"],
+    ["--sr-color-text-on-action", "var(--sr-white)"],
+    ["--sr-color-text-body", "var(--sr-obsidian-100)"],
+    ["--sr-color-text-secondary", "var(--sr-obsidian-400)"],
+    ["--sr-color-border-hairline", "var(--sr-obsidian-800)"],
+    ["--sr-color-focus-ring", "var(--sr-violet-500)"],
+  ])("writes %s as an alias of its primitive", (name, value) => {
+    expect(byName.get(name)).toBe(value);
   });
 
   it("starts with a comment that says the file is generated", () => {
@@ -59,6 +82,48 @@ describe("buildTokensCss", () => {
       "x-sidereal": { "css-prefix": "sr" },
     });
     expect(new Map(properties(css)).get("--sr-spacing-16")).toBe("16px");
+  });
+
+  it("writes a semantic token as var() of the primitive it names", () => {
+    const css = buildTokensCss({
+      colors: { white: "#FFFFFF" },
+      "x-sidereal": {
+        "css-prefix": "sr",
+        semantic: { "color-text-on-action": "{colors.white}" },
+      },
+    });
+    expect(new Map(properties(css)).get("--sr-color-text-on-action")).toBe(
+      "var(--sr-white)",
+    );
+  });
+
+  it("writes a semantic token that names a primitive in the extension", () => {
+    const css = buildTokensCss({
+      "x-sidereal": {
+        "css-prefix": "sr",
+        "font-size": { "font-size-14": "14px" },
+        semantic: { "font-size-body": "{font-size.font-size-14}" },
+      },
+    });
+    expect(new Map(properties(css)).get("--sr-font-size-body")).toBe(
+      "var(--sr-font-size-14)",
+    );
+  });
+
+  it("writes semantic tokens after every primitive", () => {
+    const css = buildTokensCss({
+      colors: { white: "#FFFFFF" },
+      spacing: { "spacing-4": "4px" },
+      "x-sidereal": {
+        "css-prefix": "sr",
+        semantic: { "color-text-on-action": "{colors.white}" },
+      },
+    });
+    expect(properties(css).map(([name]) => name)).toEqual([
+      "--sr-white",
+      "--sr-spacing-4",
+      "--sr-color-text-on-action",
+    ]);
   });
 
   it("uses the prefix from x-sidereal.css-prefix", () => {
@@ -96,12 +161,50 @@ describe("buildTokensCss refuses tokens it cannot write", () => {
     expect(() => buildTokensCss(base())).not.toThrow();
   });
 
-  it("refuses a semantic token", () => {
+  it("accepts a semantic token that names a primitive", () => {
     const frontMatter = base();
     frontMatter["x-sidereal"].semantic = {
-      "color-action-primary": "{colors.violet-600}",
+      "color-text-on-action": "{colors.white}",
+    };
+    expect(() => buildTokensCss(frontMatter)).not.toThrow();
+  });
+
+  it.each([
+    ["a raw value", "#7C3AED"],
+    ["a primitive that does not exist", "{colors.violet-650}"],
+    ["a group that does not exist", "{shadows.white}"],
+    ["the wrong group", "{spacing.white}"],
+    ["text after the reference", "{colors.white}; } body {"],
+    ["text before the reference", "x {colors.white}"],
+    ["two references", "{colors.white}{colors.white}"],
+    ["a key with other characters", "{colors.White}"],
+    ["a reference to another semantic token", "{semantic.color-other}"],
+    ["a number", 7],
+  ])("refuses a semantic token whose value is %s", (_, value) => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].semantic = {
+      "color-other": "{colors.white}",
+      "color-action-primary": value,
     };
     expect(() => buildTokensCss(frontMatter)).toThrow(/color-action-primary/);
+  });
+
+  it("refuses a semantic token whose key is also a primitive's key", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].semantic = { white: "{colors.white}" };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/white/);
+  });
+
+  it("refuses a semantic key with characters other than a-z, 0-9, and hyphens", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].semantic = { Color_Text: "{colors.white}" };
+    expect(() => buildTokensCss(frontMatter)).toThrow(/Color_Text/);
+  });
+
+  it("refuses a semantic group that is not a map", () => {
+    const frontMatter = base();
+    frontMatter["x-sidereal"].semantic = ["{colors.white}"];
+    expect(() => buildTokensCss(frontMatter)).toThrow(/semantic must be a map/);
   });
 
   it("refuses a component token", () => {

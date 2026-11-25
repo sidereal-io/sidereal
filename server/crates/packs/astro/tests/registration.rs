@@ -5,12 +5,42 @@ use sidereal_pack_astro::AstroPack;
 use sidereal_plugin_abi::{Pack, Registry};
 
 #[test]
-fn astro_pack_registers_and_is_discoverable() {
+fn astro_pack_registration_makes_it_discoverable() {
     let mut registry = Registry::new();
-    AstroPack.register(&mut registry);
+    registry.register_pack(&AstroPack).unwrap();
 
     assert_eq!(AstroPack.id(), "astro");
     assert!(registry.source_ids().contains(&"astro.fits"));
     assert!(registry.operator_ids().contains(&"astro.plate-solve"));
     assert!(registry.sink_ids().contains(&"astro.immich"));
+}
+
+struct Empty;
+impl sidereal_plugin_abi::Candidate for Empty {
+    fn size(&self) -> u64 {
+        0
+    }
+    fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+        Ok(0)
+    }
+}
+
+#[test]
+fn the_fits_source_says_it_cannot_run_yet() {
+    let mut registry = Registry::new();
+    registry.register_pack(&AstroPack).unwrap();
+    assert_eq!(
+        registry.execute_source("astro.fits", &mut Empty, &mut |_| {}, &|| false),
+        Err(sidereal_plugin_abi::ExecutionError::Unsupported)
+    );
+}
+
+#[test]
+fn operator_execution_of_the_plate_solve_stub_says_it_cannot_run_yet() {
+    let mut registry = Registry::new();
+    registry.register_pack(&AstroPack).unwrap();
+    assert_eq!(
+        registry.execute_operator("astro.plate-solve", &mut Empty, &mut |_| {}, &|| false),
+        Err(sidereal_plugin_abi::ExecutionError::Unsupported)
+    );
 }

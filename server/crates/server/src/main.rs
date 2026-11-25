@@ -1,17 +1,21 @@
 //! Check the web and storage roots, then initialize PostgreSQL and pair
 //! storage, before binding any HTTP listener.
-use sidereal_core::database::{initialize, initialize_with_storage};
+use sidereal_core::{
+    database::{initialize, initialize_with_storage},
+    storage::objects::ObjectStore,
+};
 use sidereal_server::{
     access::{
         relay,
         sweep::{sweep, Schedule},
     },
-    app_with_database,
+    app_with_library,
     config::{
-        allowed_origins_from_env, storage_root_from_env, trusted_proxies_from_env,
+        allowed_origins_from_env, check_overlap, storage_root_from_env, trusted_proxies_from_env,
         web_root_from_env, DatabaseConfig,
     },
-    with_trusted_proxies, with_web_root, Log,
+    storage::cleanup_lines,
+    with_trusted_proxies, with_web_root, Library, Log, Tuning,
 };
 use std::net::SocketAddr;
 
@@ -26,8 +30,13 @@ async fn main() {
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // A start that cannot serve its web shell or reach its storage directory
     // must not change the database first.
+    // Both folders are resolved once, here, and only the resolved folders
+    // are used from now on.
     let web_root = web_root_from_env()?;
     let storage = storage_root_from_env()?;
+    if let (Some(storage), Some(web_root)) = (&storage, &web_root) {
+        check_overlap(storage, web_root)?;
+    }
     let allowed_origins = allowed_origins_from_env()?;
     let trusted_proxies = trusted_proxies_from_env()?;
     let config = DatabaseConfig::from_env()?;
@@ -36,9 +45,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         config.startup_timeout,
         config.migration_timeout,
     );
-    let database = match &storage {
-        Some(storage) => initialize_with_storage(options, startup, migration, storage).await?,
-        None => initialize(options, startup, migration).await?,
+    let (database, objects) = match &storage {
+        Some(storage) => {
+            let (database, paired, cleanup) =
+                initialize_with_storage(options, startup, migration, storage).await?;
+            for line in cleanup_lines(&cleanup) {
+                eprintln!("{line}");
+            }
+            // The store opens the folder pairing checked and confirms its
+            // marker again, so a folder swapped in meanwhile stops startup.
+            match ObjectStore::open(storage, paired) {
+                Ok(objects) => (database, Some(objects)),
+                Err(error) => {
+                    database.close().await;
+                    return Err(error.into());
+                }
+            }
+        }
+        None => (initialize(options, startup, migration).await?, None),
     };
     if relay(&database, Log::default()).await.is_err() {
         database.close().await;
@@ -71,7 +95,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let app = with_trusted_proxies(
         with_web_root(
-            app_with_database(database.clone(), allowed_origins),
+            app_with_library(
+                database.clone(),
+                allowed_origins,
+                Tuning::default(),
+                Library::new(objects),
+            ),
             web_root.as_deref(),
         ),
         trusted_proxies,

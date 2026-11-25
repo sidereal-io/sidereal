@@ -33,7 +33,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::task::JoinHandle;
 
 /// Every path under `/api`, behind the origin check and then the session
-/// guard. The layer added last runs first. The catch-alls are
+/// guard, including the `protected` routes of other modules. The layer added
+/// last runs first. The catch-alls are
 /// routes, not a fallback, because `route_layer` guards only matched routes:
 /// an unknown path answers 401 before 404. `{*rest}` never matches an empty
 /// segment, so `/api` and `/api/` need their own.
@@ -43,8 +44,10 @@ pub fn routes(
     timing: EventTiming,
     limiter: Arc<Limiter>,
     log: Log,
+    protected: Router<Database>,
 ) -> Router<Database> {
     Router::new()
+        .merge(protected)
         .route("/api/claim", get(claim_state).post(claim))
         .route(
             "/api/session",

@@ -37,7 +37,8 @@ export function main(args: string[]): number {
 }
 
 // Returns the text of tokens.css: one custom property per primitive token,
-// in DESIGN.md's order, grouped by where each token sits in the front matter.
+// in DESIGN.md's order, grouped by where each token sits in the front matter,
+// then one per semantic token, written as var() of the primitive it names.
 // Throws a TokenError that names every token it cannot write safely.
 export function buildTokensCss(frontMatter: Record<string, unknown>): string {
   checkTokens(frontMatter);
@@ -54,6 +55,18 @@ export function buildTokensCss(frontMatter: Record<string, unknown>): string {
     lines.push(`  /* ${group.path} */`);
     for (const [key, value] of Object.entries(group.tokens)) {
       lines.push(`  --${prefix}-${key}: ${String(value)};`);
+    }
+  }
+
+  // A semantic value is never written as it stands: only the key of the
+  // primitive it names is, and checkTokens() has made sure that key exists.
+  const semantic = semanticTokens(frontMatter);
+  if (Object.keys(semantic).length > 0) {
+    if (lines.length > 3) lines.push("");
+    lines.push("  /* x-sidereal.semantic */");
+    for (const [key, value] of Object.entries(semantic)) {
+      const target = parseReference(value)?.key;
+      lines.push(`  --${prefix}-${key}: var(--${prefix}-${String(target)});`);
     }
   }
 
@@ -97,17 +110,12 @@ function findProblems(frontMatter: Record<string, unknown>): string[] {
     );
   }
 
-  // Semantic and component tokens hold references, such as
-  // `{colors.violet-600}`, which the generator cannot resolve yet.
-  const unresolved = [
-    { path: "x-sidereal.semantic", tokens: extension.semantic },
-    { path: "components", tokens: frontMatter.components },
-  ];
-  for (const { path, tokens } of unresolved) {
-    if (!isMap(tokens)) continue;
-    for (const key of Object.keys(tokens)) {
+  // Component tokens hold properties of references, which the generator
+  // cannot write yet.
+  if (isMap(frontMatter.components)) {
+    for (const key of Object.keys(frontMatter.components)) {
       problems.push(
-        `${key} (in ${path}): the generator cannot resolve references yet. Add reference lookup to web/scripts/tokens.ts in the same pull request.`,
+        `${key} (in components): the generator cannot write component tokens yet. Add support to web/scripts/tokens.ts in the same pull request.`,
       );
     }
   }
@@ -167,10 +175,70 @@ function findProblems(frontMatter: Record<string, unknown>): string[] {
     }
   }
 
+  if (extension.semantic !== undefined && !isMap(extension.semantic)) {
+    problems.push("x-sidereal.semantic must be a map of tokens");
+  }
+  for (const [key, value] of Object.entries(semanticTokens(frontMatter))) {
+    const where = `${JSON.stringify(key)} (in x-sidereal.semantic)`;
+    const firstGroup = firstGroupOf.get(key);
+    if (firstGroup !== undefined) {
+      problems.push(`${where} is also a key in ${firstGroup}`);
+    }
+    firstGroupOf.set(key, "x-sidereal.semantic");
+    if (!/^[a-z0-9-]+$/.test(key)) {
+      problems.push(
+        `${where}: a key may hold only lowercase letters, digits, and hyphens`,
+      );
+    }
+    const reference = parseReference(value);
+    if (!reference) {
+      problems.push(
+        `${where}: the value must be exactly {<group>.<key>}, such as {colors.violet-600}, with nothing before or after it`,
+      );
+    } else if (!primitiveExists(frontMatter, reference)) {
+      problems.push(
+        `${where}: ${String(value)} names no primitive token in DESIGN.md`,
+      );
+    }
+  }
+
   return problems;
 }
 
+interface Reference {
+  group: string;
+  key: string;
+}
+
+// A semantic value names one primitive: exactly `{<group>.<key>}`.
+function parseReference(value: unknown): Reference | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = /^\{([a-z0-9-]+)\.([a-z0-9-]+)\}$/.exec(value);
+  return match ? { group: match[1], key: match[2] } : undefined;
+}
+
+// A group is one of the specification's groups, such as `colors`, or a
+// primitive group under x-sidereal, such as `font-size`.
+function primitiveExists(
+  frontMatter: Record<string, unknown>,
+  { group, key }: Reference,
+): boolean {
+  const path = specGroups.includes(group) ? group : `x-sidereal.${group}`;
+  const found = primitiveGroups(frontMatter).find((g) => g.path === path);
+  return found !== undefined && Object.hasOwn(found.tokens, key);
+}
+
+// The semantic tokens under x-sidereal.semantic, in DESIGN.md's order.
+export function semanticTokens(
+  frontMatter: Record<string, unknown>,
+): Record<string, unknown> {
+  const semantic = extensionOf(frontMatter).semantic;
+  return isMap(semantic) ? semantic : {};
+}
+
 // Text that could end a custom property or load a file from another site.
+// Only primitive values are checked against it: a semantic value must be a
+// reference, and only the key it names is written.
 const refusedText = /[\n\r;{}<\\]|url\(/i;
 
 interface ValueForm {

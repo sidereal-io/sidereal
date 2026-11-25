@@ -1,0 +1,45 @@
+/*
+ * The page: the top bar that DESIGN.md describes, then the current screen
+ * inside the page margin.
+ */
+
+.app-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sr-spacing-12);
+  padding: var(--sr-spacing-12) var(--sr-spacing-32);
+  border-bottom: var(--sr-border-width-1) solid var(--sr-color-border-hairline);
+}
+
+.app-bar-side,
+.app-bar-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--sr-spacing-12);
+  min-width: 0;
+}
+
+/* headline-sm */
+.app-mark {
+  font-size: var(--sr-font-size-16);
+  line-height: var(--sr-line-height-24);
+  font-weight: var(--sr-font-weight-600);
+}
+
+.app-main {
+  padding: var(--sr-spacing-32);
+}
+
+/* The health is quiet text in the bar, not a status badge. */
+.health-status {
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  white-space: nowrap;
+}
+
+.health-status strong {
+  font-weight: var(--sr-font-weight-500);
+}

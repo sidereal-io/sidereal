@@ -86,11 +86,35 @@ fn get(port: u16, path: &str) -> Option<String> {
 
 /// Start the server and wait until `/readyz` answers ready.
 fn ready(db: &TestDatabase, storage: Option<&Path>) -> Server {
+    ready_with(db, storage, Stdio::null())
+}
+
+/// [`ready`], keeping what the server writes to stderr for [`stderr`].
+fn ready_logging(db: &TestDatabase, storage: &Path) -> Server {
+    ready_with(db, Some(storage), Stdio::piped())
+}
+
+/// Stop the server and answer everything it wrote to stderr.
+fn stderr(mut server: Server) -> String {
+    let _ = server.0.kill();
+    let _ = server.0.wait();
+    let mut output = String::new();
+    server
+        .0
+        .stderr
+        .take()
+        .expect("started with ready_logging")
+        .read_to_string(&mut output)
+        .unwrap();
+    output
+}
+
+fn ready_with(db: &TestDatabase, storage: Option<&Path>, stderr: Stdio) -> Server {
     let port = free_port();
     let mut child = Server(
         server(db, port, storage)
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(stderr)
             .spawn()
             .unwrap(),
     );
@@ -202,4 +226,189 @@ async fn storage_pairs_before_serving_and_missing_markers_refuse() {
     }
     assert!(empty.entries().is_empty());
     assert_eq!(stored_id(&db).await.as_deref(), Some(id.as_str()));
+}
+
+/// Run the server with `STORAGE_ROOT` and `WEB_ROOT` set to a failed exit,
+/// and check it never bound HTTP.
+fn refused_with_web_root(db: &TestDatabase, storage: &Path, web_root: &Path) -> String {
+    let port = free_port();
+    let Output { status, stderr, .. } = server(db, port, Some(storage))
+        .env("WEB_ROOT", web_root)
+        .output()
+        .unwrap();
+    assert!(!status.success());
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_err());
+    String::from_utf8_lossy(&stderr).into_owned()
+}
+
+/// A web folder that holds `index.html`.
+fn web_folder(path: &Path) {
+    std::fs::create_dir_all(path).unwrap();
+    std::fs::write(path.join("index.html"), "<!doctype html>").unwrap();
+}
+
+fn assert_overlap_refused(stderr: &str) {
+    assert!(stderr.contains("STORAGE_ROOT"), "{stderr}");
+    assert!(stderr.contains("WEB_ROOT"), "{stderr}");
+}
+
+#[tokio::test]
+async fn web_root_overlap_refuses_storage_inside_the_web_root() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-inside");
+    let web = dir.0.join("web");
+    web_folder(&web);
+    std::fs::create_dir(web.join("storage")).unwrap();
+    assert_overlap_refused(&refused_with_web_root(&db, &web.join("storage"), &web));
+    assert_eq!(application_tables(&db).await, 0);
+    assert!(std::fs::read_dir(web.join("storage"))
+        .unwrap()
+        .next()
+        .is_none());
+}
+
+#[tokio::test]
+async fn web_root_overlap_refuses_a_web_root_inside_storage() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-holds");
+    let storage = dir.0.join("storage");
+    web_folder(&storage.join("web"));
+    assert_overlap_refused(&refused_with_web_root(&db, &storage, &storage.join("web")));
+    assert_eq!(application_tables(&db).await, 0);
+}
+
+#[tokio::test]
+async fn web_root_overlap_refuses_storage_linked_to_the_web_root() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-link");
+    let web = dir.0.join("web");
+    web_folder(&web);
+    std::os::unix::fs::symlink(&web, dir.0.join("storage")).unwrap();
+    assert_overlap_refused(&refused_with_web_root(&db, &dir.0.join("storage"), &web));
+    assert_eq!(application_tables(&db).await, 0);
+}
+
+#[tokio::test]
+async fn web_root_overlap_lets_separate_folders_start() {
+    let db = TestDatabase::new();
+    let dir = Dir::new("overlap-separate");
+    let (web, storage) = (dir.0.join("web"), dir.0.join("storage"));
+    web_folder(&web);
+    std::fs::create_dir(&storage).unwrap();
+    let port = free_port();
+    let mut child = Server(
+        server(&db, port, Some(&storage))
+            .env("WEB_ROOT", &web)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !get(port, "/readyz").is_some_and(|r| r.ends_with("{\"status\":\"ready\"}")) {
+        assert!(child.0.try_wait().unwrap().is_none(), "the server exited");
+        assert!(Instant::now() < deadline, "server never became ready");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(stored_id(&db).await.is_some());
+}
+
+/// A paired storage folder whose `tmp` holds `files` regular files and,
+/// when `kept` is set, a folder named `kept` that holds a file.
+fn leftovers(db: &TestDatabase, name: &str, files: usize, kept: bool) -> Dir {
+    let storage = Dir::new(name);
+    drop(ready(db, Some(&storage.0)));
+    let tmp = storage.0.join("tmp");
+    std::fs::create_dir(&tmp).unwrap();
+    for i in 0..files {
+        std::fs::write(tmp.join(format!("leftover-{i}")), b"left").unwrap();
+    }
+    if kept {
+        std::fs::create_dir(tmp.join("kept")).unwrap();
+        std::fs::write(tmp.join("kept").join("inside"), b"keep").unwrap();
+    }
+    storage
+}
+
+fn tmp_entries(storage: &Dir) -> Vec<String> {
+    let mut names: Vec<_> = std::fs::read_dir(storage.0.join("tmp"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    names
+}
+
+#[tokio::test]
+async fn startup_cleanup_leaves_only_subfolders_in_tmp_by_readiness() {
+    let db = TestDatabase::new();
+    let storage = leftovers(&db, "cleanup-ready", 3, true);
+    let marker = std::fs::read(storage.0.join(MARKER)).unwrap();
+    let server = ready_logging(&db, &storage.0);
+    assert_eq!(tmp_entries(&storage), ["kept"]);
+    assert_eq!(
+        std::fs::read(storage.0.join("tmp").join("kept").join("inside")).unwrap(),
+        b"keep"
+    );
+    assert_eq!(std::fs::read(storage.0.join(MARKER)).unwrap(), marker);
+    drop(server);
+}
+
+#[tokio::test]
+async fn startup_cleanup_prints_how_many_files_it_removed() {
+    let db = TestDatabase::new();
+    let storage = leftovers(&db, "cleanup-count", 3, true);
+    let output = stderr(ready_logging(&db, &storage.0));
+    assert!(
+        output
+            .lines()
+            .any(|line| line == "storage: removed 3 leftover staging files from tmp"),
+        "{output}"
+    );
+}
+
+#[tokio::test]
+async fn startup_cleanup_names_the_subfolder_it_left() {
+    let db = TestDatabase::new();
+    let storage = leftovers(&db, "cleanup-kept", 3, true);
+    let output = stderr(ready_logging(&db, &storage.0));
+    assert!(
+        output
+            .lines()
+            .any(|line| line.starts_with("storage: ") && line.contains("\"kept\"")),
+        "{output}"
+    );
+}
+
+#[tokio::test]
+async fn startup_cleanup_of_an_empty_tmp_prints_no_count_line() {
+    let db = TestDatabase::new();
+    let storage = leftovers(&db, "cleanup-empty", 0, false);
+    let output = stderr(ready_logging(&db, &storage.0));
+    assert!(
+        !output
+            .lines()
+            .any(|line| line.starts_with("storage: removed")),
+        "{output}"
+    );
+}
+
+#[tokio::test]
+async fn startup_cleanup_refuses_a_symlinked_tmp() {
+    let db = TestDatabase::new();
+    let storage = Dir::new("cleanup-link");
+    drop(ready(&db, Some(&storage.0)));
+    let id = stored_id(&db).await;
+    let outside = Dir::new("cleanup-link-target");
+    std::fs::write(outside.0.join("file"), b"keep").unwrap();
+    std::os::unix::fs::symlink(&outside.0, storage.0.join("tmp")).unwrap();
+    let stderr = refused(&db, &storage.0);
+    assert!(stderr.contains("the tmp folder"), "{stderr}");
+    assert_eq!(
+        std::fs::read_link(storage.0.join("tmp")).unwrap(),
+        outside.0
+    );
+    assert_eq!(outside.entries(), ["file"]);
+    assert_eq!(std::fs::read(outside.0.join("file")).unwrap(), b"keep");
+    assert_eq!(stored_id(&db).await, id);
 }

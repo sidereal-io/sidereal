@@ -81,5 +81,14 @@
 
   /* x-sidereal.size */
   --sr-size-32: 32px;
+  --sr-size-300: 300px;
   --sr-size-1280: 1280px;
+
+  /* x-sidereal.semantic */
+  --sr-color-action-primary: var(--sr-violet-600);
+  --sr-color-text-on-action: var(--sr-white);
+  --sr-color-text-body: var(--sr-obsidian-100);
+  --sr-color-text-secondary: var(--sr-obsidian-400);
+  --sr-color-border-hairline: var(--sr-obsidian-800);
+  --sr-color-focus-ring: var(--sr-violet-500);
 }

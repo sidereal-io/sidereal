@@ -1,35 +1,45 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// End-to-end tests run against the real stack: the Rust server on 5000 and
-// Vite on 5173. Vite proxies /healthz to the server, so the browser only ever
-// talks to Vite while the server sits behind the proxy exactly as it does in
-// production.
-const SERVER_URL = "http://localhost:5000";
-const WEB_URL = "http://localhost:5173";
+// End-to-end tests run against a stack that `mise run e2e` (scripts/e2e.sh)
+// makes for one run: its own database, storage folder and server, on ports
+// derived from the checkout. The runner starts the server and passes its
+// port here; this file starts only Vite, which forwards /healthz and /api
+// to that server. The browser talks only to Vite, as it does in
+// development.
+const serverPort = process.env.SIDEREAL_E2E_SERVER_PORT;
+const webPort = process.env.SIDEREAL_E2E_WEB_PORT;
+if (!serverPort || !webPort) {
+  throw new Error(
+    "Run the end-to-end suite with `mise run e2e`: it starts the suite's own server and sets SIDEREAL_E2E_SERVER_PORT and SIDEREAL_E2E_WEB_PORT.",
+  );
+}
+const WEB_URL = `http://localhost:${webPort}`;
 
-// A developer almost always has `mise run dev` running already. Reusing the
-// existing process keeps the suite fast; when nothing is listening the
-// command below starts it and Playwright waits for the port. An explicit
-// PLAYWRIGHT_REUSE_SERVER=0 forces a fresh stack and =1 forces reuse; unset
-// means "reuse locally, never on CI".
-const reuseExisting = process.env.PLAYWRIGHT_REUSE_SERVER
-  ? process.env.PLAYWRIGHT_REUSE_SERVER === "1"
-  : !process.env.CI;
+// scripts/e2e-runner-check.sh sets SIDEREAL_E2E_RUNNER_CHECK to run only
+// e2e/runner-check.spec.ts, which holds the browser open while the check
+// signals the runner. Other runs never see that file.
+const runnerCheck = "runner-check.spec.ts";
+const checkingRunner = Boolean(process.env.SIDEREAL_E2E_RUNNER_CHECK);
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: true,
+  ...(checkingRunner
+    ? { testMatch: runnerCheck }
+    : { testIgnore: `**/${runnerCheck}` }),
+  // One worker and no parallel tests, everywhere: the stack is one server,
+  // and the upload journey restarts it while it runs.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
-  // Single worker on CI: the stack is a single shared server, and parallel
-  // browsers against it only add flake, not coverage.
-  workers: process.env.CI ? 1 : undefined,
+  // No retries: a retried upload journey would find the instance already
+  // claimed. A failure fails the run once, with its first attempt's trace.
+  retries: 0,
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"]],
   use: {
     baseURL: WEB_URL,
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
   },
   projects: [
     {
@@ -37,25 +47,14 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: [
-    {
-      // Same command as `mise run server`, so a local run and a CI run boot
-      // the server the same way.
-      command: "cargo run -p sidereal-server --manifest-path server/Cargo.toml",
-      url: `${SERVER_URL}/healthz`,
-      reuseExistingServer: reuseExisting,
-      timeout: 300_000,
-      cwd: "..",
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-    {
-      command: "pnpm dev --port 5173 --strictPort",
-      url: WEB_URL,
-      reuseExistingServer: reuseExisting,
-      timeout: 120_000,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  ],
+  webServer: {
+    // A taken port stops the run instead of reusing whatever answers there.
+    command: `pnpm dev --port ${webPort} --strictPort`,
+    url: WEB_URL,
+    reuseExistingServer: false,
+    timeout: 120_000,
+    env: { SIDEREAL_DEV_PROXY_TARGET: `http://127.0.0.1:${serverPort}` },
+    stdout: "pipe",
+    stderr: "pipe",
+  },
 });

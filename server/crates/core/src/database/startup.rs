@@ -1,5 +1,8 @@
 use super::{pairing, DatabaseError, StartupError};
-use crate::storage::StorageRoot;
+use crate::storage::{
+    objects::{Cleanup, ObjectStore},
+    StorageRoot,
+};
 use serde_json::Value;
 use sqlx::{
     migrate::{Migrate, Migrator},
@@ -167,13 +170,17 @@ pub async fn initialize(
 }
 
 /// Initialize the database, then pair `storage` with it and check storage
-/// access before the startup lock is released.
+/// access before the startup lock is released. Still under the lock, remove
+/// the staging files an interrupted ingest left in `tmp`. Answers the storage
+/// UUID that pairing committed, which the object store checks again, and
+/// what cleanup did.
 pub async fn initialize_with_storage(
     options: PgConnectOptions,
     startup: Duration,
     migration: Duration,
     storage: &StorageRoot,
-) -> Result<Database, StartupError> {
+) -> Result<(Database, uuid::Uuid, Cleanup), StartupError> {
+    let mut paired = None;
     locked(
         &options,
         startup,
@@ -181,10 +188,16 @@ pub async fn initialize_with_storage(
         &MIGRATOR,
         &baselines(),
         None,
-        async |conn: &mut PgConnection| pairing::pair(conn, storage).await,
+        async |conn: &mut PgConnection| {
+            let id = pairing::pair(conn, storage).await?;
+            let cleanup = ObjectStore::open(storage, id)?.remove_leftover_staging()?;
+            paired = Some((id, cleanup));
+            Ok::<_, StartupError>(())
+        },
     )
     .await?;
-    Ok(Database::new(options, startup))
+    let (paired, cleanup) = paired.expect("pairing ran under the startup lock");
+    Ok((Database::new(options, startup), paired, cleanup))
 }
 
 impl Database {
@@ -254,6 +267,8 @@ fn baselines() -> Vec<Value> {
         include_str!("../../schema/1.json"),
         include_str!("../../schema/2.json"),
         include_str!("../../schema/3.json"),
+        include_str!("../../schema/4.json"),
+        include_str!("../../schema/5.json"),
     ]
     .into_iter()
     .map(|value| serde_json::from_str(value).expect("generated schema JSON must be valid"))

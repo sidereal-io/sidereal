@@ -105,7 +105,7 @@ run = "sh scripts/dev.sh"
 raw = true
 
 [tasks.e2e]
-description = "Run the Playwright end-to-end suite; the database fixture must be up"
+description = "Run the Playwright end-to-end suite on its own throwaway database, storage and server; the database fixture must be up"
 run = "sh scripts/e2e.sh"
 
 [tasks.db-schema]

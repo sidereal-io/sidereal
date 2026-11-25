@@ -1,0 +1,114 @@
+## 1. Shared contracts
+
+Run commands from the repository root through the configured mise environment.
+Run heavy commands through `deli --`. Database tests require the fixture
+started with `mise run db-up` and `TEST_DATABASE_URL` set from
+`mise run db-test-url`. Test filters below name the behavior-focused tests to
+add; run each failing test before its implementation.
+
+- [x] 1.1 [medium] Persist an Asset with a same-Asset current-version reference and immutable version data through migration 4; cover fresh startup, upgrade from version 3 with a claimed user unchanged, concurrent startup with exactly four records, and invalid references; update the existing table-list and record-count assertions in `core/src/database/startup/tests.rs` and `server/tests/siderealctl.rs` as the `postgres-foundation` delta says; add a `security_events_store_nothing` test that performs all five acts of the `security-events` "Nothing is stored" scenario and compares the table list and every application table's rows before and after, allowing changes only in `users` and `sessions`; move `scripts/instance-verify.sh`'s migration assertion and its message from three to four, as the `compose-instance` delta says; then regenerate the normalized snapshot with `mise run db-schema` (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core asset_schema, then cargo test --manifest-path server/Cargo.toml -p sidereal-core startup, then cargo test --manifest-path server/Cargo.toml -p sidereal-server --test siderealctl, then mise run instance-verify, which needs docker) (✓ cargo test -p sidereal-core asset_schema passed; ✓ cargo test -p sidereal-core startup passed; ✓ cargo test -p sidereal-server --test siderealctl passed; ✓ mise run instance-verify passed)
+- [x] 1.2 [medium] Execute a Registry-selected Source through a bounded candidate-reading and single-proposal AssetContext, with host-owned identity/provenance and explicit refusal; adapt the astro stub and ABI version as design decision 1 describes (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-plugin-abi source_execution) (✓ cargo test -p sidereal-plugin-abi source_execution passed, 11 tests; ✓ cargo test -p sidereal-pack-astro passed)
+- [x] 1.3 [medium] Register the image pack's manual-upload Source with byte recognition for PNG/JPEG, including misleading filenames, unsupported bytes and recognizable damaged images; extend the architecture lint so no pack depends on core, server or another pack, and add a failure fixture that the lint rejects (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-pack-image, then server/scripts/check-arch.sh, which must also show the fixture refused) (✓ cargo test -p sidereal-pack-image passed, 8 tests; ✓ server/scripts/check-arch.sh passed and showed the fixture refused)
+
+## 2. Managed ingest [depends-on: 1]
+
+- [x] 2.1 [complex] Resolve `STORAGE_ROOT` once at startup, with symbolic links followed and whether or not `WEB_ROOT` is set, and use that folder for pairing, the overlap check and the object store; open the resolved root once with `O_DIRECTORY`, check its marker UUID through that open folder, and stage an upload through bounded writes into an exclusively created temporary file under it; assert the root holds only its marker after startup and gains `tmp` and `store` only at first ingest; refuse a root swapped between pairing and object-store start; let a `STORAGE_ROOT` that is a symbolic link to a valid folder pair and stage an upload under the link's target (task 5.4 checks the restart); refuse the 100 MiB plus one-byte boundary and unsafe directory/file entries without using the display name as a path (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core ingest_staging) (✓ cargo test -p sidereal-core ingest_staging passed, 16 tests)
+- [x] 2.2 [complex] Publish one complete BLAKE3-addressed object, syncing the file and then the directory chain on every upload: the second prefix directory, the first prefix directory, `store` and the root, in that order; test two hashes under a fresh prefix with the first publisher paused before its directory sync; before reuse, compare an existing object's size first and refuse a much larger object without reading its bytes, then hash a same-size object, reading at most the candidate's size plus one byte, and refuse one with changed bytes; each refusal is a storage failure that leaves the object unchanged; reuse a matching object without replacement when the same bytes arrive again after an earlier ingest, and during concurrent uploads; test no-follow access, non-regular files, a FIFO with no writer at the hash path (a prompt storage failure, not a blocked open, with the entry left in place) and failed publication as design decision 3 describes (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core object_publication) (✓ cargo test -p sidereal-core object_publication passed, 18 tests)
+- [x] 2.3 [complex] Commit the initial Asset/version pair only after registered Source acceptance and durable object publication; with a test Source registered through the public contract, assert the persisted provenance names that Source; inject Source, write, sync and database failures to prove no partial records and no deletion of shared or published objects (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core ingest_commit) (✓ cargo test -p sidereal-core ingest_commit passed, 16 tests)
+
+## 3. Guarded HTTP [depends-on: 2]
+
+- [x] 3.1 [complex] Accept one multipart file through POST /api/assets using the production Registry and storage service; test success, PNG bytes sent with filename `nebula.txt` and client type `text/plain` accepted as PNG, exact-size and streamed over-limit inputs, extra fields, a body cut off before the closing delimiter (400, nothing committed), a body with an epilogue after the closing delimiter (accepted, epilogue ignored), format refusal, a hash-mismatched existing object (503), an existing object much larger than the candidate (503, nothing committed, the object unchanged), an epilogue that pushes the body past the 101 MiB transport limit (413, nothing committed), and missing storage with health and readiness unchanged; on 401 and 403 assert no Asset is committed and the object store's file list is unchanged (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-server --test assets upload) (✓ cargo test -p sidereal-server --test assets upload passed, 20 tests)
+- [x] 3.2 [medium] List committed Asset entries through GET /api/assets, covering empty, populated, a database fault injected after the session check passes (503), and invalid-session responses without listing temporary or unreferenced objects (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-server --test assets list) (✓ cargo test -p sidereal-server --test assets list passed, 6 tests)
+- [x] 3.3 [medium] Stream original bytes through GET /api/assets/{id}/original with the recognized Content-Type, and the private response headers on every 200, covering a JPEG named `.png` returned as `image/jpeg`, unknown ids, missing, unopenable and non-regular objects, including a FIFO with no writer that returns 503 promptly instead of blocking (503 before the response starts), a read that fails after some bytes are sent (with an injected reader; the client sees a failed transfer, not a complete 200 body), symlink refusal and absent/expired/revoked sessions, whose guard-made 401s keep their existing headers (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-server --test assets original) (✓ cargo test -p sidereal-server --test assets original passed, 14 tests)
+- [x] 3.4 [medium] Refuse to start when `STORAGE_ROOT` and `WEB_ROOT` are the same folder or one holds the other, after following symbolic links, with a message naming both, before any database write, comparing against the `STORAGE_ROOT` resolved in task 2.1; resolve `WEB_ROOT` once and pass that resolved folder to the overlap check, the `index.html` check, `ServeFile` and `ServeDir`; with `WEB_ROOT` a symbolic link, repoint it after startup at the folder holding `STORAGE_ROOT` and assert that the fallback serves no stored bytes and `/` still serves the original `index.html`; let separate folders start; add an unauthenticated request for a stored object's path through the web-file fallback that returns no bytes; say in `docs/install.md` that the two folders must not overlap and that no mount or symbolic link may expose `STORAGE_ROOT` inside `WEB_ROOT`, and that a repointed `WEB_ROOT` link takes effect only after a restart (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-server web_root_overlap, then cargo test --manifest-path server/Cargo.toml -p sidereal-server --test assets web_fallback) (✓ cargo test -p sidereal-server web_root_overlap passed, 9 tests; ✓ cargo test -p sidereal-server --test assets web_fallback passed, 2 tests)
+
+## 4. Signed-in library [depends-on: 3]
+
+Before building the visual components in this section, follow `visual-options`
+and DESIGN.md's component-choice process. Record the selected treatment in
+DESIGN.md using the tokens from task 4.1. A choice needing token values beyond
+design decision 5's table must return to planning. Keep the existing health and
+access tests green.
+
+- [x] 4.1 [medium] Add the six semantic color tokens of design decision 5 to DESIGN.md first; teach `web/scripts/tokens.ts` to write a semantic token as `var()` of the primitive it references, accepting only a value that is exactly `{<group>.<key>}` and still refusing raw values, unknown references, extra text after a reference and component tokens; extend `tokens.test.ts` to count semantic properties separately from primitives and check each alias value; run `pnpm tokens` in `web/`; update `web/README.md` to show the accepted `{<group>.<key>}` form and the cases still refused; move `Access.css` and `styles/base.css` to the semantic tokens for those roles, keeping the submit button's computed color; make the Access test's style helper follow `var()` chains to the final value, and add a test that `Access.css` uses no primitive that has a semantic token for its role (verify: pnpm --dir web test -- tokens.test.ts tokens-in-use.test.ts Access.test.tsx, then mise run check-web) (✓ pnpm --dir web test passed, 153 tests including tokens.test.ts, tokens-in-use.test.ts and Access.test.tsx; ✓ mise run check-web passed)
+- [x] 4.2 [medium] Display committed images and literal filenames in a token-styled Library within Access's signed-in branch, with loading/empty/list-error/retry and image-display-error states, removing the library on sign-out or session loss and ignoring late responses (verify: pnpm --dir web test -- Library.test.tsx Access.test.tsx) (✓ pnpm --dir web test -- Library.test.tsx Access.test.tsx passed, 170 tests; ✓ mise run check-web passed; ✓ checked by eye at 1440 px and 390 px against the Showcase mockup, with five real PNG and JPEG uploads and one damaged PNG)
+- [x] 4.3 [medium] Let Nova select and upload one image, showing the filename and pending state, preventing a second submission, displaying fixed refusal messages and refreshing the library after success without a page reload (verify: pnpm --dir web test -- Library.test.tsx) (✓ pnpm --dir web test -- Library.test.tsx passed, 183 tests; ✓ mise run check-web passed; ✓ in a real browser, Upload opened the file picker and a TIFF chosen there showed the fixed format refusal)
+
+## 5. Integration [depends-on: 4]
+
+- [x] 5.1 [complex] Give `mise run e2e` its throwaway database and run folder as the design's Test Seams section describes: new `server/scripts/db-fixture.sh` subcommands that make and drop a `sidereal_test_e2e_` database through the test role; one `mktemp -d` run folder holding an empty `storage/` subfolder as `STORAGE_ROOT`, with process files and logs beside it; an ignored inherited `DATABASE_URL` and `STORAGE_ROOT`; refusal before any browser test when the database or folder cannot be made; a cleanup trap that stops the running server, removes the run folder and then drops the database with the three-round policy of `core/src/database/test_support.rs`, running each step even after an earlier one fails and exiting non-zero with what was left behind when the tests passed but cleanup failed; check the `dev-commands` scenarios for a contributor's running stack, an inherited `DATABASE_URL`, cleanup after a failing test and the fixture down (verify: mise run e2e) (✓ mise run e2e passed: 1 test, throwaway sidereal_test_e2e_ database and run folder removed; ✓ with a server on 5000 holding a claimed runtime database and one uploaded image, `DATABASE_URL=<runtime URL> mise run e2e` exited 0, used a sidereal_test_e2e_ database, and left the runtime users, sessions, assets and asset_versions rows and the processes on 5000 and 5173 unchanged; ✓ with the fixture stopped, mise run e2e exited 1 before Playwright started; ✓ bash scripts/e2e-runner-check.sh passed its failing-browser-test case; ✓ a passing run whose run folder could not be removed exited 1 and named the folder, and still dropped its database)
+- [x] 5.2 [complex] Make `scripts/e2e.sh` the only owner of the servers it starts: run `cargo build -p sidereal-server --manifest-path server/Cargo.toml` before starting anything, then start `server/target/debug/sidereal-server` as its own child; refuse to start when anything already accepts connections on either checkout-derived port; run Playwright as a background child and `wait` on it, waiting again on the same child after a restart returns `wait` early; restart the server on `SIGUSR1` as its own child with a new log and write `ready-<n>` once the new server is ready; have the cleanup trap stop Playwright's process tree and reap it before removing the run folder, as `scripts/dev.sh` does; write the readiness wait as a shell function that trusts the server only after the child it started prints `sidereal-server listening on` with the chosen port and is still running, with a 300-second limit; test that function on its own in a new `scripts/e2e-readiness.test.sh`, with stub children: one that exits without the listening line and one that prints another port fail, and only the matching line from a running child passes; check the `dev-commands` scenarios for another process on the chosen server port, a `SIGUSR1` restart, and `SIGINT` during a restart; add a check that sends `SIGINT` to the runner alone and confirms the Vite port is free afterwards (verify: bash scripts/e2e-readiness.test.sh, then mise run e2e) (✓ bash scripts/e2e-readiness.test.sh passed under dash and bash --posix; ✓ bash scripts/e2e-runner-check.sh passed its SIGUSR1 restart, SIGINT to the runner alone with the Vite port free afterwards, SIGINT during a restart, and busy server port cases; ✓ mise run e2e passed)
+- [x] 5.3 [medium] Set Playwright and Vite for the isolated stack and update CI: `web/playwright.config.ts` reads `SIDEREAL_E2E_SERVER_PORT` and `SIDEREAL_E2E_WEB_PORT`, starts only Vite with `reuseExistingServer: false` and `--port <web port> --strictPort`, and runs with one worker everywhere, `fullyParallel` off and `trace: "retain-on-failure"`, with the upload journey serial and without retries; `web/vite.config.ts` forwards to `SIDEREAL_DEV_PROXY_TARGET` when it is set and to `http://localhost:5000` otherwise, checked by a runnable proxy check: with port 5000 idle, start the server on another port and Vite with `SIDEREAL_DEV_PROXY_TARGET` pointing at it, and `curl` its `/healthz` through Vite, as the `web-shell` scenario says; remove the CI `e2e` job's database URL step and keep its build-first order (verify: pnpm --dir web test, then the proxy check above, then mise run check-compose, then the ci delta's `yq` commands through `mise exec yq -- yq`, which is Mike Farah's `yq` v4) (✓ pnpm --dir web test passed, 153 tests, and mise run check-web passed; ✓ sh scripts/dev-proxy-check.sh passed: /healthz through Vite on 5902 answered {"status":"ok"} from the server on 5901 with 5000 idle; ✓ mise run check-compose passed; ✓ the ci delta's yq commands through mise exec yq -- yq (v4.54.1) printed the expected output, the db-down scenario with parentheses, see the Deviations Ledger)
+- [x] 5.4 [complex] Demonstrate the complete first-image journey with a real PNG and JPEG: a Rust process test retains ids, provenance and identical original bytes across restart, and also starts with `STORAGE_ROOT` a symbolic link to a valid folder and `WEB_ROOT` unset, uploads, restarts, and still gets the original with an unchanged pairing UUID; the isolated browser test claims, signs in, uploads, sees the rendered image, asks the runner to restart the server through `SIDEREAL_E2E_RUNNER_PID` and `SIGUSR1`, waits for `ready-<n>`, reloads, and still sees the name and image; then finish the repository gate (verify: mise run e2e, then mise run check) (✓ cargo test -p sidereal-server --test journey passed, 2 tests: a PNG and a JPEG keep their ids, provenance and bytes across a restart, and a linked `STORAGE_ROOT` with `WEB_ROOT` unset keeps its original and pairing UUID; ✓ mise run e2e passed, 2 tests, the upload journey with its `SIGUSR1` restart; ✓ mise run check passed)
+
+## Deviations Ledger
+
+- **3.1, transport limit without `Content-Length`.** The route checks the
+  101 MiB limit against `Content-Length` before it reads the body, and
+  against the bytes it reads up to the closing delimiter. As built, it never
+  read an epilogue, so a body with no `Content-Length` that passed the limit
+  only in its epilogue could get 201. The code review found this (finding 1):
+  the route now reads and discards the epilogue before publication, and such
+  a body gets 413. Tests cover both a body with `Content-Length` and a
+  streamed body without it.
+- **5.1–5.3, one commit.** The three tasks change the same runner, and none
+  runs on its own: 5.1's throwaway stack needs 5.2's server ownership and
+  5.3's Playwright settings before `mise run e2e` can pass, and port 5173
+  was held by another project on the build machine, so the old fixed-port
+  stack could not run there at all. They were built together, checked on
+  the finished tree, and committed as one commit that ticks all three.
+- **5.1–5.3 before 4.2 and 4.3.** The user chose this order while the
+  Library's look waits for Penpot. 5.4 still waits for 4.2 and 4.3.
+- **5.1, a contributor's running stack.** Port 5173 was held by another
+  project's Vite on the build machine, so `mise run dev`'s web shell could
+  not start. The check ran with a server on 5000 against the fixture's
+  runtime database, claimed and holding one uploaded image, and confirmed
+  that the processes on 5000 and 5173 and the runtime rows were unchanged.
+- **5.1–5.3, added helpers.** `scripts/e2e-lib.sh` holds the runner's
+  shell functions, so `scripts/e2e-readiness.test.sh` can test the
+  readiness wait on its own. `scripts/e2e-runner-check.sh`, with
+  `web/e2e/runner-check.spec.ts`, which `web/playwright.config.ts` runs only
+  under that check, makes the signal scenarios repeatable.
+  `scripts/dev-proxy-check.sh` is the runnable proxy check.
+  `db-fixture.sh e2e-db-list` lets the check see leftover databases. The run
+  folder also holds `server.pid`, and the runner ignores an inherited
+  `WEB_ROOT` as well as `DATABASE_URL` and `STORAGE_ROOT`.
+- **5.3, retries.** `retries` is 0 for the whole suite, not only the upload
+  journey, so every failure fails the run once with its first trace.
+- **5.3, the `ci` db-down scenario's command.** As written, `yq
+  '.jobs.server.steps[], .jobs.e2e.steps[] | select(...) | .if'` binds the
+  pipe to the e2e steps only, so it prints every `server` step too; it does
+  the same on `main`, whose spec has the same text. With parentheses,
+  `(.jobs.server.steps[], .jobs.e2e.steps[]) | select(.run == "mise run
+  db-down") | .if` prints exactly two `always()` lines. The code review
+  fixed the spec text to use the parentheses.
+- **4.2, the Library's look came from HTML drafts, not Penpot options.** The
+  user rejected the Penpot options on 'Options: library' and
+  'Options: library-directions', and then Gemini and Opus drafts. They chose
+  **Showcase, large** (`.workspace/library-simple/option-2.html`) and asked
+  for no more Penpot options. DESIGN.md records the choice in its new Top
+  bar and Library sections. No 'Library: chosen' record was drawn in
+  Penpot; the user allowed one but did not require it.
+- **4.2, one primitive beyond design decision 5.** Showcase rows aim for
+  300 px tall, so DESIGN.md gains `size-300`. The user asked for the row
+  height's token to go into DESIGN.md, so this does not return to planning.
+- **4.2, one top bar for every screen.** The user's layout puts the
+  wordmark, `Library`, Upload, the username and Sign out in one bar. App
+  owns the bar, so the health line stays mounted, and shows it in the bar
+  as quiet text; the Library puts its name and actions into the bar's two
+  places through a portal (`web/src/Bar.tsx`). The signed-out forms sit
+  under the same bar. The username is no longer in `<strong>`, so the
+  health line's `<strong>` stays the only one that the browser tests match.
+- **4.2, filename weight.** The filename uses the mono face at 14/20 with
+  `font-weight-400`, as in the chosen mockup, not mono-lg's
+  `font-weight-500`.
+- **4.3, one Upload button instead of a file field and a button.** The user
+  asked that Upload open the file picker and that choosing a file start the
+  upload at once. The `image-upload` requirement and its two scenarios, and
+  design decision 5, now say so. A refusal names the file and clears the
+  picker, so Nova can choose another file, or the same one, at once.
+- **5.4, the process tests passed on their first run.** They check what
+  tasks 2.1 to 3.4 built, so there was no failing run to watch; the browser
+  journey could not pass before 4.2 and 4.3. The Rust test stops the first
+  server with `SIGKILL`, a harder stop than the runner's restart.

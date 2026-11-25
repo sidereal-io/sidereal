@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Access from "./Access.tsx";
+import accessCss from "./Access.css?raw";
 import "./styles/tokens.css";
 import { stubWebSocket, type FakeWebSocket } from "./testing/fakeWebSocket.ts";
 
@@ -37,15 +38,19 @@ const signedOut: Record<string, Answer> = {
   "GET /api/session": [401, { error: "unauthenticated" }],
 };
 
-// jsdom applies stylesheets but does not resolve var(), so follow one var()
-// to its value on :root, as a browser would.
+// jsdom applies stylesheets but does not resolve var(), so follow each var()
+// to its value on :root, as a browser would. A semantic token is var() of a
+// primitive, so the chain can be more than one step long.
 function computed(element: Element, property: string): string {
-  const value = getComputedStyle(element).getPropertyValue(property).trim();
-  const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
-  if (!token) return value;
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue(token)
-    .trim();
+  let value = getComputedStyle(element).getPropertyValue(property).trim();
+  for (let step = 0; step < 10; step++) {
+    const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
+    if (!token) return value;
+    value = getComputedStyle(document.documentElement)
+      .getPropertyValue(token)
+      .trim();
+  }
+  throw new Error(`${property} does not resolve to a value`);
 }
 
 // The rgb() form a browser reports for a color.
@@ -269,6 +274,199 @@ describe("Access", () => {
     await screen.findByRole("button", { name: "Sign in" });
   });
 
+  it("shows the library while signed in", async () => {
+    stubServer({
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "GET /api/assets": [
+        200,
+        {
+          assets: [
+            {
+              id: "a1",
+              kind: "image",
+              name: "nebula.png",
+              current_version_id: "v1",
+              original_url: "/api/assets/a1/original",
+            },
+          ],
+        },
+      ],
+    });
+    render(<Access />);
+    await screen.findByRole("img", { name: "nebula.png" });
+    screen.getByText("sam");
+  });
+
+  it("moves to the sign-in form when the library finds the session ended", async () => {
+    stubServer({
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "GET /api/assets": [401, { error: "unauthenticated" }],
+    });
+    render(<Access />);
+    await screen.findByRole("button", { name: "Sign in" });
+    expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+  });
+
+  it("hides the library on sign-out, and its late answer shows nothing", async () => {
+    let answerList: (response: Response) => void = () => undefined;
+    const list = new Promise<Response>((resolve) => {
+      answerList = resolve;
+    });
+    const answers: Partial<Record<string, Answer>> = {
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "DELETE /api/session": [204],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/assets") return list;
+        const answer = answers[`${init?.method ?? "GET"} ${input}`];
+        if (!answer) return Promise.reject(new TypeError("network error"));
+        const [status, body] = answer;
+        return Promise.resolve(
+          body === undefined
+            ? new Response(null, { status })
+            : Response.json(body, { status }),
+        );
+      }),
+    );
+    render(<Access />);
+    await screen.findByText("Loading the library…");
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await screen.findByRole("button", { name: "Sign in" });
+    await act(async () => {
+      answerList(
+        Response.json({
+          assets: [
+            {
+              id: "a1",
+              kind: "image",
+              name: "nebula.png",
+              current_version_id: "v1",
+              original_url: "/api/assets/a1/original",
+            },
+          ],
+        }),
+      );
+      await list;
+    });
+    expect(screen.queryByText("nebula.png")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+  });
+
+  describe("at an asset page address", () => {
+    const id = "0b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091";
+    const address = `/assets/${id}`;
+    const nebula = {
+      asset: {
+        id,
+        kind: "image",
+        name: "nebula.png",
+        current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
+        original_url: `/api/assets/${id}/original`,
+        facets: [
+          {
+            name: "image.file-size",
+            label: "File size",
+            value: 1234567,
+            unit: "bytes",
+          },
+        ],
+      },
+    };
+
+    beforeEach(() => {
+      history.replaceState(null, "", address);
+    });
+
+    afterEach(() => {
+      history.replaceState(null, "", "/");
+    });
+
+    it("shows a signed-out visitor the sign-in form and nothing of the Asset, then the page after sign-in", async () => {
+      const fetch = stubServer({
+        ...signedOut,
+        "POST /api/session": [200, { username: "sam", role: "admin" }],
+        [`GET /api/assets/${id}`]: [200, nebula],
+      });
+      render(<Access />);
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(fetch).not.toHaveBeenCalledWith(
+        `/api/assets/${id}`,
+        expect.anything(),
+      );
+      expect(screen.queryByText("nebula.png")).toBeNull();
+      await submit("Sign in");
+      await screen.findByRole("heading", { name: "nebula.png" });
+      screen.getByText("1,234,567 bytes");
+      expect(location.pathname).toBe(address);
+    });
+
+    it("shows the sign-in form and keeps the address when the session is lost, then the page again", async () => {
+      const answers: Record<string, Answer> = {
+        "GET /api/claim": [200, { open: false }],
+        "GET /api/session": [200, { username: "sam", role: "admin" }],
+        "POST /api/session": [200, { username: "sam", role: "admin" }],
+        [`GET /api/assets/${id}`]: [401, { error: "unauthenticated" }],
+      };
+      stubServer(answers);
+      render(<Access />);
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(screen.queryByRole("article", { name: "Asset" })).toBeNull();
+      expect(location.pathname).toBe(address);
+      answers[`GET /api/assets/${id}`] = [200, nebula];
+      await submit("Sign in");
+      await screen.findByRole("heading", { name: "nebula.png" });
+    });
+
+    it("hides the asset page on sign-out, and its late answer shows nothing", async () => {
+      let answerAsset: (response: Response) => void = () => undefined;
+      const pending = new Promise<Response>((resolve) => {
+        answerAsset = resolve;
+      });
+      const answers: Partial<Record<string, Answer>> = {
+        "GET /api/claim": [200, { open: false }],
+        "GET /api/session": [200, { username: "sam", role: "admin" }],
+        "DELETE /api/session": [204],
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: string, init?: RequestInit) => {
+          if (input === `/api/assets/${id}`) return pending;
+          const answer = answers[`${init?.method ?? "GET"} ${input}`];
+          if (!answer) return Promise.reject(new TypeError("network error"));
+          const [status, body] = answer;
+          return Promise.resolve(
+            body === undefined
+              ? new Response(null, { status })
+              : Response.json(body, { status }),
+          );
+        }),
+      );
+      render(<Access />);
+      await screen.findByText("Loading the image…");
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("button", { name: "Sign in" });
+      await act(async () => {
+        answerAsset(Response.json(nebula));
+        await pending;
+      });
+      expect(screen.queryByText("nebula.png")).toBeNull();
+      expect(screen.queryByRole("img")).toBeNull();
+    });
+  });
+
+  it("uses no primitive whose role has a semantic token", () => {
+    expect(
+      accessCss.match(
+        /var\(--sr-(violet-600|white|obsidian-100|obsidian-400|obsidian-800)\)/g,
+      ),
+    ).toBeNull();
+  });
+
   it("styles the submit button from the tokens", async () => {
     stubServer({ "GET /api/claim": [200, { open: true }] });
     render(<Access />);
@@ -277,6 +475,425 @@ describe("Access", () => {
       "rgb(124, 58, 237)",
     );
     expect(computed(submitButton, "border-radius")).toBe("4px");
+  });
+
+  describe("a pick while the session ends", () => {
+    // A request that answers, or fails like a network error, only when the
+    // test says so.
+    function held() {
+      let answer: (response: Response) => void = () => undefined;
+      let fail: () => void = () => undefined;
+      const promise = new Promise<Response>((resolve, reject) => {
+        answer = resolve;
+        fail = () => {
+          reject(new TypeError("network error"));
+        };
+      });
+      return { promise, answer, fail };
+    }
+
+    type Held = ReturnType<typeof held>;
+
+    // A server where sam is signed in, the list is empty, and every upload
+    // and sign-out waits for the test. Signed out, it starts at the sign-in
+    // form, and every sign-in waits for the test too.
+    function heldServer({ signedIn = true } = {}) {
+      const uploads: (Held & { name: string })[] = [];
+      const signIns: Held[] = [];
+      const signOuts: (Held & { signal: AbortSignal | null | undefined })[] =
+        [];
+      const fetch = vi.fn((input: string, init?: RequestInit) => {
+        const key = `${init?.method ?? "GET"} ${input}`;
+        if (key === "POST /api/assets") {
+          const file = (init?.body as FormData).get("file") as File;
+          const request = { ...held(), name: file.name };
+          uploads.push(request);
+          return request.promise;
+        }
+        if (!signedIn && key === "GET /api/session") {
+          return Promise.resolve(
+            Response.json({ error: "unauthenticated" }, { status: 401 }),
+          );
+        }
+        if (!signedIn && key === "POST /api/session") {
+          const request = held();
+          signIns.push(request);
+          return request.promise;
+        }
+        if (key === "DELETE /api/session") {
+          const request = { ...held(), signal: init?.signal };
+          signOuts.push(request);
+          return request.promise;
+        }
+        const answer = {
+          "GET /api/claim": [200, { open: false }],
+          "GET /api/session": [200, { username: "sam", role: "admin" }],
+          "POST /api/session": [200, { username: "sam", role: "admin" }],
+          "GET /api/assets": [200, { assets: [] }],
+        }[key] as Answer | undefined;
+        if (!answer) return Promise.reject(new TypeError("network error"));
+        return Promise.resolve(Response.json(answer[1], { status: answer[0] }));
+      });
+      vi.stubGlobal("fetch", fetch);
+      const lists = () =>
+        fetch.mock.calls.filter(
+          ([url, init]) => url === "/api/assets" && !init?.method,
+        ).length;
+      const sent = () => uploads.map((request) => request.name);
+      const upload = (index: number) => {
+        const request = uploads.at(index);
+        if (!request) throw new Error(`upload ${String(index)} was not sent`);
+        return request;
+      };
+      const signOut = (index = 0) => {
+        const request = signOuts.at(index);
+        if (!request) throw new Error("no sign-out was sent");
+        return request;
+      };
+      const signIn = (index: number) => {
+        const request = signIns.at(index);
+        if (!request) throw new Error(`sign-in ${String(index)} was not sent`);
+        return request;
+      };
+      return { lists, sent, upload, signOut, signIn };
+    }
+
+    const saved = () => Response.json({}, { status: 201 });
+
+    function pick(...names: string[]) {
+      const input =
+        document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("no file input");
+      const files = names.map(
+        (name) => new File(["x"], name, { type: "image/png" }),
+      );
+      fireEvent.change(input, { target: { files } });
+    }
+
+    const lines = () =>
+      Array.from(
+        screen
+          .queryByRole("list", { name: "Uploads" })
+          ?.querySelectorAll("li") ?? [],
+        (item) => item.textContent,
+      );
+
+    async function signedInAsSam() {
+      render(<Access />);
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    }
+
+    // Nova picks the files and presses Sign out while the first one is on
+    // its way; then the first file is saved while the sign-out is pending.
+    async function signOutAfterFirstSaved(
+      server: ReturnType<typeof heldServer>,
+      names: string[],
+    ) {
+      await signedInAsSam();
+      pick(...names);
+      await waitFor(() => {
+        expect(server.sent()).toEqual([names[0]]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      const lists = server.lists();
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(names.slice(0, 2));
+        expect(server.lists()).toBe(lists + 1);
+      });
+    }
+
+    it("sends no more files once a sign-out answers, even in the same step as an upload", async () => {
+      const server = heldServer();
+      await signOutAfterFirstSaved(server, ["a.png", "b.png", "c.png"]);
+      const lists = server.lists();
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+      expect(lines()).toEqual([]);
+      expect(server.sent()).toEqual(["a.png", "b.png"]);
+      expect(server.lists()).toBe(lists);
+    });
+
+    it("shows nothing for an upload that answers after the sign-out", async () => {
+      const server = heldServer();
+      await signOutAfterFirstSaved(server, ["a.png", "b.png", "c.png"]);
+      const lists = server.lists();
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        await server.signOut().promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      await act(async () => {
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+      expect(document.body.textContent).not.toContain("b.png");
+      expect(server.sent()).toEqual(["a.png", "b.png"]);
+      expect(server.lists()).toBe(lists);
+    });
+
+    it("sends no more files once the events socket ends the session", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      // Both in one act scope, so React has not yet unmounted the Library
+      // when the upload loop sees the answer.
+      await act(async () => {
+        sockets.at(0)?.serverClose(1008);
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.sent()).toEqual(["a.png"]);
+    });
+
+    it.each([
+      [
+        "answers 500",
+        (request: Held) => {
+          request.answer(new Response(null, { status: 500 }));
+        },
+      ],
+      [
+        "gets no answer",
+        (request: Held) => {
+          request.fail();
+        },
+      ],
+    ])("goes on with the pick when the sign-out %s", async (_, end) => {
+      const server = heldServer();
+      await signedInAsSam();
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        end(server.signOut());
+        await server.signOut().promise.catch(() => undefined);
+      });
+      await screen.findByText("Something went wrong");
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "b.png"]);
+      });
+      await act(async () => {
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      await screen.findByText("b.png was uploaded.");
+      expect(lines()).toEqual(["a.png was uploaded.", "b.png was uploaded."]);
+      screen.getByRole("region", { name: "Library" });
+      screen.getByText("Something went wrong");
+    });
+
+    it("ends the pick at a 401 after a sign-out with no answer", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      pick("a.png", "b.png", "c.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        server.signOut().fail();
+        await server.signOut().promise.catch(() => undefined);
+      });
+      await screen.findByText("Something went wrong");
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "b.png"]);
+      });
+      await act(async () => {
+        server
+          .upload(1)
+          .answer(Response.json({ error: "unauthenticated" }, { status: 401 }));
+        await server.upload(1).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.sent()).toEqual(["a.png", "b.png"]);
+    });
+
+    // Nova presses Sign out, and the events socket ends the session before
+    // the sign-out answers. Then Nova signs in again.
+    async function signInAgainBeforeTheSignOutAnswers(
+      server: ReturnType<typeof heldServer>,
+    ) {
+      await signedInAsSam();
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      act(() => {
+        sockets.at(0)?.serverClose(1008);
+      });
+      await submit("Sign in");
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    }
+
+    it("lets a late sign-out answer leave the next sign-in alone", async () => {
+      const server = heldServer();
+      await signInAgainBeforeTheSignOutAnswers(server);
+      pick("c.png", "d.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "c.png"]);
+      });
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        await server.signOut().promise;
+      });
+      await act(async () => {
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "c.png", "d.png"]);
+      });
+      await act(async () => {
+        server.upload(2).answer(saved());
+        await server.upload(2).promise;
+      });
+      await screen.findByText("d.png was uploaded.");
+      expect(lines()).toEqual(["c.png was uploaded.", "d.png was uploaded."]);
+      screen.getByRole("region", { name: "Library" });
+      expect(screen.queryByText("Something went wrong")).toBeNull();
+    });
+
+    // The browser applies a cancelled request's answer to no cookie, so the
+    // old sign-out cannot clear the cookie of the next sign-in.
+    it("cancels a pending sign-out once its signed-in view has ended", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => {
+        expect(server.signOut().signal?.aborted).toBe(false);
+      });
+      act(() => {
+        sockets.at(0)?.serverClose(1008);
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.signOut().signal?.aborted).toBe(true);
+    });
+
+    it("shows no notice for a late failed sign-out", async () => {
+      const server = heldServer();
+      await signInAgainBeforeTheSignOutAnswers(server);
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 500 }));
+        await server.signOut().promise;
+      });
+      screen.getByRole("region", { name: "Library" });
+      expect(screen.queryByText("Something went wrong")).toBeNull();
+    });
+
+    const sam = () =>
+      Response.json({ username: "sam", role: "admin" }, { status: 200 });
+
+    // Two presses of Sign in before either answers. The first answer shows
+    // the Library, and Nova picks a.png and b.png before the second answers.
+    async function pickBeforeTheSecondSignIn(
+      server: ReturnType<typeof heldServer>,
+    ) {
+      render(<Access />);
+      await submit("Sign in");
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+      await waitFor(() => {
+        server.signIn(1);
+      });
+      await act(async () => {
+        server.signIn(0).answer(sam());
+        await server.signIn(0).promise;
+      });
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+    }
+
+    it("stops a pick on sign-out after a second sign-in answers", async () => {
+      const server = heldServer({ signedIn: false });
+      await pickBeforeTheSecondSignIn(server);
+      await act(async () => {
+        server.signIn(1).answer(sam());
+        await server.signIn(1).promise;
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.sent()).toEqual(["a.png"]);
+    });
+
+    // The sign-out ends the first view's session, and the second sign-in
+    // answers before React shows the sign-in form.
+    it("gives a sign-in that answers with the sign-out a fresh Library", async () => {
+      const server = heldServer({ signedIn: false });
+      await pickBeforeTheSecondSignIn(server);
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      // A body that reads at once, so both answers land before React
+      // renders again.
+      const samAtOnce = {
+        status: 200,
+        json: () => Promise.resolve({ username: "sam", role: "admin" }),
+      } as Response;
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        server.signIn(1).answer(samAtOnce);
+        await server.signOut().promise;
+        await server.signIn(1).promise;
+      });
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      expect(lines()).toEqual([]);
+      expect(
+        screen.getByRole("button", { name: "Upload" }).hasAttribute("disabled"),
+      ).toBe(false);
+    });
+
+    it("gives a new sign-in a fresh session signal", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        await server.signOut().promise;
+      });
+      await submit("Sign in");
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      pick("c.png", "d.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["c.png"]);
+      });
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["c.png", "d.png"]);
+      });
+    });
   });
 
   describe("the events socket", () => {

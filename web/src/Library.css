@@ -1,0 +1,108 @@
+/*
+ * The Library, in the Showcase layout that DESIGN.md describes: whole images
+ * in justified rows, each with its filename under it, and nothing else.
+ */
+
+.library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sr-spacing-32);
+}
+
+.library-title {
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  font-weight: var(--sr-font-weight-500);
+}
+
+.library-title::before {
+  content: "/";
+  margin-right: var(--sr-spacing-12);
+  color: var(--sr-obsidian-600);
+  font-weight: var(--sr-font-weight-400);
+}
+
+/* Every state other than the grid is one quiet line of text. */
+.library-status {
+  margin: 0;
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+}
+
+/* One quiet line for each picked file. */
+.library-uploads {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sr-spacing-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Justified rows. Each image starts at the row height times its aspect ratio
+ * and grows by its ratio, so every image in a row keeps the same height. The
+ * filler after the last image takes the last row's spare width, so that row
+ * keeps the aimed height instead of stretching.
+ */
+.library-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sr-spacing-32) var(--sr-spacing-24);
+}
+
+.library-grid::after {
+  content: "";
+  flex-grow: 1000000;
+}
+
+/* Each item is one link to the image's asset page: the image and its name. */
+.library-item {
+  /* The 3:2 frame an image keeps until it loads and gives its own shape. */
+  --library-ratio: 1.5;
+  display: block;
+  flex-basis: calc(var(--library-ratio) * var(--sr-size-300));
+  flex-grow: calc(var(--library-ratio) * 100);
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.library-figure {
+  margin: 0;
+}
+
+/* Square corners and no cropping, so the frame's edges stay visible. */
+.library-frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--library-ratio);
+  margin: 0;
+  object-fit: contain;
+}
+
+.library-broken {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: var(--sr-border-width-1) solid var(--sr-color-border-hairline);
+  color: var(--sr-color-text-secondary);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  text-align: center;
+}
+
+.library-name {
+  margin-top: var(--sr-spacing-12);
+  overflow: hidden;
+  color: var(--sr-color-text-body);
+  font-family: var(--sr-font-family-mono);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
+  font-weight: var(--sr-font-weight-400);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

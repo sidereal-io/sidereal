@@ -4,6 +4,7 @@
 #   core        — domain-agnostic engine, built on plugin-abi
 #   packs/astro — first-party pack; depends on plugin-abi ONLY, never core internals
 #                 (enforced by scripts/check-arch.sh)
+#   packs/image — first-party pack for PNG/JPEG; the same rule applies
 #   server      — thin axum binary that wires core + packs
 [workspace]
 resolver = "2"
@@ -12,7 +13,10 @@ members = [
     "crates/plugin-abi",
     "crates/server",
     "crates/packs/astro",
+    "crates/packs/image",
 ]
+# A broken workspace that check-arch.sh must refuse.
+exclude = ["tests/fixtures/arch-violation"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,22 +29,29 @@ license = "MIT"
 sidereal-core = { path = "crates/core" }
 sidereal-plugin-abi = { path = "crates/plugin-abi" }
 sidereal-pack-astro = { path = "crates/packs/astro" }
+sidereal-pack-image = { path = "crates/packs/image" }
 
 # External crates.
-axum = { version = "0.8", features = ["ws"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
-sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "macros", "uuid"] }
+sqlx = { version = "0.9", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls", "migrate", "macros", "uuid", "json"] }
 rustls = { version = "0.23", default-features = false }
 url = "2"
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 libc = "0.2"
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.7", features = ["fs"] }
+tower-http = { version = "0.7", features = ["fs", "limit"] }
+# Decodes a request path as the file service does, to guard asset page addresses.
+percent-encoding = "2"
+# The error type the transport limit raises, so upload can tell it apart.
+http-body-util = "0.1"
 argon2 = "0.6"
 base64ct = { version = "1", features = ["alloc"] }
 rand = "0.10"
 sha2 = "0.11"
+# Content addresses for stored objects (ADR-011).
+blake3 = "1"
 # Test client for the events socket; the same library axum's `ws` feature uses.
 tokio-tungstenite = "0.30"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }

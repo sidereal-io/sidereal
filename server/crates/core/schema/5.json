@@ -1,0 +1,1398 @@
+{
+  "extensions": [],
+  "functions": [],
+  "relations": [
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "description",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": "",
+          "identity": "",
+          "name": "installed_on",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "success",
+          "nullable": false,
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "checksum",
+          "nullable": false,
+          "type": "bytea"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "execution_time",
+          "nullable": false,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [
+        "NOT NULL checksum",
+        "NOT NULL description",
+        "NOT NULL execution_time",
+        "NOT NULL installed_on",
+        "NOT NULL success",
+        "NOT NULL version",
+        "PRIMARY KEY (version)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX _sqlx_migrations_pkey ON public._sqlx_migrations USING btree (version)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "_sqlx_migrations",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "_sqlx_migrations_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "content_hash",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "byte_size",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "media_type",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "source_id",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "source_version",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "ingested_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK (byte_size >= 0)",
+        "CHECK (content_hash ~ '^[0-9a-f]{64}$'::text)",
+        "CHECK (media_type <> ''::text)",
+        "CHECK (source_id <> ''::text)",
+        "CHECK (source_version <> ''::text)",
+        "FOREIGN KEY (asset_id) REFERENCES assets(id)",
+        "NOT NULL asset_id",
+        "NOT NULL byte_size",
+        "NOT NULL content_hash",
+        "NOT NULL id",
+        "NOT NULL ingested_at",
+        "NOT NULL media_type",
+        "NOT NULL source_id",
+        "NOT NULL source_version",
+        "PRIMARY KEY (id)",
+        "UNIQUE (asset_id, id)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE INDEX asset_versions_content_hash ON public.asset_versions USING btree (content_hash)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX asset_versions_asset_id_id_key ON public.asset_versions USING btree (asset_id, id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX asset_versions_pkey ON public.asset_versions USING btree (id)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "asset_versions",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_id",
+          "nullable": true,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "asset_versions_asset_id_id_key",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "content_hash",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "asset_versions_content_hash",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "asset_versions_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "kind",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "name",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "current_version_id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": "0",
+          "generated": "",
+          "identity": "",
+          "name": "revision",
+          "nullable": false,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [
+        "CHECK (kind <> ''::text)",
+        "CHECK (name <> ''::text)",
+        "CHECK (revision >= 0)",
+        "FOREIGN KEY (id, current_version_id) REFERENCES asset_versions(asset_id, id) DEFERRABLE INITIALLY DEFERRED",
+        "NOT NULL current_version_id",
+        "NOT NULL id",
+        "NOT NULL kind",
+        "NOT NULL name",
+        "NOT NULL revision",
+        "PRIMARY KEY (id)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX assets_pkey ON public.assets USING btree (id)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "assets",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "assets_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "name",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "owner_pack",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "label",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "value_type",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "unit",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "scope",
+          "nullable": false,
+          "type": "text"
+        }
+      ],
+      "constraints": [
+        "CHECK (label <> ''::text)",
+        "CHECK (name ~ '^[a-z0-9-]+(\\.[a-z0-9-]+)+$'::text)",
+        "CHECK (owner_pack <> ''::text)",
+        "CHECK (scope = ANY (ARRAY['asset'::text, 'asset_version'::text]))",
+        "CHECK (value_type <> ''::text)",
+        "CHECK (version >= 1)",
+        "NOT NULL label",
+        "NOT NULL name",
+        "NOT NULL owner_pack",
+        "NOT NULL scope",
+        "NOT NULL unit",
+        "NOT NULL value_type",
+        "NOT NULL version",
+        "PRIMARY KEY (name, version)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX facet_schemas_pkey ON public.facet_schemas USING btree (name, version)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "facet_schemas",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "name",
+          "nullable": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "version",
+          "nullable": true,
+          "type": "integer"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "facet_schemas_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "facet",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "schema_version",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_id",
+          "nullable": true,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_version_id",
+          "nullable": true,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "value",
+          "nullable": false,
+          "type": "jsonb"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "producer_id",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "producer_version",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "run_id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "written_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK ((asset_id IS NULL) <> (asset_version_id IS NULL))",
+        "CHECK (jsonb_typeof(value) <> 'null'::text)",
+        "CHECK (producer_id <> ''::text)",
+        "CHECK (producer_version <> ''::text)",
+        "FOREIGN KEY (asset_id) REFERENCES assets(id)",
+        "FOREIGN KEY (asset_version_id) REFERENCES asset_versions(id)",
+        "FOREIGN KEY (facet, schema_version) REFERENCES facet_schemas(name, version)",
+        "FOREIGN KEY (run_id) REFERENCES operation_runs(id)",
+        "NOT NULL facet",
+        "NOT NULL id",
+        "NOT NULL producer_id",
+        "NOT NULL producer_version",
+        "NOT NULL run_id",
+        "NOT NULL schema_version",
+        "NOT NULL value",
+        "NOT NULL written_at",
+        "PRIMARY KEY (id)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE INDEX facet_values_asset ON public.facet_values USING btree (asset_id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE INDEX facet_values_asset_version ON public.facet_values USING btree (asset_version_id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE INDEX facet_values_value ON public.facet_values USING gin (value jsonb_path_ops)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX facet_values_pkey ON public.facet_values USING btree (id)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "facet_values",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "facet_values_asset",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_version_id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "facet_values_asset_version",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "facet_values_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "value",
+          "nullable": true,
+          "type": "integer"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "facet_values_value",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "operator_id",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "operator_version",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "asset_version_id",
+          "nullable": false,
+          "type": "uuid"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "actor_user_id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "status",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "reason",
+          "nullable": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "started_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "ended_at",
+          "nullable": true,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK (btrim(reason) <> ''::text)",
+        "CHECK (ended_at >= started_at)",
+        "CHECK (operator_id <> ''::text)",
+        "CHECK (operator_version <> ''::text)",
+        "CHECK (status = ANY (ARRAY['running'::text, 'succeeded'::text, 'failed'::text]))",
+        "CHECK ((status = 'failed'::text) = (reason IS NOT NULL))",
+        "CHECK ((status = 'running'::text) = (ended_at IS NULL))",
+        "FOREIGN KEY (actor_user_id) REFERENCES users(id)",
+        "FOREIGN KEY (asset_version_id) REFERENCES asset_versions(id)",
+        "NOT NULL actor_user_id",
+        "NOT NULL asset_version_id",
+        "NOT NULL id",
+        "NOT NULL operator_id",
+        "NOT NULL operator_version",
+        "NOT NULL started_at",
+        "NOT NULL status",
+        "PRIMARY KEY (id)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX operation_runs_pkey ON public.operation_runs USING btree (id)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "operation_runs",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "operation_runs_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "a",
+          "name": "id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "token_hash",
+          "nullable": false,
+          "type": "bytea"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "user_id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "auth_type",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "created_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "last_used_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "expires_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK (auth_type = 'password'::text)",
+        "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
+        "NOT NULL auth_type",
+        "NOT NULL created_at",
+        "NOT NULL expires_at",
+        "NOT NULL id",
+        "NOT NULL last_used_at",
+        "NOT NULL token_hash",
+        "NOT NULL user_id",
+        "PRIMARY KEY (id)",
+        "UNIQUE (token_hash)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX sessions_token_hash_key ON public.sessions USING btree (token_hash)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "sessions",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "last_value",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "log_cnt",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "is_called",
+          "nullable": false,
+          "type": "boolean"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "S",
+      "name": "sessions_id_seq",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sessions_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "token_hash",
+          "nullable": true,
+          "type": "bytea"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sessions_token_hash_key",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "product",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "format_version",
+          "nullable": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "storage_id",
+          "nullable": true,
+          "type": "uuid"
+        }
+      ],
+      "constraints": [
+        "CHECK (format_version = 1)",
+        "CHECK (product = 'sidereal'::text)",
+        "NOT NULL format_version",
+        "NOT NULL product",
+        "PRIMARY KEY (product)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX sidereal_metadata_pkey ON public.sidereal_metadata USING btree (product)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "sidereal_metadata",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "product",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "sidereal_metadata_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "a",
+          "name": "id",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "username",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "password_hash",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "role",
+          "nullable": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "created_at",
+          "nullable": false,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        "CHECK (role = 'admin'::text)",
+        "NOT NULL created_at",
+        "NOT NULL id",
+        "NOT NULL password_hash",
+        "NOT NULL role",
+        "NOT NULL username",
+        "PRIMARY KEY (id)",
+        "UNIQUE (username)"
+      ],
+      "force_rls": false,
+      "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX users_one_admin ON public.users USING btree (role) WHERE (role = 'admin'::text)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)",
+          "ready": true,
+          "valid": true
+        },
+        {
+          "definition": "CREATE UNIQUE INDEX users_username_key ON public.users USING btree (username)",
+          "ready": true,
+          "valid": true
+        }
+      ],
+      "kind": "r",
+      "name": "users",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "last_value",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "log_cnt",
+          "nullable": false,
+          "type": "bigint"
+        },
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "is_called",
+          "nullable": false,
+          "type": "boolean"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "S",
+      "name": "users_id_seq",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "role",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "users_one_admin",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "id",
+          "nullable": true,
+          "type": "bigint"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "users_pkey",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    },
+    {
+      "columns": [
+        {
+          "default": null,
+          "generated": "",
+          "identity": "",
+          "name": "username",
+          "nullable": true,
+          "type": "text"
+        }
+      ],
+      "constraints": [],
+      "force_rls": false,
+      "indexes": [],
+      "kind": "i",
+      "name": "users_username_key",
+      "rls": false,
+      "schema": "public",
+      "view": null
+    }
+  ],
+  "schemas": [
+    "public"
+  ],
+  "triggers": [],
+  "types": [
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "__sqlx_migrations",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_asset_versions",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_assets",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_facet_schemas",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_facet_values",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_operation_runs",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_sessions",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_sidereal_metadata",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "_sqlx_migrations",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "b",
+      "name": "_users",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "asset_versions",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "assets",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "facet_schemas",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "facet_values",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "operation_runs",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "sessions",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "sidereal_metadata",
+      "not_null": false,
+      "schema": "public"
+    },
+    {
+      "base": "-",
+      "default": null,
+      "enum": [],
+      "kind": "c",
+      "name": "users",
+      "not_null": false,
+      "schema": "public"
+    }
+  ]
+}

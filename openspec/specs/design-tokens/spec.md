@@ -7,15 +7,21 @@ The web shell's design tokens come from `DESIGN.md`, the source of truth for how
 
 ### Requirement: The token file holds every primitive from DESIGN.md
 
-`web/src/styles/tokens.css` SHALL define one CSS custom property for each primitive token in `DESIGN.md`'s front matter. The primitives are the entries under `colors`, `rounded`, and `spacing`, and under each group in `x-sidereal` except `css-prefix` and `semantic`.
+`web/src/styles/tokens.css` SHALL define one CSS custom property for each primitive token and each semantic token in `DESIGN.md`'s front matter. The primitives are the entries under `colors`, `rounded`, and `spacing`, and under each group in `x-sidereal` except `css-prefix` and `semantic`. The semantic tokens are the entries under `x-sidereal.semantic`.
 
 The generator SHALL write this file. Contributors SHALL NOT edit it by hand.
 
 #### Scenario: One property per primitive
 
-- **WHEN** a tester counts the primitive tokens in `DESIGN.md`'s front matter and the custom properties in `web/src/styles/tokens.css`
+- **WHEN** a tester counts the primitive tokens in `DESIGN.md`'s front matter and the custom properties in `web/src/styles/tokens.css` whose value does not start with `var(`
 - **THEN** both counts are equal
 - **AND** every primitive's key appears in exactly one property name
+
+#### Scenario: One property per semantic token
+
+- **WHEN** a tester counts the entries under `x-sidereal.semantic` in `DESIGN.md` and the custom properties in `web/src/styles/tokens.css` whose value starts with `var(`
+- **THEN** both counts are equal
+- **AND** every semantic token's key appears in exactly one property name
 
 #### Scenario: A new token
 
@@ -25,7 +31,7 @@ The generator SHALL write this file. Contributors SHALL NOT edit it by hand.
 
 ### Requirement: Each property's name and value come from its token
 
-Each property's name SHALL be `--`, then the value of `x-sidereal.css-prefix`, then `-`, then the token's key. Each property's value SHALL be the token's value as `DESIGN.md` writes it. The file SHALL define no other custom property.
+Each property's name SHALL be `--`, then the value of `x-sidereal.css-prefix`, then `-`, then the token's key. A primitive's property value SHALL be the token's value as `DESIGN.md` writes it. A semantic token's property value SHALL be `var(` and the property name of the primitive it references, then `)`. The file SHALL define no other custom property.
 
 #### Scenario: A color token
 
@@ -38,24 +44,52 @@ Each property's name SHALL be `--`, then the value of `x-sidereal.css-prefix`, t
 - **THEN** it defines `--sr-font-size-14` with the value `14px`
 - **AND** it defines `--sr-opacity-45` with the value `0.45`
 
+#### Scenario: A semantic alias
+
+- **WHEN** `DESIGN.md` holds `color-action-primary: "{colors.violet-600}"` under `x-sidereal.semantic`
+- **AND** a tester runs the generator
+- **THEN** `web/src/styles/tokens.css` defines `--sr-color-action-primary` with the value `var(--sr-violet-600)`
+
 ### Requirement: The generator refuses tokens it cannot write yet
 
 The generator SHALL exit with a non-zero status and write no file when `DESIGN.md` holds any token it cannot write. These are:
 
-- any entry under `x-sidereal.semantic`;
+- a semantic token whose value is not exactly `{<group>.<key>}`, naming an existing primitive, with nothing before or after it;
 - any entry under `components`;
-- any entry under the specification's `typography` key, or a `colors`, `rounded`, or `spacing` key that is not a map;
-- two tokens with the same key in different groups.
+- any entry under `typography`, or a `colors`, `rounded`, or `spacing` key that is not a map;
+- two tokens with the same key, in any groups.
 
 Its error message SHALL name the token.
 
 #### Scenario: A semantic token
 
-- **WHEN** a tester adds `color-action-primary: "{colors.violet-600}"` under `x-sidereal.semantic` in `DESIGN.md`
+- **WHEN** a tester adds `color-action-primary: "#7C3AED"` under `x-sidereal.semantic` in `DESIGN.md`
 - **AND** runs the generator
 - **THEN** the generator exits with a non-zero status
 - **AND** its output contains `color-action-primary`
 - **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+#### Scenario: A semantic token that names no primitive
+
+- **WHEN** a tester adds `color-action-primary: "{colors.violet-650}"` under `x-sidereal.semantic` in `DESIGN.md`, where `colors` has no `violet-650`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `color-action-primary`
+
+#### Scenario: A semantic value with text after its reference
+
+- **WHEN** a tester changes `color-action-primary` under `x-sidereal.semantic` in `DESIGN.md` to `"{colors.violet-600}; } body {"`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `color-action-primary`
+- **AND** `git diff --exit-code web/src/styles/tokens.css` exits with status 0
+
+#### Scenario: A component token
+
+- **WHEN** a tester adds `button-primary-hover: { backgroundColor: "{colors.violet-500}" }` under `components` in `DESIGN.md`
+- **AND** runs the generator
+- **THEN** the generator exits with a non-zero status
+- **AND** its output contains `button-primary-hover`
 
 #### Scenario: A duplicate key
 
@@ -70,7 +104,7 @@ The generator SHALL exit with a non-zero status and write no file when `DESIGN.m
 
 - a key that holds anything other than lowercase letters, digits, and hyphens;
 - an `x-sidereal.css-prefix` that is missing, or holds anything other than lowercase letters;
-- a value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`.
+- a primitive value that holds a line break, `;`, `{`, `}`, `<`, `\`, or the text `url(`.
 
 Its error message SHALL name the token.
 
@@ -165,9 +199,9 @@ The unit tests SHALL fail when a stylesheet or TypeScript file under `web/src/` 
 
 #### Scenario: A token in use was removed
 
-- **WHEN** a tester removes `obsidian-100` from `DESIGN.md`, runs the generator, and runs `mise run check-web`
+- **WHEN** a tester removes `obsidian-900`, which no semantic token references, from `DESIGN.md`, runs the generator, and runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
-- **AND** its output contains `--sr-obsidian-100`
+- **AND** its output contains `--sr-obsidian-900`
 
 ### Requirement: The web gate catches a stale token file
 
@@ -280,4 +314,3 @@ The test SHALL read a row that leaves out its outer pipes, as Markdown allows, a
 - **WHEN** a tester deletes every row of the contrast table in `DESIGN.md` and keeps its header
 - **AND** runs `mise run check-web`
 - **THEN** the command exits with a non-zero status
-
