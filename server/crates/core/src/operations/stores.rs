@@ -136,3 +136,72 @@ async fn a_run_with_no_proposals_succeeds_and_stores_nothing() {
     assert_eq!(fixture.runs().await[0].status, "succeeded");
     assert!(fixture.values().await.is_empty());
 }
+
+/// A run keeps its schema versions in name order, whatever order it proposed
+/// them in, so two runs that first write the same schemas cannot deadlock.
+#[tokio::test]
+async fn a_run_keeps_its_schema_versions_in_name_order() {
+    use sqlx::Connection;
+    use std::time::Duration;
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.a"));
+        r.declare_facet(count("test.b"));
+        r.register_operator(op(&["test.a", "test.b"], |context| {
+            for name in ["test.b", "test.a"] {
+                context
+                    .propose_facet(name, FacetValue::Integer(1))
+                    .map_err(|_| OperatorError::Failed("p".into()))?;
+            }
+            Ok(())
+        }));
+    })
+    .await;
+    let version = fixture.version(b"abc").await;
+    // Another run's transaction holds an uncommitted `test.b` row.
+    let mut other = fixture.conn().await;
+    let mut held = other.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO public.facet_schemas VALUES \
+         ('test.b', 1, 'test', 'Size', 'count', 'bytes', 'asset_version')",
+    )
+    .execute(&mut *held)
+    .await
+    .unwrap();
+    let (outcome, took_a_first) = tokio::join!(fixture.run(&version), async {
+        let mut watcher = fixture.conn().await;
+        loop {
+            let waiting: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM pg_stat_activity \
+                 WHERE wait_event_type = 'Lock' AND datname = current_database()",
+            )
+            .fetch_one(&mut watcher)
+            .await
+            .unwrap();
+            if waiting > 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        // The run waits on `test.b`. It already holds `test.a` only if it
+        // keeps schemas in name order.
+        sqlx::query("SET LOCAL lock_timeout = '500ms'")
+            .execute(&mut *held)
+            .await
+            .unwrap();
+        let took_a_first = sqlx::query(
+            "INSERT INTO public.facet_schemas VALUES \
+             ('test.a', 1, 'test', 'Size', 'count', 'bytes', 'asset_version')",
+        )
+        .execute(&mut *held)
+        .await
+        .is_err();
+        held.rollback().await.unwrap();
+        took_a_first
+    });
+    assert!(
+        took_a_first,
+        "the run waited on test.b before it held test.a"
+    );
+    assert_eq!(outcome.unwrap(), RunOutcome::Succeeded);
+    assert_eq!(fixture.values().await.len(), 2);
+}

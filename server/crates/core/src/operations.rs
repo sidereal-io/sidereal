@@ -352,7 +352,8 @@ type KeptSchema = (String, String, String, String, String);
 /// In one transaction: keep each used schema version, insert every value
 /// against the subject its scope names, and mark the run `succeeded`. A kept
 /// schema version that differs from the running declaration refuses the run
-/// (the inner error) and stores nothing.
+/// (the inner error) and stores nothing. Schema versions are kept in name
+/// order, so two runs that first write the same schemas cannot deadlock.
 async fn store(
     database: &Database,
     registry: &Registry,
@@ -362,10 +363,18 @@ async fn store(
     proposals: &FacetProposals,
 ) -> Result<Result<(), String>, sqlx::Error> {
     let mut tx = database.pool().begin().await?;
-    for proposal in &proposals.proposals {
-        let declared = registry
-            .facet_schema(&proposal.name)
-            .expect("check found the schema");
+    let mut used: Vec<_> = proposals
+        .proposals
+        .iter()
+        .map(|proposal| {
+            registry
+                .facet_schema(&proposal.name)
+                .expect("check found the schema")
+        })
+        .collect();
+    used.sort_by(|a, b| a.schema.name.cmp(&b.schema.name));
+    used.dedup_by(|a, b| a.schema.name == b.schema.name);
+    for declared in used {
         let schema = &declared.schema;
         sqlx::query(
             "INSERT INTO public.facet_schemas \
@@ -402,6 +411,12 @@ async fn store(
                 schema.name, schema.version
             )));
         }
+    }
+    for proposal in &proposals.proposals {
+        let schema = &registry
+            .facet_schema(&proposal.name)
+            .expect("check found the schema")
+            .schema;
         let (asset_id, asset_version_id) = match schema.scope {
             FacetScope::Asset => (Some(version.asset_id), None),
             FacetScope::AssetVersion => (None, Some(version_id)),
