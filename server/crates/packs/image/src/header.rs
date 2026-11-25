@@ -11,6 +11,15 @@ const NOT_RECOGNIZED: &str = "the image format is not recognized";
 /// The largest width or height a PNG header may hold.
 const PNG_MAX_SIDE: u32 = i32::MAX as u32;
 
+/// The largest width or height a JPEG frame header can hold. zune-jpeg's own
+/// limit is 16,384, which a large mosaic passes.
+const JPEG_MAX_SIDE: usize = u16::MAX as usize;
+
+/// How far into a JPEG the reader goes: its header, through the end of its
+/// first start-of-scan segment, must fit in the first 8 MiB. This bounds a
+/// run's reads and what zune-jpeg keeps from the segments it passes.
+const JPEG_READ_LIMIT: u64 = 8 * 1024 * 1024;
+
 pub(crate) struct ReadHeader;
 
 impl Operator for ReadHeader {
@@ -36,7 +45,10 @@ impl Operator for ReadHeader {
             || OperatorError::Failed(format!("the {} header could not be read", format.name()));
         let (width, height) = match format {
             Format::Png => png_dimensions(&mut reader),
-            Format::Jpeg => None,
+            Format::Jpeg => {
+                reader.limit(JPEG_READ_LIMIT);
+                jpeg_dimensions(&mut reader)
+            }
         }
         .filter(|&(width, height)| width > 0 && height > 0)
         .ok_or_else(unreadable)?;
@@ -61,6 +73,20 @@ fn png_dimensions(reader: &mut CandidateReader<'_, '_>) -> Option<(u32, u32)> {
     let info = decoder.read_header_info().ok()?;
     let (width, height) = (info.width, info.height);
     (width <= PNG_MAX_SIDE && height <= PNG_MAX_SIDE).then_some((width, height))
+}
+
+/// The width and height a JPEG's frame header gives. zune-jpeg reads the
+/// markers through the first start-of-scan segment, skips the body of each
+/// segment it does not keep, and reads 8-bit baseline, extended and
+/// progressive frame headers only.
+fn jpeg_dimensions(reader: &mut CandidateReader<'_, '_>) -> Option<(u32, u32)> {
+    let options = zune_jpeg::zune_core::options::DecoderOptions::default()
+        .set_max_width(JPEG_MAX_SIDE)
+        .set_max_height(JPEG_MAX_SIDE);
+    let mut decoder = zune_jpeg::JpegDecoder::new_with_options(reader, options);
+    decoder.decode_headers().ok()?;
+    let (width, height) = decoder.dimensions()?;
+    Some((u32::try_from(width).ok()?, u32::try_from(height).ok()?))
 }
 
 /// One window of candidate bytes, as one `read_candidate` call filled it.
@@ -119,6 +145,12 @@ impl<'c, 'a> CandidateReader<'c, 'a> {
         Some(head)
     }
 
+    /// Treat the candidate as ending after `limit` bytes: no byte at or past
+    /// it is read, and a read there returns 0 bytes.
+    fn limit(&mut self, limit: u64) {
+        self.end = self.end.min(limit);
+    }
+
     /// The window that holds the current position, if one does.
     fn held(&self) -> Option<usize> {
         [self.newest, 1 - self.newest]
@@ -127,13 +159,28 @@ impl<'c, 'a> CandidateReader<'c, 'a> {
     }
 }
 
+/// A read fills `buf` across windows, and returns fewer bytes only at the
+/// end of the candidate or after an error. zune-jpeg reads a segment's
+/// length with one read call and takes any byte it did not get as zero, so a
+/// read that stopped at the end of a window would misread the segment.
 impl Read for CandidateReader<'_, '_> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let available = self.fill_buf()?;
-        let n = available.len().min(buf.len());
-        buf[..n].copy_from_slice(&available[..n]);
-        self.consume(n);
-        Ok(n)
+        let mut done = 0;
+        while done < buf.len() {
+            let available = match self.fill_buf() {
+                Ok(available) => available,
+                Err(error) if done == 0 => return Err(error),
+                Err(_) => break,
+            };
+            if available.is_empty() {
+                break;
+            }
+            let n = available.len().min(buf.len() - done);
+            buf[done..done + n].copy_from_slice(&available[..n]);
+            self.consume(n);
+            done += n;
+        }
+        Ok(done)
     }
 }
 

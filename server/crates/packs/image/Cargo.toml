@@ -11,3 +11,5 @@ license.workspace = true
 sidereal-plugin-abi = { workspace = true }
 # Reads a PNG's header: its signature and IHDR chunk, and nothing after.
 png = { workspace = true }
+# Reads a JPEG's markers through its first start-of-scan segment.
+zune-jpeg = { workspace = true }

@@ -314,3 +314,348 @@ fn neither_png_nor_jpeg_bytes_fail_as_unrecognized() {
         );
     }
 }
+
+const JPEG_UNREADABLE: &str = "the JPEG header could not be read";
+
+/// The JPEG read limit: 8 MiB.
+const LIMIT: usize = 8 * 1024 * 1024;
+
+/// One JPEG segment: `0xFF`, its marker, its length and `payload`.
+fn segment(marker: u8, payload: &[u8]) -> Vec<u8> {
+    assert!(
+        payload.len() <= 65_533,
+        "a segment holds at most 65,533 bytes"
+    );
+    let mut out = vec![0xff, marker];
+    out.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
+    out.extend_from_slice(payload);
+    out
+}
+
+/// A one-component frame header of `kind` (`0xC0` to `0xC3`), at
+/// `precision` bits, `width` by `height`.
+fn frame(kind: u8, precision: u8, width: u16, height: u16) -> Vec<u8> {
+    let mut payload = vec![precision];
+    payload.extend_from_slice(&height.to_be_bytes());
+    payload.extend_from_slice(&width.to_be_bytes());
+    payload.extend_from_slice(&[1, 1, 0x11, 0]);
+    segment(kind, &payload)
+}
+
+/// The start-of-scan segment for the one component.
+fn scan() -> Vec<u8> {
+    segment(0xda, &[1, 1, 0x00, 0, 63, 0])
+}
+
+/// Some entropy-coded bytes and the end-of-image marker, after the scan.
+fn image_data() -> Vec<u8> {
+    let mut out = vec![0x12, 0x34, 0x56];
+    out.extend_from_slice(&[0xff, 0xd9]);
+    out
+}
+
+/// A JPEG: the start-of-image marker, `before`, then `header`, a scan and
+/// image data.
+fn jpeg_with(before: &[u8], header: &[u8]) -> Vec<u8> {
+    let mut out = vec![0xff, 0xd8];
+    out.extend_from_slice(before);
+    out.extend_from_slice(header);
+    out.extend(scan());
+    out.extend(image_data());
+    out
+}
+
+/// A baseline JPEG of `width` by `height`.
+fn jpeg(width: u16, height: u16) -> Vec<u8> {
+    jpeg_with(&[], &frame(0xc0, 8, width, height))
+}
+
+/// An `APP1` EXIF segment of `length` payload bytes: a big-endian TIFF
+/// header and one IFD whose orientation is `orientation`, then padding.
+fn exif(length: usize, orientation: u16) -> Vec<u8> {
+    let mut payload = b"Exif\0\0MM\0*\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01".to_vec();
+    payload.extend_from_slice(&orientation.to_be_bytes());
+    payload.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+    payload.resize(length, 0);
+    segment(0xe1, &payload)
+}
+
+/// An `APP2` ICC profile segment carrying `data`.
+fn icc(data: &[u8]) -> Vec<u8> {
+    let mut payload = b"ICC_PROFILE\0\x01\x01".to_vec();
+    payload.extend_from_slice(data);
+    segment(0xe2, &payload)
+}
+
+/// `APP2` ICC segments of at most 65,533 payload bytes, `total` bytes in all.
+fn icc_segments(total: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(total + 65_537);
+    while out.len() < total {
+        out.extend(icc(&[0x55; 65_519]));
+    }
+    out
+}
+
+/// Comment segments of exactly `total` bytes, which must be 0 or at least 4.
+fn padding(mut total: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(total);
+    while total > 0 {
+        let take = if total > 65_537 + 4 {
+            65_537
+        } else {
+            total.min(65_537)
+        };
+        let take = if total - take > 0 && total - take < 4 {
+            take - 4
+        } else {
+            take
+        };
+        out.extend(segment(0xfe, &vec![b'x'; take - 4]));
+        total -= take;
+    }
+    out
+}
+
+#[test]
+fn jpeg_baseline_gives_its_format_width_and_height() {
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg(6000, 4000))),
+        Ok(header("JPEG", 6000, 4000))
+    );
+}
+
+#[test]
+fn jpeg_progressive_gives_its_width_and_height() {
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg_with(&[], &frame(0xc2, 8, 1920, 1080)))),
+        Ok(header("JPEG", 1920, 1080))
+    );
+}
+
+#[test]
+fn jpeg_wider_than_16384_pixels_gives_its_width_and_height() {
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg(20_000, 12_000))),
+        Ok(header("JPEG", 20_000, 12_000))
+    );
+}
+
+#[test]
+fn jpeg_with_exif_and_icc_before_its_frame_header_gives_its_width_and_height() {
+    let before = [exif(60_000, 1), icc(&[0x55; 3_000])].concat();
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg_with(
+            &before,
+            &frame(0xc0, 8, 6000, 4000)
+        ))),
+        Ok(header("JPEG", 6000, 4000))
+    );
+}
+
+#[test]
+fn jpeg_rotated_by_its_exif_orientation_keeps_its_stored_width_and_height() {
+    // Orientation 6: rotate 90 degrees clockwise to display.
+    let before = exif(200, 6);
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg_with(
+            &before,
+            &frame(0xc0, 8, 6000, 4000)
+        ))),
+        Ok(header("JPEG", 6000, 4000))
+    );
+}
+
+#[test]
+fn jpeg_that_reaches_its_scan_or_end_before_a_frame_header_fails() {
+    let mut scan_first = vec![0xff, 0xd8];
+    scan_first.extend(scan());
+    scan_first.extend(image_data());
+    let end_first = b"\xff\xd8\xff\xd9".to_vec();
+    for (what, bytes) in [("start-of-scan", scan_first), ("end-of-image", end_first)] {
+        assert_eq!(
+            read_header(&mut Bytes::new(bytes)),
+            failed(JPEG_UNREADABLE),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn jpeg_cut_off_inside_a_segment_fails() {
+    let bytes = jpeg_with(&exif(1_000, 1), &frame(0xc0, 8, 640, 480));
+    assert_eq!(
+        read_header(&mut Bytes::new(bytes[..500].to_vec())),
+        failed(JPEG_UNREADABLE)
+    );
+}
+
+#[test]
+fn jpeg_of_an_unsupported_kind_fails() {
+    for (what, header) in [
+        ("lossless", frame(0xc3, 8, 640, 480)),
+        ("12-bit extended", frame(0xc1, 12, 640, 480)),
+    ] {
+        assert_eq!(
+            read_header(&mut Bytes::new(jpeg_with(&[], &header))),
+            failed(JPEG_UNREADABLE),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn jpeg_with_a_zero_width_or_height_fails() {
+    for (width, height) in [(0, 480), (640, 0)] {
+        assert_eq!(
+            read_header(&mut Bytes::new(jpeg(width, height))),
+            failed(JPEG_UNREADABLE),
+            "{width} by {height}"
+        );
+    }
+}
+
+#[test]
+fn jpeg_with_9_mib_of_icc_segments_before_its_frame_header_fails_within_8_mib() {
+    let before = icc_segments(9 * 1024 * 1024);
+    let mut candidate = Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480)));
+    assert_eq!(read_header(&mut candidate), failed(JPEG_UNREADABLE));
+    assert!(candidate.furthest <= LIMIT as u64, "{}", candidate.furthest);
+}
+
+#[test]
+fn jpeg_of_19_byte_icc_segments_filling_8_mib_fails_within_8_mib() {
+    let one = icc(&[0x55]);
+    assert_eq!(one.len(), 19);
+    let before = one.repeat(LIMIT / 19 + 1);
+    let mut candidate = Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480)));
+    assert_eq!(read_header(&mut candidate), failed(JPEG_UNREADABLE));
+    assert!(candidate.furthest <= LIMIT as u64, "{}", candidate.furthest);
+}
+
+/// A 640 by 480 JPEG whose first start-of-scan segment ends at byte `end`.
+fn jpeg_whose_scan_ends_at(end: usize) -> Vec<u8> {
+    let header = frame(0xc0, 8, 640, 480);
+    let fixed = 2 + header.len() + scan().len();
+    let bytes = jpeg_with(&padding(end - fixed), &header);
+    assert_eq!(&bytes[end - scan().len()..end], &scan()[..]);
+    bytes
+}
+
+#[test]
+fn jpeg_whose_scan_segment_ends_at_the_limit_gives_its_width_and_height() {
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg_whose_scan_ends_at(LIMIT))),
+        Ok(header("JPEG", 640, 480))
+    );
+}
+
+#[test]
+fn jpeg_whose_scan_segment_ends_one_byte_past_the_limit_fails() {
+    let mut candidate = Bytes::new(jpeg_whose_scan_ends_at(LIMIT + 1));
+    assert_eq!(read_header(&mut candidate), failed(JPEG_UNREADABLE));
+    assert!(candidate.furthest <= LIMIT as u64, "{}", candidate.furthest);
+}
+
+/// The most reads a JPEG run over `size` bytes may cost with full reads.
+fn read_bound(size: usize) -> usize {
+    size.min(LIMIT) / 65_536 + 4
+}
+
+#[test]
+fn jpeg_of_tiny_segments_and_fill_bytes_costs_a_bounded_number_of_reads() {
+    let mut before = Vec::with_capacity(4 * 1024 * 1024 + 8);
+    while before.len() < 4 * 1024 * 1024 {
+        // Fill bytes, then a 4-byte segment with no payload.
+        before.extend_from_slice(&[0xff, 0xff, 0xff, 0xe3, 0x00, 0x02]);
+        before.extend_from_slice(&[0xff, 0xe4, 0x00, 0x02]);
+    }
+    let bytes = jpeg_with(&before, &frame(0xc0, 8, 640, 480));
+    let size = bytes.len();
+    let mut candidate = Bytes::new(bytes);
+    assert_eq!(read_header(&mut candidate), Ok(header("JPEG", 640, 480)));
+    assert!(
+        candidate.reads <= read_bound(size),
+        "{} reads",
+        candidate.reads
+    );
+}
+
+#[test]
+fn jpeg_of_64_full_exif_segments_costs_a_bounded_number_of_reads() {
+    let before = exif(65_533, 1).repeat(64);
+    let bytes = jpeg_with(&before, &frame(0xc0, 8, 6000, 4000));
+    let size = bytes.len();
+    let mut candidate = Bytes::new(bytes);
+    assert_eq!(read_header(&mut candidate), Ok(header("JPEG", 6000, 4000)));
+    assert!(
+        candidate.reads <= read_bound(size),
+        "{} reads",
+        candidate.reads
+    );
+}
+
+#[test]
+fn jpeg_whose_scan_lies_in_its_first_window_costs_at_most_2_reads() {
+    let mut bytes = jpeg(6000, 4000);
+    bytes.resize(4 * 1024 * 1024, 0x12);
+    let mut candidate = Bytes::new(bytes);
+    assert_eq!(read_header(&mut candidate), Ok(header("JPEG", 6000, 4000)));
+    assert!(candidate.reads <= 2, "{} reads", candidate.reads);
+}
+
+/// A candidate that reports the run cancelled once it has been read.
+struct CancelsAfterOneRead {
+    bytes: Bytes,
+    cancelled: std::rc::Rc<std::cell::Cell<bool>>,
+}
+
+impl Candidate for CancelsAfterOneRead {
+    fn size(&self) -> u64 {
+        self.bytes.size()
+    }
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.cancelled.set(true);
+        self.bytes.read_at(offset, buf)
+    }
+}
+
+#[test]
+fn jpeg_run_cancelled_by_its_host_stops_reading() {
+    let before = icc_segments(4 * 1024 * 1024);
+    let cancelled = std::rc::Rc::new(std::cell::Cell::new(false));
+    let mut candidate = CancelsAfterOneRead {
+        bytes: Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480))),
+        cancelled: cancelled.clone(),
+    };
+    let outcome = registry().execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| {
+        cancelled.get()
+    });
+    assert_eq!(outcome, Err(ExecutionError::Cancelled));
+    assert_eq!(candidate.bytes.reads, 1);
+}
+
+/// zune-jpeg reads a segment's length with one read call and takes missing
+/// bytes as zero, so a read must not stop at the end of a window.
+#[test]
+fn jpeg_whose_segment_lengths_cross_a_window_boundary_gives_its_width_and_height() {
+    let before = icc(&[0x55]).repeat(10_000);
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg_with(
+            &before,
+            &frame(0xc0, 8, 640, 480)
+        ))),
+        Ok(header("JPEG", 640, 480))
+    );
+}
+
+#[test]
+fn jpeg_read_three_bytes_at_a_time_gives_the_same_answer() {
+    let before = [exif(60_000, 1), icc(&[0x55]).repeat(5_000)].concat();
+    assert_eq!(
+        read_header(&mut Bytes::reading_at_most(
+            jpeg_with(&before, &frame(0xc0, 8, 6000, 4000)),
+            3
+        )),
+        Ok(header("JPEG", 6000, 4000))
+    );
+}
