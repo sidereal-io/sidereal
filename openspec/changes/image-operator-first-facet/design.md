@@ -497,13 +497,19 @@ forbidden-origin regression stays with upload's tests.
 
 ### 7. The server answers `/assets/<id>` with `index.html`
 
-`with_web_root` wraps its file fallback in one small service. When the path
-matches `^/assets/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
-it answers `GET` and `HEAD` with the same `ServeFile` for `index.html` that
-`/` uses. Every other path goes to `ServeDir` unchanged, so Vite's
-`/assets/index-….js` files, a tester's `assets/index.html`, and every 404
-keep working. The match is on the exact text: an uppercase id or a trailing
-slash is not an asset page address. Vite's output folder stays where it is.
+`with_web_root` wraps its file fallback in one small service. It answers
+each path in one of three ways, checked in this order:
+
+1. When the path matches
+   `^/assets/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+   it answers `GET` and `HEAD` with the same `ServeFile` for `index.html`
+   that `/` uses. The match is on the exact text: an uppercase id or a
+   trailing slash is not an asset page address.
+2. When the path becomes an asset page address only once it is decoded and
+   normalized, as below, it answers 404.
+3. Every other path goes to `ServeDir` unchanged, so Vite's
+   `/assets/index-….js` files, a tester's `assets/index.html`, and every 404
+   keep working. Vite's output folder stays where it is.
 
 `ServeDir` percent-decodes the path before it looks for a file, so
 `/assets/%30b6f3c2e-…` would reach the file at the reserved path
