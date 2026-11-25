@@ -11,9 +11,12 @@ import Library from "./Library.tsx";
 
 type Answer = [status: number, body?: unknown];
 
-// One answer, or a list of answers given in turn (the last one repeats).
+// A turn in a list of answers that gets no answer, like a network error.
+const noAnswer = Symbol("no answer");
+
+// One answer, or a list of turns given in turn (the last one repeats).
 // A request with no answer fails like a network error.
-type Answers = Partial<Record<string, Answer | Answer[]>>;
+type Answers = Partial<Record<string, Answer | (Answer | typeof noAnswer)[]>>;
 
 function stubServer(answers: Answers) {
   const asked = new Map<string, number>();
@@ -23,10 +26,14 @@ function stubServer(answers: Answers) {
     if (!entry) return Promise.reject(new TypeError("network error"));
     const turn = asked.get(key) ?? 0;
     asked.set(key, turn + 1);
-    const list = (
-      Array.isArray(entry[0]) ? entry : [entry]
-    ) as readonly Answer[];
-    const [status, body] = list[Math.min(turn, list.length - 1)];
+    const list = (typeof entry[0] === "number" ? [entry] : entry) as readonly (
+      Answer | typeof noAnswer
+    )[];
+    const answer = list[Math.min(turn, list.length - 1)];
+    if (answer === noAnswer) {
+      return Promise.reject(new TypeError("network error"));
+    }
+    const [status, body] = answer;
     return Promise.resolve(
       body === undefined
         ? new Response(null, { status })
@@ -411,6 +418,46 @@ describe("Library", () => {
       choose();
       expect(lines()).toEqual(["a.png is already in the library."]);
       expect(uploads(fetch)).toHaveLength(1);
+    });
+
+    it("sends every file of a pick, whatever the answers before it", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [[415], [409], noAnswer, [201, { asset: nebula }]],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      const files = ["a.png", "b.png", "c.png", "d.png"].map(named);
+      choose(...files);
+      await screen.findByText("d.png was uploaded.");
+      expect(
+        uploads(fetch).map(([, init]) =>
+          ((init as RequestInit).body as FormData).get("file"),
+        ),
+      ).toEqual(files);
+      expect(lines()).toEqual([
+        "a.png was not uploaded: only PNG and JPEG images are supported.",
+        "b.png is already in the library.",
+        "No answer came back for c.png. It is safe to upload it again: if it was saved, Sidereal will find it.",
+        "d.png was uploaded.",
+      ]);
+    });
+
+    it("gives each refused file of a pick its own reason", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [[413], [415], [400], [503]],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(...["a.png", "b.png", "c.png", "d.png"].map(named));
+      await screen.findByText(/^d\.png was not uploaded/);
+      expect(lines()).toEqual([
+        "a.png was not uploaded: it is larger than the 100 MiB limit.",
+        "b.png was not uploaded: only PNG and JPEG images are supported.",
+        "c.png was not uploaded: choose one PNG or JPEG file and try again.",
+        "d.png was not uploaded: the server could not save it. Try again later.",
+      ]);
     });
 
     it("shows the filename while pending and sends no second request", async () => {
