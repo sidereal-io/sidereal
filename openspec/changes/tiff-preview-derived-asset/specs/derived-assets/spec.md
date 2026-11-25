@@ -53,9 +53,6 @@ Asset version and no lineage link, when any of these holds:
 - the preview's media type is not `image/jpeg` or `image/png`;
 - the preview's bytes are more than 100 MiB (104,857,600 bytes).
 
-A run that proposes facet values and a preview SHALL store neither when any
-one of them is refused.
-
 #### Scenario: An Operator that did not declare previews
 - **WHEN** a test Operator that declares no previews proposes a preview and writes its bytes
 - **THEN** its run is `failed` with a reason that says the Operator does not make previews
@@ -81,14 +78,9 @@ one of them is refused.
 - **THEN** its run is `failed` with a reason that says the preview is larger than 100 MiB
 - **AND** no new Asset exists, and no staging file is left
 
-#### Scenario: A refused facet stops the preview too
-- **WHEN** a test Operator that declares it makes previews proposes a valid preview and a value for a facet it was not granted
-- **THEN** its run is `failed`, no new Asset exists, and no facet value from the run is stored
-
 ### Requirement: Core records a preview as a derived asset with lineage
 
-When a run's preview passes core's checks, core SHALL, in the same
-transaction that records the run `succeeded` and stores its facet values:
+When a run's preview passes core's checks, core SHALL:
 
 - create a new Asset, marked derived, with the proposed kind and the name of
   the Asset whose version the run read;
@@ -98,14 +90,20 @@ transaction that records the run `succeeded` and stores its facet values:
 - record one lineage link from the new version to the version the run read,
   as its preview, naming the run.
 
-Core SHALL mint every id. The preview's bytes SHALL be published to managed
-storage before that transaction, as an uploaded file's are. When the
-transaction does not commit, no part of it SHALL exist.
+Core SHALL mint every id.
 
 #### Scenario: The recorded preview
 - **WHEN** a test Operator that declares it makes previews runs over the version of `nebula.png` and writes a preview of media type `image/jpeg`
 - **THEN** a new Asset named `nebula.png` exists, marked derived, with one version whose hash is the BLAKE3 hash of the bytes written and whose provenance names the test Operator's id and version
 - **AND** one lineage link exists from that version to the version of `nebula.png`, as its preview, naming the run, which is `succeeded`
+
+### Requirement: A preview commits with its run
+
+Core SHALL publish the preview's bytes to managed storage first, as an
+uploaded file's are. It SHALL then create the preview's Asset, version and
+lineage link in the transaction that records the run `succeeded` and stores
+its facet values. When that transaction does not commit, none of them SHALL
+exist.
 
 #### Scenario: The run is cancelled after it proposed a preview
 - **WHEN** the host cancels a run after its Operator proposed a preview and wrote its bytes
@@ -115,6 +113,15 @@ transaction does not commit, no part of it SHALL exist.
 #### Scenario: The database refuses the commit
 - **WHEN** a test Operator writes a valid preview and PostgreSQL refuses the transaction that would record it
 - **THEN** no new Asset, Asset version or lineage link exists, and the run is not `succeeded`
+
+### Requirement: A refused proposal stores nothing from the run
+
+When core refuses any facet value or the preview that a run proposed, it
+SHALL store neither the run's facet values nor its preview.
+
+#### Scenario: A refused facet stops the preview too
+- **WHEN** a test Operator that declares it makes previews proposes a valid preview and a value for a facet it was not granted
+- **THEN** its run is `failed`, no new Asset exists, and no facet value from the run is stored
 
 ### Requirement: A version's preview is its newest
 

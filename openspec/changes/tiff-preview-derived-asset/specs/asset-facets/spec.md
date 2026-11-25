@@ -15,29 +15,21 @@ version:
 - `image.height`, at schema version 1: the label `Height`, a count, and the
   unit `pixels`.
 
-A format value stored before this change SHALL keep schema version 1, whose
-allowed values are `PNG` and `JPEG`, and SHALL read as it did.
-
 #### Scenario: The image pack's schemas
 - **WHEN** the image pack registers
 - **THEN** the Registry keeps `image.format` with the label `Format`, a choice of `PNG`, `JPEG` or `TIFF`, an empty unit, version 2 and the Asset version as what it describes
 - **AND** the Registry keeps `image.width` with the label `Width`, a count, the unit `pixels`, version 1 and the Asset version as what it describes
 - **AND** the Registry keeps `image.height` with the label `Height`, a count, the unit `pixels`, version 1 and the Asset version as what it describes
 
-#### Scenario: A format stored before this change
-- **WHEN** the server starts with this change and reads an Asset saved before it, whose `image.format` is `PNG` under schema version 1
-- **THEN** its `facets` hold `image.format` with the value `PNG` and the label `Format`
-- **AND** the database keeps both schema versions of `image.format`: version 1 with `PNG` and `JPEG`, and version 2 with `PNG`, `JPEG` and `TIFF`
 
 ### Requirement: The image pack records an image's format and pixel dimensions
 
 The image pack SHALL register a header Operator, separate from its file-size
-Operator, that lists `image.format`, `image.width` and `image.height`. The
-header Operator SHALL find the format from the version's leading bytes,
-never from a file name. It SHALL read the width and height that the image's
-header stores, and SHALL ignore any EXIF or TIFF orientation. For a TIFF, it
-SHALL read the width and height of the first image in the file, whatever the
-image's color type, sample size or compression. It SHALL propose all three
+Operator, that lists `image.format`, `image.width` and `image.height`. It
+SHALL find the format from the version's leading bytes, never from a file
+name, and SHALL read the width and height the header stores, ignoring any
+EXIF or TIFF orientation. For a TIFF, these are the first image's, whatever
+its color type, sample size or compression. It SHALL propose all three
 values in one run.
 
 #### Scenario: A PNG
@@ -83,15 +75,13 @@ values in one run.
 
 ### Requirement: A header that cannot be read fails the header run
 
-When the header Operator cannot read a width and a height from the bytes,
-core SHALL store no value from its run and change no other run. When core
-can record the outcome, the run SHALL be `failed` with the reason `the PNG
-header could not be read`, `the JPEG header could not be read` or `the TIFF
-header could not be read`, by signature, or `the image format is not
-recognized` for none of them. A header is unreadable when it is cut off,
-gives a zero width or height, is a JPEG kind the reader does not support, is
-a TIFF whose first image has no width or height, or the decoder refuses
-it.
+When the header Operator cannot read a width and a height, core SHALL store
+no value from its run and change no other run. When core can record the
+outcome, the run SHALL be `failed` with the reason `the <FORMAT> header
+could not be read`, where `<FORMAT>` is `PNG`, `JPEG` or `TIFF` by
+signature, or `the image format is not recognized` for none of them. A
+header is unreadable when it is cut off, lacks a width or height, gives a
+zero one, or is a kind the decoder does not support or refuses.
 
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
@@ -146,3 +136,16 @@ it.
 #### Scenario: A TIFF whose first image directory lies past its end
 - **WHEN** core runs the header Operator over a stored TIFF version whose header points to a first image directory past the end of the file
 - **THEN** its run is `failed` with the reason `the TIFF header could not be read`
+
+## ADDED Requirements
+
+### Requirement: A format stored before TIFF support keeps its schema version
+
+A format value stored before this change SHALL keep schema version 1 of
+`image.format`, whose allowed values are `PNG` and `JPEG`, and SHALL read as
+it did.
+
+#### Scenario: A format stored before this change
+- **WHEN** the server starts with this change and reads an Asset saved before it, whose `image.format` is `PNG` under schema version 1
+- **THEN** its `facets` hold `image.format` with the value `PNG` and the label `Format`
+- **AND** the database keeps both schema versions of `image.format`: version 1 with `PNG` and `JPEG`, and version 2 with `PNG`, `JPEG` and `TIFF`

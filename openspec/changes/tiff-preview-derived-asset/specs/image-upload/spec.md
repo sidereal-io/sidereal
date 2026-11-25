@@ -51,12 +51,10 @@ creating any Asset. Recognition SHALL NOT require full image decoding.
 The Library SHALL show one `Upload` button that opens the file picker
 for one or more PNG, JPEG or TIFF files. Choosing files SHALL start their
 upload at once, as "The chosen files go one at a time" says. Each committed
-image SHALL show with its name, as text, and its image, as "The Library
-shows each image through its preview" says. Each saved file SHALL refresh
+image SHALL show with its name, as text, and its image. Each saved file SHALL refresh
 the library without a page reload. Health, username, sign-out and
 event-socket behavior SHALL stay as they are, and the view SHALL follow
-DESIGN.md. An empty library SHALL show the line
-`No images yet. Upload a PNG, JPEG or TIFF to start.`
+DESIGN.md.
 
 #### Scenario: First upload appears
 - **WHEN** Nova presses Upload, chooses `nebula.png`, and the server accepts it
@@ -69,10 +67,6 @@ DESIGN.md. An empty library SHALL show the line
 #### Scenario: The picker offers TIFF
 - **WHEN** Nova presses Upload
 - **THEN** the file picker offers PNG, JPEG and TIFF files
-
-#### Scenario: An empty library
-- **WHEN** Nova opens the signed-in view of a library with no Assets
-- **THEN** the Library shows `No images yet. Upload a PNG, JPEG or TIFF to start.`
 
 #### Scenario: Upload in progress
 - **WHEN** an upload request is pending and the Library shows
@@ -128,8 +122,8 @@ sent as usual.
 
 When an upload's file-size, header or preview run fails, its Operator stops
 abnormally, or core refuses what it proposed, the upload SHALL still answer
-201 with the saved Asset. Core SHALL record the run as failed, with its
-reason and none of its values or Assets, when it can record the outcome.
+201 with the saved Asset. Core SHALL record the run failed, with its reason
+and none of its values or Assets, when it can.
 When it cannot, the upload SHALL still answer 201, keep the Asset and its
 version, and go on to the next run. No run SHALL stop the next run or remove
 another run's values, and the server SHALL go on answering requests.
@@ -190,6 +184,15 @@ change SHALL get no preview.
 #### Scenario: An image saved before this change
 - **WHEN** the server starts with this change and reads an Asset saved before it
 - **THEN** its `preview_url` is `null`, and no preview run exists for its version
+
+### Requirement: An empty library names the formats it takes
+
+A library with no Assets SHALL show the line
+`No images yet. Upload a PNG, JPEG or TIFF to start.`
+
+#### Scenario: An empty library
+- **WHEN** Nova opens the signed-in view of a library with no Assets
+- **THEN** the Library shows `No images yet. Upload a PNG, JPEG or TIFF to start.`
 
 ### Requirement: The Library shows each image through its preview
 

@@ -104,9 +104,7 @@ When the Source accepts an upload whose BLAKE3 content hash equals the hash of
 any version of an existing original, and publication stores the bytes or
 reuses a stored object that passes its check, ingest SHALL find that original
 and commit no new Asset or version. This holds whichever Source brought the
-existing version in. A derived Asset's version SHALL NOT match: an upload
-whose bytes equal only a preview's SHALL make a new original. When
-publication fails, the upload SHALL fail as managed storage says, and find no
+existing version in. When publication fails, the upload SHALL fail as managed storage says, and find no
 Asset. An upload the Source refuses SHALL be refused as before, whatever its
 hash.
 
@@ -124,11 +122,6 @@ hash.
 - **THEN** the upload is refused
 - **AND** the Assets and versions are unchanged
 
-#### Scenario: The bytes of a preview
-- **WHEN** the library holds `m42.tif` and its preview, and Nova uploads the preview's bytes as `m42-preview.jpg`
-- **THEN** the answer is 201, and the library lists `m42.tif` and a new original named `m42-preview.jpg`
-- **AND** the new original's version shares the stored object of the preview's version
-
 ### Requirement: An upload finds the oldest of several matching Assets
 
 When versions of several originals have the upload's hash, ingest SHALL find
@@ -142,6 +135,16 @@ Assets SHALL stay as they are.
 - **AND** both Assets and their versions are unchanged, and no third Asset exists
 
 ## ADDED Requirements
+
+### Requirement: An upload never finds a derived Asset
+
+The check for a repeat upload SHALL NOT match a derived Asset's version. An
+upload whose bytes equal only a preview's SHALL make a new original.
+
+#### Scenario: The bytes of a preview
+- **WHEN** the library holds `m42.tif` and its preview, and Nova uploads the preview's bytes as `m42-preview.jpg`
+- **THEN** the answer is 201, and the library lists `m42.tif` and a new original named `m42-preview.jpg`
+- **AND** the new original's version shares the stored object of the preview's version
 
 ### Requirement: Preview retrieval returns the preview's bytes
 
