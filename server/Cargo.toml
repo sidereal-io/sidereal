@@ -53,3 +53,13 @@ blake3 = "1"
 # Test client for the events socket; the same library axum's `ws` feature uses.
 tokio-tungstenite = "0.30"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+# Lighter debug information for development and test builds, to keep each
+# worktree's target/ small. Our own crates keep line tables, so panic
+# backtraces still name files and lines; dependencies get none.
+# CONTRIBUTING.md says how to turn full debug information back on.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
