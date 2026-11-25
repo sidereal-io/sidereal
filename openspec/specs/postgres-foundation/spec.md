@@ -87,7 +87,7 @@ The server SHALL never reset the database or execute downgrade migrations.
 
 #### Scenario: First startup
 - **WHEN** Sam starts the server against an empty dedicated database
-- **THEN** the database contains the Sidereal identity row and five successful migration records
+- **THEN** the database contains the Sidereal identity row and six successful migration records
 - **AND** its only application tables are `sidereal_metadata`, `_sqlx_migrations`, `users`, `sessions`, `assets`, `asset_versions`, `facet_schemas`, `facet_values` and `operation_runs`
 
 #### Scenario: Repeated startup
@@ -118,6 +118,11 @@ The server SHALL never reset the database or execute downgrade migrations.
 - **THEN** the first four migration records remain identical, a fifth successful record exists, and the `facet_schemas`, `facet_values` and `operation_runs` tables are empty
 - **AND** the user, Asset and version rows are unchanged
 
+#### Scenario: Upgrade adds allowed values to facet schemas
+- **WHEN** a database holding the first five migrations, with a claimed user, one Asset and its version, a succeeded operation run and its stored `image.file-size` value, starts under the new binary
+- **THEN** the first five migration records remain identical and a sixth successful record exists
+- **AND** the `image.file-size` schema row has no allowed values, and the user, Asset, version, run and value rows are unchanged
+
 ### Requirement: Each migration runs in one transaction
 
 Each bundled migration SHALL run in one transaction, including its essential migration record fields.
@@ -131,7 +136,7 @@ Concurrent server startups SHALL apply each migration exactly once.
 
 #### Scenario: Concurrent startup
 - **WHEN** two servers start against the same empty database
-- **THEN** both complete startup and exactly five successful migration records exist
+- **THEN** both complete startup and exactly six successful migration records exist
 
 ### Requirement: Migration timing metadata is best-effort
 

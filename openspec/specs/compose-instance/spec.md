@@ -47,7 +47,7 @@ Storage initialization SHALL run during app startup without a separate command.
 
 - **WHEN** a first start has reached readiness
 - **AND** a tester counts the rows of `_sqlx_migrations` where `success` is true, through `docker compose exec db psql`
-- **THEN** the count is 5
+- **THEN** the count is 6
 
 ### Requirement: The operator supplies the database password
 
