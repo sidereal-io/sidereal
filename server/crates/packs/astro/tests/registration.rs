@@ -14,3 +14,23 @@ fn astro_pack_registers_and_is_discoverable() {
     assert!(registry.operator_ids().contains(&"astro.plate-solve"));
     assert!(registry.sink_ids().contains(&"astro.immich"));
 }
+
+struct Empty;
+impl sidereal_plugin_abi::Candidate for Empty {
+    fn size(&self) -> u64 {
+        0
+    }
+    fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+        Ok(0)
+    }
+}
+
+#[test]
+fn the_fits_source_says_it_cannot_run_yet() {
+    let mut registry = Registry::new();
+    AstroPack.register(&mut registry);
+    assert_eq!(
+        registry.execute_source("astro.fits", &mut Empty, &mut |_| {}, &|| false),
+        Err(sidereal_plugin_abi::ExecutionError::Unsupported)
+    );
+}

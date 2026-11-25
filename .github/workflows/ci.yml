@@ -113,16 +113,14 @@ jobs:
           workspaces: server
           cmd-format: mise exec -- {0}
 
+      # `mise run e2e` makes its own throwaway database through the
+      # fixture's test role, so this job passes it no database URL.
       - name: Prepare PostgreSQL fixture
-        run: |
-          mise run db-up
-          db_url=$(mise run db-url)
-          echo "::add-mask::$db_url"
-          printf 'DATABASE_URL=%s\n' "$db_url" >> "$GITHUB_ENV"
+        run: mise run db-up
 
-      # `cargo run` inside Playwright's webServer block would compile here,
-      # within the 300s startup timeout. Build first so a cold cache cannot
-      # spend that window on rustc.
+      # The e2e runner builds the server too, then waits at most 300s for
+      # its listening line. Build first so a cold cache spends no part of
+      # that wait on rustc; the runner's build is then a no-op.
       - name: Build the server
         run: mise exec -- cargo build -p sidereal-server --manifest-path server/Cargo.toml
 

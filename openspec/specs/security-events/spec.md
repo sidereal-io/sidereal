@@ -52,7 +52,8 @@ A `security event:` line SHALL be written only once its act has taken effect, an
 
 #### Scenario: Nothing is stored
 - **WHEN** Sam claims, signs in, fails a sign-in, signs out, and resets the password from the box
-- **THEN** the database's application tables are still `sidereal_metadata`, `_sqlx_migrations`, `users` and `sessions`
+- **THEN** the database's list of application tables is the same after these acts as before them
+- **AND** every application table other than `users` and `sessions` holds the same rows after these acts as before them
 
 ### Requirement: The log line names the event in fixed fields
 

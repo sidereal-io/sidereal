@@ -1,0 +1,5 @@
+# A workspace that breaks the pack rule, so check-arch.sh can show that it
+# refuses one. It is never built; check-arch.sh only reads its dependency tree.
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/packs/bad", "crates/packs/other"]

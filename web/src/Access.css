@@ -1,6 +1,6 @@
 /*
- * The access forms. Primitives are used directly until semantic tokens exist,
- * as DESIGN.md allows.
+ * The access forms. Each role that has a semantic token uses it; the rest
+ * use primitives until a semantic token exists, as DESIGN.md allows.
  */
 
 .access-form {
@@ -19,10 +19,10 @@
 
 .access-field input {
   padding: var(--sr-spacing-8);
-  border: var(--sr-border-width-1) solid var(--sr-obsidian-800);
+  border: var(--sr-border-width-1) solid var(--sr-color-border-hairline);
   border-radius: var(--sr-radius-4);
   background-color: var(--sr-obsidian-900);
-  color: var(--sr-obsidian-100);
+  color: var(--sr-color-text-body);
   font-family: var(--sr-font-family-sans);
   font-size: var(--sr-font-size-14);
 }
@@ -31,8 +31,8 @@
   padding: var(--sr-spacing-8) var(--sr-spacing-12);
   border: none;
   border-radius: var(--sr-radius-4);
-  background-color: var(--sr-violet-600);
-  color: var(--sr-white);
+  background-color: var(--sr-color-action-primary);
+  color: var(--sr-color-text-on-action);
   font-family: var(--sr-font-family-sans);
   font-size: var(--sr-font-size-14);
   cursor: pointer;
@@ -41,6 +41,13 @@
 /* Body text, not a status color: DESIGN.md shows a status only in a badge. */
 .access-message {
   margin: 0;
-  color: var(--sr-obsidian-400);
+  color: var(--sr-color-text-secondary);
   font-size: var(--sr-font-size-14);
+}
+
+/* The signed-in username in the top bar. */
+.access-user {
+  color: var(--sr-color-text-body);
+  font-size: var(--sr-font-size-14);
+  line-height: var(--sr-line-height-20);
 }

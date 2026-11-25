@@ -580,6 +580,10 @@ The image sets `WEB_ROOT` to the folder that holds the built web pages. The app 
 
 If you run the server without the image and set `WEB_ROOT` yourself, make sure only people you trust can write to that folder. The server serves whatever the folder holds, and it follows symbolic links.
 
+Keep `STORAGE_ROOT` and `WEB_ROOT` apart. Anyone can read what the web folder serves, without signing in, so your originals must never be inside it. The server refuses to start when the two settings name the same folder, or when one folder holds the other, after it follows symbolic links. It cannot see a link or a mount that someone makes inside `WEB_ROOT` later. So make sure that no mount and no symbolic link exposes `STORAGE_ROOT` inside `WEB_ROOT`.
+
+The server resolves `WEB_ROOT` once, when it starts. If `WEB_ROOT` is a symbolic link and you point it at a new build, the server keeps serving the old folder until you restart it.
+
 ## Troubleshoot a failed start or an unhealthy app
 
 Run `docker compose ps` to see the containers' health. Read `docker compose logs app` for the cause.

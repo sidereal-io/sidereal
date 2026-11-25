@@ -1,0 +1,134 @@
+//! Assets and their immutable versions in PostgreSQL (ADR-003).
+//!
+//! Core mints every id and records the hash it computed. This module creates
+//! an Asset with its first version and reads them back; it offers no way to
+//! change or delete a version.
+use crate::database::{Database, DatabaseError};
+use sidereal_plugin_abi::Accepted;
+use sqlx::{postgres::PgRow, Row};
+use uuid::Uuid;
+
+/// One Asset with its current version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AssetRecord {
+    pub id: Uuid,
+    pub kind: String,
+    /// Display text only; never a path.
+    pub name: String,
+    pub current_version_id: Uuid,
+    pub version: VersionRecord,
+}
+
+/// One immutable Asset version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VersionRecord {
+    pub id: Uuid,
+    /// Lowercase hexadecimal BLAKE3 hash of the stored bytes.
+    pub content_hash: String,
+    pub byte_size: u64,
+    pub media_type: String,
+    pub source_id: String,
+    pub source_version: String,
+    /// When core committed the version, in UTC, as RFC 3339 text.
+    pub ingested_at: String,
+}
+
+/// The new Asset's first version, as ingest hands it to the database.
+pub(crate) struct NewVersion<'a> {
+    pub name: &'a str,
+    pub accepted: &'a Accepted,
+    pub content_hash: &'a str,
+    pub byte_size: u64,
+}
+
+const INGESTED_AT: &str =
+    r#"to_char(v.ingested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')"#;
+
+fn select() -> String {
+    format!(
+        "SELECT a.id, a.kind, a.name, a.current_version_id, v.id, v.content_hash, v.byte_size, \
+         v.media_type, v.source_id, v.source_version, {INGESTED_AT} \
+         FROM public.assets a \
+         JOIN public.asset_versions v ON v.asset_id = a.id AND v.id = a.current_version_id"
+    )
+}
+
+fn record(row: &PgRow) -> Result<AssetRecord, sqlx::Error> {
+    Ok(AssetRecord {
+        id: row.try_get(0)?,
+        kind: row.try_get(1)?,
+        name: row.try_get(2)?,
+        current_version_id: row.try_get(3)?,
+        version: VersionRecord {
+            id: row.try_get(4)?,
+            content_hash: row.try_get(5)?,
+            byte_size: row.try_get::<i64, _>(6)? as u64,
+            media_type: row.try_get(7)?,
+            source_id: row.try_get(8)?,
+            source_version: row.try_get(9)?,
+            ingested_at: row.try_get(10)?,
+        },
+    })
+}
+
+impl Database {
+    /// Every committed Asset, oldest first, then by id.
+    pub async fn assets(&self) -> Result<Vec<AssetRecord>, DatabaseError> {
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "{} ORDER BY v.ingested_at, a.id",
+            select()
+        )))
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.iter().map(record).collect::<Result<_, _>>()?)
+    }
+
+    /// One committed Asset, when it exists.
+    pub async fn asset(&self, id: Uuid) -> Result<Option<AssetRecord>, DatabaseError> {
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} WHERE a.id = $1", select())))
+            .bind(id)
+            .fetch_optional(self.pool())
+            .await?;
+        Ok(row.as_ref().map(record).transpose()?)
+    }
+
+    /// Insert a new Asset and its first version in one transaction. The
+    /// current-version check runs at commit, so neither row exists alone.
+    pub(crate) async fn create_asset(
+        &self,
+        new: NewVersion<'_>,
+    ) -> Result<AssetRecord, DatabaseError> {
+        let (asset, version) = (Uuid::new_v4(), Uuid::new_v4());
+        let mut tx = self.pool().begin().await?;
+        sqlx::query(
+            "INSERT INTO public.assets (id, kind, name, current_version_id) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(asset)
+        .bind(&new.accepted.proposal.kind)
+        .bind(new.name)
+        .bind(version)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO public.asset_versions \
+             (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+        )
+        .bind(version)
+        .bind(asset)
+        .bind(new.content_hash)
+        .bind(new.byte_size as i64)
+        .bind(&new.accepted.proposal.media_type)
+        .bind(&new.accepted.provenance.source_id)
+        .bind(&new.accepted.provenance.source_version)
+        .execute(&mut *tx)
+        .await?;
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} WHERE a.id = $1", select())))
+            .bind(asset)
+            .fetch_one(&mut *tx)
+            .await?;
+        let created = record(&row)?;
+        tx.commit().await?;
+        Ok(created)
+    }
+}

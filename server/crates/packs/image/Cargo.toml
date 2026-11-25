@@ -1,0 +1,11 @@
+[package]
+name = "sidereal-pack-image"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# The image pack codes against the public contract ONLY. It must NOT depend on
+# `sidereal-core`, the server or another pack; server/scripts/check-arch.sh
+# enforces this (ADR-002).
+[dependencies]
+sidereal-plugin-abi = { workspace = true }

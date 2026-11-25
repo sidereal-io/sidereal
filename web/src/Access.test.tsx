@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Access from "./Access.tsx";
+import accessCss from "./Access.css?raw";
 import "./styles/tokens.css";
 import { stubWebSocket, type FakeWebSocket } from "./testing/fakeWebSocket.ts";
 
@@ -37,15 +38,19 @@ const signedOut: Record<string, Answer> = {
   "GET /api/session": [401, { error: "unauthenticated" }],
 };
 
-// jsdom applies stylesheets but does not resolve var(), so follow one var()
-// to its value on :root, as a browser would.
+// jsdom applies stylesheets but does not resolve var(), so follow each var()
+// to its value on :root, as a browser would. A semantic token is var() of a
+// primitive, so the chain can be more than one step long.
 function computed(element: Element, property: string): string {
-  const value = getComputedStyle(element).getPropertyValue(property).trim();
-  const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
-  if (!token) return value;
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue(token)
-    .trim();
+  let value = getComputedStyle(element).getPropertyValue(property).trim();
+  for (let step = 0; step < 10; step++) {
+    const token = /^var\((--[\w-]+)\)$/.exec(value)?.[1];
+    if (!token) return value;
+    value = getComputedStyle(document.documentElement)
+      .getPropertyValue(token)
+      .trim();
+  }
+  throw new Error(`${property} does not resolve to a value`);
 }
 
 // The rgb() form a browser reports for a color.
@@ -267,6 +272,97 @@ describe("Access", () => {
     render(<Access />);
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     await screen.findByRole("button", { name: "Sign in" });
+  });
+
+  it("shows the library while signed in", async () => {
+    stubServer({
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "GET /api/assets": [
+        200,
+        {
+          assets: [
+            {
+              id: "a1",
+              kind: "image",
+              name: "nebula.png",
+              current_version_id: "v1",
+              original_url: "/api/assets/a1/original",
+            },
+          ],
+        },
+      ],
+    });
+    render(<Access />);
+    await screen.findByRole("img", { name: "nebula.png" });
+    screen.getByText("sam");
+  });
+
+  it("moves to the sign-in form when the library finds the session ended", async () => {
+    stubServer({
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "GET /api/assets": [401, { error: "unauthenticated" }],
+    });
+    render(<Access />);
+    await screen.findByRole("button", { name: "Sign in" });
+    expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+  });
+
+  it("hides the library on sign-out, and its late answer shows nothing", async () => {
+    let answerList: (response: Response) => void = () => undefined;
+    const list = new Promise<Response>((resolve) => {
+      answerList = resolve;
+    });
+    const answers: Partial<Record<string, Answer>> = {
+      "GET /api/claim": [200, { open: false }],
+      "GET /api/session": [200, { username: "sam", role: "admin" }],
+      "DELETE /api/session": [204],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/assets") return list;
+        const answer = answers[`${init?.method ?? "GET"} ${input}`];
+        if (!answer) return Promise.reject(new TypeError("network error"));
+        const [status, body] = answer;
+        return Promise.resolve(
+          body === undefined
+            ? new Response(null, { status })
+            : Response.json(body, { status }),
+        );
+      }),
+    );
+    render(<Access />);
+    await screen.findByText("Loading the library…");
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await screen.findByRole("button", { name: "Sign in" });
+    await act(async () => {
+      answerList(
+        Response.json({
+          assets: [
+            {
+              id: "a1",
+              kind: "image",
+              name: "nebula.png",
+              current_version_id: "v1",
+              original_url: "/api/assets/a1/original",
+            },
+          ],
+        }),
+      );
+      await list;
+    });
+    expect(screen.queryByText("nebula.png")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+  });
+
+  it("uses no primitive whose role has a semantic token", () => {
+    expect(
+      accessCss.match(
+        /var\(--sr-(violet-600|white|obsidian-100|obsidian-400|obsidian-800)\)/g,
+      ),
+    ).toBeNull();
   });
 
   it("styles the submit button from the tokens", async () => {

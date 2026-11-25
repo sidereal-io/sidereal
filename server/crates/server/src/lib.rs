@@ -9,10 +9,12 @@ use std::{path::Path, sync::Arc};
 use tower_http::services::{ServeDir, ServeFile};
 
 pub mod access;
+pub mod assets;
 pub mod config;
 pub mod siderealctl;
 
 pub use access::{events::EventTiming, limit::Clock, Log};
+pub use assets::Library;
 
 /// What a test may change about the production routes, so it need not wait
 /// out real intervals.
@@ -48,14 +50,26 @@ pub fn app_with_database(database: Database, allowed_origins: AllowedOrigins) ->
     app_with_tuning(database, allowed_origins, Tuning::default())
 }
 
-/// The production routes, tuned by the caller. Each call starts its own
-/// sign-in counts, as a new process does.
+/// The production routes, tuned by the caller, with no managed storage.
+/// Each call starts its own sign-in counts, as a new process does.
 pub fn app_with_tuning(
     database: Database,
     allowed_origins: AllowedOrigins,
     tuning: Tuning,
 ) -> Router {
+    app_with_library(database, allowed_origins, tuning, Library::new(None))
+}
+
+/// The production routes with the Asset library's object store and
+/// Registry.
+pub fn app_with_library(
+    database: Database,
+    allowed_origins: AllowedOrigins,
+    tuning: Tuning,
+    library: Library,
+) -> Router {
     let limiter = Arc::new(Limiter::new(tuning.clock));
+    let assets = assets::routes(database.clone(), library, tuning.log.clone());
     app().merge(
         Router::new()
             .route("/readyz", get(readyz))
@@ -65,6 +79,7 @@ pub fn app_with_tuning(
                 tuning.events,
                 limiter,
                 tuning.log,
+                assets,
             ))
             .with_state(database),
     )
