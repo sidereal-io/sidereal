@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
 
 // The first-image journey, on the stack that `mise run e2e` makes for this
-// run: Nova claims the instance, signs in, uploads a real PNG and JPEG,
-// uploads the PNG's bytes again under another name and is told it is already
+// run: Nova claims the instance, signs in, uploads a real PNG and JPEG in
+// one pick, uploads the PNG's bytes again under another name and is told it is already
 // there, and still sees exactly the two images after the runner restarts the
 // server. The Rust process test (server/crates/server/tests/journey.rs)
 // checks ids and bytes; this test checks what Nova sees.
@@ -55,10 +55,12 @@ test("Nova uploads a PNG and a JPEG and sees them after a restart", async ({
     page.getByText("No images yet. Upload a PNG or JPEG to start."),
   ).toBeVisible();
 
+  // Both images in one pick, through the browser's multiple-file picker.
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload" }).click();
+  await (await chooser).setFiles(images.map((name) => join(fixtures, name)));
   for (const name of images) {
-    const chooser = page.waitForEvent("filechooser");
-    await page.getByRole("button", { name: "Upload" }).click();
-    await (await chooser).setFiles(join(fixtures, name));
+    await expect(page.getByText(`${name} was uploaded.`)).toBeVisible();
     await expectShown(page, name);
   }
 
