@@ -6,47 +6,25 @@ import {
   type ReactNode,
 } from "react";
 import { InBar } from "./Bar.tsx";
+import { isObject, toEntry, type Entry } from "./entry.ts";
 import { Link } from "./navigation.tsx";
-import type { Upload } from "./upload.ts";
+import { lineText, type Line } from "./upload.ts";
 import "./Library.css";
-
-interface Entry {
-  id: string;
-  name: string;
-  originalUrl: string;
-}
 
 type List = "loading" | "failed" | Entry[];
 
 // A list request that the server refused because the session has ended.
 const sessionEnded = Symbol("session ended");
 
-// An original is always fetched from this server's API, never from an
-// address the list names elsewhere, and only from its own Asset's route.
-const ORIGINAL_URL = /^\/api\/assets\/[\w-]+\/original$/;
-
-function isObject(body: unknown): body is Record<string, unknown> {
-  return typeof body === "object" && body !== null;
-}
-
-// The entries of a list body, or null when the body is not a list. Nothing
-// else from the body is kept, and the names are only ever shown as text.
+// The entries of a list body, or null when the body is not a list or holds
+// an entry that is not valid.
 function entries(body: unknown): Entry[] | null {
   if (!isObject(body) || !Array.isArray(body.assets)) return null;
   const list: Entry[] = [];
   for (const item of body.assets as unknown[]) {
-    if (
-      !isObject(item) ||
-      typeof item.id !== "string" ||
-      typeof item.name !== "string" ||
-      typeof item.current_version_id !== "string" ||
-      typeof item.original_url !== "string" ||
-      !ORIGINAL_URL.test(item.original_url) ||
-      item.original_url !== `/api/assets/${item.id}/original`
-    ) {
-      return null;
-    }
-    list.push({ id: item.id, name: item.name, originalUrl: item.original_url });
+    const checked = toEntry(item);
+    if (!checked) return null;
+    list.push(checked);
   }
   return list;
 }
@@ -111,7 +89,8 @@ function Picture({ entry }: { entry: Entry }) {
 function Library({
   onSessionLost,
   notice,
-  upload,
+  lines,
+  busy,
   onUpload,
   saved,
   children,
@@ -120,10 +99,13 @@ function Library({
   onSessionLost: () => void;
   // A fixed message from the account, such as a failed sign-out.
   notice?: string | null;
-  // The signed-in view's upload, which goes on while another screen shows.
-  upload: Upload;
-  // Sends a chosen file, unless another is still on its way.
-  onUpload: (file: File) => void;
+  // One line for each file of the signed-in view's last pick, which goes on
+  // while another screen shows.
+  lines: Line[];
+  // True until every file of that pick has its answer.
+  busy: boolean;
+  // Sends the chosen files, unless a pick is still on its way.
+  onUpload: (files: File[]) => void;
   // Goes up after each upload the server may have saved.
   saved: number;
   // The account's items, shown in the top bar after the Library's own.
@@ -163,7 +145,7 @@ function Library({
         <button
           className="button-primary"
           type="button"
-          disabled={upload.kind === "sending"}
+          disabled={busy}
           onClick={() => pickerRef.current?.click()}
         >
           Upload
@@ -175,27 +157,25 @@ function Library({
         type="file"
         accept="image/png,image/jpeg"
         aria-label="Image to upload"
+        multiple
         hidden
         onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          // Cleared, so the same file can be chosen again after a refusal.
+          // Copied first: clearing the value can empty the list it read.
+          const files = [...(event.currentTarget.files ?? [])];
+          // Cleared, so the same files can be chosen again after a refusal.
           event.currentTarget.value = "";
-          if (file) onUpload(file);
+          if (files.length > 0) onUpload(files);
         }}
       />
-      {upload.kind === "sending" && (
-        <p className="library-status">Uploading {upload.name}…</p>
-      )}
-      {upload.kind === "refused" && (
-        <p className="library-status">
-          {upload.name} was not uploaded: {upload.reason}
-        </p>
-      )}
-      {upload.kind === "unconfirmed" && (
-        <p className="library-status">
-          No answer came back for {upload.name}. It may have been saved: check
-          the library before you upload it again.
-        </p>
+      {lines.length > 0 && (
+        <ul className="library-uploads" aria-label="Uploads">
+          {lines.map((line, index) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- A pick's lines are only ever replaced whole, so an index is stable.
+            <li key={index} className="library-status">
+              {lineText(line)}
+            </li>
+          ))}
+        </ul>
       )}
       {notice && <p className="library-status">{notice}</p>}
       {list === "loading" && (

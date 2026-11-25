@@ -959,3 +959,91 @@ async fn open_passes_other_preflight_errors_through() {
     assert_eq!(open(&db).await.err(), Some(DatabaseError::Ownership));
     assert_eq!(before, schema(&mut conn).await.unwrap());
 }
+
+mod startup_cleanup {
+    use super::*;
+    use crate::storage::{tests::TempRoot, Entry, Problem};
+
+    const SECONDS: Duration = Duration::from_secs(3);
+
+    /// Pair `temp` with `db`, as a first start does.
+    async fn paired(db: &TestDatabase, temp: &TempRoot) {
+        let (database, _, _) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
+                .await
+                .unwrap();
+        database.close().await;
+    }
+
+    /// A paired root whose `tmp` holds two leftover files.
+    async fn leftovers(db: &TestDatabase) -> TempRoot {
+        let temp = TempRoot::new();
+        paired(db, &temp).await;
+        std::fs::create_dir(temp.path.join("tmp")).unwrap();
+        for name in ["a", "b"] {
+            std::fs::write(temp.path.join("tmp").join(name), b"left").unwrap();
+        }
+        temp
+    }
+
+    async fn stored_id(db: &TestDatabase) -> Option<uuid::Uuid> {
+        let mut conn = connection(db).await;
+        sqlx::query_scalar("SELECT storage_id FROM public.sidereal_metadata")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn startup_removes_leftover_staging_files() {
+        let db = TestDatabase::new();
+        let temp = leftovers(&db).await;
+        paired(&db, &temp).await;
+        assert_eq!(std::fs::read_dir(temp.path.join("tmp")).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn startup_answers_what_cleanup_removed() {
+        let db = TestDatabase::new();
+        let temp = leftovers(&db).await;
+        let (database, _, cleanup) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
+                .await
+                .unwrap();
+        database.close().await;
+        assert_eq!(cleanup.removed, 2);
+    }
+
+    #[tokio::test]
+    async fn an_unsafe_tmp_fails_startup_with_a_storage_error() {
+        let db = TestDatabase::new();
+        let temp = TempRoot::new();
+        paired(&db, &temp).await;
+        let outside = TempRoot::new();
+        std::os::unix::fs::symlink(&outside.path, temp.path.join("tmp")).unwrap();
+        let outcome =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root()).await;
+        match outcome {
+            Err(StartupError::Storage(error)) => {
+                assert_eq!(error.problem(), &Problem::Unsafe(Entry::Tmp))
+            }
+            Err(other) => panic!("{other}"),
+            Ok(_) => panic!("startup went on with an unsafe tmp"),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_unsafe_tmp_leaves_the_database_uuid_unchanged() {
+        let db = TestDatabase::new();
+        let temp = TempRoot::new();
+        paired(&db, &temp).await;
+        let before = stored_id(&db).await;
+        std::fs::write(temp.path.join("tmp"), b"not a folder").unwrap();
+        assert!(
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
+                .await
+                .is_err()
+        );
+        assert_eq!(stored_id(&db).await, before);
+    }
+}

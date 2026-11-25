@@ -1,5 +1,8 @@
 use super::{pairing, DatabaseError, StartupError};
-use crate::storage::StorageRoot;
+use crate::storage::{
+    objects::{Cleanup, ObjectStore},
+    StorageRoot,
+};
 use serde_json::Value;
 use sqlx::{
     migrate::{Migrate, Migrator},
@@ -167,14 +170,16 @@ pub async fn initialize(
 }
 
 /// Initialize the database, then pair `storage` with it and check storage
-/// access before the startup lock is released. Answers the storage UUID
-/// that pairing committed, which the object store checks again.
+/// access before the startup lock is released. Still under the lock, remove
+/// the staging files an interrupted ingest left in `tmp`. Answers the storage
+/// UUID that pairing committed, which the object store checks again, and
+/// what cleanup did.
 pub async fn initialize_with_storage(
     options: PgConnectOptions,
     startup: Duration,
     migration: Duration,
     storage: &StorageRoot,
-) -> Result<(Database, uuid::Uuid), StartupError> {
+) -> Result<(Database, uuid::Uuid, Cleanup), StartupError> {
     let mut paired = None;
     locked(
         &options,
@@ -184,13 +189,15 @@ pub async fn initialize_with_storage(
         &baselines(),
         None,
         async |conn: &mut PgConnection| {
-            paired = Some(pairing::pair(conn, storage).await?);
+            let id = pairing::pair(conn, storage).await?;
+            let cleanup = ObjectStore::open(storage, id)?.remove_leftover_staging()?;
+            paired = Some((id, cleanup));
             Ok::<_, StartupError>(())
         },
     )
     .await?;
-    let paired = paired.expect("pairing ran under the startup lock");
-    Ok((Database::new(options, startup), paired))
+    let (paired, cleanup) = paired.expect("pairing ran under the startup lock");
+    Ok((Database::new(options, startup), paired, cleanup))
 }
 
 impl Database {

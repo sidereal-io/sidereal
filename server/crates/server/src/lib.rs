@@ -22,6 +22,7 @@ pub mod access;
 pub mod assets;
 pub mod config;
 pub mod siderealctl;
+pub mod storage;
 
 pub use access::{events::EventTiming, limit::Clock, Log};
 pub use assets::Library;

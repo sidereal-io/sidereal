@@ -3,9 +3,10 @@
 //!
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
-//! the Asset, and then runs the file-size Operator over the new version.
-//! Every refusal has a fixed body, so no path or driver error reaches a
-//! client; the operational log names the cause.
+//! the Asset, or finds the Asset that already holds the bytes (409). A new
+//! Asset then has the file-size Operator run over its version. Every refusal
+//! has a fixed body, so no path or driver error reaches a client; the
+//! operational log names the cause.
 use crate::access::Log;
 use axum::{
     body::{Body, BodyDataStream, Bytes},
@@ -27,7 +28,7 @@ use sidereal_core::{
     access::User,
     assets::AssetRecord,
     database::Database,
-    ingest::{ingest, IngestError},
+    ingest::{ingest, IngestError, Ingested},
     operations::{run_operator, OperationError, RunOutcome, RunRequest},
     storage::objects::{ObjectStore, StageError, Staged, Staging, MAX_UPLOAD_BYTES},
 };
@@ -477,8 +478,13 @@ async fn upload(
     // started, a client that goes away stops neither the commit nor the run.
     let task = tokio::spawn(save(assets.clone(), actor, name, staged, cancelled));
     match task.await {
-        Ok(Ok(record)) => Ok((
+        Ok(Ok(Ingested::Created(record))) => Ok((
             StatusCode::CREATED,
+            Json(json!({ "asset": entry(&record) })),
+        )),
+        // The bytes are already in the library: not a failure, so no log.
+        Ok(Ok(Ingested::Found(record))) => Ok((
+            StatusCode::CONFLICT,
             Json(json!({ "asset": entry(&record) })),
         )),
         Ok(Err(IngestError::Refused(_))) => Err(UploadError::Unsupported),
@@ -488,23 +494,24 @@ async fn upload(
     }
 }
 
-/// Ingest `staged`, then run each upload Operator over the new version, with
-/// `actor` as the user who started the run. `cancelled` reaches ingest only:
-/// the runs get their own flag, which nothing sets. A run's result never
-/// fails the upload; this task logs it, since the request may be gone.
+/// Ingest `staged`. When that makes a new Asset, run each upload Operator over
+/// its version, with `actor` as the user who started the run. `cancelled`
+/// reaches ingest only: the runs get their own flag, which nothing sets. A
+/// run's result never fails the upload; this task logs it, since the request
+/// may be gone.
 async fn save(
     assets: Assets,
     actor: i64,
     name: String,
     staged: Staged,
     cancelled: Arc<AtomicBool>,
-) -> Result<AssetRecord, IngestError> {
+) -> Result<Ingested, IngestError> {
     let objects = assets
         .library
         .objects
         .as_ref()
         .expect("checked before staging");
-    let record = ingest(
+    let ingested = ingest(
         &assets.database,
         objects,
         assets.library.registry.clone(),
@@ -514,6 +521,10 @@ async fn save(
         cancelled,
     )
     .await?;
+    let Ingested::Created(record) = &ingested else {
+        // The bytes are already in the library: its version needs no new run.
+        return Ok(ingested);
+    };
     for operator in &assets.library.upload_operators {
         let outcome = run_operator(
             &assets.database,
@@ -540,7 +551,7 @@ async fn save(
             )),
         }
     }
-    Ok(record)
+    Ok(ingested)
 }
 
 /// Write `bytes` to staging on a blocking worker.

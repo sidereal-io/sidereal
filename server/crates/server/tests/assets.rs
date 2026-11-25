@@ -103,7 +103,7 @@ impl Instance {
         let db = TestDatabase::new();
         let storage = Dir::new();
         let root = StorageRoot::new(&storage.0).unwrap();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
                 .await
                 .unwrap();
@@ -629,6 +629,40 @@ mod upload {
         }
         assert_eq!(instance.rows().await, 0);
         assert!(instance.store_files().is_empty());
+    }
+
+    #[tokio::test]
+    async fn upload_of_the_same_bytes_again_answers_409_with_the_existing_entry() {
+        let instance = Instance::new().await;
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let first = json(response).await["asset"].clone();
+        for name in ["nebula.png", "m31-final.png"] {
+            let response = instance.upload(name, PNG).await;
+            assert_eq!(response.status(), StatusCode::CONFLICT, "{name}");
+            let found = json(response).await;
+            assert_eq!(found, serde_json::json!({ "asset": first }), "{name}");
+            assert_eq!(found["asset"]["name"], "nebula.png");
+        }
+        assert_eq!(
+            json(instance.list().await).await["assets"],
+            serde_json::json!([first])
+        );
+        assert_eq!(instance.rows().await, 2);
+    }
+
+    #[tokio::test]
+    async fn plain_text_named_like_an_existing_image_still_answers_415() {
+        let instance = Instance::new().await;
+        assert_eq!(
+            instance.upload("nebula.png", PNG).await.status(),
+            StatusCode::CREATED
+        );
+        let response = instance
+            .upload("nebula.png", b"plain text, not a PNG")
+            .await;
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(instance.rows().await, 2);
     }
 
     #[tokio::test]
@@ -1267,7 +1301,7 @@ mod original {
         let db = TestDatabase::new();
         let storage = Dir::new();
         let root = StorageRoot::new(&storage.0).unwrap();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
                 .await
                 .unwrap();
@@ -1331,7 +1365,7 @@ mod web_fallback {
         let root = StorageRoot::new(storage).unwrap();
         let web = web_root(Some(web.as_os_str())).unwrap().unwrap();
         sidereal_server::config::check_overlap(&root, &web).unwrap();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
                 .await
                 .unwrap();

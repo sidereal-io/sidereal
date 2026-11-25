@@ -32,28 +32,35 @@ function stubUploads(...answers: ReturnType<typeof deferred>[]) {
   return fetch;
 }
 
+// A session signal that Access never aborts.
+const live = () => new AbortController().signal;
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe("useUpload", () => {
-  it("starts idle, with nothing saved", () => {
-    const { result } = renderHook(() => useUpload(vi.fn()));
-    expect(result.current.upload).toEqual({ kind: "idle" });
+  it("starts with no lines, not busy, with nothing saved", () => {
+    const { result } = renderHook(() => useUpload(vi.fn(), live()));
+    expect(result.current.lines).toEqual([]);
+    expect(result.current.busy).toBe(false);
     expect(result.current.saved).toBe(0);
   });
 
   it("sends one file, ignores a second while it is on its way, and counts the save", async () => {
     const pending = deferred();
     const fetch = stubUploads(pending);
-    const { result } = renderHook(() => useUpload(vi.fn()));
+    const { result } = renderHook(() => useUpload(vi.fn(), live()));
     act(() => {
-      result.current.send(png());
+      result.current.send([png()]);
     });
-    expect(result.current.upload).toEqual({ kind: "sending", name: "m31.png" });
+    expect(result.current.lines).toEqual([
+      { name: "m31.png", kind: "sending" },
+    ]);
+    expect(result.current.busy).toBe(true);
     act(() => {
-      result.current.send(png("m42.png"));
+      result.current.send([png("m42.png")]);
     });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith(
@@ -65,22 +72,23 @@ describe("useUpload", () => {
       await pending.promise;
     });
     await waitFor(() => {
-      expect(result.current.upload).toEqual({ kind: "idle" });
+      expect(result.current.lines).toEqual([
+        { name: "m31.png", kind: "saved" },
+      ]);
     });
     expect(result.current.saved).toBe(1);
   });
 
   it("counts an upload with no answer as maybe saved", async () => {
     stubUploads();
-    const { result } = renderHook(() => useUpload(vi.fn()));
+    const { result } = renderHook(() => useUpload(vi.fn(), live()));
     act(() => {
-      result.current.send(png());
+      result.current.send([png()]);
     });
     await waitFor(() => {
-      expect(result.current.upload).toEqual({
-        kind: "unconfirmed",
-        name: "m31.png",
-      });
+      expect(result.current.lines).toEqual([
+        { name: "m31.png", kind: "unconfirmed" },
+      ]);
     });
     expect(result.current.saved).toBe(1);
   });
@@ -88,20 +96,54 @@ describe("useUpload", () => {
   it("does not count a refused upload", async () => {
     const refused = deferred();
     stubUploads(refused);
-    const { result } = renderHook(() => useUpload(vi.fn()));
+    const { result } = renderHook(() => useUpload(vi.fn(), live()));
     act(() => {
-      result.current.send(png());
+      result.current.send([png()]);
     });
     await act(async () => {
       refused.answer(new Response(null, { status: 415 }));
       await refused.promise;
     });
     await waitFor(() => {
-      expect(result.current.upload).toEqual({
-        kind: "refused",
-        name: "m31.png",
-        reason: "only PNG and JPEG images are supported.",
-      });
+      expect(result.current.lines).toEqual([
+        {
+          name: "m31.png",
+          kind: "refused",
+          reason: "only PNG and JPEG images are supported.",
+        },
+      ]);
+    });
+    expect(result.current.saved).toBe(0);
+  });
+
+  it("does not count a repeat upload, and keeps the found Asset's name", async () => {
+    const found = deferred();
+    stubUploads(found);
+    const { result } = renderHook(() => useUpload(vi.fn(), live()));
+    act(() => {
+      result.current.send([png()]);
+    });
+    await act(async () => {
+      found.answer(
+        Response.json(
+          {
+            asset: {
+              id: "a1",
+              kind: "image",
+              name: "nebula.png",
+              current_version_id: "v1",
+              original_url: "/api/assets/a1/original",
+            },
+          },
+          { status: 409 },
+        ),
+      );
+      await found.promise;
+    });
+    await waitFor(() => {
+      expect(result.current.lines).toEqual([
+        { name: "m31.png", kind: "found", existing: "nebula.png" },
+      ]);
     });
     expect(result.current.saved).toBe(0);
   });
@@ -110,9 +152,9 @@ describe("useUpload", () => {
     const ended = deferred();
     stubUploads(ended);
     const onSessionLost = vi.fn();
-    const { result } = renderHook(() => useUpload(onSessionLost));
+    const { result } = renderHook(() => useUpload(onSessionLost, live()));
     act(() => {
-      result.current.send(png());
+      result.current.send([png()]);
     });
     await act(async () => {
       ended.answer(new Response(null, { status: 401 }));
@@ -127,12 +169,13 @@ describe("useUpload", () => {
     const pending = deferred();
     const fetch = stubUploads(pending);
     const onSessionLost = vi.fn();
+    const session = live();
     const { result, rerender, unmount } = renderHook(
-      (callback: () => void) => useUpload(callback),
+      (callback: () => void) => useUpload(callback, session),
       { initialProps: onSessionLost },
     );
     act(() => {
-      result.current.send(png());
+      result.current.send([png()]);
     });
     const signal = (fetch.mock.calls[0]?.[1] as RequestInit).signal;
     rerender(vi.fn());

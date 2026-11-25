@@ -13,7 +13,7 @@ use std::{io, time::Duration};
 const SECONDS: Duration = Duration::from_secs(3);
 
 async fn start(db: &TestDatabase, root: &TempRoot) -> Result<(), StartupError> {
-    let (database, _) =
+    let (database, _, _) =
         initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root.root()).await?;
     assert!(database.ready().await);
     database.close().await;

@@ -85,6 +85,9 @@ beforeEach(() => {
   history.replaceState(null, "", "/");
 });
 
+// A session signal that Access never aborts.
+const session = new AbortController().signal;
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -97,7 +100,11 @@ describe("SignedIn", () => {
       vi.fn(() => Promise.resolve(Response.json({ assets: [] }))),
     );
     render(
-      <SignedIn onSessionLost={vi.fn()} notice="Something went wrong">
+      <SignedIn
+        session={session}
+        onSessionLost={vi.fn()}
+        notice="Something went wrong"
+      >
         <span>nova</span>
       </SignedIn>,
     );
@@ -118,7 +125,7 @@ describe("SignedIn", () => {
     vi.stubGlobal("fetch", fetch);
     const onSessionLost = vi.fn();
     const { rerender, unmount } = render(
-      <SignedIn onSessionLost={onSessionLost} />,
+      <SignedIn session={session} onSessionLost={onSessionLost} />,
     );
     await screen.findByRole("button", { name: "Upload" });
     fireEvent.change(picker(), {
@@ -127,7 +134,13 @@ describe("SignedIn", () => {
     await screen.findByText("Uploading m31.png…");
     const post = fetch.mock.calls.find(([, init]) => init?.method === "POST");
     const signal = post?.[1]?.signal;
-    rerender(<SignedIn onSessionLost={onSessionLost} notice="Signed out" />);
+    rerender(
+      <SignedIn
+        session={session}
+        onSessionLost={onSessionLost}
+        notice="Signed out"
+      />,
+    );
     expect(signal?.aborted).toBe(false);
     screen.getByText("Uploading m31.png…");
     unmount();
@@ -149,7 +162,7 @@ describe("SignedIn", () => {
         ],
       });
       render(
-        <SignedIn onSessionLost={vi.fn()}>
+        <SignedIn session={session} onSessionLost={vi.fn()}>
           <span>nova</span>
         </SignedIn>,
       );
@@ -170,7 +183,11 @@ describe("SignedIn", () => {
         ],
       });
       render(
-        <SignedIn onSessionLost={vi.fn()} notice="Something went wrong" />,
+        <SignedIn
+          session={session}
+          onSessionLost={vi.fn()}
+          notice="Something went wrong"
+        />,
       );
       await screen.findByRole("heading", { name: "nebula.png" });
       screen.getByText("Something went wrong");
@@ -181,7 +198,7 @@ describe("SignedIn", () => {
       async (path) => {
         history.replaceState(null, "", path);
         stubServer({ "GET /api/assets": list() });
-        render(<SignedIn onSessionLost={vi.fn()} />);
+        render(<SignedIn session={session} onSessionLost={vi.fn()} />);
         await screen.findByRole("region", { name: "Library" });
         expect(location.pathname).toBe(path);
       },
@@ -197,7 +214,7 @@ describe("SignedIn", () => {
             withFacts(nebulaId, "nebula.png", 1234567),
           ],
         });
-        render(<SignedIn onSessionLost={vi.fn()} />);
+        render(<SignedIn session={session} onSessionLost={vi.fn()} />);
         const image = await screen.findByRole("img", { name: "nebula.png" });
         fireEvent.click(
           part === "image" ? image : screen.getByText("nebula.png"),
@@ -219,7 +236,7 @@ describe("SignedIn", () => {
           withFacts(nebulaId, "nebula.png", 1),
         ],
       });
-      render(<SignedIn onSessionLost={vi.fn()} />);
+      render(<SignedIn session={session} onSessionLost={vi.fn()} />);
       await screen.findByRole("heading", { name: "nebula.png" });
       fireEvent.click(screen.getByRole("link", { name: "Library" }));
       await screen.findByRole("img", { name: "nebula.png" });
@@ -237,7 +254,7 @@ describe("SignedIn", () => {
       });
       history.replaceState(null, "", `/assets/${m31Id}`);
       history.pushState(null, "", `/assets/${nebulaId}`);
-      render(<SignedIn onSessionLost={vi.fn()} />);
+      render(<SignedIn session={session} onSessionLost={vi.fn()} />);
       await screen.findByRole("heading", { name: "nebula.png" });
       history.back();
       await waitFor(() => {
@@ -266,7 +283,7 @@ describe("SignedIn", () => {
         ],
       };
       const fetch = stubServer(answers);
-      render(<SignedIn onSessionLost={vi.fn()} />);
+      render(<SignedIn session={session} onSessionLost={vi.fn()} />);
       await screen.findByRole("img", { name: "nebula.png" });
       choose("m31.png");
       await screen.findByText("Uploading m31.png…");

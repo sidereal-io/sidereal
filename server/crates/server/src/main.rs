@@ -14,6 +14,7 @@ use sidereal_server::{
         allowed_origins_from_env, check_overlap, storage_root_from_env, trusted_proxies_from_env,
         web_root_from_env, DatabaseConfig,
     },
+    storage::cleanup_lines,
     with_trusted_proxies, with_web_root, Library, Log, Tuning,
 };
 use std::net::SocketAddr;
@@ -46,8 +47,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
     let (database, objects) = match &storage {
         Some(storage) => {
-            let (database, paired) =
+            let (database, paired, cleanup) =
                 initialize_with_storage(options, startup, migration, storage).await?;
+            for line in cleanup_lines(&cleanup) {
+                eprintln!("{line}");
+            }
             // The store opens the folder pairing checked and confirms its
             // marker again, so a folder swapped in meanwhile stops startup.
             match ObjectStore::open(storage, paired) {

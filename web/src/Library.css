@@ -31,6 +31,16 @@
   line-height: var(--sr-line-height-20);
 }
 
+/* One quiet line for each picked file. */
+.library-uploads {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sr-spacing-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /*
  * Justified rows. Each image starts at the row height times its aspect ratio
  * and grows by its ratio, so every image in a row keeps the same height. The
