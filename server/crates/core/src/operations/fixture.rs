@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     assets::AssetRecord,
     database::initialize_with_storage,
-    ingest::ingest,
+    ingest::{ingest, Ingested},
     storage::{objects::ObjectStore, tests::TempRoot},
     test_support::TestDatabase,
 };
@@ -143,7 +143,7 @@ impl Fixture {
     pub async fn new(register: impl Fn(&mut Registry) + 'static) -> Self {
         let db = TestDatabase::new();
         let temp = TempRoot::new();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
                 .await
                 .unwrap();
@@ -174,7 +174,7 @@ impl Fixture {
     pub async fn version(&self, bytes: &[u8]) -> AssetRecord {
         let mut staging = self.objects.begin().unwrap();
         staging.write(bytes).unwrap();
-        ingest(
+        match ingest(
             &self.database,
             &self.objects,
             self.registry.clone(),
@@ -185,6 +185,10 @@ impl Fixture {
         )
         .await
         .unwrap()
+        {
+            Ingested::Created(record) => record,
+            Ingested::Found(_) => panic!("the bytes were already in the library"),
+        }
     }
 
     pub fn object(&self, hash: &str) -> PathBuf {
