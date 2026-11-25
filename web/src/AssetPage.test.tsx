@@ -65,6 +65,7 @@ function asset(overrides: Record<string, unknown> = {}) {
       name: "nebula.png",
       current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
       original_url: `/api/assets/${id}/original`,
+      media_type: "image/png",
       facets: [fileSize],
       ...overrides,
     },
@@ -82,7 +83,11 @@ function showPage(onSessionLost = vi.fn()) {
 
 const loaded = () => screen.findByRole("heading", { name: "nebula.png" });
 const failedLine = "The image could not be loaded.";
+// The page no longer has this line: every Asset has a Format line.
 const noFactsLine = "No facts are recorded for this image.";
+const terms = () => screen.getAllByRole("term").map((term) => term.textContent);
+const definitions = () =>
+  screen.getAllByRole("definition").map((value) => value.textContent);
 
 afterEach(() => {
   cleanup();
@@ -106,9 +111,8 @@ describe("AssetPage", () => {
     await loaded();
     const image = screen.getByRole("img", { name: "nebula.png" });
     expect(image.getAttribute("src")).toBe(`/api/assets/${id}/original`);
-    const facts = screen.getByRole("term");
-    expect(facts.textContent).toBe("File size");
-    expect(screen.getByRole("definition").textContent).toBe("1,234,567 bytes");
+    expect(terms()).toEqual(["Format", "File size"]);
+    expect(definitions()).toEqual(["PNG", "1,234,567 bytes"]);
     expect(screen.queryByText(noFactsLine)).toBeNull();
   });
 
@@ -124,21 +128,16 @@ describe("AssetPage", () => {
     ]);
     showPage();
     await loaded();
-    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
-      ["File size", "Width"],
-    );
-    expect(
-      screen.getAllByRole("definition").map((value) => value.textContent),
-    ).toEqual(["1,234,567 bytes", "6,000 px"]);
+    expect(terms()).toEqual(["Format", "File size", "Width"]);
+    expect(definitions()).toEqual(["PNG", "1,234,567 bytes", "6,000 px"]);
   });
 
-  it("lists the four facts of a new PNG in the server's order", async () => {
+  it("lists the Format line, then the three facets of a new PNG in the server's order", async () => {
     stubServer([
       200,
       asset({
         facets: [
           fileSize,
-          { name: "image.format", label: "Format", value: "PNG", unit: "" },
           {
             name: "image.height",
             label: "Height",
@@ -151,13 +150,11 @@ describe("AssetPage", () => {
     ]);
     showPage();
     await loaded();
-    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
-      ["File size", "Format", "Height", "Width"],
-    );
+    expect(terms()).toEqual(["Format", "File size", "Height", "Width"]);
     const values = screen.getAllByRole("definition");
     expect(values.map((value) => value.textContent)).toEqual([
-      "1,234,567 bytes",
       "PNG",
+      "1,234,567 bytes",
       "2,160 pixels",
       "4,096 pixels",
     ]);
@@ -176,38 +173,37 @@ describe("AssetPage", () => {
     ]);
     showPage();
     await loaded();
-    expect(screen.getByRole("definition").textContent).toBe("12");
+    expect(definitions()).toEqual(["PNG", "12"]);
   });
 
-  it("shows markup in a choice as text", async () => {
-    stubServer([
-      200,
-      asset({
-        facets: [
-          {
-            name: "image.format",
-            label: "Format",
-            value: "<i>PNG</i>",
-            unit: "",
-          },
-        ],
-      }),
-    ]);
+  it.each([
+    ["image/png", "PNG"],
+    ["image/jpeg", "JPEG"],
+    ["image/x-test", "image/x-test"],
+  ])("shows the media type %s as the Format %s", async (mediaType, format) => {
+    stubServer([200, asset({ media_type: mediaType })]);
+    showPage();
+    await loaded();
+    expect(terms()[0]).toBe("Format");
+    expect(definitions()[0]).toBe(format);
+  });
+
+  it("shows markup in a media type as text", async () => {
+    stubServer([200, asset({ media_type: "<i>image/png</i>" })]);
     const { container } = showPage();
     await loaded();
-    expect(screen.getByRole("definition").textContent).toBe("<i>PNG</i>");
+    expect(definitions()[0]).toBe("<i>image/png</i>");
     expect(container.querySelector("i")).toBeNull();
   });
 
-  it("shows only the file size, and no processing failure, when the header was not read", async () => {
+  it("shows only the Format line and the file size, and no processing failure, when the header was not read", async () => {
     stubServer([200, asset()]);
     const { container } = showPage();
     await loaded();
     fireEvent.error(screen.getByRole("img", { name: "nebula.png" }));
     await screen.findByText("This image could not be displayed.");
-    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
-      ["File size"],
-    );
+    expect(terms()).toEqual(["Format", "File size"]);
+    expect(definitions()).toEqual(["PNG", "1,234,567 bytes"]);
     expect(screen.queryByText(noFactsLine)).toBeNull();
     expect(container.textContent).not.toMatch(/header|failed|run/i);
   });
@@ -229,13 +225,14 @@ describe("AssetPage", () => {
     ).toBe("/");
   });
 
-  it("says no facts are recorded when the server returns none", async () => {
-    stubServer([200, asset({ facets: [] })]);
+  it("shows only the Format line when the server returns no facets", async () => {
+    stubServer([200, asset({ media_type: "image/jpeg", facets: [] })]);
     showPage();
     await loaded();
     expect(screen.getByRole("img", { name: "nebula.png" })).toBeTruthy();
-    expect(screen.getByText(noFactsLine)).toBeTruthy();
-    expect(screen.queryByRole("term")).toBeNull();
+    expect(terms()).toEqual(["Format"]);
+    expect(definitions()).toEqual(["JPEG"]);
+    expect(screen.queryByText(noFactsLine)).toBeNull();
   });
 
   it("shows markup in a name or a label as text", async () => {
@@ -248,7 +245,7 @@ describe("AssetPage", () => {
     ]);
     const { container } = showPage();
     await screen.findByRole("heading", { name: "<b>bold</b>.png" });
-    expect(screen.getByRole("term").textContent).toBe("<i>File</i> size");
+    expect(terms()).toEqual(["Format", "<i>File</i> size"]);
     expect(container.querySelector("b, i")).toBeNull();
   });
 
@@ -260,7 +257,7 @@ describe("AssetPage", () => {
     await screen.findByText("This image could not be displayed.");
     expect(screen.queryByRole("img")).toBeNull();
     expect(screen.getByRole("heading", { name: "nebula.png" })).toBeTruthy();
-    expect(screen.getByRole("definition").textContent).toBe("1,234,567 bytes");
+    expect(definitions()).toEqual(["PNG", "1,234,567 bytes"]);
   });
 
   it("says an Asset that does not exist is not in the library, with a Library link", async () => {
@@ -322,14 +319,17 @@ describe("AssetPage", () => {
       [200, asset({ facets: [{ ...fileSize, value: 9007199254740992 }] })],
     ],
     [
-      "an empty text value",
-      [200, asset({ facets: [{ ...fileSize, value: "" }] })],
+      "a value given as text",
+      [200, asset({ facets: [{ ...fileSize, value: "12" }] })],
     ],
     [
       "a value of true",
       [200, asset({ facets: [{ ...fileSize, value: true }] })],
     ],
     ["a null value", [200, asset({ facets: [{ ...fileSize, value: null }] })]],
+    ["no media type", [200, asset({ media_type: undefined })]],
+    ["an empty media type", [200, asset({ media_type: "" })]],
+    ["a media type that is not text", [200, asset({ media_type: 7 })]],
   ];
 
   it.each(failures)(
@@ -339,6 +339,7 @@ describe("AssetPage", () => {
       showPage();
       await screen.findByText(failedLine, { exact: false });
       expect(screen.queryByText(noFactsLine)).toBeNull();
+      expect(screen.queryByRole("term")).toBeNull();
       expect(screen.queryByRole("img")).toBeNull();
       expect(screen.queryByRole("heading", { name: "nebula.png" })).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -354,9 +355,7 @@ describe("AssetPage", () => {
     ]);
     showPage();
     await loaded();
-    expect(screen.getByRole("definition").textContent).toBe(
-      "9,007,199,254,740,991 bytes",
-    );
+    expect(definitions()).toEqual(["PNG", "9,007,199,254,740,991 bytes"]);
   });
 
   it("shows nothing from an answer that arrives after the page goes away", async () => {

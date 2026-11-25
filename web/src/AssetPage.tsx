@@ -5,14 +5,15 @@ import "./AssetPage.css";
 
 interface Fact {
   label: string;
-  // A count, or a choice's text.
-  value: number | string;
+  value: number;
   unit: string;
 }
 
 interface Asset {
   name: string;
   originalUrl: string;
+  // The current version's media type, such as `image/png`.
+  mediaType: string;
   facts: Fact[];
 }
 
@@ -28,11 +29,15 @@ function isObject(body: unknown): body is Record<string, unknown> {
   return typeof body === "object" && body !== null;
 }
 
-// Whether a facet's value is one this page shows: a count, a whole number of
-// zero or more that JavaScript reads exactly, or a choice, non-empty text.
-function isValue(value: unknown): value is number | string {
-  if (typeof value === "string") return value !== "";
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+// The common names of the media types this page knows. Any other media type
+// shows as the server gives it.
+const formats: Record<string, string> = {
+  "image/png": "PNG",
+  "image/jpeg": "JPEG",
+};
+
+function formatOf(mediaType: string): string {
+  return Object.hasOwn(formats, mediaType) ? formats[mediaType] : mediaType;
 }
 
 // The facts of a facet list, or null when any item is not a fact. Only the
@@ -46,7 +51,9 @@ function facts(list: unknown): Fact[] | null {
       typeof item.name !== "string" ||
       typeof item.label !== "string" ||
       typeof item.unit !== "string" ||
-      !isValue(item.value)
+      typeof item.value !== "number" ||
+      !Number.isSafeInteger(item.value) ||
+      item.value < 0
     ) {
       return null;
     }
@@ -56,8 +63,8 @@ function facts(list: unknown): Fact[] | null {
 }
 
 // The Asset in a body, or null when the body is not this page's Asset with
-// its facets. The original is fetched only from this Asset's own route, and
-// the name and labels are only ever shown as text.
+// its media type and facets. The original is fetched only from this Asset's
+// own route, and the name, media type and labels are only ever shown as text.
 function assetOf(body: unknown, id: string): Asset | null {
   if (!isObject(body) || !isObject(body.asset)) return null;
   const { asset } = body;
@@ -65,13 +72,20 @@ function assetOf(body: unknown, id: string): Asset | null {
   if (
     asset.id !== id ||
     typeof asset.name !== "string" ||
-    asset.original_url !== original
+    asset.original_url !== original ||
+    typeof asset.media_type !== "string" ||
+    asset.media_type === ""
   ) {
     return null;
   }
   const list = facts(asset.facets);
   if (!list) return null;
-  return { name: asset.name, originalUrl: original, facts: list };
+  return {
+    name: asset.name,
+    originalUrl: original,
+    mediaType: asset.media_type,
+    facts: list,
+  };
 }
 
 async function fetchAsset(
@@ -119,30 +133,30 @@ function Picture({ asset }: { asset: Asset }) {
   );
 }
 
+// The facts: the Format line first, from the media type, then one line per
+// facet in the server's order.
 function Details({ asset }: { asset: Asset }) {
   return (
     <section className="asset-details" aria-label="Details">
       <h2 className="asset-name">{asset.name}</h2>
-      {asset.facts.length === 0 ? (
-        <p className="asset-status">No facts are recorded for this image.</p>
-      ) : (
-        <dl className="asset-facts">
-          {asset.facts.map((fact, index) => (
-            // Two values of one facet may share a label, so the list's own
-            // order keys them. The list never reorders while it shows.
-            // eslint-disable-next-line @eslint-react/no-array-index-key
-            <div className="asset-fact" key={index}>
-              <dt>{fact.label}</dt>
-              <dd>
-                {typeof fact.value === "number"
-                  ? numbers.format(fact.value)
-                  : fact.value}
-                {fact.unit !== "" && ` ${fact.unit}`}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <dl className="asset-facts">
+        <div className="asset-fact">
+          <dt>Format</dt>
+          <dd>{formatOf(asset.mediaType)}</dd>
+        </div>
+        {asset.facts.map((fact, index) => (
+          // Two values of one facet may share a label, so the list's own
+          // order keys them. The list never reorders while it shows.
+          // eslint-disable-next-line @eslint-react/no-array-index-key
+          <div className="asset-fact" key={index}>
+            <dt>{fact.label}</dt>
+            <dd>
+              {numbers.format(fact.value)}
+              {fact.unit !== "" && ` ${fact.unit}`}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }

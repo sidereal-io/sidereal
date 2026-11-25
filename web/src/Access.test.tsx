@@ -367,6 +367,7 @@ describe("Access", () => {
         name: "nebula.png",
         current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
         original_url: `/api/assets/${id}/original`,
+        media_type: "image/png",
         facets: [
           {
             name: "image.file-size",
