@@ -16,7 +16,7 @@ An Asset is a stable identity, and an Asset version is one immutable set of byte
 
 ## Decision
 
-An Operator's output is a new Asset, which core marks as derived in an `origin` column of `assets` (`source` or `derived`). Its one version records the Operator's id and version as its producer. Core links the new version to the version the run read with a row in `asset_lineage`, which names the output version, the input version, the output's role (`preview` is the first) and the run. The Operator declares at registration which roles it makes, proposes only a kind and a media type, and streams the bytes through its Asset context into core's staging. Core checks and publishes the object's bytes first. A database transaction then commits the Asset, its version, the lineage row and the run's success together. If the transaction fails, the published object can remain unreferenced.
+An Operator's output is a new Asset, which core marks as derived in an `origin` column of `assets` (`source` or `derived`). Its one version records the Operator's id and version as its producer. Core links the new version to the version the run read with a row in `asset_lineage`, which names the output version, the input version, the output's role (`preview` is the first) and the run. The Operator declares preview support at registration through `makes_previews()`, proposes only a kind and a media type, and streams the bytes through its Asset context into core's staging. Core checks and publishes the object's bytes first. A database transaction then commits the Asset, its version, the lineage row and the run's success together. If the transaction fails, the published object can remain unreferenced.
 
 ## Consequences
 

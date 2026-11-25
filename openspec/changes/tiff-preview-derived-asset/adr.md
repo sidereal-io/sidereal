@@ -7,9 +7,8 @@
 
 ## Review Summary
 
-ADR review completed for this change. Two of design.md's decisions are
-costly forks that the code alone would not explain, and each gets its own
-record.
+ADR review completed for this change. Three decisions have durable consequences
+for the plugin contract, persistence or execution boundary.
 
 - Decision 4 (core records Operator output as a derived Asset, with an
   `origin` column and an `asset_lineage` table), together with decision 1
@@ -25,11 +24,13 @@ record.
   the first step towards the `accepts` Selector, so its record builds on
   ADR-006.
 
+- Decision 8 places the preview decoder in a short-lived helper so its
+  memory limit and failure do not apply to the server. It keeps the
+  built-in Operator interface from ADR-001.
+
 Decision 5 (queries cover originals only) follows from the first record.
-Decisions 6 to 10 (one module per format in the image pack, the TIFF
-directory reader, the decoders and encoder, one preview at a time and the
-Source's refusal in the 415 answer, and the web's fallback and refusal
-line) can be changed inside one story and need no record.
+The format layout, directory reader, codec choices, upload ordering,
+refusal message and web behavior can change within the boundaries above.
 
 The first plan of this change numbered its derived-asset record ADR-019,
 after #547's ADR-018 for a choice value type. #547 deleted that record
@@ -62,3 +63,4 @@ in force.
 
 - [ADR-018: Operator Output Becomes a Derived Asset Linked by Lineage](../../../docs/decisions/ADR-018-operator-output-as-derived-assets.md) — design decisions 1 and 4.
 - [ADR-019: Operators Declare the Media Types They Accept](../../../docs/decisions/ADR-019-operators-accept-media-types.md) — design decisions 2 and 3.
+- [ADR-020: Bound Preview Decoding in a Child Process](../../../docs/decisions/ADR-020-bound-preview-decoding-in-a-child-process.md) — design decision 8.

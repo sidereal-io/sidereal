@@ -54,7 +54,8 @@ Operator learn a version's format from the media type the Source recorded
   supported TIFF types, and writes an 8-bit JPEG at quality 90 (D3). 16-bit
   and decimal values are scaled straight to 8-bit, with no brightening (D5).
   A TIFF it cannot decode, or an image whose pixels and decoder scratch space together need
-  more than 512 MiB, fails the run with a reason (D4, D6).
+  more than 512 MiB, fails the run with a reason (D4, D6). A local helper
+  enforces the budget and isolates decoder failure from the server (D17).
 - **Upload makes a preview of every new original** (D1). Upload runs the
   preview Operator after the file-size and header runs, and before it
   answers (D7). A failed preview run does not fail the upload. A preview gets

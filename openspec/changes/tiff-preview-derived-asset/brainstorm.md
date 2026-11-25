@@ -24,6 +24,7 @@
 | D14 | Who owns the list of formats that upload takes? | The image pack. The server passes the Source's own refusal reason to the client, in place of its fixed "only PNG and JPEG" text. The web names no formats: it shows the reason the server gives. | User |
 | D15 | How does an Operator learn a version's format, and which versions does it run on? | The Asset context gives an Operator the version's media type, so the header Operator no longer reads the signature the Source already read. Each Operator declares the media types it accepts, and core runs an upload's Operators only on a version whose media type they accept. This is a first, small step towards the `accepts` Selector and covers media types only. It also keeps Operators off a preview (D9): no upload Operator accepts a preview's media type in the preview's role. | User |
 | D16 | How does a TIFF show its format, now that #547 records no format facet? | From the version's media type: `image/tiff` shows as `Format TIFF`, through the asset page's map from media type to name that #547 added. This change adds no `image.format` facet and no choice type. | User |
+| D17 | How does Sidereal enforce the decode budget? | Run the built-in preview decoder and encoder in a short-lived, memory-capped child process. The upload still waits for the run and the Operator still reads and writes through its Asset context. | User |
 
 ## Changes from the story
 

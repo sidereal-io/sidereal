@@ -132,7 +132,8 @@ crate's behavior is checked at its own boundary.
 
 - **Tier:** high
 - **Blast radius:** the public plugin contract (ABI 2 to 3), a database
-  migration, core's run and asset queries, the image pack, the upload and
+  migration, core's run and asset queries, the image pack and its packaged
+  helper, the upload and
   Asset routes and two web screens. Decoders read files that people upload,
   so memory and failure handling are part of the trust boundary. Every
   Operator must now declare the media types it accepts, so an Operator with
@@ -398,84 +399,93 @@ Source.
   (256), length (257), bits per sample (258), compression (259),
   photometric interpretation (262), samples per pixel (277), planar
   configuration (284), predictor (317), extra samples (338) and sample
-  format (339). It reads at most 4,096 directory entries and refuses a value
-  array of more than 64 entries, so a run reads a bounded number of bytes.
-- `dimensions` gives the width and length, whatever the other tags hold.
+  format (339) in preview mode. It reads at most 4,096 directory entries.
+  The 64-entry limit applies to arrays of sample properties. The helper
+  checks layout arrays separately as decision 8 describes.
+- In dimensions mode it reads only width and height values.
 
 *Alternative:* `tiff::decoder::Decoder::new` for the header. It reads the
 first directory too, but it refuses some color types and compressions while
 it sets up, and the header run must succeed for every TIFF (D4).
 
-### 8. The preview Operator decodes into one buffer and encodes row by row
+### 8. The preview Operator runs a memory-capped decoder helper
 
-- `preview.rs` registers `image.make-preview` (`MAKE_PREVIEW`), which makes
-  previews, writes no facets and accepts the media types in `FORMATS`.
-- **Order of work.** Pick the format by the media type, as the header
-  Operator does. `render_preview` reads the header: IHDR for PNG, the frame
-  header for JPEG through zune-jpeg's `decode_headers` under its 8 MiB read
-  limit, the directory for TIFF. For TIFF, it refuses every type that the
-  spec does not list before any decoding. It then calls two shared checks
-  in `preview.rs`: each side at most 65,500 (the browser JPEG limit), and
-  the checked upper bound on peak memory for the selected decoder at most
-  536,870,912 bytes. Decoder memory includes output pixels and all live
-  codec allocations. Only then does it decode.
-- **Progressive JPEG.** zune-jpeg does not say whether a JPEG is progressive,
-  so `jpeg.rs` walks the markers to the first frame header itself and reads
-  its kind (`0xC2` is progressive), under the same 8 MiB limit. Keep the
-  header Operator's explicit zune-jpeg dimension options so its defaults
-  do not preempt preview preflight. Rewind to a full-length reader for the
-  actual decode, with strict mode on so incomplete scans fail.
-- **Decoders.** PNG: the `png` crate with `Transformations::EXPAND`, keeping
-  16-bit samples, and `png::Limits { bytes }` set to the limit. JPEG:
-  zune-jpeg `decode_into` a buffer of `output_buffer_size`, with output
-  colour space Luma for one component and RGB otherwise. TIFF: the `tiff`
-  crate with `default-features = false, features = ["lzw", "deflate"]`,
-  through `read_image` with limits derived from the preview budget.
-- **Budget before pixel reads.** Each format computes a checked upper
-  bound for its decoder version. Account for output buffer layout, metadata
-  retained by the decoder, and simultaneous scratch allocations. PNG counts
-  expanded channels, row processing and interlace scratch. JPEG counts
-  padded component planes, progressive coefficient buffers and row scratch
-  based on sampling factors. TIFF counts directory values, compressed and
-  decompressed strip or tile buffers and predictor scratch. Set each
-  decoder's available allocation limits where it exposes them. Document the
-  allocation bound beside the code using the locked decoder version.
-- **TIFF geometry and metadata.** Read only width and height values for the
-  header Operator. The preview Operator reads the tags it needs for sample
-  layout, compression and strip or tile geometry separately. Check array
-  counts, strip or tile dimensions, sizes and products before allocating.
-  For tiled floating-point data, count the padded predictor row using
-  checked `tile_width × samples_per_pixel × bytes_per_sample`, including
-  when the tile is wider than the image. This row needs an explicit bound
-  before `read_image` because the decoder's intermediate limit does not
-  cover it. Pass limits for output, intermediate buffers and directory
-  values within the remaining budget. The accepted sample and predictor
-  combinations are listed in the image-preview spec.
-- **The shared buffer.** `render_preview` returns `Pixels`: the width, the
-  height, the colour layout (gray, gray with alpha, RGB or RGBA) and the
-  samples as 8-bit, 16-bit or 32-bit decimal values, in one buffer.
-- **Conversion.** A `Rows` type implements `jpeg_encoder::ImageBuffer` over
-  `Pixels`. Its `fill_buffers` turns one row into 8-bit Luma or RGB as the
-  spec says, so no second full-size buffer exists.
-- **Encoding.** `jpeg_encoder::Encoder` at quality 90, baseline, with 4:4:4
-  sampling (no chroma subsampling, so star colours keep their detail) and
-  the standard Huffman tables, so the encoder streams. Its writer collects up
-  to 64 KiB and passes each chunk to `context.write_preview`.
-- **Failure reasons** are the spec's. A decoder error, a short read and a
-  `tiff` limit error all become `the <FORMAT> image could not be decoded`,
-  unless a read failed (decision 6).
-- **Memory tests** sit in each format's module: a 16-bit RGB TIFF in
-  `tiff.rs`, a progressive JPEG in `jpeg.rs` and an RGBA PNG in `png.rs`.
-  Compare each measured peak with that format's calculated bound, and
-  assert that preflight rejects inputs that exceed the combined budget
-  before their pixels are read.
-- The pack's dependencies become `plugin-abi`, `png`, `zune-jpeg`, `tiff` and
-  `jpeg-encoder`. `check-arch.sh` still holds.
-
-*Alternatives:* the `image` crate decodes and encodes all three formats, but
-it brings many codecs, always makes a second 8-bit buffer, and hides the
-limits we need. 4:2:0 sampling makes smaller files but softens coloured
-stars.
+- **Boundary.** The image pack owns format recognition, decoder preflight,
+  pixel conversion and JPEG encoding. The server wires a local helper runner
+  into the image pack at registration. The preview Operator proposes its
+  output and uses the runner with its Asset context. The runner reads the
+  candidate and writes the result through that context. Core and the public
+  plugin ABI know nothing about the helper (ADR-020).
+- **Input and output.** The runner copies at most 100 MiB to one anonymous
+  temporary file using a fixed-size buffer. The helper receives the rewound,
+  seekable file as standard input and the recorded media type as an argument.
+  It receives no storage path or inherited environment. It writes JPEG chunks
+  to standard output. The runner drains them through a bounded buffer into
+  the context's staging output. A bounded read handoff lets it detect
+  cancellation even when the child emits no bytes. On cancellation, failure
+  or rejected output, kill and reap the helper and discard the staging.
+  Accept the output only after a successful exit. A parent exit closes a
+  liveness pipe watched by the helper, so a child that has no output yet
+  still terminates if its supervisor disappears.
+- **Packaging.** The helper is a Rust binary in the server package that calls
+  the image pack for decoding. Build and ship it beside the server in the
+  container. Resolve it from the server executable's directory. The dev
+  launcher builds both binaries before starting the server. Document the
+  same prerequisite for manual builds. Integration tests
+  locate the Cargo-built helper and exercise the same runner as production.
+- **Memory ceiling.** Only the helper installs the budget allocator. Its
+  ceiling is 512 MiB for the whole preview job, covering input buffering,
+  decoded pixels, directory and marker data, scratch and encoding. Reserve
+  16 MiB within that ceiling for the worker's fixed overhead and thread
+  stacks. Charge live Rust allocations against the rest before requesting
+  them from the system, including both buffers during reallocations.
+  Charge from process start and use a dedicated, allocation-free exit
+  status on budget exhaustion. Run single-threaded decode and encode with
+  the one fixed-stack liveness watcher. Keep dependencies on the Rust
+  allocator. On Linux also set a 512 MiB address-space limit before
+  entering the codecs. The accounting allocator supplies the same
+  application-level budget on macOS without relying on that OS limit.
+- **Preflight.** From bounded headers, check the dimensions (each side at
+  most 65,500) and that the minimum known pixel allocation fits the
+  available allocation budget, using checked arithmetic before invoking
+  a pixel decoder. Reject incompatible TIFF
+  types here. The helper's budget also covers allocations after preflight,
+  including the TIFF constructor, predictor scratch, multiple-scan
+  baseline and progressive JPEGs and metadata between scans. Keep library
+  limits where they offer a tighter bound. No separate allowance is added
+  on top of the 512 MiB.
+- **TIFF.** Read only width and height for the host header Operator.
+  The helper reads preview eligibility tags separately, with a small
+  limit on arrays of sample properties. Check strip and tile offset and
+  byte-count array lengths against geometry using checked arithmetic.
+  These layout arrays use the memory budget and can exceed 64 entries.
+  Accept absent Predictor or `1` for no prediction, `2` for unsigned
+  integers and `3` for floats where compatible with the compression.
+  Use `tiff` with only its LZW and Deflate features enabled.
+- **JPEG and PNG.** Keep JPEG's 8 MiB bound for frame-header reads, then
+  rewind to the full input with explicit zune-jpeg dimension options and
+  strict mode. Verify that the first image ends with an EOI marker at a
+  valid scan boundary, respecting segment lengths, byte stuffing and
+  restart markers. Keep PNG's `EXPAND` with 16-bit samples and enable
+  the decoder's resource limits.
+- **Preview output.** Decode into one `Pixels` buffer. `Rows` maps each
+  row to 8-bit Luma or RGB according to the spec. Encode a quality-90
+  baseline JPEG with 4:4:4 sampling and standard Huffman tables. Stream it
+  without buffering a whole JPEG. An unexpected helper exit is a preview
+  failure and never completes the proposal. Separate exit statuses identify
+  a decode budget rejection, unsupported TIFF, oversized dimensions and
+  invalid image data. The host distinguishes candidate read failure,
+  cancellation and output storage failure using the existing context.
+- **Tests.** Run the real helper at a smaller, injected budget on Linux
+  and macOS. Verify the fixed reserve and budget on both in the worker
+  integration tests. Prove budget exhaustion can occur before the TIFF constructor
+  completes and during a decode. Separately, stop a test helper after some bytes are staged.
+  Assert that the next preview succeeds and that no failed output is published. Test the
+  allocator's accounting for reallocations. Test a TIFF with more than 64
+  tiles, floating-point strips and padded tiles, and an incompatible
+  predictor. Test a baseline JPEG with multiple component scans, APP
+  metadata between scans, and a missing EOI. For header preflight rejection,
+  instrument entry to pixel decoding and use an input with actual pixel data.
 
 ### 9. The server runs one preview at a time and passes the Source's refusal on
 
@@ -530,12 +540,12 @@ types. It is more API than one picker needs today.
 
 ## Risks / Trade-offs
 
-- [A decoder holds more than the decoded pixels: PNG row buffers, zune-jpeg's
-  internal state, `tiff`'s intermediate buffer] → each format's module has a
-  preview memory test that measures the peak for a 16-bit RGB TIFF, a
-  progressive JPEG and an RGBA PNG, and asserts it is at most the
-  budget calculated by preflight. Bound scratch outside each codec's own
-  limits too. Revisit the accounting when upgrading a decoder dependency.
+- [A codec uses memory before a caller limit applies or during pixel decode]
+  → the helper charges allocations from process entry, and its exit cannot
+  publish a partial preview or interrupt the server.
+- [Copying input to a seekable temporary file costs I/O and disk space]
+  → copy in fixed chunks, keep at most one copy per running preview and
+  close it on success, refusal or cancellation.
 - [Several uploads at once each decode a large image] → decision 9 allows one
   preview run at a time per server.
 - [A large TIFF makes the upload's answer late (D7)] → the web keeps the

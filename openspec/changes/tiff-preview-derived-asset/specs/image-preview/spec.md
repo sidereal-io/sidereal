@@ -167,6 +167,10 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 - **WHEN** core runs the preview Operator over a progressive JPEG that ends in the middle of a scan
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
+#### Scenario: A baseline JPEG ends before its end marker
+- **WHEN** core runs the preview Operator over a baseline JPEG that ends without its end-of-image marker
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+
 #### Scenario: Bytes that do not match the media type
 - **WHEN** core runs the preview Operator over a stored version whose media type is `image/tiff` and whose bytes are a PNG
 - **THEN** its run is `failed` with the reason `the TIFF image could not be decoded`
@@ -195,26 +199,28 @@ SHALL come before the memory limit.
 
 ### Requirement: A preview decode needs at most 512 MiB
 
-Before reading pixels, the preview Operator SHALL bound peak decoder
-memory for the image layout, including pixels, metadata and scratch
-space. If the bound exceeds 512 MiB (536,870,912 bytes) or cannot be
-represented, it SHALL decode no pixel. Core SHALL record the run
-`failed` with the reason `the image needs more than 512 MiB to decode`.
+The preview Operator SHALL limit each decode to 512 MiB (536,870,912 bytes),
+including pixels, metadata and scratch space. If the header shows that
+the decoded pixels cannot fit, it SHALL reject the image before pixel
+decoding. During
+decoding, it SHALL refuse any allocation that would exceed the budget.
+Core SHALL record the run `failed` with the reason
+`the image needs more than 512 MiB to decode`.
 
 #### Scenario: A TIFF just over the limit
 - **WHEN** core runs the preview Operator over a stored 16-bit RGB TIFF version whose header gives 15,000 by 6,000 pixels (540,000,000 bytes of decoded pixels)
 - **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
-- **AND** the Operator read no pixel data
+- **AND** the preview Operator did not start pixel decoding
 
 #### Scenario: TIFF pixels leave no space for decoding
 - **WHEN** core runs the preview Operator over an 8-bit grayscale TIFF whose pixels alone need 512 MiB and whose decoder needs additional scratch memory
 - **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
-- **AND** the Operator read no pixel data
+- **AND** the preview Operator did not start pixel decoding
 
 #### Scenario: TIFF tile scratch space exceeds the decode budget
-- **WHEN** core runs the preview Operator over the headers of a small grayscale floating-point TIFF whose padded tile row needs more than the remaining decode budget
+- **WHEN** core runs the preview Operator over a grayscale floating-point TIFF whose padded tile scratch would exceed the decode budget
 - **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
-- **AND** the Operator read no pixel data
+- **AND** no preview of that version exists
 
 #### Scenario: A PNG over the limit
 - **WHEN** core runs the preview Operator over a stored 8-bit RGBA PNG version whose header gives 20,000 by 10,000 pixels (800,000,000 bytes of decoded pixels)
@@ -223,6 +229,17 @@ represented, it SHALL decode no pixel. Core SHALL record the run
 #### Scenario: A JPEG over the limit
 - **WHEN** core runs the preview Operator over a stored 8-bit color JPEG version whose frame header gives 60,000 by 60,000 pixels
 - **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
+
+### Requirement: A decoder failure leaves the server available
+
+When a preview decoder exceeds its budget or stops unexpectedly, the server
+SHALL keep the original and finish the preview run as failed. It SHALL
+accept later requests and SHALL NOT publish a partial preview.
+
+#### Scenario: A preview fails after staging has begun
+- **WHEN** a preview decoder stops unexpectedly after returning part of a JPEG
+- **THEN** core records its preview run as failed and publishes no preview for the original
+- **AND** a later valid upload can complete with a preview
 
 ### Requirement: A preview gets no runs of its own
 
