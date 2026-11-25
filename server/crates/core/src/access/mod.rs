@@ -33,6 +33,9 @@ impl Role {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct User {
+    /// The user's `users.id`, which records such as an operation run's actor
+    /// refer to.
+    pub id: i64,
     pub username: String,
     pub role: Role,
 }

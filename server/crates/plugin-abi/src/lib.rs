@@ -7,9 +7,10 @@
 //! The contracts here are intentionally minimal and not a frozen ABI. They
 //! are expected to churn until M2 freezes them.
 //!
-//! A [`Source`] runs through an [`AssetContext`]: the context is the only way
-//! it reaches the candidate's bytes, and it can propose one Asset. The host
-//! keeps identity, hashing and provenance; a Source never sets them.
+//! A [`Source`] and an [`Operator`] run through an [`AssetContext`]: the
+//! context is the only way they reach their input's bytes. A Source can
+//! propose one Asset; an Operator can propose facet values. The host keeps
+//! identity, hashing and provenance; a plugin never sets them.
 
 use std::fmt;
 
@@ -18,7 +19,10 @@ use std::fmt;
 /// - `0`: the M0 skeleton, with id-only stubs.
 /// - `1`: a [`Source`] reports its version and runs through an
 ///   [`AssetContext`]. Every Source must implement [`Source::run`].
-pub const ABI_VERSION: u32 = 1;
+/// - `2`: an [`Operator`] reports its version and the facets it writes, and
+///   runs through an [`AssetContext`]; a pack declares its facet schemas, and
+///   hosts register packs through [`Registry::register_pack`].
+pub const ABI_VERSION: u32 = 2;
 
 /// Brings files into the library as Assets (e.g. manual upload).
 pub trait Source: Send + Sync {
@@ -108,6 +112,8 @@ pub struct Accepted {
 pub enum ExecutionError {
     /// No Source with that id is registered.
     UnknownSource,
+    /// No Operator with that id is registered.
+    UnknownOperator,
     /// The Source refused the candidate.
     Refused(String),
     /// The Source cannot run yet.
@@ -124,6 +130,7 @@ impl fmt::Display for ExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownSource => f.write_str("no such source is registered"),
+            Self::UnknownOperator => f.write_str("no such operator is registered"),
             Self::Refused(reason) => write!(f, "the source refused the candidate: {reason}"),
             Self::Unsupported => f.write_str("the source cannot run yet"),
             Self::Failed(reason) => write!(f, "the source failed: {reason}"),
@@ -144,16 +151,50 @@ pub enum ContextError {
     AlreadyProposed,
     /// The proposal's kind or media type is not well formed.
     InvalidProposal,
+    /// This kind of run may not make this proposal: a Source run proposes
+    /// no facet, and an Operator run proposes no Asset.
+    NotAllowed,
 }
 
-/// The run-scoped context a [`Source`] works through. It exposes no path,
-/// database handle or identity setter.
+/// Which kind of plugin a context serves.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RunKind {
+    Source,
+    Operator,
+}
+
+/// The run-scoped context a [`Source`] or [`Operator`] works through. It
+/// exposes no path, database handle or identity setter.
+///
+/// The candidate is the run's input: for a Source, the file it looks at; for
+/// an Operator, the stored bytes of the Asset version it reads.
 pub struct AssetContext<'a> {
+    kind: RunKind,
     candidate: &'a mut dyn Candidate,
     log: &'a mut dyn FnMut(&str),
     cancelled: &'a dyn Fn() -> bool,
     proposal: Option<AssetProposal>,
+    facets: Vec<FacetProposal>,
     broken: Option<String>,
+}
+
+impl<'a> AssetContext<'a> {
+    fn new(
+        kind: RunKind,
+        candidate: &'a mut dyn Candidate,
+        log: &'a mut dyn FnMut(&str),
+        cancelled: &'a dyn Fn() -> bool,
+    ) -> Self {
+        Self {
+            kind,
+            candidate,
+            log,
+            cancelled,
+            proposal: None,
+            facets: Vec::new(),
+            broken: None,
+        }
+    }
 }
 
 impl AssetContext<'_> {
@@ -178,6 +219,10 @@ impl AssetContext<'_> {
 
     /// Propose the one Asset this run produces.
     pub fn propose_asset(&mut self, proposal: AssetProposal) -> Result<(), ContextError> {
+        if self.kind != RunKind::Source {
+            self.broken = Some("an operator run proposed an asset".into());
+            return Err(ContextError::NotAllowed);
+        }
         if self.proposal.is_some() {
             self.broken = Some("proposed more than one asset".into());
             return Err(ContextError::AlreadyProposed);
@@ -186,6 +231,25 @@ impl AssetContext<'_> {
             return Err(ContextError::InvalidProposal);
         }
         self.proposal = Some(proposal);
+        Ok(())
+    }
+
+    /// Propose a value for the facet `name`. The host checks every proposal
+    /// against the facet's schema and this Operator's grants before it
+    /// stores any.
+    pub fn propose_facet(
+        &mut self,
+        name: impl Into<String>,
+        value: FacetValue,
+    ) -> Result<(), ContextError> {
+        if self.kind != RunKind::Operator {
+            self.broken = Some("a source run proposed a facet".into());
+            return Err(ContextError::NotAllowed);
+        }
+        self.facets.push(FacetProposal {
+            name: name.into(),
+            value,
+        });
         Ok(())
     }
 
@@ -205,11 +269,181 @@ impl AssetContext<'_> {
     pub const MAX_READ: usize = 64 * 1024;
 }
 
-/// Transforms assets (e.g. plate solving).
+/// Takes an Asset version and proposes facts about it (e.g. plate solving).
+///
+/// The Registry asks for [`Operator::id`], [`Operator::version`] and
+/// [`Operator::writes`] once, when the Operator registers, and keeps the
+/// answers: later answers change nothing.
 pub trait Operator: Send + Sync {
     /// Stable, namespaced identifier, e.g. `"astro.plate-solve"`.
     fn id(&self) -> &str;
+
+    /// The implementation's version, recorded with each value it produces.
+    fn version(&self) -> &str;
+
+    /// The facets this Operator writes: its grants. Core refuses a proposal
+    /// for any other facet.
+    fn writes(&self) -> &[&str];
+
+    /// Read one Asset version through `context` and propose facet values.
+    fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError>;
 }
+
+/// How an [`Operator`] run ends when it does not finish.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OperatorError {
+    /// This Operator cannot run yet.
+    Unsupported,
+    /// The Operator could not finish.
+    Failed(String),
+}
+
+/// A facet value an Operator proposes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FacetValue {
+    /// A whole number. A [`FacetType::Count`] accepts 0 to [`MAX_COUNT`];
+    /// the host refuses any other.
+    Integer(i64),
+}
+
+/// The largest count: the largest whole number a JavaScript client reads
+/// exactly (`Number.MAX_SAFE_INTEGER`).
+pub const MAX_COUNT: i64 = 9_007_199_254_740_991;
+
+/// One proposed value for one facet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetProposal {
+    pub name: String,
+    pub value: FacetValue,
+}
+
+/// An Operator run that finished, with what it proposed. The producer and
+/// the grants come from the Operator's registration, never from the run.
+/// Nothing here is checked yet: the host checks it before it stores it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetProposals {
+    pub producer_id: String,
+    pub producer_version: String,
+    pub grants: Vec<String>,
+    pub proposals: Vec<FacetProposal>,
+}
+
+/// An Operator as the Registry recorded it when it registered. Core takes
+/// the producer and the grants from here, never from the Operator again.
+pub struct RegisteredOperator {
+    id: String,
+    version: String,
+    writes: Vec<String>,
+    operator: Box<dyn Operator>,
+}
+
+impl RegisteredOperator {
+    /// The id the Operator registered with.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// The version the Operator registered with.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    /// The facets the Operator listed when it registered: its grants.
+    pub fn writes(&self) -> &[String] {
+        &self.writes
+    }
+}
+
+/// The type of a facet's value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FacetType {
+    /// A whole number from 0 to [`MAX_COUNT`].
+    Count,
+}
+
+/// What a facet's value describes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FacetScope {
+    /// The Asset as a whole, across its versions.
+    Asset,
+    /// One Asset version: one exact set of bytes.
+    AssetVersion,
+}
+
+/// The declaration of one facet, which the pack that declares it owns.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FacetSchema {
+    /// The facet's name: the owning pack's id, a dot, then the rest, such as
+    /// `"image.file-size"`.
+    pub name: String,
+    /// What a person reads beside the value, such as `"File size"`.
+    pub label: String,
+    pub value_type: FacetType,
+    /// The value's unit, such as `"bytes"`. It may be empty.
+    pub unit: String,
+    /// Raised whenever the label, unit, type or scope changes.
+    pub version: u32,
+    pub scope: FacetScope,
+}
+
+/// A facet schema the Registry keeps, with the pack that declared it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeclaredFacet {
+    pub schema: FacetSchema,
+    /// The id of the pack that declared the schema.
+    pub owner: String,
+}
+
+/// Why the Registry refused a pack. Each error names what it refused.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RegistryError {
+    /// Another declaration already uses this facet name.
+    FacetAlreadyDeclared(String),
+    /// The facet's name does not start with its pack's id and a dot.
+    FacetOutsideNamespace { facet: String, pack: String },
+    /// Another registered Operator already has this id.
+    OperatorAlreadyRegistered(String),
+    /// The facet schema holds something core could not store.
+    InvalidFacet { facet: String, reason: &'static str },
+    /// The Operator's id or version is something core could not record.
+    InvalidOperator {
+        operator: String,
+        reason: &'static str,
+    },
+}
+
+impl fmt::Display for RegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FacetAlreadyDeclared(facet) => {
+                write!(f, "facet {} is already declared", facet.escape_debug())
+            }
+            Self::FacetOutsideNamespace { facet, pack } => write!(
+                f,
+                "facet {} is not in the namespace of pack {}",
+                facet.escape_debug(),
+                pack.escape_debug()
+            ),
+            Self::OperatorAlreadyRegistered(id) => {
+                write!(f, "operator {} is already registered", id.escape_debug())
+            }
+            Self::InvalidFacet { facet, reason } => {
+                write!(
+                    f,
+                    "facet {} cannot be stored: {reason}",
+                    facet.escape_debug()
+                )
+            }
+            Self::InvalidOperator { operator, reason } => write!(
+                f,
+                "operator {} cannot be recorded: {reason}",
+                operator.escape_debug()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for RegistryError {}
 
 /// Exports assets to an external system (e.g. Immich).
 pub trait Sink: Send + Sync {
@@ -223,8 +457,12 @@ pub trait Sink: Send + Sync {
 #[derive(Default)]
 pub struct Registry {
     sources: Vec<Box<dyn Source>>,
-    operators: Vec<Box<dyn Operator>>,
+    operators: Vec<RegisteredOperator>,
     sinks: Vec<Box<dyn Sink>>,
+    facets: Vec<DeclaredFacet>,
+    /// The pack being registered, on the staging Registry that
+    /// [`Registry::register_pack`] hands it.
+    pack: Option<String>,
 }
 
 impl Registry {
@@ -238,14 +476,100 @@ impl Registry {
         self.sources.push(source);
     }
 
-    /// Register an [`Operator`].
+    /// Register an [`Operator`]. Its id, version and grants are recorded
+    /// now, once.
     pub fn register_operator(&mut self, operator: Box<dyn Operator>) {
-        self.operators.push(operator);
+        self.operators.push(RegisteredOperator {
+            id: operator.id().to_owned(),
+            version: operator.version().to_owned(),
+            writes: operator.writes().iter().map(|&w| w.to_owned()).collect(),
+            operator,
+        });
+    }
+
+    /// The registered Operator with this id.
+    pub fn operator(&self, id: &str) -> Option<&RegisteredOperator> {
+        self.operators.iter().find(|o| o.id == id)
     }
 
     /// Register a [`Sink`].
     pub fn register_sink(&mut self, sink: Box<dyn Sink>) {
         self.sinks.push(sink);
+    }
+
+    /// Declare a facet schema that the pack being registered owns.
+    pub fn declare_facet(&mut self, schema: FacetSchema) {
+        let owner = self.pack.clone().unwrap_or_default();
+        self.facets.push(DeclaredFacet { schema, owner });
+    }
+
+    /// The kept facet schema with this name.
+    pub fn facet_schema(&self, name: &str) -> Option<&DeclaredFacet> {
+        self.facets.iter().find(|f| f.schema.name == name)
+    }
+
+    /// Register one pack. The pack registers into a staging Registry; only
+    /// when everything it declared and registered passes the checks does it
+    /// join this Registry, so a refused pack adds nothing.
+    pub fn register_pack(&mut self, pack: &dyn Pack) -> Result<(), RegistryError> {
+        // Read the id once, so the checks use the owner the schemas record.
+        let pack_id = pack.id().to_owned();
+        let mut staged = Registry {
+            pack: Some(pack_id.clone()),
+            ..Registry::default()
+        };
+        pack.register(&mut staged);
+        // A schema declared after the pack replaced its staging Registry has
+        // no owner yet; it is the pack's. A nested pack's schemas keep theirs.
+        for declared in &mut staged.facets {
+            if declared.owner.is_empty() {
+                declared.owner.clone_from(&pack_id);
+            }
+        }
+        let pack_id = pack_id.as_str();
+        for (index, declared) in staged.facets.iter().enumerate() {
+            let name = &declared.schema.name;
+            if let Some(reason) = unstorable_facet(&declared.schema) {
+                return Err(RegistryError::InvalidFacet {
+                    facet: name.clone(),
+                    reason,
+                });
+            }
+            if !name
+                .strip_prefix(pack_id)
+                .is_some_and(|rest| rest.starts_with('.'))
+            {
+                return Err(RegistryError::FacetOutsideNamespace {
+                    facet: name.clone(),
+                    pack: pack_id.to_owned(),
+                });
+            }
+            if self.facet_schema(name).is_some()
+                || staged.facets[..index]
+                    .iter()
+                    .any(|f| f.schema.name == *name)
+            {
+                return Err(RegistryError::FacetAlreadyDeclared(name.clone()));
+            }
+        }
+        for (index, entry) in staged.operators.iter().enumerate() {
+            if let Some(reason) = unrecordable_operator(entry) {
+                return Err(RegistryError::InvalidOperator {
+                    operator: entry.id.clone(),
+                    reason,
+                });
+            }
+            if self.operator(&entry.id).is_some()
+                || staged.operators[..index].iter().any(|o| o.id == entry.id)
+            {
+                return Err(RegistryError::OperatorAlreadyRegistered(entry.id.clone()));
+            }
+        }
+        self.sources.append(&mut staged.sources);
+        self.operators.append(&mut staged.operators);
+        self.sinks.append(&mut staged.sinks);
+        self.facets.append(&mut staged.facets);
+        Ok(())
     }
 
     /// The registered Source with this id.
@@ -263,13 +587,7 @@ impl Registry {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Accepted, ExecutionError> {
         let source = self.source(id).ok_or(ExecutionError::UnknownSource)?;
-        let mut context = AssetContext {
-            candidate,
-            log,
-            cancelled,
-            proposal: None,
-            broken: None,
-        };
+        let mut context = AssetContext::new(RunKind::Source, candidate, log, cancelled);
         let outcome = source.run(&mut context);
         if context.is_cancelled() {
             return Err(ExecutionError::Cancelled);
@@ -293,6 +611,38 @@ impl Registry {
         })
     }
 
+    /// Run the Operator registered as `id` over one Asset version's bytes.
+    /// The result names the producer and the grants from the Operator's
+    /// registration. It does not check the proposals; the host does.
+    pub fn execute_operator(
+        &self,
+        id: &str,
+        candidate: &mut dyn Candidate,
+        log: &mut dyn FnMut(&str),
+        cancelled: &dyn Fn() -> bool,
+    ) -> Result<FacetProposals, ExecutionError> {
+        let entry = self.operator(id).ok_or(ExecutionError::UnknownOperator)?;
+        let mut context = AssetContext::new(RunKind::Operator, candidate, log, cancelled);
+        let outcome = entry.operator.run(&mut context);
+        if context.is_cancelled() {
+            return Err(ExecutionError::Cancelled);
+        }
+        match outcome {
+            Err(OperatorError::Unsupported) => return Err(ExecutionError::Unsupported),
+            Err(OperatorError::Failed(reason)) => return Err(ExecutionError::Failed(reason)),
+            Ok(()) => {}
+        }
+        if let Some(reason) = context.broken {
+            return Err(ExecutionError::Failed(reason));
+        }
+        Ok(FacetProposals {
+            producer_id: entry.id.clone(),
+            producer_version: entry.version.clone(),
+            grants: entry.writes.clone(),
+            proposals: context.facets,
+        })
+    }
+
     /// Ids of all registered sources, in registration order.
     pub fn source_ids(&self) -> Vec<&str> {
         self.sources.iter().map(|s| s.id()).collect()
@@ -300,7 +650,7 @@ impl Registry {
 
     /// Ids of all registered operators, in registration order.
     pub fn operator_ids(&self) -> Vec<&str> {
-        self.operators.iter().map(|o| o.id()).collect()
+        self.operators.iter().map(|o| o.id.as_str()).collect()
     }
 
     /// Ids of all registered sinks, in registration order.
@@ -309,14 +659,61 @@ impl Registry {
     }
 }
 
+/// Why core could not store this schema, if it could not. These checks match
+/// the columns core stores a schema in, so a run never fails on a healthy
+/// database because of what its pack declared.
+fn unstorable_facet(schema: &FacetSchema) -> Option<&'static str> {
+    let part = |p: &str| {
+        !p.is_empty()
+            && p.bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    };
+    let mut parts = schema.name.split('.');
+    let well_formed = schema.name.contains('.') && parts.all(part);
+    if !well_formed {
+        Some("its name must be two or more parts of lowercase letters, digits and hyphens, joined by dots")
+    } else if !(1..=i32::MAX as u32).contains(&schema.version) {
+        Some("its version must be from 1 to 2147483647")
+    } else if schema.label.is_empty() {
+        Some("its label is empty")
+    } else if schema.label.contains('\0') {
+        Some("its label holds a zero character")
+    } else if schema.unit.contains('\0') {
+        Some("its unit holds a zero character")
+    } else {
+        None
+    }
+}
+
+/// Why core could not record this Operator's identity, if it could not.
+fn unrecordable_operator(entry: &RegisteredOperator) -> Option<&'static str> {
+    if entry.id.is_empty() {
+        Some("it has an empty id")
+    } else if entry.id.contains('\0') {
+        Some("its id holds a zero character")
+    } else if entry.version.is_empty() {
+        Some("its version is empty")
+    } else if entry.version.contains('\0') {
+        Some("its version holds a zero character")
+    } else {
+        None
+    }
+}
+
 /// Implemented by a domain pack to contribute its components. The host builds a
-/// [`Registry`] and calls [`Pack::register`] on each pack; this is the entire
-/// contact surface between a pack and the host.
+/// [`Registry`] and registers each pack with [`Registry::register_pack`]; this
+/// is the entire contact surface between a pack and the host.
 pub trait Pack {
-    /// Stable pack identifier, e.g. `"astro"`.
+    /// Stable pack identifier, e.g. `"astro"`. It is the namespace of the
+    /// pack's facets.
     fn id(&self) -> &str;
 
-    /// Register this pack's sources, operators, and sinks into `registry`.
+    /// Register this pack's sources, operators and sinks, and declare its
+    /// facet schemas, into `registry`.
+    ///
+    /// Hosts call [`Registry::register_pack`], never this method directly:
+    /// `register_pack` hands the pack a staging Registry and checks what it
+    /// registered before any of it joins the live one.
     fn register(&self, registry: &mut Registry);
 }
 
@@ -554,5 +951,775 @@ mod source_execution {
             run_scripted(|_| Err(SourceError::Unsupported), b"I"),
             Err(ExecutionError::Unsupported)
         );
+    }
+}
+
+#[cfg(test)]
+mod facet_declaration {
+    use super::*;
+
+    /// A pack whose registration is a closure, for one-off declarations.
+    struct TestPack(&'static str, fn(&mut Registry));
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.1)(registry)
+        }
+    }
+
+    fn size(name: &str) -> FacetSchema {
+        FacetSchema {
+            name: name.into(),
+            label: "Size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        }
+    }
+
+    #[test]
+    fn facet_declaration_keeps_every_schema_a_pack_declares() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack("test", |r| {
+                r.declare_facet(size("test.size"));
+                r.declare_facet(FacetSchema {
+                    scope: FacetScope::Asset,
+                    ..size("test.width")
+                });
+            }))
+            .unwrap();
+        let declared = registry.facet_schema("test.size").unwrap();
+        assert_eq!(declared.schema, size("test.size"));
+        assert_eq!(declared.owner, "test");
+        assert_eq!(
+            registry.facet_schema("test.width").unwrap().schema.scope,
+            FacetScope::Asset
+        );
+        assert!(registry.facet_schema("test.missing").is_none());
+    }
+
+    #[test]
+    fn facet_declaration_refuses_a_name_another_pack_declared() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("test.size"))))
+            .unwrap();
+        let error = registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("test.size"))))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.size"), "{error}");
+    }
+
+    #[test]
+    fn facet_declaration_refuses_a_name_declared_twice_by_one_pack() {
+        let error = Registry::new()
+            .register_pack(&TestPack("test", |r| {
+                r.declare_facet(size("test.size"));
+                r.declare_facet(size("test.size"));
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.size"), "{error}");
+    }
+
+    #[test]
+    fn facet_declaration_refuses_a_name_outside_the_pack_namespace() {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("other.size"))))
+            .unwrap_err();
+        assert!(error.to_string().contains("other.size"), "{error}");
+        // A longer pack id that starts with the same letters is another pack.
+        let error = registry
+            .register_pack(&TestPack("test", |r| r.declare_facet(size("testing.size"))))
+            .unwrap_err();
+        assert!(error.to_string().contains("testing.size"), "{error}");
+        assert!(registry.facet_schema("other.size").is_none());
+        assert!(registry.facet_schema("testing.size").is_none());
+    }
+
+    /// A pack whose id is empty until it registers, then `test`.
+    struct Renamed(std::sync::atomic::AtomicBool);
+    impl Pack for Renamed {
+        fn id(&self) -> &str {
+            if self.0.load(std::sync::atomic::Ordering::SeqCst) {
+                "test"
+            } else {
+                ""
+            }
+        }
+        fn register(&self, registry: &mut Registry) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            registry.declare_facet(size("test.size"));
+        }
+    }
+
+    /// A pack that swaps its staging Registry for a new one, then declares.
+    struct Swapping;
+    impl Pack for Swapping {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            *registry = Registry::new();
+            registry.declare_facet(size("test.size"));
+        }
+    }
+
+    /// A pack `test` that registers the pack `test.child` while it registers.
+    struct Parent;
+    impl Pack for Parent {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            registry
+                .register_pack(&TestPack("test.child", |r| {
+                    r.declare_facet(size("test.child.size"))
+                }))
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn facet_declaration_keeps_a_nested_packs_owner() {
+        let mut registry = Registry::new();
+        registry.register_pack(&Parent).unwrap();
+        assert_eq!(
+            registry.facet_schema("test.child.size").unwrap().owner,
+            "test.child"
+        );
+    }
+
+    #[test]
+    fn facet_declaration_records_the_registering_pack_as_owner() {
+        let mut registry = Registry::new();
+        registry.register_pack(&Swapping).unwrap();
+        assert_eq!(registry.facet_schema("test.size").unwrap().owner, "test");
+    }
+
+    #[test]
+    fn facet_declaration_checks_the_owner_it_records() {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&Renamed(Default::default()))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.size"), "{error}");
+        assert!(registry.facet_schema("test.size").is_none());
+    }
+}
+
+#[cfg(test)]
+mod operator_registration {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    struct TestPack(&'static str, Box<dyn Fn(&mut Registry)>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.1)(registry)
+        }
+    }
+
+    /// An Operator whose `writes()` answer widens once `widened` is set.
+    struct Shifty {
+        id: &'static str,
+        widened: Arc<AtomicBool>,
+    }
+    impl Operator for Shifty {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn version(&self) -> &str {
+            if self.widened.load(Ordering::SeqCst) {
+                "9.9.9"
+            } else {
+                "1.2.3"
+            }
+        }
+        fn writes(&self) -> &[&str] {
+            if self.widened.load(Ordering::SeqCst) {
+                &["test.size", "test.width"]
+            } else {
+                &["test.size"]
+            }
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            Ok(())
+        }
+    }
+
+    fn shifty(id: &'static str, widened: &Arc<AtomicBool>) -> Box<dyn Operator> {
+        Box::new(Shifty {
+            id,
+            widened: widened.clone(),
+        })
+    }
+
+    #[test]
+    fn operator_registration_records_id_version_and_grants() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| r.register_operator(shifty("test.op", &flag))),
+            ))
+            .unwrap();
+        let entry = registry.operator("test.op").unwrap();
+        assert_eq!(entry.id(), "test.op");
+        assert_eq!(entry.version(), "1.2.3");
+        assert_eq!(entry.writes(), ["test.size"]);
+        assert_eq!(registry.operator_ids(), ["test.op"]);
+        assert!(registry.operator("test.missing").is_none());
+    }
+
+    #[test]
+    fn operator_registration_keeps_the_grants_it_registered_with() {
+        let widened = Arc::new(AtomicBool::new(false));
+        let flag = widened.clone();
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| r.register_operator(shifty("test.op", &flag))),
+            ))
+            .unwrap();
+        widened.store(true, Ordering::SeqCst);
+        let entry = registry.operator("test.op").unwrap();
+        assert_eq!(entry.writes(), ["test.size"]);
+        assert_eq!(entry.version(), "1.2.3");
+        let run = registry
+            .execute_operator("test.op", &mut NoBytes, &mut |_| {}, &|| false)
+            .unwrap();
+        assert_eq!(run.grants, ["test.size"]);
+        assert_eq!(run.producer_version, "1.2.3");
+    }
+
+    struct NoBytes;
+    impl Candidate for NoBytes {
+        fn size(&self) -> u64 {
+            0
+        }
+        fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    #[test]
+    fn operator_registration_refuses_an_id_another_operator_has() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut registry = Registry::new();
+        let first = flag.clone();
+        registry
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| r.register_operator(shifty("test.op", &first))),
+            ))
+            .unwrap();
+        let second = flag.clone();
+        let error = registry
+            .register_pack(&TestPack(
+                "other",
+                Box::new(move |r| r.register_operator(shifty("test.op", &second))),
+            ))
+            .unwrap_err();
+        assert_eq!(
+            error,
+            RegistryError::OperatorAlreadyRegistered("test.op".into())
+        );
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert_eq!(registry.operator_ids(), ["test.op"]);
+    }
+
+    #[test]
+    fn operator_registration_refuses_one_id_twice_in_one_pack() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let error = Registry::new()
+            .register_pack(&TestPack(
+                "test",
+                Box::new(move |r| {
+                    r.register_operator(shifty("test.op", &flag));
+                    r.register_operator(shifty("test.op", &flag));
+                }),
+            ))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.op"), "{error}");
+    }
+
+    #[test]
+    fn operator_registration_is_abi_version_2() {
+        assert_eq!(ABI_VERSION, 2);
+    }
+}
+
+#[cfg(test)]
+mod operator_execution {
+    use super::*;
+
+    struct Bytes(Vec<u8>);
+    impl Candidate for Bytes {
+        fn size(&self) -> u64 {
+            self.0.len() as u64
+        }
+        fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+            let start = (offset as usize).min(self.0.len());
+            let n = buf.len().min(self.0.len() - start);
+            buf[..n].copy_from_slice(&self.0[start..start + n]);
+            Ok(n)
+        }
+    }
+
+    /// An Operator whose run is a closure, for one-off behaviors.
+    struct Scripted(fn(&mut AssetContext<'_>) -> Result<(), OperatorError>);
+    impl Operator for Scripted {
+        fn id(&self) -> &str {
+            "test.op"
+        }
+        fn version(&self) -> &str {
+            "1.2.3"
+        }
+        fn writes(&self) -> &[&str] {
+            &["test.first-byte"]
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            (self.0)(context)
+        }
+    }
+
+    struct TestPack(fn(&mut AssetContext<'_>) -> Result<(), OperatorError>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            registry.register_operator(Box::new(Scripted(self.0)));
+        }
+    }
+
+    fn run(
+        script: fn(&mut AssetContext<'_>) -> Result<(), OperatorError>,
+        bytes: &[u8],
+    ) -> Result<FacetProposals, ExecutionError> {
+        let mut registry = Registry::new();
+        registry.register_pack(&TestPack(script)).unwrap();
+        registry.execute_operator("test.op", &mut Bytes(bytes.to_vec()), &mut |_| {}, &|| {
+            false
+        })
+    }
+
+    fn first_byte(context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        let mut first = [0; 1];
+        context
+            .read_candidate(0, &mut first)
+            .map_err(|_| OperatorError::Failed("read".into()))?;
+        context
+            .propose_facet("test.first-byte", FacetValue::Integer(first[0].into()))
+            .map_err(|_| OperatorError::Failed("proposal".into()))
+    }
+
+    #[test]
+    fn operator_execution_returns_proposals_with_host_provenance_and_grants() {
+        let run = run(first_byte, b"*rest").unwrap();
+        assert_eq!(
+            run.proposals,
+            [FacetProposal {
+                name: "test.first-byte".into(),
+                value: FacetValue::Integer(42)
+            }]
+        );
+        assert_eq!(run.producer_id, "test.op");
+        assert_eq!(run.producer_version, "1.2.3");
+        assert_eq!(run.grants, ["test.first-byte"]);
+    }
+
+    #[test]
+    fn operator_execution_returns_every_proposal_in_order() {
+        let run = run(
+            |context| {
+                context
+                    .propose_facet("test.a", FacetValue::Integer(-1))
+                    .unwrap();
+                context
+                    .propose_facet("test.b", FacetValue::Integer(i64::MAX))
+                    .unwrap();
+                Ok(())
+            },
+            b"",
+        )
+        .unwrap();
+        let names: Vec<_> = run.proposals.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["test.a", "test.b"]);
+    }
+
+    #[test]
+    fn operator_execution_writes_log_lines_through_the_host() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(|context| {
+                context.log("looked at the bytes");
+                Ok(())
+            }))
+            .unwrap();
+        let mut lines = Vec::new();
+        registry
+            .execute_operator(
+                "test.op",
+                &mut Bytes(b"I".to_vec()),
+                &mut |line| lines.push(line.to_owned()),
+                &|| false,
+            )
+            .unwrap();
+        assert_eq!(lines, ["looked at the bytes"]);
+    }
+
+    #[test]
+    fn operator_execution_refuses_an_asset_proposal() {
+        let outcome = run(
+            |context| {
+                assert_eq!(
+                    context.propose_asset(AssetProposal::new("image", "image/png")),
+                    Err(ContextError::NotAllowed)
+                );
+                Ok(())
+            },
+            b"I",
+        );
+        assert!(
+            matches!(outcome, Err(ExecutionError::Failed(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn operator_execution_is_refused_to_a_source_that_proposes_a_facet() {
+        struct Proposer;
+        impl Source for Proposer {
+            fn id(&self) -> &str {
+                "test.source"
+            }
+            fn version(&self) -> &str {
+                "1"
+            }
+            fn run(&self, context: &mut AssetContext<'_>) -> Result<(), SourceError> {
+                assert_eq!(
+                    context.propose_facet("test.size", FacetValue::Integer(1)),
+                    Err(ContextError::NotAllowed)
+                );
+                context
+                    .propose_asset(AssetProposal::new("image", "image/png"))
+                    .map_err(|_| SourceError::Failed("p".into()))
+            }
+        }
+        let mut registry = Registry::new();
+        registry.register_source(Box::new(Proposer));
+        let outcome = registry.execute_source(
+            "test.source",
+            &mut Bytes(b"I".to_vec()),
+            &mut |_| {},
+            &|| false,
+        );
+        assert!(
+            matches!(outcome, Err(ExecutionError::Failed(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn operator_execution_reports_failure_unsupported_and_cancel() {
+        assert_eq!(
+            run(
+                |_| Err(OperatorError::Failed("could not read the header".into())),
+                b""
+            ),
+            Err(ExecutionError::Failed("could not read the header".into()))
+        );
+        assert_eq!(
+            run(|_| Err(OperatorError::Unsupported), b""),
+            Err(ExecutionError::Unsupported)
+        );
+        let mut registry = Registry::new();
+        registry.register_pack(&TestPack(first_byte)).unwrap();
+        assert_eq!(
+            registry.execute_operator("test.op", &mut Bytes(b"I".to_vec()), &mut |_| {}, &|| true),
+            Err(ExecutionError::Cancelled)
+        );
+    }
+
+    #[test]
+    fn operator_execution_refuses_an_unknown_operator() {
+        let registry = Registry::new();
+        assert_eq!(
+            registry.execute_operator("test.op", &mut Bytes(vec![]), &mut |_| {}, &|| false),
+            Err(ExecutionError::UnknownOperator)
+        );
+    }
+
+    #[test]
+    fn operator_execution_max_count_is_the_largest_safe_javascript_integer() {
+        assert_eq!(MAX_COUNT, (1i64 << 53) - 1);
+    }
+}
+
+#[cfg(test)]
+mod pack_registration {
+    use super::*;
+
+    struct TestPack(&'static str, Box<dyn Fn(&mut Registry)>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.1)(registry)
+        }
+    }
+
+    fn pack(register: impl Fn(&mut Registry) + 'static) -> TestPack {
+        TestPack("test", Box::new(register))
+    }
+
+    struct Op {
+        id: &'static str,
+        version: &'static str,
+        writes: &'static [&'static str],
+    }
+    impl Operator for Op {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn version(&self) -> &str {
+            self.version
+        }
+        fn writes(&self) -> &[&str] {
+            self.writes
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            Ok(())
+        }
+    }
+
+    fn op(id: &'static str) -> Box<dyn Operator> {
+        Box::new(Op {
+            id,
+            version: "1",
+            writes: &[],
+        })
+    }
+
+    struct Named(&'static str);
+    impl Source for Named {
+        fn id(&self) -> &str {
+            self.0
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), SourceError> {
+            Err(SourceError::Unsupported)
+        }
+    }
+    impl Sink for Named {
+        fn id(&self) -> &str {
+            self.0
+        }
+    }
+
+    fn schema(name: &str) -> FacetSchema {
+        FacetSchema {
+            name: name.into(),
+            label: "Size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        }
+    }
+
+    struct NoBytes;
+    impl Candidate for NoBytes {
+        fn size(&self) -> u64 {
+            0
+        }
+        fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    fn runs(registry: &Registry, id: &str) -> Result<FacetProposals, ExecutionError> {
+        registry.execute_operator(id, &mut NoBytes, &mut |_| {}, &|| false)
+    }
+
+    fn with_earlier_pack() -> Registry {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&TestPack(
+                "earlier",
+                Box::new(|r| r.register_operator(op("test.op"))),
+            ))
+            .unwrap();
+        registry
+    }
+
+    /// The live Registry holds only what the earlier pack registered.
+    fn assert_unchanged(registry: &Registry) {
+        assert_eq!(registry.operator_ids(), ["test.op"]);
+        assert!(registry.source_ids().is_empty());
+        assert!(registry.sink_ids().is_empty());
+        assert!(registry.facets.is_empty());
+        assert!(runs(registry, "test.op").is_ok());
+    }
+
+    #[test]
+    fn pack_registration_refused_for_one_operator_adds_nothing() {
+        let mut registry = with_earlier_pack();
+        let error = registry
+            .register_pack(&pack(|r| {
+                r.declare_facet(schema("test.good-size"));
+                r.register_source(Box::new(Named("test.source")));
+                r.register_sink(Box::new(Named("test.sink")));
+                r.register_operator(Box::new(Op {
+                    id: "test.good",
+                    version: "1",
+                    writes: &["test.good-size"],
+                }));
+                r.register_operator(op("test.op"));
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert!(registry.operator("test.good").is_none());
+        assert!(registry.facet_schema("test.good-size").is_none());
+        assert_eq!(
+            runs(&registry, "test.good"),
+            Err(ExecutionError::UnknownOperator)
+        );
+        assert_unchanged(&registry);
+    }
+
+    /// Each pack makes one declaration core could not store; the error
+    /// names `named`, and the live Registry is unchanged.
+    fn assert_refused(named: &str, register: impl Fn(&mut Registry) + 'static) {
+        let mut registry = with_earlier_pack();
+        let error = registry.register_pack(&pack(register)).unwrap_err();
+        assert!(error.to_string().contains(named), "{named}: {error}");
+        assert_unchanged(&registry);
+    }
+
+    #[test]
+    fn pack_registration_refuses_a_facet_name_the_store_does_not_accept() {
+        for name in [
+            "test.Size",
+            "test.",
+            "test..size",
+            "test.si ze",
+            "test.size_x",
+        ] {
+            assert_refused(name, move |r| r.declare_facet(schema(name)));
+        }
+    }
+
+    #[test]
+    fn pack_registration_refuses_a_schema_version_the_store_cannot_hold() {
+        for version in [0, 2_147_483_648, u32::MAX] {
+            assert_refused("test.size", move |r| {
+                r.declare_facet(FacetSchema {
+                    version,
+                    ..schema("test.size")
+                })
+            });
+        }
+    }
+
+    #[test]
+    fn pack_registration_keeps_the_largest_schema_version() {
+        let mut registry = Registry::new();
+        registry
+            .register_pack(&pack(|r| {
+                r.declare_facet(FacetSchema {
+                    version: 2_147_483_647,
+                    unit: String::new(),
+                    ..schema("test.size")
+                })
+            }))
+            .unwrap();
+        assert!(registry.facet_schema("test.size").is_some());
+    }
+
+    #[test]
+    fn pack_registration_refuses_an_empty_label_or_a_zero_character() {
+        assert_refused("test.size", |r| {
+            r.declare_facet(FacetSchema {
+                label: String::new(),
+                ..schema("test.size")
+            })
+        });
+        assert_refused("test.size", |r| {
+            r.declare_facet(FacetSchema {
+                label: "Si\0ze".into(),
+                ..schema("test.size")
+            })
+        });
+        assert_refused("test.size", |r| {
+            r.declare_facet(FacetSchema {
+                unit: "by\0tes".into(),
+                ..schema("test.size")
+            })
+        });
+    }
+
+    #[test]
+    fn pack_registration_refuses_an_operator_core_cannot_record() {
+        assert_refused("test.bad", |r| {
+            r.register_operator(Box::new(Op {
+                id: "test.bad",
+                version: "",
+                writes: &[],
+            }))
+        });
+        assert_refused("test.bad", |r| {
+            r.register_operator(Box::new(Op {
+                id: "test.bad",
+                version: "1\0",
+                writes: &[],
+            }))
+        });
+        assert_refused("test.b", |r| r.register_operator(op("test.b\0ad")));
+        assert_refused("empty id", |r| r.register_operator(op("")));
+    }
+
+    #[test]
+    fn pack_registration_names_an_operator_version_with_a_zero_character() {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&pack(|r| {
+                r.register_operator(Box::new(Op {
+                    id: "test.op",
+                    version: "1\0",
+                    writes: &[],
+                }))
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert!(registry.operator("test.op").is_none());
+    }
+
+    #[test]
+    fn pack_registration_leaves_the_registry_unchanged_when_register_panics() {
+        let mut registry = with_earlier_pack();
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            registry.register_pack(&pack(|r| {
+                r.register_operator(op("test.other"));
+                panic!("the pack broke");
+            }))
+        }));
+        assert!(outcome.is_err());
+        assert_unchanged(&registry);
     }
 }

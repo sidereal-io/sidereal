@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Library from "./Library.tsx";
+import SignedIn from "./SignedIn.tsx";
 
 type Answer = [status: number, body?: unknown];
 
@@ -71,8 +72,9 @@ const button = (name: string) => screen.queryByRole("button", { name });
 // A session signal that Access never aborts.
 const live = () => new AbortController().signal;
 
+// The Library as the signed-in view shows it, with the upload above it.
 function showLibrary(onSessionLost = vi.fn(), session = live()) {
-  render(<Library onSessionLost={onSessionLost} session={session} />);
+  render(<SignedIn onSessionLost={onSessionLost} session={session} />);
   return onSessionLost;
 }
 
@@ -113,12 +115,28 @@ describe("Library", () => {
     ).toBeNull();
   });
 
+  it("makes each image and its name one link to its asset page", async () => {
+    stubServer({ "GET /api/assets": listAnswer(nebula, andromeda) });
+    showLibrary();
+    await screen.findByRole("img", { name: "nebula.png" });
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/assets/a1",
+      "/assets/a2",
+    ]);
+    const link = screen.getByRole("link", { name: "nebula.png" });
+    expect(link.contains(screen.getByRole("img", { name: "nebula.png" }))).toBe(
+      true,
+    );
+    expect(link.contains(screen.getByText("nebula.png"))).toBe(true);
+  });
+
   it("shows a name holding markup as literal text", async () => {
     stubServer({
       "GET /api/assets": listAnswer(entry("a3", "<b>bold</b>.png")),
     });
     const { container } = render(
-      <Library onSessionLost={vi.fn()} session={live()} />,
+      <SignedIn onSessionLost={vi.fn()} session={live()} />,
     );
     await screen.findByText("<b>bold</b>.png");
     expect(container.querySelector("b")).toBeNull();
@@ -128,7 +146,8 @@ describe("Library", () => {
     stubServer({ "GET /api/assets": listAnswer(nebula) });
     showLibrary();
     const image = await screen.findByRole("img", { name: "nebula.png" });
-    const figure = image.closest("figure");
+    // The link is the grid's item, so it carries the image's shape.
+    const figure = image.closest("a");
     expect(figure?.style.getPropertyValue("--library-ratio")).toBe("");
     Object.defineProperty(image, "naturalWidth", { value: 2000 });
     Object.defineProperty(image, "naturalHeight", { value: 1000 });
@@ -225,7 +244,7 @@ describe("Library", () => {
     );
     const onSessionLost = vi.fn();
     const { unmount } = render(
-      <Library onSessionLost={onSessionLost} session={live()} />,
+      <SignedIn onSessionLost={onSessionLost} session={live()} />,
     );
     await screen.findByText("Loading the library…");
     unmount();
@@ -235,6 +254,47 @@ describe("Library", () => {
       await late.promise;
     });
     expect(onSessionLost).not.toHaveBeenCalled();
+  });
+
+  it("loads the list again when the saved count goes up", async () => {
+    const fetch = stubServer({
+      "GET /api/assets": [listAnswer(), listAnswer(nebula)],
+    });
+    const props = {
+      onSessionLost: vi.fn(),
+      lines: [],
+      busy: false,
+      onUpload: vi.fn(),
+    };
+    const { rerender } = render(<Library {...props} saved={0} />);
+    await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    rerender(<Library {...props} saved={0} />);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    rerender(<Library {...props} saved={1} />);
+    await screen.findByRole("img", { name: "nebula.png" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands the chosen files to onUpload and shows the lines it is given", async () => {
+    stubServer({ "GET /api/assets": listAnswer() });
+    const onUpload = vi.fn();
+    render(
+      <Library
+        onSessionLost={vi.fn()}
+        lines={[{ name: "m31.png", kind: "sending" }]}
+        busy
+        onUpload={onUpload}
+        saved={0}
+      />,
+    );
+    await screen.findByText("Uploading m31.png…");
+    expect(button("Upload")?.hasAttribute("disabled")).toBe(true);
+    const file = new File(["x"], "m42.png", { type: "image/png" });
+    const input =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("no file input");
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onUpload).toHaveBeenCalledWith([file]);
   });
 
   describe("upload", () => {
@@ -404,7 +464,7 @@ describe("Library", () => {
         ),
       );
       const { container } = render(
-        <Library onSessionLost={vi.fn()} session={live()} />,
+        <SignedIn onSessionLost={vi.fn()} session={live()} />,
       );
       await screen.findByRole("button", { name: "Upload" });
       choose(
@@ -721,7 +781,7 @@ describe("Library", () => {
         "POST /api/assets": [409, { asset: entry("a3", "<b>bold</b>.png") }],
       });
       const { container } = render(
-        <Library onSessionLost={vi.fn()} session={live()} />,
+        <SignedIn onSessionLost={vi.fn()} session={live()} />,
       );
       await screen.findByRole("button", { name: "Upload" });
       choose(named("m31-final.png"));
@@ -764,7 +824,7 @@ describe("Library", () => {
         ),
       );
       const { container } = render(
-        <Library onSessionLost={vi.fn()} session={live()} />,
+        <SignedIn onSessionLost={vi.fn()} session={live()} />,
       );
       await screen.findByRole("button", { name: "Upload" });
       choose(new File(["x"], "<b>m42</b>.png", { type: "image/png" }));
@@ -826,7 +886,7 @@ describe("Library", () => {
       const { fetch, release } = heldUploads(2);
       const onSessionLost = vi.fn();
       const { unmount } = render(
-        <Library onSessionLost={onSessionLost} session={live()} />,
+        <SignedIn onSessionLost={onSessionLost} session={live()} />,
       );
       await screen.findByRole("button", { name: "Upload" });
       choose(named("a.png"), named("b.png"));
@@ -852,7 +912,7 @@ describe("Library", () => {
       vi.stubGlobal("fetch", fetch);
       const onSessionLost = vi.fn();
       const { unmount } = render(
-        <Library onSessionLost={onSessionLost} session={live()} />,
+        <SignedIn onSessionLost={onSessionLost} session={live()} />,
       );
       await screen.findByRole("button", { name: "Upload" });
       choose(png());

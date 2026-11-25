@@ -268,6 +268,7 @@ fn baselines() -> Vec<Value> {
         include_str!("../../schema/2.json"),
         include_str!("../../schema/3.json"),
         include_str!("../../schema/4.json"),
+        include_str!("../../schema/5.json"),
     ]
     .into_iter()
     .map(|value| serde_json::from_str(value).expect("generated schema JSON must be valid"))

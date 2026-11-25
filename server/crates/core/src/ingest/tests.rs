@@ -92,7 +92,7 @@ impl Fixture {
                 .unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mut registry = Registry::new();
-        TestPack(seen.clone()).register(&mut registry);
+        registry.register_pack(&TestPack(seen.clone())).unwrap();
         Self {
             db,
             temp,
@@ -247,7 +247,7 @@ mod ingest_commit {
     }
 
     #[tokio::test]
-    async fn provenance_names_the_registered_source_that_ran() {
+    async fn provenance_names_the_source_the_registry_ran() {
         let fixture = Fixture::new().await;
         let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(*fixture.seen.lock().unwrap(), b"abc");

@@ -73,24 +73,26 @@ impl Database {
             sessions_ended: None,
             retry_after: None,
         };
-        let insert = sqlx::query(
-            "INSERT INTO public.users (username, password_hash, role, created_at) VALUES ($1, $2, $3, now())",
+        let insert = sqlx::query_scalar::<_, i64>(
+            "INSERT INTO public.users (username, password_hash, role, created_at) VALUES ($1, $2, $3, now()) RETURNING id",
         )
         .bind(username)
         .bind(hash)
         .bind(Role::Admin.as_str());
         // The server writes a browser claim's line itself. A claim from the
         // box sends its line with the insert, to reach the server's log.
-        if event.source == Source::Siderealctl {
+        let id = if event.source == Source::Siderealctl {
             let mut tx = self.pool().begin().await?;
-            insert.execute(&mut *tx).await.map_err(refused)?;
+            let id = insert.fetch_one(&mut *tx).await.map_err(refused)?;
             security_event::notify(&mut *tx, &event).await?;
             tx.commit().await?;
+            id
         } else {
-            insert.execute(self.pool()).await.map_err(refused)?;
-        }
+            insert.fetch_one(self.pool()).await.map_err(refused)?
+        };
         Ok(Claimed {
             user: User {
+                id,
                 username: username.to_owned(),
                 role: Role::Admin,
             },
@@ -266,9 +268,15 @@ mod tests {
             .claim("sam", PASSWORD, Source::Siderealctl)
             .await
             .unwrap();
+        let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+        let id: i64 = sqlx::query_scalar("SELECT id FROM public.users WHERE username = 'sam'")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
         assert_eq!(
             claimed.user,
             User {
+                id,
                 username: "sam".into(),
                 role: Role::Admin
             }

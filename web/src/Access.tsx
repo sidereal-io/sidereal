@@ -7,13 +7,13 @@ import {
 } from "react";
 import "./Access.css";
 import { watchSession } from "./eventsSocket.ts";
-import Library from "./Library.tsx";
+import SignedIn from "./SignedIn.tsx";
 
 // What the first check finds.
 type Found = "unclaimed" | "signed-out" | "failed" | { username: string };
 
 // A signed-in view carries the controller of its own session signal, and
-// the number of that controller, which keys its Library.
+// the number of that controller, which keys its signed-in view.
 type View =
   | "loading"
   | Exclude<Found, object>
@@ -53,10 +53,10 @@ async function probe(): Promise<Found> {
 // A signed-in view and its session signal, which becomes the current one.
 // Every end of a signed-in view aborts its controller, so one not yet
 // aborted belongs to the view on screen. A second sign-in that answers then,
-// as after a double submit, keeps it: the Library stays mounted, and a pick
-// it started must still stop when the session ends. A new controller gets
-// the next number, so its view gets a fresh Library even if React never
-// showed the sign-in form in between.
+// as after a double submit, keeps it: the signed-in view stays mounted, and
+// a pick it started must still stop when the session ends. A new controller
+// gets the next number, so its view mounts afresh even if React never showed
+// the sign-in form in between.
 function signedInView(
   current: RefObject<AbortController | null>,
   made: RefObject<number>,
@@ -162,7 +162,7 @@ function Access() {
   const [message, setMessage] = useState<string | null>(null);
   // The current signed-in view's session controller. It is aborted in the
   // same call that learns the session ended, before the view changes, so
-  // the Library sends nothing more even before it goes away.
+  // the signed-in view sends nothing more even before it goes away.
   const sessionRef = useRef<AbortController>(null);
   // How many session controllers this screen has made.
   const madeRef = useRef(0);
@@ -269,7 +269,7 @@ function Access() {
     );
   }
   return (
-    <Library
+    <SignedIn
       key={view.key}
       onSessionLost={sessionLost}
       session={view.session.signal}
@@ -283,7 +283,7 @@ function Access() {
       >
         Sign out
       </button>
-    </Library>
+    </SignedIn>
   );
 }
 

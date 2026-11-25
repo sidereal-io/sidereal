@@ -6,9 +6,12 @@
 //! `server/scripts/check-arch.sh`.
 //!
 //! The components below are id-bearing stubs with no behaviour yet (no FITS
-//! reading, no plate solving, no ingest). The FITS Source says so when run.
+//! reading, no plate solving, no ingest). The FITS Source and the
+//! plate-solve Operator say so when run.
 
-use sidereal_plugin_abi::{AssetContext, Operator, Pack, Registry, Sink, Source, SourceError};
+use sidereal_plugin_abi::{
+    AssetContext, Operator, OperatorError, Pack, Registry, Sink, Source, SourceError,
+};
 
 /// The astrophotography domain pack.
 pub struct AstroPack;
@@ -46,6 +49,18 @@ struct PlateSolveOperator;
 impl Operator for PlateSolveOperator {
     fn id(&self) -> &str {
         "astro.plate-solve"
+    }
+
+    fn version(&self) -> &str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    fn writes(&self) -> &[&str] {
+        &[]
+    }
+
+    fn run(&self, _context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        Err(OperatorError::Unsupported)
     }
 }
 

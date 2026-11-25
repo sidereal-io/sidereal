@@ -11,12 +11,21 @@ use sidereal_core::{
     database::{initialize, initialize_with_storage},
     storage::{objects::ObjectStore, StorageRoot},
 };
+use sidereal_pack_image::ImagePack;
+use sidereal_plugin_abi::{
+    AssetContext, FacetSchema, FacetScope, FacetType, FacetValue, Operator, OperatorError, Pack,
+    Registry,
+};
 use sidereal_server::{
-    app_with_database, app_with_library, config::AllowedOrigins, Library, Tuning,
+    app_with_database, app_with_library, config::AllowedOrigins, Library, Log, Tuning,
 };
 use sqlx::{Connection, PgConnection};
 use std::{
     path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::Duration,
 };
 use tower::ServiceExt;
@@ -80,10 +89,17 @@ struct Instance {
     storage: Option<Dir>,
     app: Router,
     cookie: String,
+    /// Every line the server wrote to its operational log.
+    lines: Arc<Mutex<Vec<String>>>,
 }
 
 impl Instance {
     async fn new() -> Self {
+        Self::with_library(|library| library).await
+    }
+
+    /// A server whose production `Library` the test changes first.
+    async fn with_library(change: impl FnOnce(Library) -> Library) -> Self {
         let db = TestDatabase::new();
         let storage = Dir::new();
         let root = StorageRoot::new(&storage.0).unwrap();
@@ -92,13 +108,24 @@ impl Instance {
                 .await
                 .unwrap();
         let objects = ObjectStore::open(&root, paired).unwrap();
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        let written = lines.clone();
         let app = app_with_library(
             database.clone(),
             AllowedOrigins::default(),
-            Tuning::default(),
-            Library::new(Some(objects)),
+            Tuning {
+                log: Log::new(move |line| written.lock().unwrap().push(line.to_owned())),
+                ..Tuning::default()
+            },
+            change(Library::new(Some(objects))),
         );
-        Self::signed_in(db, Some(storage), app).await
+        let mut instance = Self::signed_in(db, Some(storage), app).await;
+        instance.lines = lines;
+        instance
+    }
+
+    fn logged(&self) -> Vec<String> {
+        self.lines.lock().unwrap().clone()
     }
 
     /// A server started without `STORAGE_ROOT`.
@@ -138,6 +165,7 @@ impl Instance {
                     storage,
                     app,
                     cookie,
+                    lines: Arc::default(),
                 };
             }
         }
@@ -274,6 +302,50 @@ mod upload {
         assert!(asset["current_version_id"].as_str().is_some());
         assert_eq!(asset["original_url"], format!("/api/assets/{id}/original"));
         assert_eq!(instance.rows().await, 2);
+    }
+
+    #[tokio::test]
+    async fn upload_records_the_file_size_of_a_png_of_known_size() {
+        let instance = Instance::new().await;
+        let response = instance.upload("nebula.png", &png_of_size(1_234_567)).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let asset = &json(response).await["asset"];
+        let version = asset["current_version_id"].as_str().unwrap();
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        let (facet, value, on_version, on_asset, producer, producer_version): (
+            String,
+            Value,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+        ) = sqlx::query_as(
+            "SELECT facet, value, asset_version_id::text, asset_id::text, producer_id, producer_version \
+             FROM public.facet_values",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(facet, "image.file-size");
+        assert_eq!(value, serde_json::json!(1_234_567));
+        assert_eq!(on_version.as_deref(), Some(version));
+        assert_eq!(on_asset, None);
+        assert_eq!(producer, "image.measure-file-size");
+        assert_eq!(producer_version, env!("CARGO_PKG_VERSION"));
+        let (operator, status, actor): (String, String, String) = sqlx::query_as(
+            "SELECT r.operator_id, r.status, u.username FROM public.operation_runs r \
+             JOIN public.users u ON u.id = r.actor_user_id WHERE r.asset_version_id = $1::uuid",
+        )
+        .bind(version)
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(
+            (operator.as_str(), status.as_str(), actor.as_str()),
+            ("image.measure-file-size", "succeeded", "sam")
+        );
     }
 
     #[tokio::test]
@@ -699,6 +771,186 @@ mod upload {
         assert_eq!(instance.rows().await, 0);
         assert_eq!(files(instance.storage()), before);
         assert!(!instance.storage().join("tmp").exists());
+    }
+}
+
+/// A pack `test` whose Operators upload runs in place of the file-size
+/// Operator. It declares the facet `test.size`, a count in bytes.
+struct UploadPack(Mutex<Vec<Box<dyn Operator>>>);
+impl Pack for UploadPack {
+    fn id(&self) -> &str {
+        "test"
+    }
+    fn register(&self, registry: &mut Registry) {
+        registry.declare_facet(FacetSchema {
+            name: "test.size".into(),
+            label: "Size".into(),
+            value_type: FacetType::Count,
+            unit: "bytes".into(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        });
+        for operator in self.0.lock().unwrap().drain(..) {
+            registry.register_operator(operator);
+        }
+    }
+}
+
+/// Make upload run `operator`, registered beside the image pack.
+fn running(operator: impl Operator + 'static) -> impl FnOnce(Library) -> Library {
+    move |library| {
+        let id = operator.id().to_owned();
+        let mut registry = Registry::new();
+        registry.register_pack(&ImagePack).unwrap();
+        registry
+            .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
+            .unwrap();
+        library
+            .with_registry(registry)
+            .with_upload_operators(vec![id])
+    }
+}
+
+/// Proposes the version's size as `test.size`, once `release` is set.
+struct Blocking {
+    started: Arc<AtomicBool>,
+    release: Arc<AtomicBool>,
+}
+impl Operator for Blocking {
+    fn id(&self) -> &str {
+        "test.block"
+    }
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn writes(&self) -> &[&str] {
+        &["test.size"]
+    }
+    fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+        self.started.store(true, Ordering::SeqCst);
+        let deadline = std::time::Instant::now() + SECONDS;
+        while !self.release.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let size = context.candidate_size() as i64;
+        context
+            .propose_facet("test.size", FacetValue::Integer(size))
+            .map_err(|_| OperatorError::Failed("proposal".into()))
+    }
+}
+
+impl Instance {
+    /// The answer to `sql`, a boolean query, once it is true, or a panic
+    /// after ten seconds.
+    async fn eventually(&self, sql: &str) {
+        let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+        let deadline = tokio::time::Instant::now() + SECONDS;
+        loop {
+            let done: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.to_owned()))
+                .fetch_one(&mut conn)
+                .await
+                .unwrap();
+            if done {
+                return;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "never true: {sql}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Start uploading `bytes` as `nebula.png` in its own task.
+    fn start_upload(&self, bytes: &[u8]) -> tokio::task::JoinHandle<Response> {
+        let request = self
+            .upload_request()
+            .body(Body::from(multipart(
+                &[Part::file("file", "nebula.png", "image/png", bytes)],
+                true,
+                b"",
+            )))
+            .unwrap();
+        let app = self.app.clone();
+        tokio::spawn(async move { app.oneshot(request).await.unwrap() })
+    }
+}
+
+mod upload_disconnect {
+    use super::*;
+
+    #[tokio::test]
+    async fn upload_disconnect_while_the_asset_commits_still_saves_and_runs() {
+        let instance = Instance::new().await;
+        let mut locker = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        sqlx::raw_sql("BEGIN; LOCK TABLE public.assets IN ACCESS EXCLUSIVE MODE")
+            .execute(&mut locker)
+            .await
+            .unwrap();
+        let upload = instance.start_upload(PNG);
+        // The upload's insert waits on the lock: ingest has passed its last
+        // cancellation check.
+        instance
+            .eventually(
+                "SELECT count(*) > 0 FROM pg_locks \
+                 WHERE relation = 'public.assets'::regclass AND NOT granted",
+            )
+            .await;
+        upload.abort();
+        assert!(upload.await.unwrap_err().is_cancelled());
+        sqlx::raw_sql("ROLLBACK")
+            .execute(&mut locker)
+            .await
+            .unwrap();
+        instance
+            .eventually(
+                "SELECT count(*) = 1 FROM public.operation_runs \
+                 WHERE operator_id = 'image.measure-file-size' AND status = 'succeeded'",
+            )
+            .await;
+        assert_eq!(instance.rows().await, 2);
+        instance
+            .eventually(&format!(
+                "SELECT count(*) = 1 FROM public.facet_values \
+                 WHERE facet = 'image.file-size' AND value = '{}'::jsonb",
+                PNG.len()
+            ))
+            .await;
+    }
+
+    #[tokio::test]
+    async fn upload_disconnect_during_the_run_still_ends_it_succeeded() {
+        let started = Arc::new(AtomicBool::new(false));
+        let release = Arc::new(AtomicBool::new(false));
+        let instance = Instance::with_library(running(Blocking {
+            started: started.clone(),
+            release: release.clone(),
+        }))
+        .await;
+        let upload = instance.start_upload(PNG);
+        let deadline = tokio::time::Instant::now() + SECONDS;
+        while !started.load(Ordering::SeqCst) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the run never started"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        upload.abort();
+        assert!(upload.await.unwrap_err().is_cancelled());
+        release.store(true, Ordering::SeqCst);
+        instance
+            .eventually(
+                "SELECT count(*) = 1 FROM public.operation_runs \
+                 WHERE operator_id = 'test.block' AND status = 'succeeded'",
+            )
+            .await;
+        instance
+            .eventually(&format!(
+                "SELECT count(*) = 1 FROM public.facet_values \
+                 WHERE facet = 'test.size' AND value = '{}'::jsonb",
+                PNG.len()
+            ))
+            .await;
     }
 }
 
@@ -1198,5 +1450,333 @@ mod web_fallback {
         let home = instance.get("/", None).await;
         assert_eq!(home.status(), StatusCode::OK);
         assert_eq!(body_text(home).await, INDEX);
+    }
+}
+
+mod get_asset {
+    use super::*;
+
+    impl Instance {
+        async fn read(&self, id: &str) -> Response {
+            self.get(&format!("/api/assets/{id}"), Some(&self.cookie))
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_wraps_the_list_entry_with_its_facets() {
+        let instance = Instance::new().await;
+        instance.upload("nebula.png", PNG).await;
+        let listed = json(instance.list().await).await["assets"][0].clone();
+        let response = instance.read(listed["id"].as_str().unwrap()).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json(response).await;
+        let fields: Vec<_> = body.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(fields, ["asset"]);
+        let mut asset = body["asset"].clone();
+        assert!(asset["facets"].is_array());
+        asset.as_object_mut().unwrap().remove("facets");
+        assert_eq!(asset, listed);
+    }
+
+    #[tokio::test]
+    async fn get_asset_returns_the_file_size_without_provenance() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.png", &png_of_size(1_234_567)).await).await;
+        let response = instance
+            .read(uploaded["asset"]["id"].as_str().unwrap())
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["asset"]["facets"],
+            serde_json::json!([{
+                "name": "image.file-size",
+                "label": "File size",
+                "value": 1_234_567,
+                "unit": "bytes"
+            }])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_asset_with_no_facets_has_an_empty_list() {
+        let instance =
+            Instance::with_library(|library| library.with_upload_operators(vec![])).await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        let response = instance
+            .read(uploaded["asset"]["id"].as_str().unwrap())
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["asset"]["facets"],
+            serde_json::json!([])
+        );
+    }
+
+    /// Values of the Asset and its current version are listed by name, then
+    /// write time, then id, each with its own schema version's label and
+    /// unit; a value of another version is not.
+    #[tokio::test]
+    async fn get_asset_orders_facets_and_reads_each_with_its_own_schema() {
+        let instance =
+            Instance::with_library(|library| library.with_upload_operators(vec![])).await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        let asset = uploaded["asset"]["id"].as_str().unwrap().to_owned();
+        let version = uploaded["asset"]["current_version_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        instance
+            .execute(&format!(
+                "INSERT INTO public.asset_versions (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) \
+                 SELECT '00000000-0000-4000-8000-0000000000f1', asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at \
+                 FROM public.asset_versions WHERE id = '{version}';
+                 INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
+                 SELECT '00000000-0000-4000-8000-0000000000e1', 'test.op', '1', '{version}', id, 'succeeded', now(), now() FROM public.users;
+                 INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
+                 SELECT '00000000-0000-4000-8000-0000000000e2', 'test.op', '1', '00000000-0000-4000-8000-0000000000f1', id, 'succeeded', now(), now() FROM public.users;
+                 INSERT INTO public.facet_schemas VALUES \
+                   ('test.b', 1, 'test', 'B one', 'count', 'px', 'asset_version'), \
+                   ('test.b', 2, 'test', 'B two', 'count', 'mm', 'asset_version'), \
+                   ('test.a', 1, 'test', 'A', 'count', '', 'asset');
+                 INSERT INTO public.facet_values (id, facet, schema_version, asset_id, asset_version_id, value, producer_id, producer_version, run_id, written_at) VALUES \
+                   ('00000000-0000-4000-8000-000000000003', 'test.b', 2, NULL, '{version}', '3', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-02T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000002', 'test.b', 1, NULL, '{version}', '2', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-01T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000005', 'test.b', 1, NULL, '{version}', '5', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-02T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000001', 'test.a', 1, '{asset}', NULL, '1', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-03T00:00:00Z'), \
+                   ('00000000-0000-4000-8000-000000000009', 'test.b', 1, NULL, '00000000-0000-4000-8000-0000000000f1', '9', 'test.op', '1', '00000000-0000-4000-8000-0000000000e2', '2026-01-01T00:00:00Z');"
+            ))
+            .await;
+        let response = instance.read(&asset).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            json(response).await["asset"]["facets"],
+            serde_json::json!([
+                {"name": "test.a", "label": "A", "value": 1, "unit": ""},
+                {"name": "test.b", "label": "B one", "value": 2, "unit": "px"},
+                {"name": "test.b", "label": "B two", "value": 3, "unit": "mm"},
+                {"name": "test.b", "label": "B one", "value": 5, "unit": "px"},
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_asset_of_an_unknown_or_malformed_id_is_404() {
+        let instance = Instance::new().await;
+        instance.upload("nebula.png", PNG).await;
+        for id in ["00000000-0000-4000-8000-000000000000", "not-an-id"] {
+            let response = instance.read(id).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{id}");
+            let body = body_text(response).await;
+            assert!(
+                !body.contains("nebula") && !body.contains("facets"),
+                "{id}: {body}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_answers_503_when_the_database_fails_after_the_session_check() {
+        for broken in ["assets", "facet_values"] {
+            let instance = Instance::new().await;
+            let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+            instance
+                .execute(&format!("ALTER TABLE public.{broken} RENAME TO moved_away"))
+                .await;
+            let response = instance
+                .read(uploaded["asset"]["id"].as_str().unwrap())
+                .await;
+            assert_eq!(
+                response.status(),
+                StatusCode::SERVICE_UNAVAILABLE,
+                "{broken}"
+            );
+            assert_eq!(
+                body_text(response).await,
+                r#"{"error":"the library is unavailable; try again later"}"#,
+                "{broken}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_without_a_valid_session_answers_401_with_no_metadata() {
+        for (case, sql) in INVALID_SESSIONS {
+            let instance = Instance::new().await;
+            let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+            let cookie = match sql {
+                Some(sql) => Some(instance.with_session(sql).await),
+                None => None,
+            };
+            let id = uploaded["asset"]["id"].as_str().unwrap();
+            let response = instance.get(&format!("/api/assets/{id}"), cookie).await;
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{case}");
+            let body = body_text(response).await;
+            assert!(
+                !body.contains("nebula") && !body.contains("facets"),
+                "{case}: {body}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_from_another_origin_is_not_refused() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        let id = uploaded["asset"]["id"].as_str().unwrap();
+        let request = Request::get(format!("/api/assets/{id}"))
+            .header(header::COOKIE, &instance.cookie)
+            .header(header::HOST, "photos.example")
+            .header(header::ORIGIN, "https://elsewhere.example")
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(instance.send(request).await.status(), StatusCode::OK);
+    }
+}
+
+mod upload_run {
+    use super::*;
+
+    /// An Operator `test.op` that writes `test.size`, run by `script`.
+    struct Scripted(fn(&mut AssetContext<'_>) -> Result<(), OperatorError>);
+    impl Operator for Scripted {
+        fn id(&self) -> &str {
+            "test.op"
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn writes(&self) -> &[&str] {
+            &["test.size"]
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            (self.0)(context)
+        }
+    }
+
+    /// Upload `nebula.png` to a server whose upload runs `script`; check the
+    /// 201 and its body against the library list; answer the Asset's id.
+    async fn uploaded(instance: &Instance) -> String {
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let body = json(response).await;
+        let listed = json(instance.list().await).await["assets"].clone();
+        assert_eq!(listed, serde_json::json!([body["asset"]]));
+        body["asset"]["id"].as_str().unwrap().to_owned()
+    }
+
+    async fn facets(instance: &Instance, id: &str) -> Value {
+        let response = instance
+            .get(&format!("/api/assets/{id}"), Some(&instance.cookie))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        json(response).await["asset"]["facets"].clone()
+    }
+
+    /// The one run's status and reason.
+    async fn run(instance: &Instance) -> (String, Option<String>) {
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        sqlx::query_as("SELECT status, reason FROM public.operation_runs")
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn upload_run_that_fails_still_answers_201() {
+        let instance = Instance::with_library(running(Scripted(|_| {
+            Err(OperatorError::Failed("could not read the header".into()))
+        })))
+        .await;
+        let id = uploaded(&instance).await;
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        assert_eq!(
+            run(&instance).await,
+            ("failed".into(), Some("could not read the header".into()))
+        );
+        let line = format!("file-size run failed for asset {id}: could not read the header");
+        assert!(instance.logged().contains(&line), "{:?}", instance.logged());
+    }
+
+    #[tokio::test]
+    async fn upload_run_whose_operator_panics_still_answers_201() {
+        let instance =
+            Instance::with_library(running(Scripted(|_| panic!("the operator broke")))).await;
+        let id = uploaded(&instance).await;
+        assert_eq!(
+            run(&instance).await,
+            ("failed".into(), Some("the operator stopped".into()))
+        );
+        // The server answers the next request.
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        assert_eq!(instance.list().await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn upload_run_whose_proposal_is_refused_still_answers_201() {
+        let instance = Instance::with_library(running(Scripted(|context| {
+            context
+                .propose_facet("test.size", FacetValue::Integer(-1))
+                .map_err(|_| OperatorError::Failed("proposal".into()))
+        })))
+        .await;
+        let id = uploaded(&instance).await;
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        let (status, reason) = run(&instance).await;
+        assert_eq!(status, "failed");
+        assert!(reason.unwrap().contains("test.size"));
+    }
+
+    #[tokio::test]
+    async fn upload_run_whose_first_insert_is_refused_still_answers_201() {
+        let instance = Instance::new().await;
+        instance
+            .execute("ALTER TABLE public.operation_runs ADD CONSTRAINT refuse_all CHECK (false)")
+            .await;
+        let id = uploaded(&instance).await;
+        assert_eq!(instance.rows().await, 2);
+        assert_eq!(facets(&instance, &id).await, serde_json::json!([]));
+        let prefix = format!("file-size run not recorded for asset {id}:");
+        assert!(
+            instance
+                .logged()
+                .iter()
+                .any(|line| line.starts_with(&prefix)),
+            "{:?}",
+            instance.logged()
+        );
+    }
+
+    /// Every update of a run is refused, so core cannot record or read back
+    /// how it ended: the outcome is unknown, and only the answer and the log
+    /// line are certain.
+    #[tokio::test]
+    async fn upload_run_whose_outcome_is_unknown_still_answers_201() {
+        let instance = Instance::new().await;
+        instance
+            .execute(
+                "CREATE FUNCTION public.refuse_update() RETURNS trigger LANGUAGE plpgsql \
+                 AS $$ BEGIN RAISE EXCEPTION 'refused'; END $$; \
+                 CREATE TRIGGER refuse_update BEFORE UPDATE ON public.operation_runs \
+                 FOR EACH ROW EXECUTE FUNCTION public.refuse_update();",
+            )
+            .await;
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let id = json(response).await["asset"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let prefix = format!("file-size run not recorded for asset {id}:");
+        assert!(
+            instance
+                .logged()
+                .iter()
+                .any(|line| line.starts_with(&prefix)),
+            "{:?}",
+            instance.logged()
+        );
     }
 }
