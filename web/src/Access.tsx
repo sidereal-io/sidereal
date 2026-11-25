@@ -126,6 +126,8 @@ function CredentialsForm({
 function Access() {
   const [view, setView] = useState<View>("loading");
   const [message, setMessage] = useState<string | null>(null);
+  // The signed-in view's session signal, passed to the Library.
+  const [session] = useState(() => new AbortController());
 
   useEffect(() => {
     let stopped = false;
@@ -211,7 +213,11 @@ function Access() {
     );
   }
   return (
-    <Library onSessionLost={sessionLost} notice={message}>
+    <Library
+      onSessionLost={sessionLost}
+      session={session.signal}
+      notice={message}
+    >
       <span className="access-user">{view.username}</span>
       <button
         className="button-quiet"

@@ -193,11 +193,15 @@ function Picture({ entry }: { entry: Entry }) {
 
 function Library({
   onSessionLost,
+  session,
   notice,
   children,
 }: {
   // Called when the server says the session has ended.
   onSessionLost: () => void;
+  // Aborted as soon as the account learns the session has ended, so no
+  // more files are sent, even before the Library goes away.
+  session: AbortSignal;
   // A fixed message from the account, such as a failed sign-out.
   notice?: string | null;
   // The account's items, shown in the top bar after the Library's own.
@@ -244,8 +248,9 @@ function Library({
   // Sends the files of one pick in turn, each only after the one before it
   // has an answer or has ended without one.
   async function send(files: File[]) {
-    const signal = uploadsRef.current?.signal;
-    if (sendingRef.current || !signal) return;
+    const uploads = uploadsRef.current?.signal;
+    if (sendingRef.current || !uploads) return;
+    const signal = AbortSignal.any([session, uploads]);
     // Read afresh after each await: an abort can come at any time.
     const stopped = () => signal.aborted;
     sendingRef.current = true;

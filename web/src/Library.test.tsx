@@ -68,8 +68,11 @@ const listAnswer = (...assets: unknown[]): Answer => [200, { assets }];
 
 const button = (name: string) => screen.queryByRole("button", { name });
 
-function showLibrary(onSessionLost = vi.fn()) {
-  render(<Library onSessionLost={onSessionLost} />);
+// A session signal that Access never aborts.
+const live = () => new AbortController().signal;
+
+function showLibrary(onSessionLost = vi.fn(), session = live()) {
+  render(<Library onSessionLost={onSessionLost} session={session} />);
   return onSessionLost;
 }
 
@@ -114,7 +117,9 @@ describe("Library", () => {
     stubServer({
       "GET /api/assets": listAnswer(entry("a3", "<b>bold</b>.png")),
     });
-    const { container } = render(<Library onSessionLost={vi.fn()} />);
+    const { container } = render(
+      <Library onSessionLost={vi.fn()} session={live()} />,
+    );
     await screen.findByText("<b>bold</b>.png");
     expect(container.querySelector("b")).toBeNull();
   });
@@ -219,7 +224,9 @@ describe("Library", () => {
       vi.fn(() => late.promise),
     );
     const onSessionLost = vi.fn();
-    const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+    const { unmount } = render(
+      <Library onSessionLost={onSessionLost} session={live()} />,
+    );
     await screen.findByText("Loading the library…");
     unmount();
     // Even an answer that would end the session is ignored.
@@ -410,7 +417,9 @@ describe("Library", () => {
             : Promise.resolve(Response.json({ assets: [] })),
         ),
       );
-      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      const { container } = render(
+        <Library onSessionLost={vi.fn()} session={live()} />,
+      );
       await screen.findByRole("button", { name: "Upload" });
       choose(
         named("a.png"),
@@ -725,7 +734,9 @@ describe("Library", () => {
         "GET /api/assets": listAnswer(),
         "POST /api/assets": [409, { asset: entry("a3", "<b>bold</b>.png") }],
       });
-      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      const { container } = render(
+        <Library onSessionLost={vi.fn()} session={live()} />,
+      );
       await screen.findByRole("button", { name: "Upload" });
       choose(named("m31-final.png"));
       await screen.findByText(
@@ -766,7 +777,9 @@ describe("Library", () => {
             : Promise.resolve(Response.json({ assets: [] })),
         ),
       );
-      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      const { container } = render(
+        <Library onSessionLost={vi.fn()} session={live()} />,
+      );
       await screen.findByRole("button", { name: "Upload" });
       choose(new File(["x"], "<b>m42</b>.png", { type: "image/png" }));
       await screen.findByText("Uploading <b>m42</b>.png…");
@@ -786,6 +799,63 @@ describe("Library", () => {
       });
     });
 
+    it("sends no more files of the pick after an upload answers 401", async () => {
+      const fetch = stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [401, { error: "unauthenticated" }],
+      });
+      const onSessionLost = showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"), named("c.png"));
+      await waitFor(() => {
+        expect(onSessionLost).toHaveBeenCalledTimes(1);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(uploads(fetch)).toHaveLength(1);
+    });
+
+    it("sends no more files once the session signal is aborted", async () => {
+      const { fetch, release } = heldUploads(2);
+      const session = new AbortController();
+      const onSessionLost = showLibrary(vi.fn(), session.signal);
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      const lists = listRequests(fetch).length;
+      session.abort();
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(uploads(fetch)).toHaveLength(1);
+      expect(lines()).toEqual(["Uploading a.png…", "b.png is waiting."]);
+      expect(listRequests(fetch)).toHaveLength(lists);
+      expect(onSessionLost).not.toHaveBeenCalled();
+      screen.getByRole("region", { name: "Library" });
+    });
+
+    it("sends no more files once the Library is gone", async () => {
+      const { fetch, release } = heldUploads(2);
+      const onSessionLost = vi.fn();
+      const { unmount } = render(
+        <Library onSessionLost={onSessionLost} session={live()} />,
+      );
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading a.png…");
+      const lists = listRequests(fetch).length;
+      unmount();
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(uploads(fetch)).toHaveLength(1);
+      expect(listRequests(fetch)).toHaveLength(lists);
+      expect(onSessionLost).not.toHaveBeenCalled();
+    });
+
     it("ignores an upload that answers after the library is gone", async () => {
       const pending = deferred();
       const fetch = vi.fn((_input: string, init?: RequestInit) =>
@@ -795,7 +865,9 @@ describe("Library", () => {
       );
       vi.stubGlobal("fetch", fetch);
       const onSessionLost = vi.fn();
-      const { unmount } = render(<Library onSessionLost={onSessionLost} />);
+      const { unmount } = render(
+        <Library onSessionLost={onSessionLost} session={live()} />,
+      );
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText("Uploading nebula.png…");
