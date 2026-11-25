@@ -11,7 +11,10 @@ use axum::{
 use config::{AllowedOrigins, TrustedProxies};
 use serde_json::{json, Value};
 use sidereal_core::database::Database;
-use std::{path::Path, sync::Arc};
+use std::{
+    path::{Component, Path},
+    sync::Arc,
+};
 use tower::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -101,7 +104,8 @@ pub fn app_with_library(
 /// An asset page address, `/assets/<id>` with a lowercase Asset id, also
 /// answers with `index.html`, so the page's address survives a reload. Such
 /// an address is reserved: a file at that path is never served, and a path
-/// that becomes one only once percent-decoded is not found.
+/// that becomes one only once the file service decodes and normalizes it is
+/// not found.
 pub fn with_web_root(router: Router, web_root: Option<&Path>) -> Router {
     let Some(web_root) = web_root else {
         return router;
@@ -118,13 +122,34 @@ pub fn with_web_root(router: Router, web_root: Option<&Path>) -> Router {
             if is_asset_page(path) {
                 return shell.oneshot(request).await.into_response();
             }
-            // The file service decodes the path before it looks for a file.
-            let decoded = percent_encoding::percent_decode(path.as_bytes()).decode_utf8();
-            if decoded.is_ok_and(|decoded| is_asset_page(&decoded)) {
+            if reaches_asset_page(path) {
                 return StatusCode::NOT_FOUND.into_response();
             }
             files.oneshot(request).await.into_response()
         })
+}
+
+/// Whether the file service would look for the file at an asset page
+/// address. Like `ServeDir`, this decodes the path, then drops empty and `.`
+/// segments, so `/assets/%30b6…`, `/assets//0b6…` and `/./assets/0b6…` all
+/// reach `assets/0b6…`.
+fn reaches_asset_page(path: &str) -> bool {
+    let Ok(decoded) = percent_encoding::percent_decode(path.as_bytes()).decode_utf8() else {
+        return false;
+    };
+    let mut normalized = String::new();
+    for component in Path::new(&*decoded).components() {
+        match component {
+            Component::Normal(segment) => {
+                normalized.push('/');
+                normalized.push_str(&segment.to_string_lossy());
+            }
+            Component::RootDir | Component::CurDir => {}
+            // `ServeDir` refuses any other component itself.
+            _ => return false,
+        }
+    }
+    is_asset_page(&normalized)
 }
 
 /// Whether `path` is exactly `/assets/` and a lowercase Asset id: hexadecimal

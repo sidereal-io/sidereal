@@ -508,10 +508,12 @@ slash is not an asset page address. Vite's output folder stays where it is.
 `ServeDir` percent-decodes the path before it looks for a file, so
 `/assets/%30b6f3c2e-…` would reach the file at the reserved path
 `assets/0b6f3c2e-…`. The wrapper therefore also decodes the path, with the
-same `percent_decode(…).decode_utf8()` that `ServeDir` uses. When the
-decoded path is an asset page address but the path as written is not, it
-answers 404 itself, and `ServeDir` never sees the request. A `web_root` test
-requests the encoded spelling of the reserved file's address.
+same `percent_decode(…).decode_utf8()` that `ServeDir` uses, and drops empty
+and `.` segments as `ServeDir`'s path components do, so `/assets//0b6f3c2e-…`
+reaches the same file. When the normalized path is an asset page address but
+the path as written is not, it answers 404 itself, and `ServeDir` never sees
+the request. A `web_root` test requests the encoded, doubled-slash and `.`
+spellings of the reserved file's address.
 
 An asset page address is reserved. A file or folder in `WEB_ROOT` whose path
 is an asset page address is never served: the address answers with

@@ -27,7 +27,8 @@ id, and without a session. The answer SHALL hold no library data.
 A file or folder in `WEB_ROOT` whose path is an asset page address SHALL NOT
 be served; the address SHALL answer with `index.html`. A request path that
 is not an asset page address as written, but becomes one once its
-percent-encoding is decoded, SHALL answer 404. Every other file in
+percent-encoding is decoded and its empty and `.` segments are dropped, as
+the file service does, SHALL answer 404. Every other file in
 `WEB_ROOT` SHALL still be served at its own path.
 
 #### Scenario: The web shell's own files still load

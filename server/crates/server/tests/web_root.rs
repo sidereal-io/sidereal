@@ -174,12 +174,21 @@ async fn a_file_at_an_asset_page_address_is_not_served() {
 
     let encoded = ASSET_PAGE.replacen("/assets/0", "/assets/%30", 1);
     assert_eq!(encoded, "/assets/%30b6f3c2e-8d1a-4f7b-9c3e-2a5d6e7f8091");
-    for method in ["GET", "HEAD"] {
-        let response = send(&router, method, &encoded).await;
-        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method}");
-        let body = text(response).await;
-        assert_ne!(body, INDEX, "{method}");
-        assert!(!body.contains("the added file"), "{method}");
+    let doubled = ASSET_PAGE.replacen("/assets/", "/assets//", 1);
+    let dotted = format!("/.{ASSET_PAGE}");
+    let leading = format!("/{ASSET_PAGE}");
+    for spelling in [&encoded, &doubled, &dotted, &leading] {
+        for method in ["GET", "HEAD"] {
+            let response = send(&router, method, spelling).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::NOT_FOUND,
+                "{method} {spelling}"
+            );
+            let body = text(response).await;
+            assert_ne!(body, INDEX, "{method} {spelling}");
+            assert!(!body.contains("the added file"), "{method} {spelling}");
+        }
     }
 }
 
