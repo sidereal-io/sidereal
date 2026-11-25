@@ -519,6 +519,11 @@ impl Registry {
             ..Registry::default()
         };
         pack.register(&mut staged);
+        // Every schema the pack declared is owned by the id read above, even
+        // if the pack replaced its staging Registry.
+        for declared in &mut staged.facets {
+            declared.owner.clone_from(&pack_id);
+        }
         let pack_id = pack_id.as_str();
         for (index, declared) in staged.facets.iter().enumerate() {
             let name = &declared.schema.name;
@@ -1048,6 +1053,25 @@ mod facet_declaration {
             self.0.store(true, std::sync::atomic::Ordering::SeqCst);
             registry.declare_facet(size("test.size"));
         }
+    }
+
+    /// A pack that swaps its staging Registry for a new one, then declares.
+    struct Swapping;
+    impl Pack for Swapping {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            *registry = Registry::new();
+            registry.declare_facet(size("test.size"));
+        }
+    }
+
+    #[test]
+    fn facet_declaration_records_the_registering_pack_as_owner() {
+        let mut registry = Registry::new();
+        registry.register_pack(&Swapping).unwrap();
+        assert_eq!(registry.facet_schema("test.size").unwrap().owner, "test");
     }
 
     #[test]
