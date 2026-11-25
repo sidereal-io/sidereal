@@ -15,7 +15,8 @@ it. This includes another version of the same Asset.
 
 ### Requirement: An Operator run makes no Asset
 
-Core SHALL record an Operator run that proposes an Asset as failed. Core
+Until core accepts derived Assets from an Operator, core SHALL record an
+Operator run that proposes an Asset as failed. Core
 SHALL add no Asset and no Asset version for that run, and SHALL store no
 facet value from it. When the Operator reports success after proposing an
 Asset, the reason SHALL say that an Operator run proposed an Asset.
