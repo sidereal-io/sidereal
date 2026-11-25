@@ -539,6 +539,79 @@ describe("Access", () => {
       expect(server.sent()).toEqual(["a.png"]);
     });
 
+    it.each([
+      [
+        "answers 500",
+        (request: Held) => {
+          request.answer(new Response(null, { status: 500 }));
+        },
+      ],
+      [
+        "gets no answer",
+        (request: Held) => {
+          request.fail();
+        },
+      ],
+    ])("goes on with the pick when the sign-out %s", async (_, end) => {
+      const server = heldServer();
+      await signedInAsSam();
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        end(server.signOut());
+        await server.signOut().promise.catch(() => undefined);
+      });
+      await screen.findByText("Something went wrong");
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "b.png"]);
+      });
+      await act(async () => {
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      await screen.findByText("b.png was uploaded.");
+      expect(lines()).toEqual(["a.png was uploaded.", "b.png was uploaded."]);
+      screen.getByRole("region", { name: "Library" });
+      screen.getByText("Something went wrong");
+    });
+
+    it("ends the pick at a 401 after a sign-out with no answer", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      pick("a.png", "b.png", "c.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        server.signOut().fail();
+        await server.signOut().promise.catch(() => undefined);
+      });
+      await screen.findByText("Something went wrong");
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "b.png"]);
+      });
+      await act(async () => {
+        server
+          .upload(1)
+          .answer(Response.json({ error: "unauthenticated" }, { status: 401 }));
+        await server.upload(1).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.sent()).toEqual(["a.png", "b.png"]);
+    });
+
     it("gives a new sign-in a fresh session signal", async () => {
       const server = heldServer();
       await signedInAsSam();
