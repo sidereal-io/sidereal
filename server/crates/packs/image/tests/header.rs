@@ -448,6 +448,14 @@ fn jpeg_wider_than_16384_pixels_gives_its_width_and_height() {
 }
 
 #[test]
+fn jpeg_taller_than_16384_pixels_gives_its_width_and_height() {
+    assert_eq!(
+        read_header(&mut Bytes::new(jpeg(12_000, 20_000))),
+        Ok(header(12_000, 20_000))
+    );
+}
+
+#[test]
 fn jpeg_with_exif_and_icc_before_its_frame_header_gives_its_width_and_height() {
     let before = [exif(60_000, 1), icc(&[0x55; 3_000])].concat();
     assert_eq!(
