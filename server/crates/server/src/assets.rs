@@ -4,9 +4,9 @@
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
 //! the Asset, or finds the Asset that already holds the bytes (409). A new
-//! Asset then has the file-size Operator run over its version. Every refusal
-//! has a fixed body, so no path or driver error reaches a client; the
-//! operational log names the cause.
+//! Asset then has the file-size and header Operators run over its version.
+//! Every refusal has a fixed body, so no path or driver error reaches a
+//! client; the operational log names the cause.
 use crate::access::Log;
 use axum::{
     body::{Body, BodyDataStream, Bytes},
@@ -33,7 +33,7 @@ use sidereal_core::{
     storage::objects::{ObjectStore, StageError, Staged, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
-use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD, READ_HEADER};
 use sidereal_plugin_abi::Registry;
 use std::{
     convert::Infallible,
@@ -85,7 +85,7 @@ impl Library {
         Self {
             objects,
             registry: Arc::new(registry),
-            upload_operators: vec![FILE_SIZE.to_owned()],
+            upload_operators: vec![FILE_SIZE.to_owned(), READ_HEADER.to_owned()],
             reader: Arc::new(|file| Box::new(file)),
         }
     }
@@ -101,7 +101,7 @@ impl Library {
     }
 
     /// Run `operators`, in order, over each uploaded version, in place of
-    /// the file-size Operator.
+    /// the file-size and header Operators.
     #[doc(hidden)]
     pub fn with_upload_operators(self, operators: Vec<String>) -> Self {
         Self {
@@ -171,7 +171,8 @@ async fn list(State(assets): State<Assets>) -> Response {
     }
 }
 
-/// One Asset with the facet values of the Asset and its current version.
+/// One Asset with its current version's media type and the facet values of
+/// the Asset and that version.
 /// A database failure is 503, so it never reads as a missing Asset or as an
 /// Asset with no facets.
 async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
@@ -198,6 +199,7 @@ async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response 
         Err(error) => return failed(&error),
     };
     let mut asset = entry(&record);
+    asset["media_type"] = json!(record.version.media_type);
     asset["facets"] = facets
         .iter()
         .map(|facet| {
@@ -496,9 +498,10 @@ async fn upload(
 
 /// Ingest `staged`. When that makes a new Asset, run each upload Operator over
 /// its version, with `actor` as the user who started the run. `cancelled`
-/// reaches ingest only: the runs get their own flag, which nothing sets. A
-/// run's result never fails the upload; this task logs it, since the request
-/// may be gone.
+/// reaches ingest only: the runs get their own flag, which nothing sets. Each
+/// run is independent: a failed run never stops the next one, and never
+/// fails the upload. This task logs each failure under its Operator's id,
+/// since the request may be gone.
 async fn save(
     assets: Assets,
     actor: i64,
@@ -543,11 +546,11 @@ async fn save(
             Ok(RunOutcome::Succeeded) => {}
             Ok(RunOutcome::Failed(reason)) => assets
                 .log
-                .line(&format!("file-size run failed for asset {id}: {reason}")),
+                .line(&format!("{operator} run failed for asset {id}: {reason}")),
             Err(error @ OperationError::Unrecorded(_))
             | Err(error @ OperationError::UnknownOperator)
             | Err(error @ OperationError::UnknownVersion) => assets.log.line(&format!(
-                "file-size run not recorded for asset {id}: {error}"
+                "{operator} run not recorded for asset {id}: {error}"
             )),
         }
     }
@@ -585,10 +588,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_production_registry_runs_the_file_size_operator_on_upload() {
+    fn the_production_registry_runs_the_file_size_and_header_operators_on_upload() {
         let library = Library::new(None);
         assert!(library.registry.operator(FILE_SIZE).is_some());
+        assert!(library.registry.operator(READ_HEADER).is_some());
         assert!(library.registry.source(MANUAL_UPLOAD).is_some());
-        assert_eq!(library.upload_operators, [FILE_SIZE]);
+        assert_eq!(library.upload_operators, [FILE_SIZE, READ_HEADER]);
     }
 }

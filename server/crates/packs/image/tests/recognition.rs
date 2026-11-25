@@ -44,7 +44,10 @@ fn registration_gives_the_registry_the_manual_upload_source() {
     registry.register_pack(&ImagePack).unwrap();
     assert_eq!(ImagePack.id(), "image");
     assert_eq!(registry.source_ids(), ["image.manual-upload"]);
-    assert_eq!(registry.operator_ids(), ["image.measure-file-size"]);
+    assert_eq!(
+        registry.operator_ids(),
+        ["image.measure-file-size", "image.read-header"]
+    );
 }
 
 #[test]

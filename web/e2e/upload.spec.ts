@@ -8,9 +8,9 @@ import { test, expect, type Page } from "@playwright/test";
 // one pick, uploads the PNG's bytes again under another name and is told it
 // is already there, and still sees exactly the two images after the runner
 // restarts the server. Then Nova opens the PNG's asset page and reads its
-// file size, before and after a reload. The Rust process test
-// (server/crates/server/tests/journey.rs) checks ids and bytes; this test
-// checks what Nova sees.
+// format, file size, height and width, before and after a reload. The Rust
+// process test (server/crates/server/tests/journey.rs) checks ids and bytes;
+// this test checks what Nova sees.
 const runDir = process.env.SIDEREAL_E2E_RUN_DIR ?? "";
 const runnerPid = Number(process.env.SIDEREAL_E2E_RUNNER_PID);
 const fixtures = fileURLToPath(
@@ -94,14 +94,20 @@ test("Nova uploads a PNG and a JPEG and sees them after a restart", async ({
   await expect(page.getByRole("img")).toHaveCount(images.length);
 });
 
-test("Nova opens an image's page, reads its file size, reloads it and goes back", async ({
+test("Nova opens an image's page, reads its facts, reloads it and goes back", async ({
   page,
 }) => {
   const name = "nebula.png";
   const bytes = new Intl.NumberFormat("en-US").format(
     statSync(join(fixtures, name)).size,
   );
-  const fileSize = page.getByRole("definition");
+  // nebula.png is 32 by 24 pixels.
+  const terms = ["Format", "File size", "Height", "Width"];
+  const values = ["PNG", `${bytes} bytes`, "24 pixels", "32 pixels"];
+  const expectFacts = async () => {
+    await expect(page.getByRole("term")).toHaveText(terms);
+    await expect(page.getByRole("definition")).toHaveText(values);
+  };
 
   await page.goto("/");
   await signIn(page, "Sign in");
@@ -111,14 +117,13 @@ test("Nova opens an image's page, reads its file size, reloads it and goes back"
   await expect(page).toHaveURL(/\/assets\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name })).toBeVisible();
   await expectShown(page, name);
-  await expect(page.getByRole("term")).toHaveText("File size");
-  await expect(fileSize).toHaveText(`${bytes} bytes`);
+  await expectFacts();
 
   const address = page.url();
   await page.reload();
   await expect(page).toHaveURL(address);
   await expect(page.getByRole("heading", { name })).toBeVisible();
-  await expect(fileSize).toHaveText(`${bytes} bytes`);
+  await expectFacts();
 
   // On a phone-width window the column fits inside the window.
   await page.setViewportSize({ width: 320, height: 640 });

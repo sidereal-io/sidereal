@@ -55,6 +55,10 @@ blake3 = "1"
 # Test client for the events socket; the same library axum's `ws` feature uses.
 tokio-tungstenite = "0.30"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+# Image header decoders for the image pack: the ones the `image` crate uses,
+# called directly, so a header run reads no pixel data.
+png = "0.18"
+zune-jpeg = "0.5"
 
 # Lighter debug information for development and test builds, to keep each
 # worktree's target/ small. Our own crates keep line tables, so panic

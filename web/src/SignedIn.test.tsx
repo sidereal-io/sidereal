@@ -47,6 +47,7 @@ const entry = (id: string, name: string) => ({
 const withFacts = (id: string, name: string, value: number) => ({
   asset: {
     ...entry(id, name),
+    media_type: "image/png",
     facets: [
       { name: "image.file-size", label: "File size", value, unit: "bytes" },
     ],
