@@ -2,23 +2,24 @@
 
 ## ADDED Requirements
 
-### Requirement: Upload records the image's format and dimensions
+### Requirement: Upload records the image's dimensions
 
 After the file-size run ends, and before it answers, the upload SHALL run the
 image pack's header Operator over the new version, with the uploading
 administrator as the user who started the run. The 201 answer SHALL keep its
 existing body. When the header run succeeded, reading the Asset SHALL return
-the format, width and height found from the file's bytes, not its name.
-Images saved before this change SHALL get no format, width or height.
+the width and height from the file's header, read by the format that the
+file's bytes show, not its name. Images saved before this change SHALL get
+no width or height.
 
-#### Scenario: A new upload has its format and dimensions
+#### Scenario: A new upload has its dimensions
 - **WHEN** Nova uploads a PNG of 4,096 by 2,160 pixels, its header run succeeds, and the server answers 201
-- **THEN** reading that Asset returns `image.format` with the value `PNG`, `image.width` with the value 4096 and `image.height` with the value 2160, each with the unit its schema gives
+- **THEN** reading that Asset returns `image.width` with the value 4096 and `image.height` with the value 2160, each with the unit `pixels`
 - **AND** one operation run of the header Operator exists for its version, with outcome `succeeded`, started by Nova
 
 #### Scenario: The bytes decide the format, not the name
-- **WHEN** Nova uploads a file named `m31.jpg` that holds PNG bytes, and the server answers 201
-- **THEN** reading that Asset returns `image.format` with the value `PNG`
+- **WHEN** Nova uploads a file named `m31.jpg` that holds the PNG bytes of a 32 by 24 pixel image, and the server answers 201
+- **THEN** reading that Asset returns the `media_type` `image/png`, `image.width` with the value 32 and `image.height` with the value 24
 
 #### Scenario: An image saved before this change
 - **WHEN** the server starts with this change and reads an Asset saved before it, whose only facet is its file size
@@ -55,7 +56,7 @@ run's values, and the server SHALL go on answering requests.
 
 #### Scenario: A failed run whose outcome cannot be recorded
 - **WHEN** Nova uploads a file of 1,000 bytes that starts with the JPEG signature but has no readable frame header, and PostgreSQL refuses every update to the runs' outcomes after the Asset is saved
-- **THEN** the response is 201, the Asset and its version remain, and reading the Asset returns no `image.format`, `image.width` or `image.height` facet
+- **THEN** the response is 201, the Asset and its version remain, and reading the Asset returns no `image.width` or `image.height` facet
 - **AND** the server log has a line that starts `image.read-header run not recorded for asset <id>:`
 
 ### Requirement: The server log names each failed upload run
@@ -102,11 +103,11 @@ header run. Each run SHALL end as it would have with the client connected.
 
 #### Scenario: The client goes away while the Asset is being saved
 - **WHEN** the client closes its connection after the upload has passed its last cancellation check and before the Asset's transaction commits
-- **THEN** the Asset is saved, one file-size run and one header run are recorded for its version, each with outcome `succeeded`, and reading the Asset afterwards returns its file size, format, width and height
+- **THEN** the Asset is saved, one file-size run and one header run are recorded for its version, each with outcome `succeeded`, and reading the Asset afterwards returns its file size, width and height
 
 #### Scenario: The client goes away during the run
 - **WHEN** the client closes its connection after the Asset is saved and before its upload runs have ended
-- **THEN** the file-size run and the header run both end `succeeded`, as they would have with the client connected, and reading the Asset afterwards returns its file size, format, width and height
+- **THEN** the file-size run and the header run both end `succeeded`, as they would have with the client connected, and reading the Asset afterwards returns its file size, width and height
 
 ## REMOVED Requirements
 
