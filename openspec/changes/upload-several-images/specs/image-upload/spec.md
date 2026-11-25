@@ -60,7 +60,7 @@ be able to choose and upload other files.
 - **THEN** the Upload button is enabled and the list is not requested again
 
 #### Scenario: A repeat in the middle of a pick
-- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, and the test releases the answers 201, 409 and 201 one at a time, each only after the screen shows the line for the answer before it
+- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, and the test releases the answers 201, 409 and 201 one at a time: the answer for `b.png` only once the list request that the answer for `a.png` causes has started, and the answer for `c.png` only once the line for `b.png` shows
 - **THEN** a list request starts after the answer for `a.png` and another after the answer for `c.png`
 - **AND** no list request starts between the answer for `b.png` and the answer for `c.png`
 
@@ -162,23 +162,34 @@ its answer, the Upload button SHALL be enabled again.
 ### Requirement: Ending the session stops the files not yet sent
 
 Once the library screen knows the session has ended, it SHALL NOT send any
-more files of the pick. The screen knows when Nova's sign-out has answered
-204 or 401, when an upload or list request answers 401, or when the events
-connection says the session ended. An upload that answers 401 SHALL move the
-screen to the sign-in form. The library and every file's line SHALL be
-hidden, as "Ending the session hides library data" requires.
+more files of the pick, even before the sign-in form shows. The screen knows
+when Nova's sign-out has answered 204 or 401, when an upload or list request
+answers 401, or when the events connection says the session ended. An upload
+that answers 401 SHALL move the screen to the sign-in form. The library and
+every file's line SHALL be hidden, as "Ending the session hides library data"
+requires.
 
 #### Scenario: An upload answers 401
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, and the upload of `a.png` answers 401
 - **THEN** the screen moves to the sign-in form, and no upload request is sent for `b.png` or `c.png`
 
+#### Scenario: The sign-out and an upload answer together
+- **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `b.png` is pending, and the test releases the sign-out's 204 and then the answer 201 for `b.png` in one step, with no wait between them
+- **THEN** no upload request is sent for `c.png`, and the screen shows the sign-in form
+
+#### Scenario: The events connection ends the session during a pick
+- **WHEN** Nova picks `a.png` and `b.png`, the events connection says the session ended while the upload of `a.png` is pending, and the upload of `a.png` then answers 201
+- **THEN** no upload request is sent for `b.png`, and the screen shows the sign-in form
+
 ### Requirement: A pending sign-out does not stop the pick
 
 Until the screen knows the session has ended, it SHALL go on sending the
-files in turn, including while a sign-out is still pending. A file sent then
-is either saved under the session, which is still valid, or refused by the
-server with 401. A sign-out that fails leaves the session, so the pick SHALL
-go on.
+files in turn, including while a sign-out is still pending. The server checks
+the session once, when each request arrives. So a file it admits gets its
+usual answer, and a file that arrives after the session is gone gets 401,
+which ends the pick as "Ending the session stops the files not yet sent"
+says. A sign-out that fails or gets no answer tells the screen nothing about
+the session, so the pick SHALL go on.
 
 #### Scenario: Nova signs out during a pick
 - **WHEN** Nova picks `a.png`, `b.png` and `c.png`, presses Sign out while the upload of `a.png` is pending, `a.png` answers 201 while the sign-out is still pending, and the sign-out answers 204 while the upload of `b.png` is pending
@@ -188,4 +199,8 @@ go on.
 
 #### Scenario: A failed sign-out leaves the pick going
 - **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, and the sign-out answers 500
+- **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and both files get their lines
+
+#### Scenario: A sign-out with no answer leaves the pick going
+- **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, and the sign-out request ends without an answer
 - **THEN** the library stays, the upload request for `b.png` is sent once `a.png` has its answer, and both files get their lines

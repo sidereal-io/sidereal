@@ -21,9 +21,10 @@ is a new fork that is costly to reverse:
   [ADR-002](../../../docs/decisions/ADR-002-core-domain-pack-split.md) are
   untouched. A multi-file endpoint can still come later without undoing
   anything here.
-- The list of lines, the loop that sends files in turn, and the disabled
-  Upload button are screen code. Changing them later touches one component
-  and its tests.
+- The list of lines, the loop that sends files in turn, the disabled
+  Upload button and the session signal that `Access` passes to the Library
+  are screen code. Changing them later touches two components and their
+  tests.
 - The lines use existing tokens and the existing status style, and the
   DESIGN.md edit is wording only, as
   [ADR-005](../../../docs/decisions/ADR-005-visual-design-system.md)

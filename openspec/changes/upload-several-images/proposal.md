@@ -25,9 +25,12 @@ alone.
   file found already in the library reloads nothing (D6, D13).
 - Once the screen knows the session has ended, files not yet sent are not
   sent (D7). It knows when the sign-out has answered, a request has answered
-  401, or the events connection says so. Until then the pick goes on, and the
-  server's session check refuses any file sent after the session is gone
-  (D12).
+  401, or the events connection says so. `Access` then aborts a signal it
+  passes to the Library at once, before the sign-in form shows (D14). Until
+  then the pick goes on. The server checks the session when each request
+  arrives: a file it admits gets its usual answer, and a file that arrives
+  after the session is gone gets 401. A sign-out that fails or gets no
+  answer tells the screen nothing, so the pick goes on (D12).
 - Cut from the story: a percentage of bytes sent. Out, as the story says:
   drag and drop, and folder upload (#358).
 
@@ -53,9 +56,12 @@ None.
 
 - `web/src/Library.tsx`: the picker takes several files, a queue sends them
   in turn, and the single upload state becomes a list of per-file lines.
+- `web/src/Access.tsx`: keeps an abort signal for the signed-in view, passes
+  it to the Library, and aborts it as soon as it learns the session ended.
 - `web/src/Library.css`: the per-file lines, from existing tokens.
 - `web/src/Library.test.tsx`, `web/src/Access.test.tsx` and
   `web/e2e/upload.spec.ts`: tests for several files, a sign-out during a
-  pick, and the tests whose rules change.
+  pick, the events connection ending a pick, and the tests whose rules
+  change.
 - `DESIGN.md`: the Library's upload wording says files, not a file.
 - No server, API, database or dependency change.

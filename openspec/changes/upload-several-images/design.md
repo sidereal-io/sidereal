@@ -14,17 +14,22 @@ All of this change is in the library screen, `web/src/Library.tsx`. Today:
 - `sendingRef` blocks a second choice while a request is open. The Upload
   button is disabled while the state is `sending`.
 - `uploadsRef` holds an `AbortController` that is aborted when the Library
-  unmounts. `Access.tsx` unmounts the Library once it knows the session has
-  ended: the sign-out has answered 204 or 401, a library request has called
-  `onSessionLost`, or the events connection has reported the end. It keeps
-  the Library mounted while the sign-out request is pending, and after a
-  sign-out that fails. So an aborted signal means "the screen knows the
-  session ended", which is the moment D12 names.
+  unmounts. `Access.tsx` learns that the session has ended when the sign-out
+  answers 204 or 401 (`signOut`), or when `sessionLost` runs for a library
+  request or the events connection. It then sets the signed-out view, but
+  React unmounts the Library, and runs its cleanup, only at the next commit.
+  An upload answer that arrives in that gap would let the loop send the next
+  file after the screen knows, which D12 forbids. So the unmount signal alone
+  is too late, and D14 adds a signal that `Access` aborts at once.
+- `Access` keeps the Library mounted while the sign-out request is pending,
+  and after a sign-out that fails or gets no answer, which shows the notice
+  "Something went wrong" in the Library.
 - A saved file or a lost answer bumps `generation`, which loads the list
   again. The list effect aborts the previous list request on each bump.
 
 The server keeps one file per request (D1), so nothing changes outside
-`web/` and `DESIGN.md`.
+`web/` and `DESIGN.md`. In `web/`, the change is in `Library.tsx`, plus the
+session signal in `Access.tsx` (D14).
 
 ## Goals / Non-Goals
 
@@ -53,10 +58,13 @@ The server keeps one file per request (D1), so nothing changes outside
 - **Existing seams reused:** `stubServer` and `deferred` in
   `Library.test.tsx`. `stubServer` gains one way to say "this turn gets no
   answer", so one list of answers can mix 201, 409, 415 and a lost answer
-  in the order the files are sent. The sign-out during a pick is tested
-  through `Access` in `web/src/Access.test.tsx`, because only `Access` holds
-  the pending sign-out: it renders `Access` with a stubbed `fetch` whose
-  upload and `DELETE /api/session` answers the test releases. The end-to-end
+  in the order the files are sent. The `Library` tests pass their own
+  `session` signal and abort it to stand in for `Access`. The sign-out and
+  the events connection during a pick are tested through `Access` in
+  `web/src/Access.test.tsx`, because only `Access` aborts the real signal: it
+  renders `Access` with a stubbed `fetch` whose upload and
+  `DELETE /api/session` answers the test releases, and the events socket
+  stub the file already uses. The end-to-end
   journey in
   `web/e2e/upload.spec.ts` picks its two fixture images in one pick, which
   proves the browser's `multiple` picker reaches the same code.
@@ -65,8 +73,8 @@ The server keeps one file per request (D1), so nothing changes outside
 
 - **Tier:** low
 - **Blast radius:** the library screen in `web/` (`Library.tsx`,
-  `Library.css` and their tests), one new test in `Access.test.tsx`, the
-  upload end-to-end test, and the
+  `Library.css` and their tests), the session signal in `Access.tsx` and its
+  new tests in `Access.test.tsx`, the upload end-to-end test, and the
   Library section of `DESIGN.md`. No API, schema, server, session or
   authorization code changes.
 
@@ -95,8 +103,10 @@ files would have nowhere to live.
 
 ### One loop sends the files in turn
 
-`send(files: File[])` replaces `send(file)`. It sets `sendingRef`, writes the
-waiting lines, then for each file:
+`send(files: File[])` replaces `send(file)`. Its signal is
+`AbortSignal.any([session, uploads])`: the `session` signal from `Access`
+(see the next decision) and the Library's own unmount signal. It sets
+`sendingRef`, writes the waiting lines, then for each file:
 
 1. Stops if the signal is aborted.
 2. Marks the file's line `sending` and awaits `sendFile`.
@@ -110,16 +120,42 @@ waiting lines, then for each file:
 After the last file, it clears `sendingRef`. A sequential `for … of` with
 `await` gives the one-at-a-time order (D2) without a queue object.
 
-The loop stops sending exactly when the signal is aborted, which is when
-`Access` unmounts the Library (see Context). While a sign-out is pending the
-loop goes on (D12). A file sent then reaches the server's session guard
+While a sign-out is pending the loop goes on (D12). A file sent then reaches
+the server's session guard
 ([ADR-015](../../../docs/decisions/ADR-015-opaque-database-sessions.md)),
-which either saves it under the still-valid session or answers 401. A 401
-takes step 4. When the sign-out then answers, the abort also ends the
-request in flight, and step 3 drops its result. No new sign-out state is
+which looks the session up once, when the request arrives. An admitted file
+gets its usual answer. A file that arrives after the session is gone gets
+401, which takes step 4. When the sign-out then answers, the abort also ends
+the request in flight, and step 3 drops its result. No sign-out state is
 needed in `Library`.
 
 Alternative: send all files at once with `Promise.all`. Rejected by D2.
+
+### `Access` aborts a session signal as soon as it learns the session ended
+
+`Access` keeps one `AbortController` for each signed-in view, in a ref. It
+makes a new one each time it shows the signed-in view, from the first
+session check or from a sign-in, and passes its signal to `Library` as the
+required prop `session`. It aborts it in the same call that learns the
+session ended, before it sets the signed-out view:
+
+- in `signOut`, when the answer is 204 or 401;
+- in `sessionLost`, which the events connection and the Library's own 401
+  answers call.
+
+A sign-out that answers anything else, or no answer, aborts nothing (D12).
+
+The abort runs in the same promise callback that reads the answer, so it
+comes before any render. The loop's next check (step 1 or step 3) then sees
+it, whether or not React has unmounted the Library yet (D14). The Library's
+unmount signal stays, for an unmount that does not come from a session end.
+
+The list effect keeps its own controller: it already drops a late list
+answer, and the session end hides the list.
+
+Alternative: abort the Library's signal only in its unmount cleanup, as
+today. Rejected: React runs that cleanup at the commit after the view
+changes, and an upload answer can arrive before it (see Context).
 
 ### The list reloads after a saved file or a lost answer
 
@@ -129,8 +165,11 @@ in the same task into one render, so two answers that come back together
 can share one load. The spec allows this (D13): it asks for a load that
 starts after each saved file or lost answer, not one load per answer. So no
 counter or forced load per answer is added. The tests release answers one
-at a time with `deferred`, and wait for each answer's line before the next,
-so each counted load belongs to one answer.
+at a time with `deferred`. After a saved file or a lost answer, a test waits
+until the stub has recorded the list request it causes before it releases
+the next answer. The list effect starts that request after the commit, so
+the file's line can show before it starts. After a 409, the test waits for
+the line. So each counted load belongs to one answer.
 
 ### Upload is disabled while any line is waiting or sending
 
@@ -194,6 +233,10 @@ the screen can change again freely. No ADR is needed.
 - [A state write after the session ends could show old lines again.] → The
   loop checks the aborted signal before each send and after each answer,
   as `send` does today.
+- [`AbortSignal.any` is newer than `AbortController`.] → It is in every
+  current browser, and jsdom has had it since version 22.1 (`web/` uses
+  jsdom 31). If a test shows it missing, the loop can check `session.aborted || uploads.aborted` instead,
+  and pass the unmount signal to `fetch`.
 
 ## Migration & Rollback
 

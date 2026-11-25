@@ -18,14 +18,15 @@ https://github.com/sidereal-io/sidereal/issues/531
 | D9 | What does each file's line say? | Waiting: `<name> is waiting.` Uploading: `Uploading <name>…` Saved: `<name> was uploaded.` Refused, already in the library and no answer: the messages the image-upload spec already defines. | User |
 | D10 | Is there a limit on how many files Nova can pick at once? | No limit. The files are sent one at a time, so a pick never has more than one upload open. Each saved file still reloads the whole list (D6), so a pick of n saved files can send up to n list requests. That cost is accepted and recorded in design.md. | User |
 | D11 | Is one picked file a special case? | No. One file is a pick of one: it shows one line, which stays until the next pick, as D5 says. | User |
-| D12 | If Nova presses Sign out while files are still waiting, when does the screen stop sending them? | Once the screen knows the session has ended: the sign-out has answered, an upload or list request has answered 401, or the events connection says so. A file sent while the sign-out is still pending is either saved under the session, which is still valid, or refused by the server with 401, and the screen then reports the lost session. A sign-out that fails leaves the session, so the pick goes on. | User |
+| D12 | If Nova presses Sign out while files are still waiting, when does the screen stop sending them? | Once the screen knows the session has ended: the sign-out has answered, an upload or list request has answered 401, or the events connection says so. A file sent while the sign-out is still pending gets the answer the server gives when the request arrives: its usual answer while the session is still valid, or 401 once it is gone, and the screen then reports the lost session. A sign-out that fails or gets no answer tells the screen nothing about the session, so the pick goes on. | User |
 | D13 | Must every saved file or lost answer cause its own reload of the list? | No. The list reloads after a saved file or a lost answer, and answers that come back before that reload starts may share it. | User |
+| D14 | How does the screen stop at once when it learns the session has ended? | `Access` keeps an abort signal for the signed-in view and passes it to `Library`. It aborts the signal in the same call that learns the session ended (the sign-out answered 204 or 401, or `sessionLost` ran for a library request or the events connection), before it changes the view. The upload loop checks the signal before each send. | User |
 
 ## Changes from the story
 
 - Cut: a percentage of bytes sent for each file. "Progress" means each file's state (D3).
 - Out, as the story says: drag and drop, and folder upload (#358).
 
-D12 and D13, and the corrected reason in D10, are the user's answers to the plan review's first round.
+D12 and D13, and the corrected reason in D10, are the user's answers to the plan review's first round. D14 is the user's answer to its second round. That round also corrected D12's wording: the server checks the session once, when a request arrives, so a file it admits gets its usual answer, not only "saved" or 401.
 
 Confirmed by user: yes
