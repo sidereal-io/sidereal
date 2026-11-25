@@ -5,12 +5,14 @@
 ### Requirement: The asset page shows no processing failure
 
 When a processing run for the Asset failed, the asset page SHALL show the
-facts the server returns and SHALL show no error for that run.
+facts the server returns and SHALL show no message about that run. When the
+image's bytes cannot be displayed, the image area SHALL still show `This
+image could not be displayed.`, as for any image.
 
 #### Scenario: The header run failed
 - **WHEN** Nova opens the asset page of an image uploaded after this change whose file-size run succeeded with 1,000 bytes and whose header run failed
-- **THEN** the page shows its image, its name and only the line `File size` with `1,000 bytes`
-- **AND** the page shows no error and no `No facts are recorded for this image.` line
+- **THEN** the page shows its name and only the line `File size` with `1,000 bytes`
+- **AND** the page shows no message about the failed run and no `No facts are recorded for this image.` line
 
 ## MODIFIED Requirements
 

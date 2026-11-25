@@ -26,12 +26,13 @@ Images saved before this change SHALL get no format, width or height.
 
 ### Requirement: A failed Operator run does not fail the upload
 
-When an upload's file-size run or header run fails, its Operator stops
-abnormally, core refuses what it proposed, or the server cannot record the
-run, the upload SHALL still answer 201 with the saved Asset. A failed run
-SHALL be recorded as failed with its reason and SHALL leave none of its
-values. It SHALL NOT stop the next run, nor remove the values of another
-run. The server SHALL go on answering requests.
+When an upload's file-size or header run fails, its Operator stops
+abnormally, or core refuses what it proposed, the upload SHALL still answer
+201 with the saved Asset, and the run SHALL be recorded as failed with its
+reason and none of its values. When the server cannot record a run's
+outcome, the upload SHALL still answer 201, keep the Asset and its version,
+and go on to the next run. No run SHALL stop the next run or remove another
+run's values, and the server SHALL go on answering requests.
 
 #### Scenario: The header run fails
 - **WHEN** Nova uploads a file of 1,000 bytes that starts with the JPEG signature but has no readable frame header

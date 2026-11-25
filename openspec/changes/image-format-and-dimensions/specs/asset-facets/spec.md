@@ -82,10 +82,11 @@ three values in one run.
 
 When the header Operator cannot read a width and a height from the version's
 bytes, its run SHALL fail and store no value. The reason SHALL be `the PNG
-header could not be read` when the bytes start with the PNG signature, `the
-JPEG header could not be read` when they start with the JPEG signature, and
-`the image format is not recognized` otherwise. A width or height of zero is
-unreadable. The failure SHALL NOT change another Operator's run or values.
+header could not be read` or `the JPEG header could not be read`, by the
+bytes' signature, or `the image format is not recognized` for neither. A
+cut-off or malformed header, a PNG header checksum that does not match, and
+a width or height of zero are unreadable. The
+failure SHALL NOT change another Operator's run or values.
 
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
@@ -95,6 +96,11 @@ unreadable. The failure SHALL NOT change another Operator's run or values.
 #### Scenario: A PNG whose first chunk is not its header chunk
 - **WHEN** core runs the header Operator over a stored version that starts with the PNG signature followed by a chunk other than `IHDR`
 - **THEN** its run is `failed` with the reason `the PNG header could not be read`
+
+#### Scenario: A PNG whose header checksum does not match
+- **WHEN** core runs the header Operator over a stored version that starts with the PNG signature and a 13-byte `IHDR` chunk whose CRC-32 does not match its type and data
+- **THEN** its run is `failed` with the reason `the PNG header could not be read`
+- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
 
 #### Scenario: A PNG with a width of zero
 - **WHEN** core runs the header Operator over a stored PNG version whose header gives a width of 0 pixels

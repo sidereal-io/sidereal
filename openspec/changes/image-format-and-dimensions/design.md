@@ -17,8 +17,9 @@
   change to `facet_values`.
 - `server/crates/packs/image/src/lib.rs` has the manual-upload Source, which
   refuses bytes that are not PNG or JPEG, and the file-size Operator
-  `image.measure-file-size`. The pack depends on `plugin-abi` only, and
-  `server/scripts/check-arch.sh` enforces that.
+  `image.measure-file-size`. The pack depends on `plugin-abi` and no other
+  Sidereal crate, and `server/scripts/check-arch.sh` enforces that. A pack
+  may depend on crates from crates.io.
 - `server/crates/server/src/assets.rs` runs `upload_operators` in order after
   a new Asset is saved. It logs `file-size run failed for asset …` and
   `file-size run not recorded for asset …` whatever Operator ran.
@@ -72,8 +73,9 @@
 - **Tier:** high
 - **Blast radius:** the public plugin contract (`plugin-abi`), core's facet
   check, store and read paths, one forward-only migration on
-  `facet_schemas`, the image pack, the upload route's Operator list and log
-  lines, the asset JSON, and the asset page. No authorization or trust
+  `facet_schemas`, the image pack and its first crates.io dependency
+  (`image`), the upload route's Operator list and log lines, the asset JSON,
+  and the asset page. No authorization or trust
   boundary changes.
 
 ## Decisions
@@ -108,8 +110,9 @@ faults, so the error names the facet. A refused pack adds nothing, as today.
 A forward-only migration, `6_facet_allowed_values.sql`, adds
 `allowed_values TEXT[]` to `facet_schemas`. It is `NULL` for a count and holds
 one or more values for a choice. A check constraint enforces that the column
-is `NULL` exactly when `value_type` is not `'choice'`, so existing rows stay
-valid. `type_text` returns `"choice"` for a choice. `store` writes the
+is `NULL` when `value_type` is not `'choice'`, and is not `NULL` and holds at
+least one value (`cardinality(allowed_values) >= 1`) when it is. Existing
+rows are counts with `NULL`, so they stay valid. `type_text` returns `"choice"` for a choice. `store` writes the
 allowed values with a new schema row, and adds them to `KeptSchema`, so a
 kept version with other allowed values, or the same ones in another order,
 refuses the run with the existing reason. Order counts because the
@@ -138,36 +141,62 @@ returns `DatabaseError::Schema`, as it does for a count out of range.
 `FacetEntry.value` becomes a `FacetValue`, so the server maps `Integer` to a
 JSON number and `Text` to a JSON string.
 
-### 5. A hand-written header reader in the image pack
+### 5. The image pack reads headers with the `image` crate
 
 The header Operator, `image.read-header`, reads the first 8 bytes and picks
 the format from the signature, as the Source does. Both share one signature
-function.
+function. Bytes that start with neither signature fail with `the image format
+is not recognized`.
 
-- **PNG:** read the 25 bytes after the signature. The first chunk must have
-  length 13 and type `IHDR`. Width and height are the next two big-endian
-  32-bit numbers. Each must be from 1 to 2,147,483,647, the PNG limit.
-- **JPEG:** walk the markers from offset 2. Skip any `0xFF` fill bytes before
-  a marker. A marker with no length (`0x01`, `0xD0` to `0xD7`) is skipped. For
-  any other marker, read its 2-byte length and jump past the segment without
-  reading its body. A start-of-frame marker (`0xC0` to `0xCF`, except `0xC4`,
-  `0xC8` and `0xCC`) gives height then width as big-endian 16-bit numbers
-  after a 1-byte precision. Reaching start-of-scan (`0xDA`), end-of-image
-  (`0xD9`), the end of the bytes, a byte that is not a marker, or a length
-  below 2 is a failure. A width or height of zero is a failure, including the
-  JPEG case where a later marker defines the height.
-- Each failure returns `OperatorError::Failed` with the reason the spec
-  gives. The Operator then proposes `image.format`, `image.width` and
-  `image.height`.
+The Operator does not parse PNG or JPEG itself. It uses the pure-Rust
+[`image`](https://crates.io/crates/image) crate (0.25), with default features
+off and only `png` and `jpeg` on:
+`ImageReader::with_format(reader, format).into_dimensions()`. It names the
+format from the signature, so the crate never guesses from a file name.
+`into_dimensions` builds the format's decoder, which reads the header, and
+returns the width and height the header stores. It decodes no pixel data and
+applies no EXIF orientation (D8).
 
-The walk reads 4 bytes per segment and never the segment bodies, so a large
-EXIF or ICC segment costs one read. It checks `is_cancelled` once per
-segment, and stops at the end of the bytes, so a crafted file cannot loop.
+- **The reader.** `into_dimensions` needs `BufRead + Seek`. A small adapter
+  in the pack, `CandidateReader`, wraps the `AssetContext`. It keeps a
+  64 KiB buffer (`AssetContext::MAX_READ`) and fills it with one
+  `read_candidate` call at the current offset. `seek` moves the offset and
+  empties the buffer only when the new offset lies outside it. A short read
+  is not a failure: the adapter returns what it got, and only a read of 0
+  bytes means the end of the candidate. Before each fill it checks
+  `is_cancelled`, and returns an I/O error when the run is cancelled.
+- **The bound on reads.** Each fill reads up to 64 KiB past the last, so a
+  run over a candidate of n bytes makes at most n / 65,536 + c
+  `read_candidate` calls, where c is a small constant for seeks back to
+  bytes already passed. For the 100 MiB upload limit that is about 1,600
+  reads. No segment count or byte cap applies, so no valid file is refused
+  for its layout.
+- **PNG.** The crate's PNG decoder reads the chunks up to the first image
+  data chunk. It checks each chunk's CRC-32, including `IHDR`'s, so a
+  damaged header fails rather than giving wrong dimensions. A first chunk
+  that is not a 13-byte `IHDR`, or a header cut off early, also fails.
+- **JPEG.** The crate's JPEG decoder (zune-jpeg) parses the markers up to
+  the frame header. In `image` 0.25, `JpegDecoder::new` first reads the
+  whole candidate into memory with `read_to_end`, through the adapter's
+  64 KiB fills. The reads stay within the bound above. The memory cost is
+  in Risks.
+- **Failures.** Any error from the crate, including one from the adapter,
+  fails the run. The reason is `the PNG header could not be read` or `the
+  JPEG header could not be read`, by signature. The Operator also fails a
+  width or height of 0, and a PNG width or height above 2,147,483,647, the
+  PNG limit, whatever the crate accepts. The Operator then proposes
+  `image.format`, `image.width` and `image.height`.
 
-- *Alternative:* the `imagesize` crate. It reads from a slice or a file, so
-  the Operator would first copy bytes out of the context, up to an unknown
-  depth for JPEG. It also adds a dependency to a pack that has none, and the
-  two formats need about 80 lines.
+- *Alternative:* a hand-written PNG and JPEG header reader, about 80 lines.
+  It adds no dependency, but the review found it needs its own bound on
+  work, its own CRC-32 and its own structural checks, each a place to get
+  wrong. The `image` crate is used widely, and #526 needs it to render TIFF
+  previews.
+- *Alternative:* libvips or exiftool. Both read headers well, but each adds
+  a C or Perl dependency to the build and the Docker image.
+- *Alternative:* the `imagesize` crate. It reads from a slice or a file, not
+  a `Read + Seek`, so the Operator would still copy bytes out of the
+  context first.
 
 ### 6. The facet JSON keeps its shape
 
@@ -206,21 +235,33 @@ tokens.
   them, such as `match (declared.schema.value_type, proposal.value)` in
   `check`] → Match on references. Only first-party code uses the contract,
   and the build finds every use.
-- [A JPEG whose start-of-frame comes after a very long run of segments makes
-  many small reads] → Each read is one positioned read of 4 bytes, the walk
-  ends at the end of the bytes, and an upload is at most 100 MiB. Cancellation
-  is checked per segment.
-- [Some valid files fail the header run: a JPEG whose height is set by a later
-  marker, or an Apple-optimized PNG whose first chunk is `CgBI`] → The run
-  fails with a clear reason and the file size is still recorded. These files
-  are rare in astrophotography output, and #527 shows processing failures.
+- [A crafted file could make many small reads, such as a JPEG of 4-byte
+  segments or fill bytes] → The adapter reads in 64 KiB fills, so a run
+  costs at most size / 65,536 + c reads, about 1,600 for 100 MiB, whatever
+  the layout. Task 3.3 tests the bound with such a file.
+- [The `image` 0.25 JPEG decoder reads the whole file into memory before it
+  reads the header, so one JPEG header run holds up to 100 MiB, the upload
+  limit, until it ends] → The run is short and runs once per upload, after
+  the Asset is saved. Each upload in flight adds at most one such buffer.
+  If the crate later reads JPEG headers without the whole file, the bound on
+  reads still holds and the memory cost falls.
+- [Some valid files fail the header run: a JPEG whose height is set by a
+  later marker, a JPEG type the decoder does not support (such as lossless or
+  arithmetic-coded), or an Apple-optimized PNG whose first chunk is `CgBI`]
+  → The run fails with a clear reason and the file size is still recorded.
+  These files are rare in astrophotography output, and #527 shows
+  processing failures.
+- [A new `image` release changes which files it accepts] → `Cargo.lock`
+  pins the version, the header tests cover each case the specs name, and
+  Dependabot updates arrive as pull requests that run those tests.
 - [Adding `PNG` or `JPEG` as display text makes it the stored value too, so
   renaming it later needs a new schema version] → That is the cost D3
   accepted. The values are the formats' common names and are not expected to
   change.
-- [The upload answers later, because it now waits for two runs] → The header
-  run reads a few hundred bytes at most for these formats; the delay is small
-  next to the upload itself.
+- [The upload answers later, because it now waits for two runs] → A PNG
+  header run reads one 64 KiB fill in the usual case. A JPEG header run
+  reads the file once from local storage, which is small next to receiving
+  it over the network.
 
 ## Migration & Rollback
 
