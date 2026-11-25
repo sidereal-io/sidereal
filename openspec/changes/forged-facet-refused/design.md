@@ -10,7 +10,7 @@ The behavior this change pins down already exists. It has no test at the level t
 
 **Goals:**
 
-- Two core tests, one per new requirement in `specs/asset-facets/spec.md`.
+- Core tests for the two new requirements in `specs/asset-facets/spec.md`: one for values staying on the run's input, and one for each scenario of an Operator proposing an Asset.
 - Each test fails if the behavior it guards breaks. The tasks prove this with a temporary break that is not committed.
 
 **Non-Goals:**
@@ -39,7 +39,7 @@ The behavior this change pins down already exists. It has no test at the level t
 
 ## Risks / Trade-offs
 
-- [A test written after the code passes from the start, so it may prove nothing] → Each task breaks the guarded code on purpose, sees the test fail, and restores it before committing. Task 1.2 breaks `store`'s choice of subject. Task 2.2 removes the broken-reason check in `execute_operator`.
+- [A test written after the code passes from the start, so it may prove nothing] → Each task breaks the guarded code on purpose, sees the test fail, and restores it before committing. `tasks.md` names the break for each task.
 - [#526 will let an Operator propose an Asset, as a derived asset] → #526 must change the requirement "An Operator run makes no Asset" and its test. The proposal's Impact section says so, so #526's plan finds it.
 - [A made-up hash in the extra version could clash with a real one] → Use a hash no fixture bytes produce, such as 64 `f` characters. No stored object needs to match it.
 

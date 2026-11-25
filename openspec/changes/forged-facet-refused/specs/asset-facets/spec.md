@@ -15,14 +15,19 @@ it. This includes another version of the same Asset.
 
 ### Requirement: An Operator run makes no Asset
 
-Core SHALL record an Operator run that proposes an Asset as failed, with a
-reason that says an Operator run proposed an Asset. Core SHALL add no Asset
-and no Asset version for that run, and SHALL store no facet value from it.
-This holds whether the Operator stops at the refusal or carries on and
-reports success.
+Core SHALL record an Operator run that proposes an Asset as failed. Core
+SHALL add no Asset and no Asset version for that run, and SHALL store no
+facet value from it. When the Operator reports success after proposing an
+Asset, the reason SHALL say that an Operator run proposed an Asset.
 
 #### Scenario: An Operator proposes an Asset and reports success
 - **WHEN** an Operator proposes a valid value for `test.size`, then proposes an Asset of kind `image`, ignores the refusal and reports success
 - **THEN** its operation run is `failed` with a reason that says an operator run proposed an asset
+- **AND** the library holds the same Assets and Asset versions as before the run
+- **AND** core stores no facet value from that run
+
+#### Scenario: An Operator proposes an Asset and stops at the refusal
+- **WHEN** an Operator proposes a valid value for `test.size`, then proposes an Asset of kind `image`, and returns the failure `could not make a preview` when the context refuses it
+- **THEN** its operation run is `failed` with the reason `could not make a preview`
 - **AND** the library holds the same Assets and Asset versions as before the run
 - **AND** core stores no facet value from that run
