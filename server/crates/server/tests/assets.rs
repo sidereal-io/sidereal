@@ -11,7 +11,7 @@ use sidereal_core::{
     database::{initialize, initialize_with_storage},
     storage::{objects::ObjectStore, StorageRoot},
 };
-use sidereal_pack_image::{ImagePack, FILE_SIZE};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, READ_HEADER};
 use sidereal_plugin_abi::{
     AssetContext, FacetSchema, FacetScope, FacetType, FacetValue, Operator, OperatorError, Pack,
     Registry,
@@ -945,6 +945,50 @@ fn running(operator: impl Operator + 'static) -> impl FnOnce(Library) -> Library
     }
 }
 
+/// Make upload run `operator` first, registered beside the image pack, then
+/// the file-size and header Operators.
+fn running_first(operator: impl Operator + 'static) -> impl FnOnce(Library) -> Library {
+    move |library| {
+        let id = operator.id().to_owned();
+        let mut registry = Registry::new();
+        registry.register_pack(&ImagePack).unwrap();
+        registry
+            .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
+            .unwrap();
+        library.with_registry(registry).with_upload_operators(vec![
+            id,
+            FILE_SIZE.to_owned(),
+            READ_HEADER.to_owned(),
+        ])
+    }
+}
+
+impl Instance {
+    /// Wait until the Asset's version has a `succeeded` run of each Operator
+    /// in `operators`, and holds its file size, format, width and height.
+    async fn eventually_has_every_upload_fact(&self, operators: &[&str]) {
+        for operator in operators {
+            self.eventually(&format!(
+                "SELECT count(*) = 1 FROM public.operation_runs \
+                 WHERE operator_id = '{operator}' AND status = 'succeeded'"
+            ))
+            .await;
+        }
+        for (facet, value) in [
+            ("image.file-size", PNG.len().to_string()),
+            ("image.format", r#""PNG""#.to_owned()),
+            ("image.width", "32".to_owned()),
+            ("image.height", "24".to_owned()),
+        ] {
+            self.eventually(&format!(
+                "SELECT count(*) = 1 FROM public.facet_values \
+                 WHERE facet = '{facet}' AND value = '{value}'::jsonb"
+            ))
+            .await;
+        }
+    }
+}
+
 /// Proposes the version's size as `test.size`, once `release` is set.
 struct Blocking {
     started: Arc<AtomicBool>,
@@ -1036,26 +1080,16 @@ mod upload_disconnect {
             .await
             .unwrap();
         instance
-            .eventually(
-                "SELECT count(*) = 1 FROM public.operation_runs \
-                 WHERE operator_id = 'image.measure-file-size' AND status = 'succeeded'",
-            )
+            .eventually_has_every_upload_fact(&["image.measure-file-size", "image.read-header"])
             .await;
         assert_eq!(instance.rows().await, 2);
-        instance
-            .eventually(&format!(
-                "SELECT count(*) = 1 FROM public.facet_values \
-                 WHERE facet = 'image.file-size' AND value = '{}'::jsonb",
-                PNG.len()
-            ))
-            .await;
     }
 
     #[tokio::test]
     async fn upload_disconnect_during_the_run_still_ends_it_succeeded() {
         let started = Arc::new(AtomicBool::new(false));
         let release = Arc::new(AtomicBool::new(false));
-        let instance = Instance::with_library(running(Blocking {
+        let instance = Instance::with_library(running_first(Blocking {
             started: started.clone(),
             release: release.clone(),
         }))
@@ -1071,12 +1105,25 @@ mod upload_disconnect {
         }
         upload.abort();
         assert!(upload.await.unwrap_err().is_cancelled());
+        let later_runs: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM public.operation_runs \
+             WHERE operator_id IN ('image.measure-file-size', 'image.read-header')",
+        )
+        .fetch_one(
+            &mut PgConnection::connect_with(&instance.db.options)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(later_runs, 0);
         release.store(true, Ordering::SeqCst);
         instance
-            .eventually(
-                "SELECT count(*) = 1 FROM public.operation_runs \
-                 WHERE operator_id = 'test.block' AND status = 'succeeded'",
-            )
+            .eventually_has_every_upload_fact(&[
+                "test.block",
+                "image.measure-file-size",
+                "image.read-header",
+            ])
             .await;
         instance
             .eventually(&format!(
