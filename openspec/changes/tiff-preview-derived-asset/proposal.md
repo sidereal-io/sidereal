@@ -53,8 +53,8 @@ Operator learn a version's format from the media type the Source recorded
 - **The image pack adds a preview Operator.** It decodes PNG, JPEG and the
   supported TIFF types, and writes an 8-bit JPEG at quality 90 (D3). 16-bit
   and decimal values are scaled straight to 8-bit, with no brightening (D5).
-  A TIFF it cannot decode, or an image whose decoded pixels need more than
-  512 MiB, fails the run with a reason (D4, D6).
+  A TIFF it cannot decode, or an image whose pixels and decoder scratch space together need
+  more than 512 MiB, fails the run with a reason (D4, D6).
 - **Upload makes a preview of every new original** (D1). Upload runs the
   preview Operator after the file-size and header runs, and before it
   answers (D7). A failed preview run does not fail the upload. A preview gets

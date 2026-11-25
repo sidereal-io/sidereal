@@ -147,7 +147,7 @@ SHALL be `failed` with the reason `the stored file could not be read`.
 - **AND** core stores no `image.width` or `image.height` value for that version
 
 #### Scenario: A later read fails
-- **WHEN** core runs the header Operator over a stored version of a JPEG whose frame header lies after a 100,000-byte EXIF segment, and the second read of its stored file fails
+- **WHEN** core runs the header Operator over a stored version of a JPEG whose frame header lies after two valid EXIF segments totaling more than 100,000 bytes, and the second read of its stored file fails
 - **THEN** its run is `failed` with the reason `the stored file could not be read`
 
 ## ADDED Requirements
@@ -156,7 +156,8 @@ SHALL be `failed` with the reason `the stored file could not be read`.
 
 The header Operator SHALL read a TIFF's width and height from its first
 image, whatever that image's color type, sample size or compression, and
-SHALL ignore any later image and any TIFF orientation.
+SHALL ignore any later image and any TIFF orientation. Preview eligibility and
+metadata unrelated to dimensions SHALL NOT affect this read.
 
 #### Scenario: A little-endian TIFF
 - **WHEN** core runs the header Operator over a stored little-endian classic TIFF version whose first image is 7,000 by 5,000 pixels
@@ -172,6 +173,10 @@ SHALL ignore any later image and any TIFF orientation.
 
 #### Scenario: A TIFF the preview cannot decode
 - **WHEN** core runs the header Operator over a stored TIFF version whose first image is CMYK, 800 by 600 pixels
+- **THEN** the version's `image.width` is 800 and its `image.height` is 600
+
+#### Scenario: A TIFF has a sample array the preview cannot use
+- **WHEN** core runs the header Operator over an 800 by 600 TIFF whose first image has more than 64 samples per pixel
 - **THEN** the version's `image.width` is 800 and its `image.height` is 600
 
 ### Requirement: A TIFF header that cannot be read fails the header run

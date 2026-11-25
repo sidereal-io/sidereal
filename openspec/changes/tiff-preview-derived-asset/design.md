@@ -81,8 +81,8 @@ choice type. The asset page shows the format from the version's
 - One general way for an Operator to output a derived asset with lineage,
   used first by previews. Later outputs (thumbnails, stacks) add a role, not
   a new mechanism.
-- A preview Operator in `packs/image` that holds no more memory than the
-  decoded pixels plus a small, fixed amount.
+- A preview Operator in `packs/image` that keeps each decode within 512 MiB,
+  including pixels and decoder scratch space.
 - The image pack is the one owner of its formats: adding a format touches
   one module and one table entry, and the server and the web repeat no list.
 - An Operator learns a version's format from its media type, and runs only
@@ -246,8 +246,10 @@ runs that never ran, which #527's view of processing failures would show.
     `(input_version_id, role)`.
 - `run_operator` gives the Operator a `StagingOutput`. On the first write it
   calls `ObjectStore::begin()`. It passes each write to `Staging::write` and
-  remembers a `TooLarge` refusal. All of this runs in the existing
-  `spawn_blocking` task.
+  remembers the first staging error across subsequent writes, including an
+  error starting staging. A failed output cannot be published, even if the
+  Operator claims success. All of this runs in the existing `spawn_blocking`
+  task.
 - After the run, core checks the preview with the facet proposals, in
   `check`. The run fails, and the staging is dropped, when: a preview came
   from an Operator with `makes_previews` false (`operator <id> does not make
@@ -256,9 +258,13 @@ runs that never ran, which #527's view of processing failures would show.
   `image/png` (`a preview cannot be <media type>`); no byte was written
   (`the preview is empty`); or staging refused a write
   (`the preview is larger than 100 MiB`, which takes the place of the
-  Operator's reason).
+  Operator's reason); or another staging error occurred (`the preview could
+  not be stored`).
 - After the cancellation check, core calls `finish()` and `publish()` on a
-  blocking worker. Then `store` gains, inside its transaction and before the
+  blocking worker. After publication, check cancellation again before
+  starting `store`. Once that transaction starts, it decides the outcome.
+  A cancellation or transaction failure after publication can leave an
+  unreferenced object. Then `store` gains, inside its transaction and before the
   run is marked `succeeded`: read the input version's Asset name; insert the
   derived Asset (`origin` `derived`, the proposed kind, that name); insert
   its version (core's hash and size, the proposed media type, the Operator's
@@ -280,7 +286,9 @@ bytes. This decision is recorded in ADR-018.
 - `select()` in `assets.rs` gains `WHERE a.origin = 'source'` and a
   `preview` column from a lateral subquery: the derived version linked to the
   current version with role `preview`, by the run with the latest
-  `ended_at`, then the highest run id. `AssetRecord` gains
+  `ended_at`, then the highest run id. The success update uses
+  `greatest(clock_timestamp(), started_at)` to record when the result is
+  marked succeeded. This orders by the recorded time. `AssetRecord` gains
   `has_preview: bool`. `Database::assets()` and `Database::asset(id)` both
   use it, so a derived id reads as missing.
 - A new `Database::preview(asset_id) -> Option<VersionRecord>` gives the
@@ -407,18 +415,42 @@ it sets up, and the header run must succeed for every TIFF (D4).
   header for JPEG through zune-jpeg's `decode_headers` under its 8 MiB read
   limit, the directory for TIFF. For TIFF, it refuses every type that the
   spec does not list before any decoding. It then calls two shared checks
-  in `preview.rs`: each side at most 65,535, and the decoded size, worked
-  out by the format's own rule from the spec, at most 536,870,912 bytes.
-  Only then does it decode.
+  in `preview.rs`: each side at most 65,500 (the browser JPEG limit), and
+  the checked upper bound on peak memory for the selected decoder at most
+  536,870,912 bytes. Decoder memory includes output pixels and all live
+  codec allocations. Only then does it decode.
 - **Progressive JPEG.** zune-jpeg does not say whether a JPEG is progressive,
   so `jpeg.rs` walks the markers to the first frame header itself and reads
-  its kind (`0xC2` is progressive), under the same 8 MiB limit.
+  its kind (`0xC2` is progressive), under the same 8 MiB limit. Keep the
+  header Operator's explicit zune-jpeg dimension options so its defaults
+  do not preempt preview preflight. Rewind to a full-length reader for the
+  actual decode, with strict mode on so incomplete scans fail.
 - **Decoders.** PNG: the `png` crate with `Transformations::EXPAND`, keeping
   16-bit samples, and `png::Limits { bytes }` set to the limit. JPEG:
   zune-jpeg `decode_into` a buffer of `output_buffer_size`, with output
   colour space Luma for one component and RGB otherwise. TIFF: the `tiff`
-  crate with `default-features = false, features = ["lzw", "deflate"]` and
-  `Limits { decoding_buffer_size: 536_870_912, .. }`, through `read_image`.
+  crate with `default-features = false, features = ["lzw", "deflate"]`,
+  through `read_image` with limits derived from the preview budget.
+- **Budget before pixel reads.** Each format computes a checked upper
+  bound for its decoder version. Account for output buffer layout, metadata
+  retained by the decoder, and simultaneous scratch allocations. PNG counts
+  expanded channels, row processing and interlace scratch. JPEG counts
+  padded component planes, progressive coefficient buffers and row scratch
+  based on sampling factors. TIFF counts directory values, compressed and
+  decompressed strip or tile buffers and predictor scratch. Set each
+  decoder's available allocation limits where it exposes them. Document the
+  allocation bound beside the code using the locked decoder version.
+- **TIFF geometry and metadata.** Read only width and height values for the
+  header Operator. The preview Operator reads the tags it needs for sample
+  layout, compression and strip or tile geometry separately. Check array
+  counts, strip or tile dimensions, sizes and products before allocating.
+  For tiled floating-point data, count the padded predictor row using
+  checked `tile_width × samples_per_pixel × bytes_per_sample`, including
+  when the tile is wider than the image. This row needs an explicit bound
+  before `read_image` because the decoder's intermediate limit does not
+  cover it. Pass limits for output, intermediate buffers and directory
+  values within the remaining budget. The accepted sample and predictor
+  combinations are listed in the image-preview spec.
 - **The shared buffer.** `render_preview` returns `Pixels`: the width, the
   height, the colour layout (gray, gray with alpha, RGB or RGBA) and the
   samples as 8-bit, 16-bit or 32-bit decimal values, in one buffer.
@@ -434,8 +466,9 @@ it sets up, and the header run must succeed for every TIFF (D4).
   unless a read failed (decision 6).
 - **Memory tests** sit in each format's module: a 16-bit RGB TIFF in
   `tiff.rs`, a progressive JPEG in `jpeg.rs` and an RGBA PNG in `png.rs`.
-  Each asserts that the peak a preview run holds is at most the decoded size
-  plus 64 MiB.
+  Compare each measured peak with that format's calculated bound, and
+  assert that preflight rejects inputs that exceed the combined budget
+  before their pixels are read.
 - The pack's dependencies become `plugin-abi`, `png`, `zune-jpeg`, `tiff` and
   `jpeg-encoder`. `check-arch.sh` still holds.
 
@@ -449,7 +482,9 @@ stars.
 - `upload_operators` becomes `FILE_SIZE`, `READ_HEADER`, `MAKE_PREVIEW`.
 - `Library` holds a `tokio::sync::Semaphore` with one permit. `save` takes it
   around the preview run only, so two uploads at once never decode two
-  512 MiB images at once. The other runs do not wait for it.
+  previews at once. The other runs do not wait for it. An overlapping-upload
+  test holds the first preview run, proves the second is waiting, and checks
+  that the second proceeds after the first fails.
 - `save` returns the record with `has_preview` set to whether the preview run
   succeeded. Core commits the lineage in the same transaction that records
   `succeeded`, so no second read is needed. `save` logs nothing for
@@ -498,9 +533,9 @@ types. It is more API than one picker needs today.
 - [A decoder holds more than the decoded pixels: PNG row buffers, zune-jpeg's
   internal state, `tiff`'s intermediate buffer] → each format's module has a
   preview memory test that measures the peak for a 16-bit RGB TIFF, a
-  progressive JPEG and an RGBA PNG, and asserts it is at most the decoded
-  size plus 64 MiB. Set `tiff`'s `intermediate_buffer_size` if the TIFF case
-  needs it.
+  progressive JPEG and an RGBA PNG, and asserts it is at most the
+  budget calculated by preflight. Bound scratch outside each codec's own
+  limits too. Revisit the accounting when upgrading a decoder dependency.
 - [Several uploads at once each decode a large image] → decision 9 allows one
   preview run at a time per server.
 - [A large TIFF makes the upload's answer late (D7)] → the web keeps the
@@ -542,7 +577,9 @@ types. It is more API than one picker needs today.
   every existing row, and the empty `asset_lineage` table. Generate
   `core/schema/6.json` with `mise run db-schema`, add it to `baselines()`, and
   move the startup tests and `scripts/instance-verify.sh` from five to six
-  migrations. No data is backfilled (D8).
+  migrations. Update raw fixture inserts that use the latest schema to name
+  `origin`. Fixtures that intentionally use migration 5 keep their old
+  inserts. No previews are backfilled (D8).
 - **A database that ran #547's earlier build:** #547's first build had a
   different migration 6, which #547 removed. A database that applied it
   holds six records whose sixth does not match this change's migration 6,

@@ -13,7 +13,7 @@
 | D3 | What file format is the preview? | An 8-bit JPEG at high quality, about 90. Transparent areas turn black. | User |
 | D4 | Which TIFFs are accepted, and which get a preview? | Upload accepts any file with a TIFF signature: classic TIFF or BigTIFF, either byte order. The preview uses the first image only, and decodes grayscale or RGB in 8-bit or 16-bit whole numbers or 32-bit decimals, uncompressed or LZW, Deflate or PackBits. Any other TIFF still becomes an asset with its facets; its preview run is recorded as failed with a reason, and the page says "This image could not be displayed." | User |
 | D5 | How does a 16-bit or 32-bit TIFF become an 8-bit preview? | Scale straight across with no brightening: 16-bit values map onto 0–255; decimal values from 0 to 1 map onto 0–255, with values outside clipped. Display-only auto-stretch belongs with FITS (#357). | User |
-| D6 | What memory limit applies to making a preview? | 512 MiB. If decoding would need more, the preview run fails with a clear reason. | User |
+| D6 | What memory limit applies to making a preview? | 512 MiB per preview decode, including decoded pixels and decoder scratch space. If decoding would need more, the preview run fails with a clear reason. | User |
 | D7 | Does the upload's answer wait until the preview is made? | Yes, as it already waits for the file-size and header runs. | User |
 | D8 | What shows for an asset with no preview (uploaded before this change, or its preview run failed)? | The original: older PNGs and JPEGs still display; a TIFF shows "This image could not be displayed". No backfill. | User |
 | D9 | Do the upload Operators (file size, header, preview) also run on a preview? | No. A preview gets no facets and never gets a preview of its own. | User |

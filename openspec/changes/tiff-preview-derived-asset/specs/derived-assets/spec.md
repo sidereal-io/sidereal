@@ -105,14 +105,35 @@ lineage link in the transaction that records the run `succeeded` and stores
 its facet values. When that transaction does not commit, none of them SHALL
 exist.
 
+#### Scenario: The database refuses the commit
+- **WHEN** a test Operator writes a valid preview and PostgreSQL refuses the transaction that would record it
+- **THEN** no new Asset, Asset version or lineage link exists, and the run is not `succeeded`
+
+### Requirement: A failed write invalidates the preview
+
+A failed staging write SHALL invalidate the preview, even when the
+Operator continues or reports success.
+
+#### Scenario: An Operator ignores a storage write failure
+- **WHEN** a test Operator writes part of a preview, ignores a storage error on its next write and reports success
+- **THEN** its run is `failed` with the reason `the preview could not be stored`
+- **AND** no preview is published and no new Asset, version or lineage link exists
+
+### Requirement: Cancellation before the preview transaction stops the run
+
+Core SHALL recheck cancellation after publication and before it starts
+recording the database outcome. Once recording starts, the database
+transaction SHALL decide the outcome.
+
+#### Scenario: The run is cancelled while preview publication is in progress
+- **WHEN** the host cancels a preview run while core is publishing its bytes
+- **THEN** the run is `failed` with a reason that says it was cancelled
+- **AND** no new Asset, version or lineage link exists
+
 #### Scenario: The run is cancelled after it proposed a preview
 - **WHEN** the host cancels a run after its Operator proposed a preview and wrote its bytes
 - **THEN** the run is `failed` with a reason that says it was cancelled
 - **AND** no new Asset, Asset version or lineage link exists
-
-#### Scenario: The database refuses the commit
-- **WHEN** a test Operator writes a valid preview and PostgreSQL refuses the transaction that would record it
-- **THEN** no new Asset, Asset version or lineage link exists, and the run is not `succeeded`
 
 ### Requirement: A refused proposal stores nothing from the run
 
@@ -126,8 +147,10 @@ SHALL store neither the run's facet values nor its preview.
 ### Requirement: A version's preview is its newest
 
 The preview of an Asset version SHALL be the derived Asset linked to it as
-its preview by the run that ended last. A version with no such link SHALL
-have no preview.
+its preview by the run with the latest recorded completion time. Core SHALL
+record that time when it marks the run succeeded. If times tie, the greater
+run id in database order SHALL win. A version with no such link SHALL have
+no preview.
 
 #### Scenario: Two preview runs over one version
 - **WHEN** core runs a preview Operator twice over the same version, and both runs succeed

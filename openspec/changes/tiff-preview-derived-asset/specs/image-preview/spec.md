@@ -60,17 +60,18 @@ SHALL ignore every later image in a TIFF.
 - **WHEN** core runs the preview Operator over a stored progressive JPEG version of 1,920 by 1,080 pixels
 - **THEN** its preview decodes as a JPEG of 1,920 by 1,080 pixels
 
+#### Scenario: A JPEG exceeds the header read limit after its frame header
+- **WHEN** core runs the preview Operator over a valid JPEG whose header fits the header read limit and whose full file is larger than 8 MiB
+- **THEN** the run is `succeeded` and its preview keeps the width and height of the image
+
 ### Requirement: The preview Operator decodes these TIFF types
 
-The preview Operator SHALL decode a TIFF's first image, in a classic TIFF or
-BigTIFF file of either byte order, when all of these hold:
-
-- it is grayscale (black is zero) with one sample per pixel, or RGB with
-  three;
-- its samples are 8-bit or 16-bit whole numbers, or 32-bit decimals;
-- its samples are interleaved, in strips or tiles;
-- it is uncompressed, or compressed with LZW, Deflate or PackBits, with or
-  without a horizontal or floating-point predictor.
+The preview Operator SHALL decode the first image in classic TIFF or BigTIFF
+of either byte order when it has interleaved grayscale (black is zero) or
+RGB samples in strips or tiles. It SHALL support unsigned 8-bit or 16-bit
+integers and 32-bit floats, uncompressed or with LZW, Deflate or PackBits.
+A predictor SHALL be absent or suit the codec and samples: horizontal
+for unsigned integers, floating-point for floats.
 
 #### Scenario: A big-endian BigTIFF
 - **WHEN** core runs the preview Operator over a stored big-endian BigTIFF version that holds one 16-bit RGB image, compressed with Deflate
@@ -79,6 +80,10 @@ BigTIFF file of either byte order, when all of these hold:
 #### Scenario: An LZW TIFF with a predictor
 - **WHEN** core runs the preview Operator over a stored little-endian TIFF version that holds one 8-bit RGB image in tiles, compressed with LZW with a horizontal predictor
 - **THEN** its run is `succeeded` and the version has a preview
+
+#### Scenario: A floating-point TIFF with a padded edge tile
+- **WHEN** core runs the preview Operator over a Deflate-compressed floating-point TIFF with a floating-point predictor and an edge tile wider than the image, within the decode budget
+- **THEN** the run is `succeeded` and its preview keeps the width and height of the image
 
 ### Requirement: Sample values are scaled to 8-bit with no brightening
 
@@ -133,6 +138,10 @@ Core SHALL record its run `failed` with the reason
 - **WHEN** core runs the preview Operator over a stored TIFF version whose first image is 8-bit RGB with a fourth, alpha sample
 - **THEN** its run is `failed` with the reason `the TIFF image type is not supported`
 
+#### Scenario: A signed 16-bit TIFF
+- **WHEN** core runs the preview Operator over a TIFF whose first image uses signed 16-bit samples
+- **THEN** its run is `failed` with the reason `the TIFF image type is not supported`
+
 ### Requirement: A damaged image fails the preview run
 
 When the preview Operator cannot decode an image, core SHALL record its run
@@ -154,6 +163,10 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 - **WHEN** core runs the preview Operator over a stored version of 1,000 bytes that starts with the JPEG signature but has no readable frame header
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
+#### Scenario: A progressive JPEG cut off inside its pixels
+- **WHEN** core runs the preview Operator over a progressive JPEG that ends in the middle of a scan
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+
 #### Scenario: Bytes that do not match the media type
 - **WHEN** core runs the preview Operator over a stored version whose media type is `image/tiff` and whose bytes are a PNG
 - **THEN** its run is `failed` with the reason `the TIFF image could not be decoded`
@@ -166,33 +179,42 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 
 ### Requirement: A preview's sides fit a JPEG
 
-A JPEG side holds at most 65,535 pixels. For an image wider or taller than
-that, the preview Operator SHALL decode no pixel, and core SHALL record its
-run `failed` with the reason
-`the image is wider or taller than a JPEG can hold`. This check SHALL come
-before the memory limit.
+A browser-ready JPEG preview SHALL have at most 65,500 pixels on each side.
+For a wider or taller image, the preview Operator SHALL decode no pixel, and
+core SHALL record its run `failed` with the reason
+`the image is wider or taller than a browser-ready JPEG can hold`. This check
+SHALL come before the memory limit.
 
 #### Scenario: A TIFF wider than a JPEG can hold
-- **WHEN** core runs the preview Operator over a stored 8-bit grayscale TIFF version whose header gives 70,000 by 100 pixels
-- **THEN** its run is `failed` with the reason `the image is wider or taller than a JPEG can hold`
+- **WHEN** core runs the preview Operator over a stored 8-bit grayscale TIFF version whose header gives 65,501 by 100 pixels
+- **THEN** its run is `failed` with the reason `the image is wider or taller than a browser-ready JPEG can hold`
 
-### Requirement: A preview needs at most 512 MiB of decoded pixels
+#### Scenario: A TIFF at the browser-ready JPEG side limit
+- **WHEN** core runs the preview Operator over a valid 8-bit grayscale TIFF version of 65,500 by 100 pixels within the decode budget
+- **THEN** the run is `succeeded` and its JPEG preview is 65,500 by 100 pixels
 
-Before it decodes a pixel, the preview Operator SHALL work out the bytes the
-decoded pixels need: width × height × samples per pixel × bytes per sample. A sample counts 1 byte at 8 bits or fewer, 2 at 16 bits and 4 as a
-32-bit decimal. A PNG palette counts 3 samples, or 4 with transparency. A
-progressive JPEG adds 2 bytes per sample. Over 512 MiB (536,870,912 bytes),
-it SHALL decode no pixel, and core SHALL record the run `failed` with the
-reason `the image needs more than 512 MiB to decode`.
+### Requirement: A preview decode needs at most 512 MiB
+
+Before reading pixels, the preview Operator SHALL bound peak decoder
+memory for the image layout, including pixels, metadata and scratch
+space. If the bound exceeds 512 MiB (536,870,912 bytes) or cannot be
+represented, it SHALL decode no pixel. Core SHALL record the run
+`failed` with the reason `the image needs more than 512 MiB to decode`.
 
 #### Scenario: A TIFF just over the limit
 - **WHEN** core runs the preview Operator over a stored 16-bit RGB TIFF version whose header gives 15,000 by 6,000 pixels (540,000,000 bytes of decoded pixels)
 - **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
 - **AND** the Operator read no pixel data
 
-#### Scenario: A TIFF exactly at the limit
-- **WHEN** core runs the preview Operator over a stored 8-bit grayscale TIFF version whose header gives 32,768 by 16,384 pixels (536,870,912 bytes of decoded pixels) and whose pixel data is cut off
-- **THEN** its run is `failed` with the reason `the TIFF image could not be decoded`, not the memory limit's reason
+#### Scenario: TIFF pixels leave no space for decoding
+- **WHEN** core runs the preview Operator over an 8-bit grayscale TIFF whose pixels alone need 512 MiB and whose decoder needs additional scratch memory
+- **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
+- **AND** the Operator read no pixel data
+
+#### Scenario: TIFF tile scratch space exceeds the decode budget
+- **WHEN** core runs the preview Operator over the headers of a small grayscale floating-point TIFF whose padded tile row needs more than the remaining decode budget
+- **THEN** its run is `failed` with the reason `the image needs more than 512 MiB to decode`
+- **AND** the Operator read no pixel data
 
 #### Scenario: A PNG over the limit
 - **WHEN** core runs the preview Operator over a stored 8-bit RGBA PNG version whose header gives 20,000 by 10,000 pixels (800,000,000 bytes of decoded pixels)
