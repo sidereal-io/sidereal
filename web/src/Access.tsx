@@ -86,12 +86,14 @@ async function send(
   method: string,
   url: string,
   credentials?: Credentials,
+  signal?: AbortSignal,
 ): Promise<Response | undefined> {
   try {
     return await fetch(url, {
       method,
       headers: credentials ? { "Content-Type": "application/json" } : {},
       body: credentials ? JSON.stringify(credentials) : undefined,
+      signal,
     });
   } catch {
     return undefined;
@@ -217,7 +219,14 @@ function Access() {
   async function signOut() {
     // The signed-in view this sign-out comes from.
     const session = sessionRef.current;
-    const response = await send("DELETE", "/api/session");
+    // Cancelled when that view ends, so a late answer cannot clear the
+    // cookie of a newer sign-in.
+    const response = await send(
+      "DELETE",
+      "/api/session",
+      undefined,
+      session?.signal,
+    );
     // That view has ended already, so its answer changes nothing.
     if (session !== sessionRef.current || session?.signal.aborted) return;
     // A 401 means the session had already ended.

@@ -396,7 +396,8 @@ describe("Access", () => {
     // and sign-out waits for the test.
     function heldServer() {
       const uploads: (Held & { name: string })[] = [];
-      const signOuts: Held[] = [];
+      const signOuts: (Held & { signal: AbortSignal | null | undefined })[] =
+        [];
       const fetch = vi.fn((input: string, init?: RequestInit) => {
         const key = `${init?.method ?? "GET"} ${input}`;
         if (key === "POST /api/assets") {
@@ -406,7 +407,7 @@ describe("Access", () => {
           return request.promise;
         }
         if (key === "DELETE /api/session") {
-          const request = held();
+          const request = { ...held(), signal: init?.signal };
           signOuts.push(request);
           return request.promise;
         }
@@ -656,6 +657,22 @@ describe("Access", () => {
       expect(lines()).toEqual(["c.png was uploaded.", "d.png was uploaded."]);
       screen.getByRole("region", { name: "Library" });
       expect(screen.queryByText("Something went wrong")).toBeNull();
+    });
+
+    // The browser applies a cancelled request's answer to no cookie, so the
+    // old sign-out cannot clear the cookie of the next sign-in.
+    it("cancels a pending sign-out once its signed-in view has ended", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await waitFor(() => {
+        expect(server.signOut().signal?.aborted).toBe(false);
+      });
+      act(() => {
+        sockets.at(0)?.serverClose(1008);
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.signOut().signal?.aborted).toBe(true);
     });
 
     it("shows no notice for a late failed sign-out", async () => {

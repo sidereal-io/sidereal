@@ -162,6 +162,14 @@ pick or send Nova back to the sign-in form, and a late 500 cannot put
 "Something went wrong" on the next view. Today `signOut` applies its answer
 with no such check (`web/src/Access.tsx:185-191`); this change adds it.
 
+The check alone does not protect the next sign-in's cookie. The server's
+204, and the 401 for a token no row backs, both carry a `Set-Cookie` that
+clears the session cookie, and the browser applies it whatever the script
+does with the answer. So `signOut` sends the `DELETE` with the kept
+controller's signal. When the view ends, the abort that stops the pick also
+cancels the request, and an answer that has not arrived by then sets no
+cookie.
+
 The abort runs in the same promise callback that reads the answer, so it
 comes before any render. The loop's next check (step 1 or step 3) then sees
 it, whether or not React has unmounted the Library yet (D14). The Library's

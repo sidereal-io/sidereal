@@ -213,7 +213,13 @@ the session, so the pick SHALL go on.
 
 A sign-out answer that arrives after the signed-in view it came from has
 ended SHALL change nothing: it SHALL NOT stop any file, change the view or
-show a notice.
+show a notice. The screen SHALL cancel a pending sign-out request as soon as
+the view it came from ends, so that its answer cannot clear the session
+cookie of a newer sign-in.
+
+#### Scenario: A pending sign-out is cancelled when its view ends
+- **WHEN** Nova presses Sign out, and the events connection says the session ended before the sign-out answers
+- **THEN** the screen shows the sign-in form and cancels the sign-out request
 
 #### Scenario: A late sign-out answer leaves the next sign-in alone
 - **WHEN** Nova picks `a.png` and `b.png`, presses Sign out while the upload of `a.png` is pending, the events connection says the session ended before the sign-out answers, Nova signs in again and picks `c.png` and `d.png`, the old sign-out answers 204 while the upload of `c.png` is pending, and the uploads of `c.png` and `d.png` both answer 201
