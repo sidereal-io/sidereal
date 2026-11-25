@@ -1,5 +1,6 @@
 //! Core refuses a run's proposals, records the run `failed` with a reason
-//! that names the facet, and stores no value from it.
+//! that names the facet, and stores no value from it. An Operator run that
+//! proposes an Asset is refused the same way and adds no Asset.
 use super::fixture::*;
 use super::*;
 use sidereal_plugin_abi::{
@@ -244,4 +245,21 @@ async fn an_operator_that_proposes_an_asset_and_succeeds_is_refused() {
     .await;
     let reason = refused_without_an_asset(&fixture).await;
     assert!(reason.contains("proposed an asset"), "{reason}");
+}
+
+#[tokio::test]
+async fn an_operator_that_proposes_an_asset_and_stops_keeps_its_own_reason() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
+        r.register_operator(op(&["test.size"], |c| {
+            propose(c, "test.size", 3)?;
+            c.propose_asset(an_image())
+                .map_err(|_| OperatorError::Failed("could not make a preview".into()))
+        }));
+    })
+    .await;
+    assert_eq!(
+        refused_without_an_asset(&fixture).await,
+        "could not make a preview"
+    );
 }
