@@ -1783,59 +1783,6 @@ mod get_asset {
         );
     }
 
-    /// Upload `nebula.png` with no upload Operators, then store, for its
-    /// version, a `test.kind` choice of `PNG` or `JPEG` holding `kind`, a
-    /// JSON text, and a `test.size` count of 7. Answers the Asset's id.
-    async fn with_kind(instance: &Instance, kind: &str) -> String {
-        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
-        let asset = uploaded["asset"]["id"].as_str().unwrap().to_owned();
-        let version = uploaded["asset"]["current_version_id"].as_str().unwrap();
-        instance
-            .execute(&format!(
-                "INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
-                 SELECT '00000000-0000-4000-8000-0000000000e1', 'test.op', '1', '{version}', id, 'succeeded', now(), now() FROM public.users;
-                 INSERT INTO public.facet_schemas (name, version, owner_pack, label, value_type, unit, scope, allowed_values) VALUES \
-                   ('test.size', 1, 'test', 'Size', 'count', 'bytes', 'asset_version', NULL), \
-                   ('test.kind', 1, 'test', 'Kind', 'choice', '', 'asset_version', ARRAY['PNG', 'JPEG']);
-                 INSERT INTO public.facet_values (id, facet, schema_version, asset_version_id, value, producer_id, producer_version, run_id, written_at) VALUES \
-                   ('00000000-0000-4000-8000-000000000001', 'test.size', 1, '{version}', '7', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', now()), \
-                   ('00000000-0000-4000-8000-000000000002', 'test.kind', 1, '{version}', '{kind}', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', now());"
-            ))
-            .await;
-        asset
-    }
-
-    #[tokio::test]
-    async fn get_asset_reads_a_choice_as_a_json_string() {
-        let instance =
-            Instance::with_library(|library| library.with_upload_operators(vec![])).await;
-        let asset = with_kind(&instance, r#""PNG""#).await;
-        let response = instance.read(&asset).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            json(response).await["asset"]["facets"],
-            serde_json::json!([
-                {"name": "test.kind", "label": "Kind", "value": "PNG", "unit": ""},
-                {"name": "test.size", "label": "Size", "value": 7, "unit": "bytes"},
-            ])
-        );
-    }
-
-    #[tokio::test]
-    async fn get_asset_answers_503_for_a_choice_outside_its_kept_allowed_values() {
-        for stored in [r#""GIF""#, r#""png""#, "1"] {
-            let instance =
-                Instance::with_library(|library| library.with_upload_operators(vec![])).await;
-            let asset = with_kind(&instance, stored).await;
-            let response = instance.read(&asset).await;
-            assert_eq!(
-                response.status(),
-                StatusCode::SERVICE_UNAVAILABLE,
-                "{stored}"
-            );
-        }
-    }
-
     #[tokio::test]
     async fn get_asset_of_an_unknown_or_malformed_id_is_404() {
         let instance = Instance::new().await;

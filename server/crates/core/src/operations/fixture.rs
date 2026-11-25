@@ -80,18 +80,6 @@ pub(super) fn count(name: &str) -> FacetSchema {
     }
 }
 
-/// A choice schema at version 1, with no unit, on the Asset version.
-pub(super) fn choice(name: &str, allowed: &[&str]) -> FacetSchema {
-    FacetSchema {
-        name: name.into(),
-        label: "Kind".into(),
-        value_type: FacetType::Choice(allowed.iter().map(|&a| a.to_owned()).collect()),
-        unit: String::new(),
-        version: 1,
-        scope: FacetScope::AssetVersion,
-    }
-}
-
 /// The pack `test`: the Source, then whatever the test registers.
 pub(super) struct TestPack(pub Box<dyn Fn(&mut Registry)>);
 impl Pack for TestPack {
