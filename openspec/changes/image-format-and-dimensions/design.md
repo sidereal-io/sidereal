@@ -227,6 +227,10 @@ tokens.
 - **Deploy:** the server applies `6_facet_allowed_values.sql` at start, as it
   applies every migration. It adds one nullable column and one check
   constraint to `facet_schemas`. Existing rows are counts and keep `NULL`.
+  The migration needs its schema baseline, `core/schema/6.json`, made by
+  `mise run db-schema` and added to `baselines()` in
+  `core/src/database/startup.rs`. The startup tests and
+  `scripts/instance-verify.sh` then expect six migration records.
 - **Data:** no backfill (D9). Assets saved before this change keep only the
   facts they have.
 - **Rollback:** migrations are forward-only (ADR-004). An older server refuses

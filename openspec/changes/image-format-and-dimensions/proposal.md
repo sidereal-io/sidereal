@@ -58,6 +58,11 @@ None.
 - `image-upload`: upload runs the header Operator after the file-size
   Operator; a failed or unrecorded run of either is logged with the
   Operator's id and does not fail the upload.
+- `postgres-foundation`: a sixth migration, which adds allowed values to the
+  kept facet schemas; a first start and a concurrent start hold six
+  migration records, and an upgrade from five keeps every stored row.
+- `compose-instance`: a first Compose start holds six successful migration
+  records.
 
 ## Impact
 
@@ -65,7 +70,8 @@ None.
   declaration checks, and `ABI_VERSION`. A public contract change.
 - `server/crates/core`: the proposal check, the schema store and its
   comparison, the facet read, and one forward-only migration that adds the
-  allowed values to `facet_schemas`.
+  allowed values to `facet_schemas`, with its schema baseline. The startup
+  tests and `scripts/instance-verify.sh` expect six migrations.
 - `server/crates/packs/image`: three facet schemas and the header Operator,
   with a PNG and JPEG header reader. No new dependency.
 - `server/crates/server`: the upload's Operator list, its log lines and the
