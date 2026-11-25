@@ -34,7 +34,7 @@ use sidereal_core::{
 };
 use sidereal_pack_astro::AstroPack;
 use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD};
-use sidereal_plugin_abi::Registry;
+use sidereal_plugin_abi::{FacetValue, Registry};
 use std::{
     convert::Infallible,
     io::Read,
@@ -204,7 +204,10 @@ async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response 
             json!({
                 "name": facet.name,
                 "label": facet.label,
-                "value": facet.value,
+                "value": match &facet.value {
+                    FacetValue::Integer(n) => json!(n),
+                    FacetValue::Text(text) => json!(text),
+                },
                 "unit": facet.unit,
             })
         })

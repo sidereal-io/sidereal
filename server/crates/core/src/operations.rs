@@ -129,9 +129,19 @@ fn json(value: &FacetValue) -> serde_json::Value {
 pub struct FacetEntry {
     pub name: String,
     pub label: String,
-    pub value: i64,
+    pub value: FacetValue,
     pub unit: String,
 }
+
+/// One stored value and the schema version it was written under.
+type StoredFacet = (
+    String,
+    String,
+    String,
+    Option<Vec<String>>,
+    serde_json::Value,
+    String,
+);
 
 impl Database {
     /// The facet values of the Asset `asset_id` and of its version
@@ -141,8 +151,8 @@ impl Database {
         asset_id: Uuid,
         version_id: Uuid,
     ) -> Result<Vec<FacetEntry>, DatabaseError> {
-        let rows: Vec<(String, String, String, serde_json::Value, String)> = sqlx::query_as(
-            "SELECT v.facet, s.label, s.value_type, v.value, s.unit \
+        let rows: Vec<StoredFacet> = sqlx::query_as(
+            "SELECT v.facet, s.label, s.value_type, s.allowed_values, v.value, s.unit \
              FROM public.facet_values v \
              JOIN public.facet_schemas s ON s.name = v.facet AND s.version = v.schema_version \
              WHERE v.asset_id = $1 OR v.asset_version_id = $2 \
@@ -153,11 +163,19 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
         rows.into_iter()
-            .map(|(name, label, value_type, value, unit)| {
-                // Only core writes these rows, and only counts exist: any
-                // other stored value is a damaged database, not a fact.
-                let value = match value_type.as_str() {
-                    "count" => value.as_i64().filter(|n| (0..=MAX_COUNT).contains(n)),
+            .map(|(name, label, value_type, allowed, value, unit)| {
+                // Only core writes these rows, after it checked each value
+                // against its schema: a value that does not fit its kept
+                // schema is a damaged database, not a fact.
+                let value = match (value_type.as_str(), allowed) {
+                    ("count", None) => value
+                        .as_i64()
+                        .filter(|n| (0..=MAX_COUNT).contains(n))
+                        .map(FacetValue::Integer),
+                    ("choice", Some(allowed)) => value
+                        .as_str()
+                        .filter(|text| allowed.iter().any(|a| a == text))
+                        .map(|text| FacetValue::Text(text.to_owned())),
                     _ => None,
                 }
                 .ok_or(DatabaseError::Schema)?;
