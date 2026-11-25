@@ -168,9 +168,9 @@ async fn a_run_keeps_its_schema_versions_in_name_order() {
     .await
     .unwrap();
     let (outcome, took_a_first) = tokio::join!(fixture.run(&version), async {
-        let mut watcher = fixture.conn().await;
         // A run that ends before it waits on a lock fails the test here.
         tokio::time::timeout(Duration::from_secs(10), async {
+            let mut watcher = fixture.conn().await;
             loop {
                 let waiting: i64 = sqlx::query_scalar(
                     "SELECT count(*) FROM pg_stat_activity \
