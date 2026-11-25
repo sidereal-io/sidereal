@@ -33,7 +33,7 @@
 
 ## 6. Journey [depends-on: 4, 5]
 
-- [ ] 6.1 [medium] In the browser journey (`web/e2e/upload.spec.ts`), Nova opens `nebula.png` from the Library and sees the terms `File size`, `Format`, `Height` and `Width` in that order, with `<bytes> bytes`, `PNG`, `24 pixels` and `32 pixels`, before and after a reload; the whole gate passes (asset-page "A new upload's page"; image-upload "A new upload has its format and dimensions") (verify: `deli -- mise run e2e`, then `deli -- mise run check`)
+- [x] 6.1 [medium] In the browser journey (`web/e2e/upload.spec.ts`), Nova opens `nebula.png` from the Library and sees the terms `File size`, `Format`, `Height` and `Width` in that order, with `<bytes> bytes`, `PNG`, `24 pixels` and `32 pixels`, before and after a reload; the whole gate passes (asset-page "A new upload's page"; image-upload "A new upload has its format and dimensions") (verify: `deli -- mise run e2e`, then `deli -- mise run check`) (✓ `mise run e2e` passed, 3 tests; `mise run check` passed)
 
 ## Deviations Ledger
 
