@@ -1499,6 +1499,8 @@ mod get_asset {
                  FROM public.asset_versions WHERE id = '{version}';
                  INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
                  SELECT '00000000-0000-4000-8000-0000000000e1', 'test.op', '1', '{version}', id, 'succeeded', now(), now() FROM public.users;
+                 INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
+                 SELECT '00000000-0000-4000-8000-0000000000e2', 'test.op', '1', '00000000-0000-4000-8000-0000000000f1', id, 'succeeded', now(), now() FROM public.users;
                  INSERT INTO public.facet_schemas VALUES \
                    ('test.b', 1, 'test', 'B one', 'count', 'px', 'asset_version'), \
                    ('test.b', 2, 'test', 'B two', 'count', 'mm', 'asset_version'), \
@@ -1508,7 +1510,7 @@ mod get_asset {
                    ('00000000-0000-4000-8000-000000000002', 'test.b', 1, NULL, '{version}', '2', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-01T00:00:00Z'), \
                    ('00000000-0000-4000-8000-000000000005', 'test.b', 1, NULL, '{version}', '5', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-02T00:00:00Z'), \
                    ('00000000-0000-4000-8000-000000000001', 'test.a', 1, '{asset}', NULL, '1', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-03T00:00:00Z'), \
-                   ('00000000-0000-4000-8000-000000000009', 'test.a', 1, NULL, '00000000-0000-4000-8000-0000000000f1', '9', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', '2026-01-01T00:00:00Z');"
+                   ('00000000-0000-4000-8000-000000000009', 'test.b', 1, NULL, '00000000-0000-4000-8000-0000000000f1', '9', 'test.op', '1', '00000000-0000-4000-8000-0000000000e2', '2026-01-01T00:00:00Z');"
             ))
             .await;
         let response = instance.read(&asset).await;
