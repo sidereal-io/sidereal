@@ -332,16 +332,7 @@ describe("Library", () => {
     });
 
     it("sends the files of one pick in turn, one request at a time", async () => {
-      const answers = [deferred(), deferred(), deferred()];
-      let sent = 0;
-      const fetch = vi.fn((_input: string, init?: RequestInit) => {
-        if (init?.method !== "POST") {
-          return Promise.resolve(Response.json({ assets: [] }));
-        }
-        const next = answers.at(sent++);
-        return next ? next.promise : Promise.reject(new TypeError("extra"));
-      });
-      vi.stubGlobal("fetch", fetch);
+      const { fetch, release } = heldUploads(3);
       showLibrary();
       await screen.findByRole("button", { name: "Upload" });
       const files = [named("a.png"), named("b.png"), named("c.png")];
@@ -359,12 +350,7 @@ describe("Library", () => {
           await Promise.resolve();
         });
         expect(uploads(fetch)).toHaveLength(index + 1);
-        await act(async () => {
-          answers[index]?.answer(
-            Response.json({ asset: nebula }, { status: 201 }),
-          );
-          await answers[index]?.promise;
-        });
+        await release(index, Response.json({ asset: nebula }, { status: 201 }));
       }
       await waitFor(() => {
         expect(
