@@ -9,8 +9,9 @@
 
 ADR review completed for this change. None of design.md's decisions needs a
 new record. Decision 1 (the format comes from the media type, not a facet)
-follows from ADR-008: one pack owns a facet's schema, so a format facet owned
-by `packs/image` could not take formats from other packs. It adds no
+follows from ADR-008: one pack owns a facet's schema and its allowed values,
+so a format facet owned by `packs/image` could take formats from other packs
+only if `packs/image` listed them, even for a producer granted to write it. It adds no
 contract, type or table, and can be changed inside one story. Decisions 2 to
 5 (the read's `media_type`, the header reader, the upload's Operator list and
 log lines, and the asset page) can also be changed inside one story.
