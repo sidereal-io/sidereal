@@ -809,7 +809,7 @@ mod ingest_commit {
     async fn upload_after_cleanup(
         fixture: &Fixture,
         bytes: &[u8],
-    ) -> Result<AssetRecord, IngestError> {
+    ) -> Result<Ingested, IngestError> {
         let objects = fixture.objects(None);
         let mut staging = objects.begin().unwrap();
         staging.write(bytes).unwrap();
