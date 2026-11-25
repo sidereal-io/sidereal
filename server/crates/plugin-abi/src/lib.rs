@@ -512,12 +512,14 @@ impl Registry {
     /// when everything it declared and registered passes the checks does it
     /// join this Registry, so a refused pack adds nothing.
     pub fn register_pack(&mut self, pack: &dyn Pack) -> Result<(), RegistryError> {
+        // Read the id once, so the checks use the owner the schemas record.
+        let pack_id = pack.id().to_owned();
         let mut staged = Registry {
-            pack: Some(pack.id().to_owned()),
+            pack: Some(pack_id.clone()),
             ..Registry::default()
         };
         pack.register(&mut staged);
-        let pack_id = pack.id();
+        let pack_id = pack_id.as_str();
         for (index, declared) in staged.facets.iter().enumerate() {
             let name = &declared.schema.name;
             if let Some(reason) = unstorable_facet(&declared.schema) {
@@ -1030,6 +1032,32 @@ mod facet_declaration {
         assert!(error.to_string().contains("testing.size"), "{error}");
         assert!(registry.facet_schema("other.size").is_none());
         assert!(registry.facet_schema("testing.size").is_none());
+    }
+
+    /// A pack whose id is empty until it registers, then `test`.
+    struct Renamed(std::sync::atomic::AtomicBool);
+    impl Pack for Renamed {
+        fn id(&self) -> &str {
+            if self.0.load(std::sync::atomic::Ordering::SeqCst) {
+                "test"
+            } else {
+                ""
+            }
+        }
+        fn register(&self, registry: &mut Registry) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            registry.declare_facet(size("test.size"));
+        }
+    }
+
+    #[test]
+    fn facet_declaration_checks_the_owner_it_records() {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&Renamed(Default::default()))
+            .unwrap_err();
+        assert!(error.to_string().contains("test.size"), "{error}");
+        assert!(registry.facet_schema("test.size").is_none());
     }
 }
 
