@@ -210,7 +210,7 @@ stores. Neither decodes pixel data or applies EXIF orientation (D8).
   run therefore holds at most about 30 to 40 MiB, close to the 32 MiB budget
   for a run. Each upload in flight runs its header on its own blocking
   worker, so uploads at the same time add up. `packs/image/tests/memory.rs`
-  counts the bytes a run asks the allocator for, at its peak: about 17 MiB
+  counts the bytes a run asks the allocator for, at its peak: about 24 MiB
   for this JPEG, which it holds to 40 MiB, and about 83 KiB for a PNG of
   200,000 text chunks, which it holds under 1 MiB. The count leaves out the
   allocator's own overhead.

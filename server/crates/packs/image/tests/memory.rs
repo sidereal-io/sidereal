@@ -55,8 +55,10 @@ unsafe impl GlobalAlloc for Counting {
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, size: usize) -> *mut u8 {
         let moved = unsafe { System.realloc(pointer, layout, size) };
         if !moved.is_null() {
-            shrank(layout.size());
+            // A reallocation that moves holds both blocks while it copies,
+            // so count the new block before the old one goes.
             grew(size);
+            shrank(layout.size());
         }
         moved
     }
