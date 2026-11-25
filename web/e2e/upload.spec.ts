@@ -8,9 +8,9 @@ import { test, expect, type Page } from "@playwright/test";
 // one pick, uploads the PNG's bytes again under another name and is told it
 // is already there, and still sees exactly the two images after the runner
 // restarts the server. Then Nova opens the PNG's asset page and reads its
-// file size, format, height and width, before and after a reload. The Rust process test
-// (server/crates/server/tests/journey.rs) checks ids and bytes; this test
-// checks what Nova sees.
+// format, file size, height and width, before and after a reload. The Rust
+// process test (server/crates/server/tests/journey.rs) checks ids and bytes;
+// this test checks what Nova sees.
 const runDir = process.env.SIDEREAL_E2E_RUN_DIR ?? "";
 const runnerPid = Number(process.env.SIDEREAL_E2E_RUNNER_PID);
 const fixtures = fileURLToPath(
@@ -102,8 +102,8 @@ test("Nova opens an image's page, reads its facts, reloads it and goes back", as
     statSync(join(fixtures, name)).size,
   );
   // nebula.png is 32 by 24 pixels.
-  const terms = ["File size", "Format", "Height", "Width"];
-  const values = [`${bytes} bytes`, "PNG", "24 pixels", "32 pixels"];
+  const terms = ["Format", "File size", "Height", "Width"];
+  const values = ["PNG", `${bytes} bytes`, "24 pixels", "32 pixels"];
   const expectFacts = async () => {
     await expect(page.getByRole("term")).toHaveText(terms);
     await expect(page.getByRole("definition")).toHaveText(values);
