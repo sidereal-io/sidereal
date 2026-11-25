@@ -229,6 +229,11 @@ describe("Library", () => {
         type: "image/png",
       });
 
+    const named = (name: string) =>
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, {
+        type: "image/png",
+      });
+
     // The file input the Upload button opens.
     const picker = () => {
       const input =
@@ -237,8 +242,8 @@ describe("Library", () => {
       return input;
     };
 
-    function choose(file: File) {
-      fireEvent.change(picker(), { target: { files: [file] } });
+    function choose(...files: File[]) {
+      fireEvent.change(picker(), { target: { files } });
     }
 
     const uploads = (fetch: ReturnType<typeof vi.fn>) =>
@@ -256,7 +261,7 @@ describe("Library", () => {
       fireEvent.click(upload);
       expect(click).toHaveBeenCalledTimes(1);
       expect(picker().accept).toBe("image/png,image/jpeg");
-      expect(picker().multiple).toBe(false);
+      expect(picker().multiple).toBe(true);
     });
 
     it("sends the chosen file at once, as the multipart field file", async () => {
@@ -275,6 +280,51 @@ describe("Library", () => {
       expect(body).toBeInstanceOf(FormData);
       expect((body as FormData).get("file")).toBe(file);
       expect([...(body as FormData).keys()]).toEqual(["file"]);
+    });
+
+    it("sends the files of one pick in turn, one request at a time", async () => {
+      const answers = [deferred(), deferred(), deferred()];
+      let sent = 0;
+      const fetch = vi.fn((_input: string, init?: RequestInit) => {
+        if (init?.method !== "POST") {
+          return Promise.resolve(Response.json({ assets: [] }));
+        }
+        const next = answers.at(sent++);
+        return next ? next.promise : Promise.reject(new TypeError("extra"));
+      });
+      vi.stubGlobal("fetch", fetch);
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      const files = [named("a.png"), named("b.png"), named("c.png")];
+      choose(...files);
+      for (const [index, file] of files.entries()) {
+        await waitFor(() => {
+          expect(uploads(fetch)).toHaveLength(index + 1);
+        });
+        const body = (uploads(fetch)[index]?.[1] as RequestInit)
+          .body as FormData;
+        expect(body.get("file")).toBe(file);
+        expect([...body.keys()]).toEqual(["file"]);
+        // The next file waits until this one has its answer.
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(uploads(fetch)).toHaveLength(index + 1);
+        await act(async () => {
+          answers[index]?.answer(
+            Response.json({ asset: nebula }, { status: 201 }),
+          );
+          await answers[index]?.promise;
+        });
+      }
+      await waitFor(() => {
+        expect(
+          screen
+            .getByRole("button", { name: "Upload" })
+            .hasAttribute("disabled"),
+        ).toBe(false);
+      });
+      expect(uploads(fetch)).toHaveLength(3);
     });
 
     it("shows the filename while pending and sends no second request", async () => {
@@ -361,11 +411,6 @@ describe("Library", () => {
         expect(uploads(fetch)).toHaveLength(2);
       });
     });
-
-    const named = (name: string) =>
-      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, {
-        type: "image/png",
-      });
 
     const listRequests = (fetch: ReturnType<typeof vi.fn>) =>
       fetch.mock.calls.filter(

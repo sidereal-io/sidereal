@@ -216,29 +216,37 @@ function Library({
     };
   }, [generation, onSessionLost]);
 
-  async function send(file: File) {
+  // Sends the files of one pick in turn, each only after the one before it
+  // has an answer or has ended without one.
+  async function send(files: File[]) {
     const signal = uploadsRef.current?.signal;
     if (sendingRef.current || !signal) return;
+    // Read afresh after each await: an abort can come at any time.
+    const stopped = () => signal.aborted;
     sendingRef.current = true;
-    setUpload({ kind: "sending", name: file.name });
-    const result = await sendFile(file, signal);
-    sendingRef.current = false;
-    if (signal.aborted) return;
-    if (result === sessionEnded) {
-      onSessionLost();
-    } else if (result === "saved") {
-      setUpload({ kind: "idle" });
-      setGeneration((value) => value + 1);
-    } else if (result === "unconfirmed") {
-      // The file may have been saved, so the list loads again to show it.
-      setUpload({ kind: "unconfirmed", name: file.name });
-      setGeneration((value) => value + 1);
-    } else if ("found" in result) {
-      // Nothing changed in the library, so the list is not loaded again.
-      setUpload({ kind: "found", name: file.name, existing: result.found });
-    } else {
-      setUpload({ kind: "refused", name: file.name, reason: result.refused });
+    for (const file of files) {
+      if (stopped()) return;
+      setUpload({ kind: "sending", name: file.name });
+      const result = await sendFile(file, signal);
+      if (stopped()) return;
+      if (result === sessionEnded) {
+        onSessionLost();
+        return;
+      } else if (result === "saved") {
+        setUpload({ kind: "idle" });
+        setGeneration((value) => value + 1);
+      } else if (result === "unconfirmed") {
+        // The file may have been saved, so the list loads again to show it.
+        setUpload({ kind: "unconfirmed", name: file.name });
+        setGeneration((value) => value + 1);
+      } else if ("found" in result) {
+        // Nothing changed in the library, so the list is not loaded again.
+        setUpload({ kind: "found", name: file.name, existing: result.found });
+      } else {
+        setUpload({ kind: "refused", name: file.name, reason: result.refused });
+      }
     }
+    sendingRef.current = false;
   }
 
   function retry() {
@@ -267,12 +275,14 @@ function Library({
         type="file"
         accept="image/png,image/jpeg"
         aria-label="Image to upload"
+        multiple
         hidden
         onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          // Cleared, so the same file can be chosen again after a refusal.
+          // Copied first: clearing the value can empty the list it read.
+          const files = [...(event.currentTarget.files ?? [])];
+          // Cleared, so the same files can be chosen again after a refusal.
           event.currentTarget.value = "";
-          if (file) void send(file);
+          if (files.length > 0) void send(files);
         }}
       />
       {upload.kind === "sending" && (
