@@ -52,7 +52,10 @@ old path, and its history keeps the add and the ticks.
 ## Records that disagree
 
 When the records disagree, print `Records disagree:` and what you found.
-Say what to fix by hand, and stop before any step. Repair nothing: each
+Say what to fix by hand, and stop before any step. In an epic run, this
+stop ends only its story's run, as
+[A stop in an epic run](epic-run.md#a-stop-in-an-epic-run)
+says. Repair nothing: each
 repair means choosing which record is right, and that is the user's
 choice.
 

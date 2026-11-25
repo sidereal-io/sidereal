@@ -3,50 +3,50 @@
 lockfile_version = 3
 
 [[tools.gh]]
-version = "2.104.0"
+version = "2.105.0"
 backend = "aqua:cli/cli"
 specifiers = ["2"]
 
 [tools.gh."platforms.linux-arm64"]
-checksum = "sha256:cb34cefc6f4e77b90731374a2b737516bb8f3033c6ca46aa949e5344f68069e3"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740718938"
+checksum = "sha256:b1278c75107423d818f1937fd92cafc9e5e9b606631568f68d7fb816f5885a02"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188590"
 provenance = "github-attestations"
 
 [tools.gh."platforms.linux-arm64-musl"]
-checksum = "sha256:cb34cefc6f4e77b90731374a2b737516bb8f3033c6ca46aa949e5344f68069e3"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740718938"
+checksum = "sha256:b1278c75107423d818f1937fd92cafc9e5e9b606631568f68d7fb816f5885a02"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188590"
 provenance = "github-attestations"
 
 [tools.gh."platforms.linux-x64"]
-checksum = "sha256:98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740718892"
+checksum = "sha256:79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188566"
 provenance = "github-attestations"
 
 [tools.gh."platforms.linux-x64-musl"]
-checksum = "sha256:98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740718892"
+checksum = "sha256:79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188566"
 provenance = "github-attestations"
 
 [tools.gh."platforms.macos-arm64"]
-checksum = "sha256:23b12706219b9892e44236f988444a24adcf29284e16b35e03ba5b863fb6eb8e"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_macOS_arm64.zip"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740719079"
+checksum = "sha256:2a5d03103ae444927383b93d9ffd65579a26e2eb900ce1cf11f55258d5319ded"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_macOS_arm64.zip"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188673"
 provenance = "github-attestations"
 
 [tools.gh."platforms.macos-x64"]
-checksum = "sha256:a8c2a708dbae89dc7c05ba7b0beafc95bd8d09ab4a3505467b77d32ebf364dc6"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_macOS_amd64.zip"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740719067"
+checksum = "sha256:23602cbccbbdc6285a8520745b714cb927ce2ca621779373c2a20cd8e33fda66"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_macOS_amd64.zip"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188667"
 provenance = "github-attestations"
 
 [tools.gh."platforms.windows-x64"]
-checksum = "sha256:08c06d10482f12c478018cd259f64acbd5f625712cadf331aad19ba973c879e5"
-url = "https://github.com/cli/cli/releases/download/v2.104.0/gh_2.104.0_windows_amd64.zip"
-url_api = "https://api.github.com/repos/cli/cli/releases/assets/740719168"
+checksum = "sha256:8813a72c899900afaa10e3fec8fbc64b908c89dbfe837e95ed2fa500fc140627"
+url = "https://github.com/cli/cli/releases/download/v2.105.0/gh_2.105.0_windows_amd64.zip"
+url_api = "https://api.github.com/repos/cli/cli/releases/assets/761188741"
 provenance = "github-attestations"
 
 [[tools."github:Fission-AI/OpenSpec"]]
@@ -97,123 +97,129 @@ url_api = "https://api.github.com/repos/Fission-AI/OpenSpec/releases/assets/7695
 provenance = "github-attestations"
 
 [[tools."github:sidereal-io/lets-spec"]]
-version = "0.8.0"
+version = "0.9.0"
 backend = "github:sidereal-io/lets-spec"
-specifiers = ["0.8.0"]
+specifiers = ["0.9.0"]
 
 [tools."github:sidereal-io/lets-spec"."platforms.linux-arm64"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+checksum_source = "mise-versions"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [tools."github:sidereal-io/lets-spec"."platforms.linux-arm64-musl"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+checksum_source = "mise-versions"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [tools."github:sidereal-io/lets-spec"."platforms.linux-x64"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [tools."github:sidereal-io/lets-spec"."platforms.linux-x64-musl"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+checksum_source = "mise-versions"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [tools."github:sidereal-io/lets-spec"."platforms.macos-arm64"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+checksum_source = "mise-versions"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [tools."github:sidereal-io/lets-spec"."platforms.macos-x64"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+checksum_source = "mise-versions"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [tools."github:sidereal-io/lets-spec"."platforms.windows-x64"]
-checksum = "sha256:5b7c67c03d27127293acc3620d5f3bb17a6b0070006f00505ee85351977ca6f8"
-url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.8.0/lets-spec-0.8.0.tar.gz"
-url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/755534954"
+checksum = "sha256:e12f6c843bba2017bbc2acd1788b5d0182fd5980547e91ad6ff0867164c027b8"
+checksum_source = "mise-versions"
+url = "https://github.com/sidereal-io/lets-spec/releases/download/v0.9.0/lets-spec-0.9.0.tar.gz"
+url_api = "https://api.github.com/repos/sidereal-io/lets-spec/releases/assets/774616250"
 
 [[tools.node]]
-version = "26.12.0"
+version = "26.13.1"
 backend = "core:node"
 specifiers = ["26"]
 
 [tools.node."platforms.linux-arm64"]
-checksum = "sha256:ec53c915c3fdd8786c5685abd25ae3fe9fba0692307f9811d7caaadea1bcaf03"
-url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-linux-arm64.tar.gz"
+checksum = "sha256:80a330b35415382878df18d41afbd106ea89bfb3be0087d6608e289a14c5cc7d"
+url = "https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-arm64.tar.gz"
 
 [tools.node."platforms.linux-arm64-musl"]
-checksum = "sha256:2e70b6d5adbae94546c4d7e01de7b64c50bf8d3dbfaad2bb0774942e9da902b8"
-url = "https://unofficial-builds.nodejs.org/download/release/v26.12.0/node-v26.12.0-linux-arm64-musl.tar.gz"
+checksum = "sha256:42684e7f1830ef9eaadd040672cba41bbaff9549d834600699f92ee1ee5b1fb1"
+url = "https://unofficial-builds.nodejs.org/download/release/v26.13.1/node-v26.13.1-linux-arm64-musl.tar.gz"
 
 [tools.node."platforms.linux-x64"]
-checksum = "sha256:d9f88af72ad34f7ddf8e67289829f1698f54b6254f7d4f54b7453117ff1a3d2c"
-url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-linux-x64.tar.gz"
+checksum = "sha256:518674de2b621728a5e4486f5fb3b7d2900bb3cc4aa97969edaa463db99f9778"
+url = "https://nodejs.org/dist/v26.13.1/node-v26.13.1-linux-x64.tar.gz"
 
 [tools.node."platforms.linux-x64-musl"]
-checksum = "sha256:48ba1cdf21e684f13f38b6295f43bfea951f1ffd008b4cf93361c966b33f6938"
-url = "https://unofficial-builds.nodejs.org/download/release/v26.12.0/node-v26.12.0-linux-x64-musl.tar.gz"
+checksum = "sha256:04bf9ed3e32ea139c9af52f6dd06879ff6f8880555a0aa1183ef2d156c0e02d3"
+url = "https://unofficial-builds.nodejs.org/download/release/v26.13.1/node-v26.13.1-linux-x64-musl.tar.gz"
 
 [tools.node."platforms.macos-arm64"]
-checksum = "sha256:2a154d4a5458930e0a2d6a1ecf64eddf5a2b3e1c13636b609c2ecb042e8c4553"
-url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-darwin-arm64.tar.gz"
+checksum = "sha256:aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735"
+url = "https://nodejs.org/dist/v26.13.1/node-v26.13.1-darwin-arm64.tar.gz"
 
 [tools.node."platforms.macos-x64"]
-checksum = "sha256:878ecede191c7abc1bff01d3fb81f7ed81aa1161040dba18776b8ff8593614b1"
-url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-darwin-x64.tar.gz"
+checksum = "sha256:82bb96078a24ca50b9c9a38f2379e6be6d87171fcd400fc14c8934b3bce96e2f"
+url = "https://nodejs.org/dist/v26.13.1/node-v26.13.1-darwin-x64.tar.gz"
 
 [tools.node."platforms.windows-x64"]
-checksum = "sha256:50efaf01a08c520b4bbe499c09a8c5a5c370002c419c0d9da2c6815d3066a453"
-url = "https://nodejs.org/dist/v26.12.0/node-v26.12.0-win-x64.zip"
+checksum = "sha256:e2edda75bfb089654705cf65a13b58933bfd5f57148e8ebda916f58a2474f1f7"
+url = "https://nodejs.org/dist/v26.13.1/node-v26.13.1-win-x64.zip"
 
 [[tools.pnpm]]
-version = "12.9.0"
+version = "12.23.0"
 backend = "aqua:pnpm/pnpm"
 specifiers = ["12"]
 
 [tools.pnpm."platforms.linux-arm64"]
-checksum = "sha256:499d0fb80dcbf92f4347bbae592dfb9852c48e5f758bfe413f0f9a68a3e5afaa"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-linux-arm64.tar.gz"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603784"
+checksum = "sha256:dd03f7616625ff8f13d952f641f0864a2300d73d0a751a682737615bd9f9a7a2"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077152"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.linux-arm64-musl"]
-checksum = "sha256:08c25491449c3f8af4073bde2a539f7b9d4fefdd4a1d18295102f8234e624e6c"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-linux-arm64-musl.tar.gz"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603777"
+checksum = "sha256:9b250672fd320ecd349510dc1ec60c3f1f21216b2b5dae637c2e228bf4f8fdd5"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-linux-arm64-musl.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077162"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.linux-x64"]
-checksum = "sha256:df37180e8b3d964e08e8a6bf3bff1374dcf37108fbce1ef7ddc9b70f7cad141f"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-linux-x64.tar.gz"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603786"
+checksum = "sha256:b515e29f2ac1adc0fbe63173414a6682827baff24f17e7ad3476821bdef236ac"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-linux-x64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077165"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.linux-x64-musl"]
-checksum = "sha256:7da4f057f5d4ca655f36c0fe1c35d318052d9de00aeafdff409654088beb3858"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-linux-x64-musl.tar.gz"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603788"
+checksum = "sha256:bd5ccafed63753322371d24b6676fe9a773ef5f9961d22ea225c1b287be28d57"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-linux-x64-musl.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077157"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.macos-arm64"]
-checksum = "sha256:12d792463ed8f30cc80e6de4035c37d0d0d78ba57dfb27d8e82bf0fd24d98372"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-darwin-arm64.tar.gz"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603785"
+checksum = "sha256:52bb314bf0d48928fc15126ccce42aa199275e29018bef112a04ae8acdcaaf14"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-darwin-arm64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077158"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.macos-x64"]
-checksum = "sha256:cf78c7fa1b160caef6392a84e87c6063ed4fe9466f6d83c94bdb0c1888254803"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-darwin-x64.tar.gz"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603782"
+checksum = "sha256:9655877c63f33bbb64508871e443fc05a5e4a87641c1becd83a45717a4b15d90"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-darwin-x64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077167"
 provenance = "github-attestations"
 
 [tools.pnpm."platforms.windows-x64"]
-checksum = "sha256:37544210c8245fa6aa26e76e77c89c777e0e4b6c649071519eef31b92eae10f8"
-url = "https://github.com/pnpm/pnpm/releases/download/v12.9.0/pnpm-win32-x64.zip"
-url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/606603781"
+checksum = "sha256:1a954bdc1b15ff036294279391d01a09407b7d46ff972a59d81f23becce96c1c"
+url = "https://github.com/pnpm/pnpm/releases/download/v12.23.0/pnpm-win32-x64.zip"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/779077146"
 provenance = "github-attestations"
 
 [[tools.rust]]

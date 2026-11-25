@@ -32,7 +32,8 @@ and not a step.
 
 One unit of work that `lets-go` runs in its own session: shape, plan,
 review plan, build or review build. `lets delegate step --for` names them
-as `shape`, `plan`, `review-plan`, `build` and `review-build`. A step runs
+as `shape`, `plan`, `review-plan`, `build` and `review-build`. `--for` also
+takes `story`, which runs a story run, not a step. A step runs
 in its own session through the `step` delegate strategy, and ends with a
 step report. A step may write several OpenSpec artifacts. It is not an
 artifact and not a task.
