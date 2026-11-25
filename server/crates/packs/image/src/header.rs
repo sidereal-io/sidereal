@@ -90,10 +90,14 @@ fn jpeg_dimensions(reader: &mut CandidateReader<'_, '_>) -> Option<(u32, u32)> {
 }
 
 /// One window of candidate bytes, as one `read_candidate` call filled it.
+/// Its buffer only grows, so a short read does not make the next fill zero
+/// the buffer again.
 #[derive(Default)]
 struct Window {
     start: u64,
     bytes: Vec<u8>,
+    /// How many of `bytes`, from the start, the last fill gave.
+    len: usize,
 }
 
 impl Window {
@@ -102,7 +106,7 @@ impl Window {
     fn from(&self, position: u64) -> Option<&[u8]> {
         let offset = position.checked_sub(self.start)?;
         let offset = usize::try_from(offset).ok()?;
-        (offset < self.bytes.len()).then(|| &self.bytes[offset..])
+        (offset < self.len).then(|| &self.bytes[offset..self.len])
     }
 }
 
@@ -206,16 +210,18 @@ impl BufRead for CandidateReader<'_, '_> {
                 let len = (self.end - self.position).min(AssetContext::MAX_READ as u64) as usize;
                 let window = &mut self.windows[index];
                 window.start = self.position;
-                window.bytes.resize(len, 0);
-                let Ok(n) = self
+                if window.bytes.len() < len {
+                    window.bytes.resize(len, 0);
+                }
+                let read = self
                     .context
-                    .read_candidate(self.position, &mut window.bytes)
-                else {
-                    window.bytes.clear();
+                    .read_candidate(self.position, &mut window.bytes[..len]);
+                let Ok(n) = read else {
+                    window.len = 0;
                     self.failed = true;
                     return Err(unreadable());
                 };
-                window.bytes.truncate(n);
+                window.len = n.min(len);
                 self.newest = index;
                 if n == 0 {
                     return Ok(&[]);
