@@ -9,9 +9,10 @@ shows.
 
 ## What Changes
 
-- **The Operator contract becomes executable.** An Operator in `plugin-abi`
-  declares the facet schemas its pack owns and the facets it writes, and runs
-  through a run-scoped Asset context that lets it read the version's bytes,
+- **The Operator contract becomes executable.** A pack declares the facet
+  schemas it owns in `Pack::register`, with `Registry::declare_facet`. An
+  Operator in `plugin-abi` lists the facets it writes in `Operator::writes`,
+  and runs through a run-scoped Asset context that lets it read the version's bytes,
   propose facet values, write log lines and check for cancellation (D4).
   **BREAKING:** implementers of the current pre-freeze `Operator` stub,
   including the astro pack's plate-solve stub, must implement the new methods.
