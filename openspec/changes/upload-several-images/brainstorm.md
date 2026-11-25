@@ -15,13 +15,13 @@ https://github.com/sidereal-io/sidereal/issues/531
 | D6 | When does the library list reload? | After each saved file, and after each file that got no answer. A file found already in the library reloads nothing. | User |
 | D7 | If the session ends while files are still waiting, what happens to them? | They are not sent. The library and results are hidden, as "Ending the session hides library data" requires. | User |
 | D8 | Does one file's failure stop the rest? | No. A refusal, a 409 or a lost answer for one file leaves the next files to be sent as normal. | Evidence: #531 packet, Scope |
-| D9 | What does each file's line say? | Waiting: `<name> is waiting.` Uploading: `Uploading <name>…` Saved: `<name> was uploaded.` Refused, already in the library and no answer: the messages the image-upload spec already defines. | Assumption |
-| D10 | Is there a limit on how many files Nova can pick at once? | No limit. The files are sent one at a time, so a large pick adds no load beyond one upload. | Assumption |
-| D11 | Is one picked file a special case? | No. One file is a pick of one: it shows one line, which stays until the next pick, as D5 says. | Assumption |
+| D9 | What does each file's line say? | Waiting: `<name> is waiting.` Uploading: `Uploading <name>…` Saved: `<name> was uploaded.` Refused, already in the library and no answer: the messages the image-upload spec already defines. | User |
+| D10 | Is there a limit on how many files Nova can pick at once? | No limit. The files are sent one at a time, so a large pick adds no load beyond one upload. | User |
+| D11 | Is one picked file a special case? | No. One file is a pick of one: it shows one line, which stays until the next pick, as D5 says. | User |
 
 ## Changes from the story
 
 - Cut: a percentage of bytes sent for each file. "Progress" means each file's state (D3).
 - Out, as the story says: drag and drop, and folder upload (#358).
 
-Confirmed by user: no
+Confirmed by user: yes
