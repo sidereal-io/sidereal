@@ -282,3 +282,60 @@ async fn a_new_version_that_adds_an_allowed_value_stores_it() {
         ]
     );
 }
+
+#[tokio::test]
+async fn another_version_becomes_the_current_version_of_the_same_asset() {
+    let fixture = Fixture::new(|_| {}).await;
+    let asset = fixture.version(b"abc").await;
+    let added = fixture.another_version(&asset).await;
+    let (owner, current): (Uuid, Uuid) = sqlx::query_as(
+        "SELECT v.asset_id, a.current_version_id FROM public.asset_versions v \
+         JOIN public.assets a ON a.id = v.asset_id WHERE v.id = $1",
+    )
+    .bind(added)
+    .fetch_one(&mut fixture.conn().await)
+    .await
+    .unwrap();
+    assert_ne!(added, asset.version.id);
+    assert_eq!(owner, asset.id);
+    assert_eq!(current, added);
+}
+
+#[tokio::test]
+async fn values_stay_on_the_runs_own_input() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
+        r.declare_facet(FacetSchema {
+            scope: FacetScope::Asset,
+            ..count("test.whole")
+        });
+        r.register_operator(op(&["test.size", "test.whole"], |context| {
+            for name in ["test.size", "test.whole"] {
+                context
+                    .propose_facet(name, FacetValue::Integer(1))
+                    .map_err(|_| OperatorError::Failed("p".into()))?;
+            }
+            Ok(())
+        }));
+    })
+    .await;
+    let a1 = fixture.version(b"abc").await;
+    // A2 is current, so a subject taken from the Asset's current version
+    // instead of the run's input lands on A2.
+    fixture.another_version(&a1).await;
+    fixture.version(b"other").await;
+    assert_eq!(fixture.run(&a1).await.unwrap(), RunOutcome::Succeeded);
+    let stored: Vec<_> = fixture
+        .values()
+        .await
+        .into_iter()
+        .map(|v| (v.facet, v.asset_id, v.asset_version_id))
+        .collect();
+    assert_eq!(
+        stored,
+        [
+            ("test.size".to_string(), None, Some(a1.version.id)),
+            ("test.whole".to_string(), Some(a1.id), None),
+        ]
+    );
+}
