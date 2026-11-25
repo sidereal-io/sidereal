@@ -22,7 +22,7 @@ They run in order.
 ## 2. Design rules and journey [depends-on: 1]
 
 - [x] 2.1 [easy] In the Library section of `DESIGN.md`, "Upload is one primary button" says choosing files starts their upload at once, and "Every other state is one quiet line" names each picked file's line: waiting, uploading or its result. Wording only, so `pnpm tokens` has nothing to regenerate (verify: pnpm --dir web design:lint) (✓ pnpm --dir web design:lint passed)
-- [ ] 2.2 [medium] In `web/e2e/upload.spec.ts`, Nova picks `nebula.png` and `nebula.jpg` in one pick (one `setFiles` call with both fixture paths) instead of one at a time. The screen shows `nebula.png was uploaded.` and `nebula.jpg was uploaded.` and both images. The repeat upload as `m31-final.png` and the restart check stay as they are (verify: mise run e2e)
+- [x] 2.2 [medium] In `web/e2e/upload.spec.ts`, Nova picks `nebula.png` and `nebula.jpg` in one pick (one `setFiles` call with both fixture paths) instead of one at a time. The screen shows `nebula.png was uploaded.` and `nebula.jpg was uploaded.` and both images. The repeat upload as `m31-final.png` and the restart check stay as they are (verify: mise run e2e) (✓ mise run e2e passed)
 - [ ] 2.3 [easy] The whole gate passes: Compose checks, strict OpenSpec validation, the server checks and the web checks (verify: mise run check)
 
 ## Deviations Ledger
