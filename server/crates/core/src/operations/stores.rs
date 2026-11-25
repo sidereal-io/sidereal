@@ -224,6 +224,7 @@ async fn another_version_becomes_the_current_version_of_the_same_asset() {
     .fetch_one(&mut fixture.conn().await)
     .await
     .unwrap();
+    assert_ne!(added, asset.version.id);
     assert_eq!(owner, asset.id);
     assert_eq!(current, added);
 }
