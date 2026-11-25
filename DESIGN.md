@@ -344,9 +344,11 @@ it holds the name and the facts.
   tabular figures. Values group digits in threes with commas, such as
   `1,234,567 bytes`. A long value wraps at any character, so it never
   runs past the column.
-- **No facts:** when no facts are recorded, the column shows the name and one
-  line of body-md `color-text-secondary` text in place of the facts:
-  `No facts are recorded for this image.`
+- **Format is always the first fact line,** with no unit. It comes from the
+  current Asset version's media type: `image/png` shows as `PNG`,
+  `image/jpeg` as `JPEG`, and any other media type as it is. Every version
+  has a media type, so the line shows even when no facets are recorded, and
+  the facts are never empty.
 - **An image that cannot display keeps its name and facts.** Its 3:2 frame
   shows `This image could not be displayed.` in `color-text-secondary` inside a
   `color-border-hairline` edge, as in the Library.
