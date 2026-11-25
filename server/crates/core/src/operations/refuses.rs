@@ -252,3 +252,40 @@ async fn a_number_for_a_choice_is_refused() {
     let reason = refused(&fixture).await;
     assert!(reason.contains("test.kind"), "{reason}");
 }
+
+/// A Registry where `test.op` proposes the text `a` for `test.kind`, a choice
+/// at version 1 of `allowed`.
+fn writes_kind_a(allowed: &'static [&'static str]) -> Arc<Registry> {
+    registry(move |r| {
+        r.declare_facet(choice("test.kind", allowed));
+        r.register_operator(op(&["test.kind"], |c| propose_text(c, "test.kind", "a")));
+    })
+}
+
+#[tokio::test]
+async fn allowed_values_changed_without_a_new_version_are_refused() {
+    for changed in [&["a", "b", "c"][..], &["b", "a"][..]] {
+        let fixture = Fixture::new(|_| {}).await;
+        let version = fixture.version(b"abc").await;
+        let first = fixture
+            .run_with(
+                writes_kind_a(&["a", "b"]),
+                "test.op",
+                &version,
+                Arc::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first, RunOutcome::Succeeded);
+        let outcome = fixture
+            .run_with(writes_kind_a(changed), "test.op", &version, Arc::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome,
+            RunOutcome::Failed("facet test.kind version 1 changed without a new version".into()),
+            "{changed:?}"
+        );
+        assert_eq!(fixture.values().await.len(), 1, "{changed:?}");
+    }
+}

@@ -228,3 +228,57 @@ async fn an_allowed_choice_is_stored_as_a_json_string() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].value, serde_json::json!("PNG"));
 }
+
+#[tokio::test]
+async fn a_new_version_that_adds_an_allowed_value_stores_it() {
+    let fixture = Fixture::new(|_| {}).await;
+    let version = fixture.version(b"abc").await;
+    let first = registry(|r| {
+        r.declare_facet(choice("test.kind", &["a", "b"]));
+        r.register_operator(op(&["test.kind"], |context| {
+            context
+                .propose_facet("test.kind", FacetValue::Text("a".into()))
+                .map_err(|_| OperatorError::Failed("p".into()))
+        }));
+    });
+    let second = registry(|r| {
+        r.declare_facet(FacetSchema {
+            version: 2,
+            ..choice("test.kind", &["a", "b", "c"])
+        });
+        r.register_operator(op(&["test.kind"], |context| {
+            context
+                .propose_facet("test.kind", FacetValue::Text("c".into()))
+                .map_err(|_| OperatorError::Failed("p".into()))
+        }));
+    });
+    for registry in [first, second] {
+        let outcome = fixture
+            .run_with(registry, "test.op", &version, Arc::default())
+            .await
+            .unwrap();
+        assert_eq!(outcome, RunOutcome::Succeeded);
+    }
+    let stored: Vec<_> = fixture
+        .values()
+        .await
+        .into_iter()
+        .map(|v| (v.schema_version, v.value))
+        .collect();
+    assert_eq!(
+        stored,
+        [(1, serde_json::json!("a")), (2, serde_json::json!("c"))]
+    );
+    let kept: Vec<(i32, Vec<String>)> =
+        sqlx::query_as("SELECT version, allowed_values FROM public.facet_schemas ORDER BY version")
+            .fetch_all(&mut fixture.conn().await)
+            .await
+            .unwrap();
+    assert_eq!(
+        kept,
+        [
+            (1, vec!["a".to_owned(), "b".to_owned()]),
+            (2, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()])
+        ]
+    );
+}

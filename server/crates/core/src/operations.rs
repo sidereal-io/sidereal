@@ -368,8 +368,9 @@ async fn record_failure(
     }
 }
 
-/// The kept row of a schema version, in the order core compares it.
-type KeptSchema = (String, String, String, String, String);
+/// The kept row of a schema version, in the order core compares it: owner,
+/// label, value type, unit, scope, and a choice's allowed values in order.
+type KeptSchema = (String, String, String, String, String, Option<Vec<String>>);
 
 /// In one transaction: keep each used schema version, insert every value
 /// against the subject its scope names, and mark the run `succeeded`. A kept
@@ -414,7 +415,8 @@ async fn store(
         .execute(&mut *tx)
         .await?;
         let kept: KeptSchema = sqlx::query_as(
-            "SELECT owner_pack, label, value_type, unit, scope FROM public.facet_schemas \
+            "SELECT owner_pack, label, value_type, unit, scope, allowed_values \
+             FROM public.facet_schemas \
              WHERE name = $1 AND version = $2",
         )
         .bind(&schema.name)
@@ -427,6 +429,7 @@ async fn store(
             type_text(&schema.value_type).into(),
             schema.unit.clone(),
             scope_text(schema.scope).into(),
+            allowed_values(&schema.value_type).map(<[String]>::to_vec),
         );
         if kept != running {
             return Ok(Err(format!(
