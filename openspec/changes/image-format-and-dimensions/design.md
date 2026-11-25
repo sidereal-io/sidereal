@@ -209,8 +209,11 @@ stores. Neither decodes pixel data or applies EXIF orientation (D8).
   1-byte allocations take about 14 MiB with allocator overhead. One header
   run therefore holds at most about 30 to 40 MiB, close to the 32 MiB budget
   for a run. Each upload in flight runs its header on its own blocking
-  worker, so uploads at the same time add up. No test measures memory; build
-  review checks it with a test that measures a header run's memory.
+  worker, so uploads at the same time add up. `packs/image/tests/memory.rs`
+  counts the bytes a run asks the allocator for, at its peak: about 17 MiB
+  for this JPEG, which it holds to 40 MiB, and about 83 KiB for a PNG of
+  200,000 text chunks, which it holds under 1 MiB. The count leaves out the
+  allocator's own overhead.
 - **PNG.** The decoder checks the `IHDR` chunk's CRC-32 before it parses the
   chunk, so a damaged header fails rather than giving wrong dimensions. A
   first chunk that is not a 13-byte `IHDR`, or a header cut off early, also
