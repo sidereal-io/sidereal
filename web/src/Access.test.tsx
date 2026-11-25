@@ -612,6 +612,63 @@ describe("Access", () => {
       expect(server.sent()).toEqual(["a.png", "b.png"]);
     });
 
+    // Nova presses Sign out, and the events socket ends the session before
+    // the sign-out answers. Then Nova signs in again.
+    async function signInAgainBeforeTheSignOutAnswers(
+      server: ReturnType<typeof heldServer>,
+    ) {
+      await signedInAsSam();
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      act(() => {
+        sockets.at(0)?.serverClose(1008);
+      });
+      await submit("Sign in");
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    }
+
+    it("lets a late sign-out answer leave the next sign-in alone", async () => {
+      const server = heldServer();
+      await signInAgainBeforeTheSignOutAnswers(server);
+      pick("c.png", "d.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "c.png"]);
+      });
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        await server.signOut().promise;
+      });
+      await act(async () => {
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png", "c.png", "d.png"]);
+      });
+      await act(async () => {
+        server.upload(2).answer(saved());
+        await server.upload(2).promise;
+      });
+      await screen.findByText("d.png was uploaded.");
+      expect(lines()).toEqual(["c.png was uploaded.", "d.png was uploaded."]);
+      screen.getByRole("region", { name: "Library" });
+      expect(screen.queryByText("Something went wrong")).toBeNull();
+    });
+
+    it("shows no notice for a late failed sign-out", async () => {
+      const server = heldServer();
+      await signInAgainBeforeTheSignOutAnswers(server);
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 500 }));
+        await server.signOut().promise;
+      });
+      screen.getByRole("region", { name: "Library" });
+      expect(screen.queryByText("Something went wrong")).toBeNull();
+    });
+
     it("gives a new sign-in a fresh session signal", async () => {
       const server = heldServer();
       await signedInAsSam();

@@ -215,10 +215,14 @@ function Access() {
   }
 
   async function signOut() {
+    // The signed-in view this sign-out comes from.
+    const session = sessionRef.current;
     const response = await send("DELETE", "/api/session");
+    // That view has ended already, so its answer changes nothing.
+    if (session !== sessionRef.current || session?.signal.aborted) return;
     // A 401 means the session had already ended.
     if (response?.status === 204 || response?.status === 401) {
-      sessionRef.current?.abort();
+      session?.abort();
       show("signed-out");
     } else setMessage("Something went wrong");
   }
