@@ -375,6 +375,194 @@ describe("Access", () => {
     expect(computed(submitButton, "border-radius")).toBe("4px");
   });
 
+  describe("a pick while the session ends", () => {
+    // A request that answers, or fails like a network error, only when the
+    // test says so.
+    function held() {
+      let answer: (response: Response) => void = () => undefined;
+      let fail: () => void = () => undefined;
+      const promise = new Promise<Response>((resolve, reject) => {
+        answer = resolve;
+        fail = () => {
+          reject(new TypeError("network error"));
+        };
+      });
+      return { promise, answer, fail };
+    }
+
+    type Held = ReturnType<typeof held>;
+
+    // A server where sam is signed in, the list is empty, and every upload
+    // and sign-out waits for the test.
+    function heldServer() {
+      const uploads: (Held & { name: string })[] = [];
+      const signOuts: Held[] = [];
+      const fetch = vi.fn((input: string, init?: RequestInit) => {
+        const key = `${init?.method ?? "GET"} ${input}`;
+        if (key === "POST /api/assets") {
+          const file = (init?.body as FormData).get("file") as File;
+          const request = { ...held(), name: file.name };
+          uploads.push(request);
+          return request.promise;
+        }
+        if (key === "DELETE /api/session") {
+          const request = held();
+          signOuts.push(request);
+          return request.promise;
+        }
+        const answer = {
+          "GET /api/claim": [200, { open: false }],
+          "GET /api/session": [200, { username: "sam", role: "admin" }],
+          "POST /api/session": [200, { username: "sam", role: "admin" }],
+          "GET /api/assets": [200, { assets: [] }],
+        }[key] as Answer | undefined;
+        if (!answer) return Promise.reject(new TypeError("network error"));
+        return Promise.resolve(Response.json(answer[1], { status: answer[0] }));
+      });
+      vi.stubGlobal("fetch", fetch);
+      const lists = () =>
+        fetch.mock.calls.filter(
+          ([url, init]) => url === "/api/assets" && !init?.method,
+        ).length;
+      const sent = () => uploads.map((request) => request.name);
+      const upload = (index: number) => {
+        const request = uploads.at(index);
+        if (!request) throw new Error(`upload ${String(index)} was not sent`);
+        return request;
+      };
+      const signOut = (index = 0) => {
+        const request = signOuts.at(index);
+        if (!request) throw new Error("no sign-out was sent");
+        return request;
+      };
+      return { lists, sent, upload, signOut };
+    }
+
+    const saved = () => Response.json({}, { status: 201 });
+
+    function pick(...names: string[]) {
+      const input =
+        document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("no file input");
+      const files = names.map(
+        (name) => new File(["x"], name, { type: "image/png" }),
+      );
+      fireEvent.change(input, { target: { files } });
+    }
+
+    const lines = () =>
+      Array.from(
+        screen
+          .queryByRole("list", { name: "Uploads" })
+          ?.querySelectorAll("li") ?? [],
+        (item) => item.textContent,
+      );
+
+    async function signedInAsSam() {
+      render(<Access />);
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    }
+
+    // Nova picks the files and presses Sign out while the first one is on
+    // its way; then the first file is saved while the sign-out is pending.
+    async function signOutAfterFirstSaved(
+      server: ReturnType<typeof heldServer>,
+      names: string[],
+    ) {
+      await signedInAsSam();
+      pick(...names);
+      await waitFor(() => {
+        expect(server.sent()).toEqual([names[0]]);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      const lists = server.lists();
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(names.slice(0, 2));
+        expect(server.lists()).toBe(lists + 1);
+      });
+    }
+
+    it("sends no more files once a sign-out answers, even in the same step as an upload", async () => {
+      const server = heldServer();
+      await signOutAfterFirstSaved(server, ["a.png", "b.png", "c.png"]);
+      const lists = server.lists();
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+      expect(lines()).toEqual([]);
+      expect(server.sent()).toEqual(["a.png", "b.png"]);
+      expect(server.lists()).toBe(lists);
+    });
+
+    it("shows nothing for an upload that answers after the sign-out", async () => {
+      const server = heldServer();
+      await signOutAfterFirstSaved(server, ["a.png", "b.png", "c.png"]);
+      const lists = server.lists();
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        await server.signOut().promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      await act(async () => {
+        server.upload(1).answer(saved());
+        await server.upload(1).promise;
+      });
+      expect(screen.queryByRole("region", { name: "Library" })).toBeNull();
+      expect(document.body.textContent).not.toContain("b.png");
+      expect(server.sent()).toEqual(["a.png", "b.png"]);
+      expect(server.lists()).toBe(lists);
+    });
+
+    it("sends no more files once the events socket ends the session", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      pick("a.png", "b.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["a.png"]);
+      });
+      // Both in one act scope, so React has not yet unmounted the Library
+      // when the upload loop sees the answer.
+      await act(async () => {
+        sockets.at(0)?.serverClose(1008);
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await screen.findByRole("button", { name: "Sign in" });
+      expect(server.sent()).toEqual(["a.png"]);
+    });
+
+    it("gives a new sign-in a fresh session signal", async () => {
+      const server = heldServer();
+      await signedInAsSam();
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      await act(async () => {
+        server.signOut().answer(new Response(null, { status: 204 }));
+        await server.signOut().promise;
+      });
+      await submit("Sign in");
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      pick("c.png", "d.png");
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["c.png"]);
+      });
+      await act(async () => {
+        server.upload(0).answer(saved());
+        await server.upload(0).promise;
+      });
+      await waitFor(() => {
+        expect(server.sent()).toEqual(["c.png", "d.png"]);
+      });
+    });
+  });
+
   describe("the events socket", () => {
     const signedIn: Record<string, Answer> = {
       "GET /api/claim": [200, { open: false }],

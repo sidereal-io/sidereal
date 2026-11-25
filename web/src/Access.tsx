@@ -1,10 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import "./Access.css";
 import { watchSession } from "./eventsSocket.ts";
 import Library from "./Library.tsx";
 
+// What the first check finds.
+type Found = "unclaimed" | "signed-out" | "failed" | { username: string };
+
+// A signed-in view carries the controller of its own session signal.
 type View =
-  "loading" | "unclaimed" | "signed-out" | "failed" | { username: string };
+  | "loading"
+  | Exclude<Found, object>
+  | { username: string; session: AbortController };
 
 // A status this section does not expect means the same as no answer.
 class Unexpected extends Error {}
@@ -13,7 +25,7 @@ function isObject(body: unknown): body is Record<string, unknown> {
   return typeof body === "object" && body !== null;
 }
 
-async function signedInUser(): Promise<View> {
+async function signedInUser(): Promise<Found> {
   const response = await fetch("/api/session");
   if (response.status === 401) return "signed-out";
   if (response.status !== 200) throw new Unexpected();
@@ -25,7 +37,7 @@ async function signedInUser(): Promise<View> {
 }
 
 // Nothing from a response body is shown on screen except the username.
-async function probe(): Promise<View> {
+async function probe(): Promise<Found> {
   try {
     const response = await fetch("/api/claim");
     if (response.status !== 200) return "failed";
@@ -35,6 +47,16 @@ async function probe(): Promise<View> {
   } catch {
     return "failed";
   }
+}
+
+// A signed-in view with a new session signal, which becomes the current one.
+function signedInView(
+  current: RefObject<AbortController | null>,
+  username: string,
+): View {
+  const session = new AbortController();
+  current.current = session;
+  return { username, session };
 }
 
 type Credentials = { username: string; password: string };
@@ -126,13 +148,20 @@ function CredentialsForm({
 function Access() {
   const [view, setView] = useState<View>("loading");
   const [message, setMessage] = useState<string | null>(null);
-  // The signed-in view's session signal, passed to the Library.
-  const [session] = useState(() => new AbortController());
+  // The current signed-in view's session controller. It is aborted in the
+  // same call that learns the session ended, before the view changes, so
+  // the Library sends nothing more even before it goes away.
+  const sessionRef = useRef<AbortController>(null);
 
   useEffect(() => {
     let stopped = false;
     void probe().then((next) => {
-      if (!stopped) setView(next);
+      if (stopped) return;
+      setView(
+        typeof next === "object"
+          ? signedInView(sessionRef, next.username)
+          : next,
+      );
     });
     return () => {
       stopped = true;
@@ -141,6 +170,7 @@ function Access() {
 
   // The session ended, as the events socket or a library request found.
   const sessionLost = useCallback(() => {
+    sessionRef.current?.abort();
     setMessage(null);
     setView("signed-out");
   }, []);
@@ -178,7 +208,7 @@ function Access() {
       if (!isObject(body) || typeof body.username !== "string") {
         throw new Unexpected();
       }
-      show({ username: body.username });
+      show(signedInView(sessionRef, body.username));
     } catch {
       setMessage("Something went wrong");
     }
@@ -187,9 +217,10 @@ function Access() {
   async function signOut() {
     const response = await send("DELETE", "/api/session");
     // A 401 means the session had already ended.
-    if (response?.status === 204 || response?.status === 401)
+    if (response?.status === 204 || response?.status === 401) {
+      sessionRef.current?.abort();
       show("signed-out");
-    else setMessage("Something went wrong");
+    } else setMessage("Something went wrong");
   }
 
   if (view === "loading") return null;
@@ -215,7 +246,7 @@ function Access() {
   return (
     <Library
       onSessionLost={sessionLost}
-      session={session.signal}
+      session={view.session.signal}
       notice={message}
     >
       <span className="access-user">{view.username}</span>
