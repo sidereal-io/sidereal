@@ -27,7 +27,7 @@ Add a choice value type. A choice facet's schema lists its allowed values, in or
 - Supporting a new value, such as a new image format, means a new schema version. Values under the old version stay readable with their own schema row.
 - The stored value is also the text a person reads, so changing how a value reads needs a new schema version too.
 - `facet_schemas` now holds one type's parameters in a typed column. A later type with parameters of its own needs another migration, which ADR-017 had expected to avoid.
-- The public plugin contract gains a value type that holds text, so its facet type and value types are no longer plain copyable values. Packs must clone them.
+- The public plugin contract gains a value type that holds text, so its facet type and value types no longer implement `Copy`. Packs borrow or move them, and clone one only when they need a second owned value.
 
 ## Alternatives Considered
 
