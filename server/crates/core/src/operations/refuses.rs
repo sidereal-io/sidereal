@@ -1,9 +1,11 @@
 //! Core refuses a run's proposals, records the run `failed` with a reason
-//! that names the facet, and stores no value from it.
+//! that names the facet, and stores no value from it. An Operator run that
+//! proposes an Asset is also recorded `failed` and stores no value, and adds
+//! no Asset or Asset version.
 use super::fixture::*;
 use super::*;
 use sidereal_plugin_abi::{
-    AssetContext, FacetSchema, FacetScope, FacetValue, Operator, OperatorError,
+    AssetContext, AssetProposal, FacetSchema, FacetScope, FacetValue, Operator, OperatorError,
 };
 use sqlx::Executor;
 use std::sync::atomic::Ordering;
@@ -204,88 +206,61 @@ async fn a_kept_schema_with_another_type_or_owner_is_refused() {
     }
 }
 
-fn propose_text(
-    context: &mut AssetContext<'_>,
-    name: &str,
-    text: &str,
-) -> Result<(), OperatorError> {
-    context
-        .propose_facet(name, FacetValue::Text(text.into()))
-        .map_err(|_| OperatorError::Failed("proposal".into()))
-}
-
-/// A Registry where `test.op` writes `test.kind`, a choice of `PNG` or
-/// `JPEG`, and `test.size`, a count, and runs `script`.
-async fn writes_kind(script: fn(&mut AssetContext<'_>) -> Result<(), OperatorError>) -> Fixture {
-    Fixture::new(move |r| {
-        r.declare_facet(choice("test.kind", &["PNG", "JPEG"]));
-        r.declare_facet(count("test.size"));
-        r.register_operator(op(&["test.kind", "test.size"], script));
-    })
+/// The counts of Assets and Asset versions in the library.
+async fn library(fixture: &Fixture) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT (SELECT count(*) FROM public.assets), (SELECT count(*) FROM public.asset_versions)",
+    )
+    .fetch_one(&mut fixture.conn().await)
     .await
+    .unwrap()
+}
+
+/// Like `refused`, after also checking that the run added no Asset or
+/// Asset version.
+async fn refused_without_an_asset(fixture: &Fixture) -> String {
+    let version = fixture.version(b"abc").await;
+    let before = library(fixture).await;
+    let outcome = fixture.run(&version).await.unwrap();
+    assert_eq!(library(fixture).await, before);
+    let reason = fixture.failed_reason().await;
+    assert_eq!(outcome, RunOutcome::Failed(reason.clone()));
+    assert!(fixture.values().await.is_empty());
+    reason
+}
+
+fn an_image() -> AssetProposal {
+    AssetProposal::new("image", "image/x-test")
 }
 
 #[tokio::test]
-async fn a_choice_the_schema_does_not_allow_is_refused() {
-    let fixture = writes_kind(|c| propose_text(c, "test.kind", "GIF")).await;
-    let reason = refused(&fixture).await;
-    assert!(reason.contains("test.kind"), "{reason}");
-}
-
-#[tokio::test]
-async fn a_choice_in_another_letter_case_is_refused() {
-    let fixture = writes_kind(|c| propose_text(c, "test.kind", "png")).await;
-    let reason = refused(&fixture).await;
-    assert!(reason.contains("test.kind"), "{reason}");
-}
-
-#[tokio::test]
-async fn text_for_a_count_is_refused() {
-    let fixture = writes_kind(|c| propose_text(c, "test.size", "12")).await;
-    let reason = refused(&fixture).await;
-    assert!(reason.contains("test.size"), "{reason}");
-}
-
-#[tokio::test]
-async fn a_number_for_a_choice_is_refused() {
-    let fixture = writes_kind(|c| propose(c, "test.kind", 1)).await;
-    let reason = refused(&fixture).await;
-    assert!(reason.contains("test.kind"), "{reason}");
-}
-
-/// A Registry where `test.op` proposes the text `a` for `test.kind`, a choice
-/// at version 1 of `allowed`.
-fn writes_kind_a(allowed: &'static [&'static str]) -> Arc<Registry> {
-    registry(move |r| {
-        r.declare_facet(choice("test.kind", allowed));
-        r.register_operator(op(&["test.kind"], |c| propose_text(c, "test.kind", "a")));
+async fn an_operator_that_proposes_an_asset_and_succeeds_is_refused() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
+        r.register_operator(op(&["test.size"], |c| {
+            propose(c, "test.size", 3)?;
+            let _ignored = c.propose_asset(an_image());
+            Ok(())
+        }));
     })
+    .await;
+    let reason = refused_without_an_asset(&fixture).await;
+    assert!(reason.contains("proposed an asset"), "{reason}");
 }
 
 #[tokio::test]
-async fn allowed_values_changed_without_a_new_version_are_refused() {
-    for changed in [&["a", "b", "c"][..], &["b", "a"][..]] {
-        let fixture = Fixture::new(|_| {}).await;
-        let version = fixture.version(b"abc").await;
-        let first = fixture
-            .run_with(
-                writes_kind_a(&["a", "b"]),
-                "test.op",
-                &version,
-                Arc::default(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(first, RunOutcome::Succeeded);
-        let outcome = fixture
-            .run_with(writes_kind_a(changed), "test.op", &version, Arc::default())
-            .await
-            .unwrap();
-        assert_eq!(
-            outcome,
-            RunOutcome::Failed("facet test.kind version 1 changed without a new version".into()),
-            "{changed:?}"
-        );
-        assert_eq!(fixture.values().await.len(), 1, "{changed:?}");
-    }
+async fn an_operator_that_proposes_an_asset_and_stops_keeps_its_own_reason() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
+        r.register_operator(op(&["test.size"], |c| {
+            propose(c, "test.size", 3)?;
+            c.propose_asset(an_image())
+                .map_err(|_| OperatorError::Failed("could not make a preview".into()))
+        }));
+    })
+    .await;
+    assert_eq!(
+        refused_without_an_asset(&fixture).await,
+        "could not make a preview"
+    );
 }

@@ -158,7 +158,7 @@ fn a_jpeg_of_19_byte_icc_segments_filling_8_mib_holds_at_most_40_mib() {
     let bytes = jpeg_with(&one.repeat(8 * MIB / 19 - 1));
     assert!(bytes.len() <= 8 * MIB, "{} bytes", bytes.len());
     let (outcome, held) = measured_run(bytes);
-    assert_eq!(outcome, Ok(3));
+    assert_eq!(outcome, Ok(2));
     eprintln!("JPEG run held {held} bytes");
     assert!(held <= 40 * MIB, "the run held {held} bytes");
 }
@@ -178,7 +178,7 @@ fn a_png_of_200000_text_chunks_holds_under_1_mib() {
         bytes.extend_from_slice(&text);
     }
     let (outcome, held) = measured_run(bytes);
-    assert_eq!(outcome, Ok(3));
+    assert_eq!(outcome, Ok(2));
     eprintln!("PNG run held {held} bytes");
     assert!(held < MIB, "the run held {held} bytes");
 }

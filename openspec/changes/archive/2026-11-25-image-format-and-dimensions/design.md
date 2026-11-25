@@ -3,54 +3,70 @@
 ## Context
 
 - `server/crates/plugin-abi/src/lib.rs` has one value type. `FacetType` has
-  only `Count`, and `FacetValue` has only `Integer(i64)`. Both derive `Copy`,
-  and `ABI_VERSION` is 2. `unstorable_facet` checks a schema when its pack
-  registers.
-- `server/crates/core/src/operations.rs` runs an Operator, checks every
-  proposal in `check`, and stores values in `store`. `store` keeps one
-  `facet_schemas` row per name and version, and refuses a run when the kept
-  row (owner, label, value type, unit, scope) differs from the running
-  declaration. `Database::facets` reads values back and treats anything but a
-  count in range as a damaged database. `FacetEntry.value` is an `i64`.
-- `facet_schemas` (migration `5_facets.sql`) has no column for allowed
-  values. ADR-017 keeps values in a JSONB column, so a text value needs no
-  change to `facet_values`.
-- `server/crates/packs/image/src/lib.rs` has the manual-upload Source, which
-  refuses bytes that are not PNG or JPEG, and the file-size Operator
-  `image.measure-file-size`. The pack depends on `plugin-abi` and no other
-  Sidereal crate, and `server/scripts/check-arch.sh` enforces that. A pack
-  may depend on crates from crates.io.
+  only `Count`, and `FacetValue` has only `Integer(i64)`. `ABI_VERSION` is 2.
+  This change does not touch `plugin-abi`.
+- Each Asset version already has a `media_type`, such as `image/png`. The
+  manual-upload Source in `server/crates/packs/image/src/lib.rs` sets it from
+  the file's signature, not its name, and refuses bytes that are not PNG or
+  JPEG. Core reads it into `AssetRecord.version.media_type`
+  (`server/crates/core/src/assets.rs`). No response returns it yet.
+- Under ADR-008 one pack owns a facet's schema, and the schema fixes the
+  facet's type, which for a closed choice includes its list of allowed
+  values. Another pack may write values under that schema only with a
+  producer grant, and only values the schema allows. So `packs/astro` could
+  record FITS or XISF in a format facet owned by `packs/image` only if
+  `packs/image` listed them (D3).
+- `server/crates/packs/image/src/lib.rs` has the Source and the file-size
+  Operator `image.measure-file-size`. The pack depends on `plugin-abi` and no
+  other Sidereal crate, and `server/scripts/check-arch.sh` enforces that. A
+  pack may depend on crates from crates.io.
 - `server/crates/server/src/assets.rs` runs `upload_operators` in order after
   a new Asset is saved. It logs `file-size run failed for asset …` and
-  `file-size run not recorded for asset …` whatever Operator ran.
+  `file-size run not recorded for asset …` whatever Operator ran. `entry`
+  builds the library list entry, which `read` and the upload response reuse.
 - `web/src/AssetPage.tsx` accepts a facet only when its `value` is a safe
-  whole number of zero or more, and always prints `value unit`.
+  whole number of zero or more, always prints `value unit`, and shows
+  `No facts are recorded for this image.` when the server returns no facets.
 - An Operator reads bytes only through `AssetContext::read_candidate`, at
   most 64 KiB per call, at any offset.
 - The test fixtures `nebula.png` and `nebula.jpg` in
   `server/crates/server/tests/fixtures/` are both 32 by 24 pixels.
 
+### State of the branch
+
+The first build of this change added a choice value type to `plugin-abi`
+(`FacetType::Choice`, `FacetValue::Text`, `ABI_VERSION` 3), the
+`image.format` facet, migration `6_facet_allowed_values.sql` with its
+baseline `core/schema/6.json`, ADR-018, and the code and tests that use
+them. The pull request review found that a closed choice owned by one pack
+cannot take formats from another (D3). The user removed all of it from this
+change: a choice type comes back with its first real user, such as
+`astro.frame_type`, and a forward-only migration with no user should not
+reach `main`. ADR-018 is gone from `docs/decisions/`; tasks section 7
+removes the code. The header reader, its 8 MiB JPEG limit, its memory tests
+and the build-review fixes stay.
+
 ## Goals / Non-Goals
 
 **Goals:**
 
-- A choice value type that any pack can declare through `plugin-abi`, with
-  core checking every proposal against the schema's allowed values.
-- A header Operator in `packs/image` that reads the format, width and height
-  of PNG and JPEG without decoding pixel data.
+- A header Operator in `packs/image` that reads the width and height of PNG
+  and JPEG without decoding pixel data.
 - Upload runs it after the file-size Operator, and a failure in one run
   leaves the other run's values in place.
-- The asset page shows count and choice values, and leaves out an empty unit.
+- The asset page shows a `Format` line from the version's media type, then
+  the facets, and leaves out an empty unit.
 
 **Non-Goals:**
 
-- Free text, decimal or other value types.
+- A choice, text or other new value type in `plugin-abi`, or any change to
+  the plugin contract.
+- A migration, or any change to core.
 - EXIF, colour profiles, TIFF, or applying EXIF orientation (D1, D8).
 - Backfilling Assets saved before this change (D9), or showing failed runs on
   the page (D7).
 - An order for facets other than by name (D10).
-- A `type` field in the facet JSON: a client tells a count from a choice by
-  the JSON type of `value` (decision 6).
+- `media_type` in the library list or the upload response (D11).
 
 ## Test Seams
 
@@ -60,94 +76,58 @@
   asserts the proposals or the failure reason. This covers the PNG and JPEG
   header reader and every failure reason without a database.
 - **Existing seams reused:**
-  - `plugin-abi`'s unit tests for the choice declaration checks.
-  - `server/crates/core/src/operations/` tests (`refuses.rs`, `stores.rs`,
-    `fixture.rs`) for the proposal check, the kept schema comparison and the
-    facet read, against a test database.
-  - `server/crates/server/tests/assets.rs` for upload, the log lines and the
-    facet JSON, using the existing fixtures and PNGs built in the test.
+  - `server/crates/server/tests/assets.rs` for upload, the log lines,
+    `media_type` and the facet JSON, using the existing fixtures and PNGs
+    built in the test.
   - `web/src/AssetPage.test.tsx` for the page's lines.
+  - `web/e2e/upload.spec.ts` for Nova's journey.
 
 ## Scrutiny Tier & Blast Radius
 
 - **Tier:** high
-- **Blast radius:** the public plugin contract (`plugin-abi`), core's facet
-  check, store and read paths, one forward-only migration on
-  `facet_schemas`, the image pack and its first crates.io dependencies
-  (`png` for PNG, `zune-jpeg` for JPEG), the upload route's Operator list
-  and log lines, the asset JSON,
-  and the asset page. No authorization or trust
-  boundary changes.
+- **Blast radius:** the image pack and its first crates.io dependencies
+  (`png` for PNG, `zune-jpeg` for JPEG), which parse untrusted bytes; the
+  upload route's Operator list and log lines; the read of one Asset; and the
+  asset page. No authorization or trust boundary changes, and no change to
+  `plugin-abi`, core or the database schema.
 
 ## Decisions
 
-### 1. The choice type lives on `FacetType`, and the text on `FacetValue`
+### 1. The format comes from the media type, not a facet
 
-`FacetType` gains `Choice(Vec<String>)`, holding the allowed values in their
-declared order. `FacetValue` gains `Text(String)`. Neither enum stays `Copy`;
-each keeps `Clone`, `Debug`, `PartialEq` and `Eq`, so `FacetSchema` still
-compares in tests. `ABI_VERSION` rises to 3, with a doc line that says
-facets can be choices.
+The asset page shows the format from the current version's `media_type`.
+The image pack declares no `image.format` facet, and its header Operator
+proposes only the width and height. The media type already comes from the
+file's bytes, so the page still never names a format from a file name.
 
-- *Alternative:* a separate `allowed_values` field on `FacetSchema`. It would
-  sit empty on every count and let a count carry allowed values by mistake.
-  Holding them inside the variant makes that state impossible.
-- *Alternative:* `Choice(&'static [&'static str])`, to keep `Copy`. A third-
-  party pack loaded later could not build its list at run time, and the
-  contract is meant for those packs.
+- *Alternative:* `image.format`, a choice of `PNG` or `JPEG` owned by
+  `packs/image`, with a new choice value type in `plugin-abi`. This was the
+  first build. Under ADR-008 only the owning pack may write a facet, so
+  `packs/astro` could never add FITS or XISF, and the choice type, its
+  migration and its record would have no other user.
+- *Alternative:* an open text facet `image.format`. It repeats what the
+  media type already says, and it still belongs to one pack.
+- *Alternative:* a format facet in each pack, such as `astro.format`. One
+  fact would then live under several names, and the page would have to know
+  them all.
 
-The value variant is named for its shape, as `Integer` is, so a later text
-type can reuse `Text`.
+### 2. Reading one Asset adds `media_type`
 
-### 2. The Registry checks a choice when the pack registers
+`read` in `server/crates/server/src/assets.rs` adds `"media_type":
+record.version.media_type` to the `asset` object, beside `facets`. `entry`
+does not change, so the library list and the upload response keep their
+shape (D11). Core already reads the field; core does not change.
 
-`unstorable_facet` refuses a choice with no allowed values, an empty allowed
-value, a value with U+0000, or a value listed twice. The error is
-`RegistryError::InvalidFacet` with a reason, as for other declaration
-faults, so the error names the facet. A refused pack adds nothing, as today.
+- *Alternative:* add it to `entry`, so every Asset entry carries it. Nothing
+  else needs it yet, and the user chose the read only.
 
-### 3. Core keeps the allowed values with the schema version
-
-A forward-only migration, `6_facet_allowed_values.sql`, adds
-`allowed_values TEXT[]` to `facet_schemas`. It is `NULL` for a count and holds
-one or more values for a choice. A check constraint enforces that the column
-is `NULL` when `value_type` is not `'choice'`, and is not `NULL` and holds at
-least one value (`cardinality(allowed_values) >= 1`) when it is. Existing
-rows are counts with `NULL`, so they stay valid. `type_text` returns `"choice"` for a choice. `store` writes the
-allowed values with a new schema row, and adds them to `KeptSchema`, so a
-kept version with other allowed values, or the same ones in another order,
-refuses the run with the existing reason. Order counts because the
-comparison is the simplest exact one, and a pack has no reason to reorder.
-
-- *Alternative:* no column, and rely on the running declaration. A value
-  could then be read back under allowed values it was never checked against,
-  and a changed list would not refuse the run.
-- *Alternative:* a general `JSONB` column for any type's parameters. It would
-  save a migration for a future parameterized type, but loses the database's
-  check on the shape, and no second such type exists yet.
-
-ADR-018 records this decision, because it changes what ADR-017 expected: the
-schema table now carries one type's parameters.
-
-### 4. Core checks and reads a choice by exact match
-
-`check` accepts `(Choice(allowed), Text(t))` only when `allowed` contains
-`t`, letter case included. Any other pairing of type and value, such as text
-for a count, is refused with a reason that names the facet. `json` writes a
-`Text` value as a JSON string.
-
-`Database::facets` also selects `allowed_values`. It reads a choice value
-only when it is a JSON string in the kept allowed values, and otherwise
-returns `DatabaseError::Schema`, as it does for a count out of range.
-`FacetEntry.value` becomes a `FacetValue`, so the server maps `Integer` to a
-JSON number and `Text` to a JSON string.
-
-### 5. The image pack reads headers with `png` and `zune-jpeg`
+### 3. The image pack reads headers with `png` and `zune-jpeg`
 
 The header Operator, `image.read-header`, reads the first 8 bytes and picks
 the format from the signature, as the Source does. Both share one signature
 function. Bytes that start with neither signature fail with `the image format
-is not recognized`.
+is not recognized`. A failed read of those first bytes is a storage problem,
+not an unknown format, so it fails with `the stored file could not be read`.
 
 The Operator does not parse PNG or JPEG itself. It uses two pure-Rust crates
 from crates.io, the decoders that the `image` crate uses, called directly. It
@@ -235,7 +215,8 @@ stores. Neither decodes pixel data or applies EXIF orientation (D8).
   JPEG header could not be read`, by signature. The Operator also fails a
   width or height of 0, and a PNG width or height above 2,147,483,647, the
   PNG limit, whatever the crate accepts. The Operator then proposes
-  `image.format`, `image.width` and `image.height`.
+  `image.width` and `image.height`. It proposes no format: the format it
+  finds only picks the decoder and the failure reason (decision 1).
 
 - *Alternative:* a hand-written PNG and JPEG header reader, about 80 lines.
   It adds no dependency, but the review found it needs its own bound on
@@ -260,17 +241,7 @@ stores. Neither decodes pixel data or applies EXIF orientation (D8).
   a `Read + Seek`, so the Operator would still copy bytes out of the
   context first.
 
-### 6. The facet JSON keeps its shape
-
-Each facet entry keeps `name`, `label`, `value` and `unit`. A choice's
-`value` is a JSON string, and a facet with no unit has `"unit": ""`. The web
-page tells a count from a choice by `typeof value`.
-
-- *Alternative:* add a `type` field. It would let a client check the value
-  against its type, but no client needs that yet, and it can be added later
-  without breaking readers.
-
-### 7. Upload runs both Operators and logs by Operator id
+### 4. Upload runs both Operators and logs by Operator id
 
 `Library::new` sets `upload_operators` to `[FILE_SIZE, READ_HEADER]`. Each
 run is independent, as `save` already loops over the list and never stops on
@@ -278,25 +249,34 @@ a failure. The log lines become `<operator id> run failed for asset <id>:
 <reason>` and `<operator id> run not recorded for asset <id>: <error>`. The
 existing server tests that match `file-size run …` change to the new lines.
 
-### 8. The asset page shows text values and empty units
+### 5. The asset page shows a `Format` line, then the facets
 
-`Fact.value` becomes `number | string`. `facts()` accepts a safe whole number
-of zero or more, or a non-empty string, and refuses anything else, so the
-page still shows `The image could not be loaded.` for a malformed answer. A
-number shows through `numbers.format`; a string shows as React text. The unit
-and the space before it render only when the unit is not empty. No CSS
-changes: the value and unit stay in the existing `dd`, which is already in
-the mono face.
+`assetOf` reads `asset.media_type`, and refuses an answer whose media type
+is not a non-empty string, as it refuses a malformed facet: the page shows
+`The image could not be loaded.` and Retry. A small map gives the line's
+text: `image/png` is `PNG`, `image/jpeg` is `JPEG`, and any other media type
+is shown as it is, as React text, so markup never runs (D4). `Details`
+always shows the `Format` line first, with no unit, then one line per facet
+in the server's order (D10). The no-facts line goes, because the list is
+never empty (D12).
 
-**Tokens added:** none. The page reuses the existing fact line and its
-tokens.
+`Fact.value` stays a number: a facet still holds only counts. A line's unit
+and the space before it render only when the unit is not empty, because the
+`Format` line has none and a pack may declare a facet with no unit. The
+`white-space: pre-wrap` rule on the value stays, so a media type the page
+does not know shows exactly as the server returns it; its comment changes to
+say so.
+
+- *Alternative:* show the media type itself, `image/png`. It is accurate but
+  reads as a technical label to Nova; the common name is what Nova knows.
+- *Alternative:* keep the no-facts line for an Asset with no facets. The
+  `Format` line would then sit beside a line that says no facts are recorded.
+
+**Tokens added:** none. The `Format` line reuses the existing fact line and
+its tokens.
 
 ## Risks / Trade-offs
 
-- [Making `FacetType` and `FacetValue` non-`Copy` breaks code that copies
-  them, such as `match (declared.schema.value_type, proposal.value)` in
-  `check`] → Match on references. Only first-party code uses the contract,
-  and the build finds every use.
 - [A crafted file could make many small reads, such as a JPEG of 4-byte
   segments or fill bytes, or one of full-length segments that zune-jpeg
   reads ahead into and seeks back over] → The adapter reads in 64 KiB
@@ -322,17 +302,20 @@ tokens.
 - [Some valid files fail the header run: a JPEG whose height is set by a
   later marker, a JPEG kind the decoder does not support (such as lossless,
   12-bit or arithmetic-coded), a JPEG whose first start-of-scan segment
-  ends more than 8 MiB into the file, or an Apple-optimized PNG whose first chunk is
-  `CgBI`] → The run
-  fails with a clear reason and the file size is still recorded. These files
-  are rare in astrophotography output, and #527 shows processing failures.
+  ends more than 8 MiB into the file, or an Apple-optimized PNG whose first
+  chunk is `CgBI`] → The run fails with a clear reason and the file size is
+  still recorded. The page still shows the format from the media type. These
+  files are rare in astrophotography output, and #527 shows processing
+  failures.
 - [A new `png` or `zune-jpeg` release changes which files it accepts] →
   `Cargo.lock` pins the versions, the header tests cover each case the specs
   name, and Dependabot updates arrive as pull requests that run those tests.
-- [Adding `PNG` or `JPEG` as display text makes it the stored value too, so
-  renaming it later needs a new schema version] → That is the cost D3
-  accepted. The values are the formats' common names and are not expected to
-  change.
+- [The format is not a fact a selector or search can use, because it is not
+  a facet] → No selector or search exists yet. When one needs the format, it
+  can read the version's media type, which every pack's Source sets.
+- [The page's map from media type to name covers only PNG and JPEG] → Any
+  other media type shows as it is, so a new format is never hidden; #526 and
+  `packs/astro` add names as they add formats.
 - [The upload answers later, because it now waits for two runs] → A PNG
   header run reads one 64 KiB window. A JPEG header run reads through its
   first start-of-scan segment, which in the usual file lies in the first
@@ -340,15 +323,20 @@ tokens.
 
 ## Migration & Rollback
 
-- **Deploy:** the server applies `6_facet_allowed_values.sql` at start, as it
-  applies every migration. It adds one nullable column and one check
-  constraint to `facet_schemas`. Existing rows are counts and keep `NULL`.
-  The migration needs its schema baseline, `core/schema/6.json`, made by
-  `mise run db-schema` and added to `baselines()` in
-  `core/src/database/startup.rs`. The startup tests and
-  `scripts/instance-verify.sh` then expect six migration records.
+- **Deploy:** no migration. The branch's migration 6 and its baseline are
+  removed before merge (task 7.2), so `main` never holds them and a database
+  keeps five migration records.
+- **A database that ran an earlier build of this branch:** a database that
+  already applied migration 6, such as one used to preview this pull request
+  before task 7.2, holds six migration records. The server refuses it at
+  startup with `incompatible migration history`, because this build has five
+  migrations. To test this build, use a fresh database (for this worktree's
+  fixture, `mise run db-clean`, then `mise run db-up`), or restore a backup
+  taken before migration 6 ran. Do not reuse that database.
 - **Data:** no backfill (D9). Assets saved before this change keep only the
-  facts they have.
-- **Rollback:** migrations are forward-only (ADR-004). An older server refuses
-  to start against a database with a migration it does not know, so rolling
-  back means restoring the database backup taken before the upgrade.
+  facts they have, and show their format from the media type they already
+  hold.
+- **Rollback:** deploy the previous build. Nothing in the database changes,
+  so an older server reads the same rows; only the stored width and height
+  values of new uploads stay behind, under schemas it does not declare,
+  which it reads with their kept label and unit.

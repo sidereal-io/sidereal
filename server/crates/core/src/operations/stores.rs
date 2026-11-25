@@ -212,73 +212,58 @@ async fn a_run_keeps_its_schema_versions_in_name_order() {
 }
 
 #[tokio::test]
-async fn an_allowed_choice_is_stored_as_a_json_string() {
-    let fixture = Fixture::new(|r| {
-        r.declare_facet(choice("test.kind", &["PNG", "JPEG"]));
-        r.register_operator(op(&["test.kind"], |context| {
-            context
-                .propose_facet("test.kind", FacetValue::Text("PNG".into()))
-                .map_err(|_| OperatorError::Failed("p".into()))
-        }));
-    })
-    .await;
-    let version = fixture.version(b"abc").await;
-    assert_eq!(fixture.run(&version).await.unwrap(), RunOutcome::Succeeded);
-    let values = fixture.values().await;
-    assert_eq!(values.len(), 1);
-    assert_eq!(values[0].value, serde_json::json!("PNG"));
+async fn another_version_becomes_the_current_version_of_the_same_asset() {
+    let fixture = Fixture::new(|_| {}).await;
+    let asset = fixture.version(b"abc").await;
+    let added = fixture.another_version(&asset).await;
+    let (owner, current): (Uuid, Uuid) = sqlx::query_as(
+        "SELECT v.asset_id, a.current_version_id FROM public.asset_versions v \
+         JOIN public.assets a ON a.id = v.asset_id WHERE v.id = $1",
+    )
+    .bind(added)
+    .fetch_one(&mut fixture.conn().await)
+    .await
+    .unwrap();
+    assert_ne!(added, asset.version.id);
+    assert_eq!(owner, asset.id);
+    assert_eq!(current, added);
 }
 
 #[tokio::test]
-async fn a_new_version_that_adds_an_allowed_value_stores_it() {
-    let fixture = Fixture::new(|_| {}).await;
-    let version = fixture.version(b"abc").await;
-    let first = registry(|r| {
-        r.declare_facet(choice("test.kind", &["a", "b"]));
-        r.register_operator(op(&["test.kind"], |context| {
-            context
-                .propose_facet("test.kind", FacetValue::Text("a".into()))
-                .map_err(|_| OperatorError::Failed("p".into()))
-        }));
-    });
-    let second = registry(|r| {
+async fn values_stay_on_the_runs_own_input() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
         r.declare_facet(FacetSchema {
-            version: 2,
-            ..choice("test.kind", &["a", "b", "c"])
+            scope: FacetScope::Asset,
+            ..count("test.whole")
         });
-        r.register_operator(op(&["test.kind"], |context| {
-            context
-                .propose_facet("test.kind", FacetValue::Text("c".into()))
-                .map_err(|_| OperatorError::Failed("p".into()))
+        r.register_operator(op(&["test.size", "test.whole"], |context| {
+            for name in ["test.size", "test.whole"] {
+                context
+                    .propose_facet(name, FacetValue::Integer(1))
+                    .map_err(|_| OperatorError::Failed("p".into()))?;
+            }
+            Ok(())
         }));
-    });
-    for registry in [first, second] {
-        let outcome = fixture
-            .run_with(registry, "test.op", &version, Arc::default())
-            .await
-            .unwrap();
-        assert_eq!(outcome, RunOutcome::Succeeded);
-    }
+    })
+    .await;
+    let a1 = fixture.version(b"abc").await;
+    // A2 is current, so a subject taken from the Asset's current version
+    // instead of the run's input lands on A2.
+    fixture.another_version(&a1).await;
+    fixture.version(b"other").await;
+    assert_eq!(fixture.run(&a1).await.unwrap(), RunOutcome::Succeeded);
     let stored: Vec<_> = fixture
         .values()
         .await
         .into_iter()
-        .map(|v| (v.schema_version, v.value))
+        .map(|v| (v.facet, v.asset_id, v.asset_version_id))
         .collect();
     assert_eq!(
         stored,
-        [(1, serde_json::json!("a")), (2, serde_json::json!("c"))]
-    );
-    let kept: Vec<(i32, Vec<String>)> =
-        sqlx::query_as("SELECT version, allowed_values FROM public.facet_schemas ORDER BY version")
-            .fetch_all(&mut fixture.conn().await)
-            .await
-            .unwrap();
-    assert_eq!(
-        kept,
         [
-            (1, vec!["a".to_owned(), "b".to_owned()]),
-            (2, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()])
+            ("test.size".to_string(), None, Some(a1.version.id)),
+            ("test.whole".to_string(), Some(a1.id), None),
         ]
     );
 }

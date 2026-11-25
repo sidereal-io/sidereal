@@ -280,12 +280,11 @@ async fn json(response: Response) -> Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
-/// The four facets upload records for a 32 by 24 PNG or JPEG of `size`
+/// The three facets upload records for a 32 by 24 PNG or JPEG of `size`
 /// bytes, as the API returns them.
-fn upload_facets(size: usize, format: &str) -> Value {
+fn upload_facets(size: usize) -> Value {
     serde_json::json!([
         {"name": "image.file-size", "label": "File size", "value": size, "unit": "bytes"},
-        {"name": "image.format", "label": "Format", "value": format, "unit": ""},
         {"name": "image.height", "label": "Height", "value": 24, "unit": "pixels"},
         {"name": "image.width", "label": "Width", "value": 32, "unit": "pixels"},
     ])
@@ -384,13 +383,10 @@ mod upload {
     }
 
     #[tokio::test]
-    async fn upload_of_a_png_records_its_format_and_dimensions() {
+    async fn upload_of_a_png_records_its_dimensions() {
         let instance = Instance::new().await;
         let (id, _) = instance.uploaded_ids("nebula.png", PNG).await;
-        assert_eq!(
-            instance.facets_of(&id).await,
-            upload_facets(PNG.len(), "PNG")
-        );
+        assert_eq!(instance.facets_of(&id).await, upload_facets(PNG.len()));
     }
 
     #[tokio::test]
@@ -420,7 +416,7 @@ mod upload {
         .fetch_all(&mut conn)
         .await
         .unwrap();
-        let expected: Vec<_> = ["image.format", "image.height", "image.width"]
+        let expected: Vec<_> = ["image.height", "image.width"]
             .into_iter()
             .map(|facet| {
                 (
@@ -435,23 +431,17 @@ mod upload {
     }
 
     #[tokio::test]
-    async fn upload_of_a_jpeg_records_its_format_and_dimensions() {
+    async fn upload_of_a_jpeg_records_its_dimensions() {
         let instance = Instance::new().await;
         let (id, _) = instance.uploaded_ids("nebula.jpg", JPEG).await;
-        assert_eq!(
-            instance.facets_of(&id).await,
-            upload_facets(JPEG.len(), "JPEG")
-        );
+        assert_eq!(instance.facets_of(&id).await, upload_facets(JPEG.len()));
     }
 
     #[tokio::test]
-    async fn upload_of_png_bytes_named_jpg_records_png() {
+    async fn upload_of_png_bytes_named_jpg_records_their_png_dimensions() {
         let instance = Instance::new().await;
         let (id, _) = instance.uploaded_ids("m31.jpg", PNG).await;
-        assert_eq!(
-            instance.facets_of(&id).await,
-            upload_facets(PNG.len(), "PNG")
-        );
+        assert_eq!(instance.facets_of(&id).await, upload_facets(PNG.len()));
     }
 
     /// An Asset saved before the header Operator ran on upload has only its
@@ -465,7 +455,7 @@ mod upload {
         let (id, version) = instance.uploaded_ids("nebula.png", PNG).await;
         assert_eq!(
             instance.facets_of(&id).await,
-            serde_json::json!([upload_facets(PNG.len(), "PNG")[0]])
+            serde_json::json!([upload_facets(PNG.len())[0]])
         );
         let header_runs: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM public.operation_runs \
@@ -965,7 +955,7 @@ fn running_first(operator: impl Operator + 'static) -> impl FnOnce(Library) -> L
 
 impl Instance {
     /// Wait until the Asset's version has a `succeeded` run of each Operator
-    /// in `operators`, and holds its file size, format, width and height.
+    /// in `operators`, and holds its file size, width and height.
     async fn eventually_has_every_upload_fact(&self, operators: &[&str]) {
         for operator in operators {
             self.eventually(&format!(
@@ -976,7 +966,6 @@ impl Instance {
         }
         for (facet, value) in [
             ("image.file-size", PNG.len().to_string()),
-            ("image.format", r#""PNG""#.to_owned()),
             ("image.width", "32".to_owned()),
             ("image.height", "24".to_owned()),
         ] {
@@ -1656,8 +1645,66 @@ mod get_asset {
         assert_eq!(fields, ["asset"]);
         let mut asset = body["asset"].clone();
         assert!(asset["facets"].is_array());
+        assert_eq!(asset["media_type"], "image/png");
         asset.as_object_mut().unwrap().remove("facets");
+        asset.as_object_mut().unwrap().remove("media_type");
         assert_eq!(asset, listed);
+    }
+
+    impl Instance {
+        /// The Asset `GET /api/assets/{id}` returns for a new upload of
+        /// `bytes` as `name`.
+        async fn read_upload(&self, name: &str, bytes: &[u8]) -> Value {
+            let (id, _) = self.uploaded_ids(name, bytes).await;
+            let response = self.read(&id).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            json(response).await["asset"].clone()
+        }
+    }
+
+    #[tokio::test]
+    async fn get_asset_gives_a_png_its_media_type() {
+        let instance = Instance::new().await;
+        let asset = instance.read_upload("nebula.png", PNG).await;
+        assert_eq!(asset["media_type"], "image/png");
+    }
+
+    #[tokio::test]
+    async fn get_asset_gives_a_jpeg_its_media_type() {
+        let instance = Instance::new().await;
+        let asset = instance.read_upload("nebula.jpg", JPEG).await;
+        assert_eq!(asset["media_type"], "image/jpeg");
+    }
+
+    #[tokio::test]
+    async fn get_asset_gives_png_bytes_named_jpg_the_png_media_type() {
+        let instance = Instance::new().await;
+        let asset = instance.read_upload("m31.jpg", PNG).await;
+        assert_eq!(asset["media_type"], "image/png");
+        let dimensions: Vec<_> = asset["facets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|facet| facet["name"] != "image.file-size")
+            .map(|facet| (facet["name"].clone(), facet["value"].clone()))
+            .collect();
+        assert_eq!(
+            dimensions,
+            [
+                (serde_json::json!("image.height"), serde_json::json!(24)),
+                (serde_json::json!("image.width"), serde_json::json!(32)),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn media_type_is_neither_in_the_upload_body_nor_in_the_list() {
+        let instance = Instance::new().await;
+        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
+        assert!(uploaded["asset"].get("media_type").is_none(), "{uploaded}");
+        let listed = json(instance.list().await).await;
+        assert_eq!(listed["assets"][0]["id"], uploaded["asset"]["id"]);
+        assert!(listed["assets"][0].get("media_type").is_none(), "{listed}");
     }
 
     #[tokio::test]
@@ -1670,7 +1717,7 @@ mod get_asset {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             json(response).await["asset"]["facets"],
-            upload_facets(1_234_567, "PNG")
+            upload_facets(1_234_567)
         );
     }
 
@@ -1734,59 +1781,6 @@ mod get_asset {
                 {"name": "test.b", "label": "B one", "value": 5, "unit": "px"},
             ])
         );
-    }
-
-    /// Upload `nebula.png` with no upload Operators, then store, for its
-    /// version, a `test.kind` choice of `PNG` or `JPEG` holding `kind`, a
-    /// JSON text, and a `test.size` count of 7. Answers the Asset's id.
-    async fn with_kind(instance: &Instance, kind: &str) -> String {
-        let uploaded = json(instance.upload("nebula.png", PNG).await).await;
-        let asset = uploaded["asset"]["id"].as_str().unwrap().to_owned();
-        let version = uploaded["asset"]["current_version_id"].as_str().unwrap();
-        instance
-            .execute(&format!(
-                "INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
-                 SELECT '00000000-0000-4000-8000-0000000000e1', 'test.op', '1', '{version}', id, 'succeeded', now(), now() FROM public.users;
-                 INSERT INTO public.facet_schemas (name, version, owner_pack, label, value_type, unit, scope, allowed_values) VALUES \
-                   ('test.size', 1, 'test', 'Size', 'count', 'bytes', 'asset_version', NULL), \
-                   ('test.kind', 1, 'test', 'Kind', 'choice', '', 'asset_version', ARRAY['PNG', 'JPEG']);
-                 INSERT INTO public.facet_values (id, facet, schema_version, asset_version_id, value, producer_id, producer_version, run_id, written_at) VALUES \
-                   ('00000000-0000-4000-8000-000000000001', 'test.size', 1, '{version}', '7', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', now()), \
-                   ('00000000-0000-4000-8000-000000000002', 'test.kind', 1, '{version}', '{kind}', 'test.op', '1', '00000000-0000-4000-8000-0000000000e1', now());"
-            ))
-            .await;
-        asset
-    }
-
-    #[tokio::test]
-    async fn get_asset_reads_a_choice_as_a_json_string() {
-        let instance =
-            Instance::with_library(|library| library.with_upload_operators(vec![])).await;
-        let asset = with_kind(&instance, r#""PNG""#).await;
-        let response = instance.read(&asset).await;
-        assert_eq!(response.status(), StatusCode::OK);
-        assert_eq!(
-            json(response).await["asset"]["facets"],
-            serde_json::json!([
-                {"name": "test.kind", "label": "Kind", "value": "PNG", "unit": ""},
-                {"name": "test.size", "label": "Size", "value": 7, "unit": "bytes"},
-            ])
-        );
-    }
-
-    #[tokio::test]
-    async fn get_asset_answers_503_for_a_choice_outside_its_kept_allowed_values() {
-        for stored in [r#""GIF""#, r#""png""#, "1"] {
-            let instance =
-                Instance::with_library(|library| library.with_upload_operators(vec![])).await;
-            let asset = with_kind(&instance, stored).await;
-            let response = instance.read(&asset).await;
-            assert_eq!(
-                response.status(),
-                StatusCode::SERVICE_UNAVAILABLE,
-                "{stored}"
-            );
-        }
     }
 
     #[tokio::test]
@@ -2044,7 +2038,7 @@ mod upload_run {
         let (id, _) = instance.uploaded_ids("m31.jpg", &start_of_a_jpeg()).await;
         assert_eq!(
             instance.facets_of(&id).await,
-            serde_json::json!([upload_facets(1_000, "JPEG")[0]])
+            serde_json::json!([upload_facets(1_000)[0]])
         );
         assert_eq!(
             runs(&instance).await,
@@ -2078,7 +2072,7 @@ mod upload_run {
         assert_eq!(instance.rows().await, 2);
         let header_values: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM public.facet_values \
-             WHERE facet IN ('image.format', 'image.width', 'image.height')",
+             WHERE facet IN ('image.width', 'image.height')",
         )
         .fetch_one(
             &mut PgConnection::connect_with(&instance.db.options)
@@ -2114,7 +2108,7 @@ mod upload_run {
         let (id, _) = instance.uploaded_ids("nebula.png", PNG).await;
         assert_eq!(
             instance.facets_of(&id).await,
-            serde_json::json!(upload_facets(PNG.len(), "PNG").as_array().unwrap()[1..])
+            serde_json::json!(upload_facets(PNG.len()).as_array().unwrap()[1..])
         );
         assert_eq!(
             runs(&instance).await,

@@ -117,7 +117,7 @@ async fn upgrade_preserves_the_original_migration_and_metadata() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!(migrations, 6);
+    assert_eq!(migrations, 5);
 }
 
 async fn successful_records(conn: &mut PgConnection) -> i64 {
@@ -135,11 +135,11 @@ async fn application_tables(conn: &mut PgConnection) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn first_startup_holds_six_migrations_and_the_facet_tables() {
+async fn first_startup_holds_five_migrations_and_the_facet_tables() {
     let db = TestDatabase::new();
     init(&db).await.unwrap();
     let mut conn = connection(&db).await;
-    assert_eq!(successful_records(&mut conn).await, 6);
+    assert_eq!(successful_records(&mut conn).await, 5);
     assert_eq!(
         application_tables(&mut conn).await,
         [
@@ -157,7 +157,7 @@ async fn first_startup_holds_six_migrations_and_the_facet_tables() {
 }
 
 #[tokio::test]
-async fn concurrent_startup_applies_six_records_once() {
+async fn concurrent_startup_applies_five_records_once() {
     let db = TestDatabase::new();
     let (first, second) = tokio::join!(init(&db), init(&db));
     first.unwrap();
@@ -167,7 +167,7 @@ async fn concurrent_startup_applies_six_records_once() {
         .fetch_one(&mut conn)
         .await
         .unwrap();
-    assert_eq!((total, successful_records(&mut conn).await), (6, 6));
+    assert_eq!((total, successful_records(&mut conn).await), (5, 5));
 }
 
 #[tokio::test]
@@ -191,7 +191,7 @@ async fn upgrade_adds_empty_access_tables() {
         upgraded.as_array().unwrap()[..2],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 6);
+    assert_eq!(successful_records(&mut conn).await, 5);
     let rows: i64 = sqlx::query_scalar(
         "SELECT (SELECT count(*) FROM public.users) + (SELECT count(*) FROM public.sessions)",
     )
@@ -233,7 +233,7 @@ async fn asset_schema_upgrade_from_three_keeps_a_claimed_user() {
         upgraded.as_array().unwrap()[..3],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 6);
+    assert_eq!(successful_records(&mut conn).await, 5);
     let rows: i64 = sqlx::query_scalar(ASSET_ROWS)
         .fetch_one(&mut conn)
         .await
@@ -285,7 +285,7 @@ async fn facet_schema_upgrade_from_four_keeps_a_user_and_an_asset() {
         upgraded.as_array().unwrap()[..4],
         original.as_array().unwrap()[..]
     );
-    assert_eq!(successful_records(&mut conn).await, 6);
+    assert_eq!(successful_records(&mut conn).await, 5);
     let rows: i64 = sqlx::query_scalar(FACET_ROWS)
         .fetch_one(&mut conn)
         .await
@@ -305,111 +305,6 @@ async fn facet_schema_upgrade_from_four_keeps_a_user_and_an_asset() {
     .unwrap();
     assert_eq!(assets.as_array().unwrap().len(), 2);
     assert_eq!(assets, assets_after);
-}
-
-/// A succeeded run over `VERSION_A` by `sam`, the `image.file-size` schema
-/// row it needed, and its value, as the file-size Operator stores them.
-const FILE_SIZE_FACT: &str = "\
-    INSERT INTO public.operation_runs (id, operator_id, operator_version, asset_version_id, actor_user_id, status, started_at, ended_at) \
-        SELECT '00000000-0000-4000-8000-0000000000c1', 'image.measure-file-size', '0.1.0', '00000000-0000-4000-8000-0000000000a1', id, 'succeeded', now(), now() FROM public.users WHERE username = 'sam'; \
-    INSERT INTO public.facet_schemas (name, version, owner_pack, label, value_type, unit, scope) \
-        VALUES ('image.file-size', 1, 'image', 'File size', 'count', 'bytes', 'asset_version'); \
-    INSERT INTO public.facet_values (id, facet, schema_version, asset_version_id, value, producer_id, producer_version, run_id, written_at) \
-        VALUES ('00000000-0000-4000-8000-0000000000d1', 'image.file-size', 1, '00000000-0000-4000-8000-0000000000a1', '4', 'image.measure-file-size', '0.1.0', '00000000-0000-4000-8000-0000000000c1', now())";
-const EVERY_ROW: &str = "SELECT jsonb_build_array(\
-    (SELECT coalesce(jsonb_agg(to_jsonb(u) ORDER BY id), '[]') FROM public.users u), \
-    (SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY id), '[]') FROM public.assets a), \
-    (SELECT coalesce(jsonb_agg(to_jsonb(v) ORDER BY id), '[]') FROM public.asset_versions v), \
-    (SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY id), '[]') FROM public.operation_runs r), \
-    (SELECT coalesce(jsonb_agg(to_jsonb(s) - 'allowed_values' ORDER BY name, version), '[]') FROM public.facet_schemas s), \
-    (SELECT coalesce(jsonb_agg(to_jsonb(f) ORDER BY id), '[]') FROM public.facet_values f))::text";
-
-#[tokio::test]
-async fn allowed_values_upgrade_from_five_keeps_every_row() {
-    let db = TestDatabase::new();
-    initialize_with(
-        &db.options,
-        Duration::from_secs(3),
-        Duration::from_secs(3),
-        &prefix(5),
-        &baselines(),
-        None,
-    )
-    .await
-    .unwrap();
-    let mut conn = connection(&db).await;
-    conn.execute(SAM).await.unwrap();
-    insert_pair(&mut conn, ASSET_A, VERSION_A, VERSION_A, ASSET_A)
-        .await
-        .unwrap();
-    conn.execute(FILE_SIZE_FACT).await.unwrap();
-    let rows: String = sqlx::query_scalar(EVERY_ROW)
-        .fetch_one(&mut conn)
-        .await
-        .unwrap();
-    let original: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
-    init(&db).await.unwrap();
-    let upgraded: Value = serde_json::from_str(&records(&mut conn).await).unwrap();
-    assert_eq!(
-        upgraded.as_array().unwrap()[..5],
-        original.as_array().unwrap()[..]
-    );
-    assert_eq!(successful_records(&mut conn).await, 6);
-    let after: String = sqlx::query_scalar(EVERY_ROW)
-        .fetch_one(&mut conn)
-        .await
-        .unwrap();
-    assert_eq!(rows, after);
-    let allowed: Option<Vec<String>> =
-        sqlx::query_scalar("SELECT allowed_values FROM public.facet_schemas")
-            .fetch_one(&mut conn)
-            .await
-            .unwrap();
-    assert_eq!(allowed, None);
-}
-
-/// Insert one `facet_schemas` row of `value_type` with `allowed`, a SQL
-/// expression, into a fully migrated database.
-async fn insert_schema(value_type: &str, allowed: &str) -> Result<(), sqlx::Error> {
-    let db = TestDatabase::new();
-    init(&db).await.unwrap();
-    let mut conn = connection(&db).await;
-    conn.execute(AssertSqlSafe(format!(
-        "INSERT INTO public.facet_schemas \
-         (name, version, owner_pack, label, value_type, unit, scope, allowed_values) \
-         VALUES ('test.kind', 1, 'test', 'Kind', '{value_type}', '', 'asset_version', {allowed})"
-    )))
-    .await
-    .map(|_| ())
-}
-
-/// PostgreSQL refused the row with a check violation.
-fn assert_check_violation(outcome: Result<(), sqlx::Error>) {
-    let error = outcome.unwrap_err();
-    let code = error.as_database_error().and_then(|e| e.code());
-    assert_eq!(code.as_deref(), Some("23514"), "{error}");
-}
-
-#[tokio::test]
-async fn allowed_values_schema_refuses_a_choice_with_no_allowed_values() {
-    assert_check_violation(insert_schema("choice", "NULL").await);
-}
-
-#[tokio::test]
-async fn allowed_values_schema_refuses_a_choice_with_an_empty_list() {
-    assert_check_violation(insert_schema("choice", "ARRAY[]::text[]").await);
-}
-
-#[tokio::test]
-async fn allowed_values_schema_refuses_a_count_with_allowed_values() {
-    assert_check_violation(insert_schema("count", "ARRAY['a']").await);
-}
-
-#[tokio::test]
-async fn allowed_values_schema_keeps_a_choice_with_allowed_values() {
-    insert_schema("choice", "ARRAY['PNG', 'JPEG']")
-        .await
-        .unwrap();
 }
 
 const ASSET_A: &str = "00000000-0000-4000-8000-00000000000a";

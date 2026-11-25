@@ -112,12 +112,11 @@ pack registered before it SHALL stay as it was.
 ### Requirement: Core checks every proposal before it stores any
 
 Core SHALL refuse a proposed value whose facet has no registered schema, or
-whose value does not fit the schema's value type. There are two value types.
-A count is a whole number from 0 to 9,007,199,254,740,991, the largest whole
-number a JavaScript client reads exactly. A choice is a piece of text equal
-to one of the allowed values its schema lists, letter case included. When
-core refuses any proposal from a run, it SHALL record the run as failed and
-SHALL store none of that run's proposals.
+whose value does not fit the schema's value type. The only value type is a
+count: a whole number from 0 to 9,007,199,254,740,991, the largest whole
+number a JavaScript client reads exactly. When core refuses any proposal
+from a run, it SHALL record the run as failed and SHALL store none of that
+run's proposals.
 
 #### Scenario: An unknown facet
 - **WHEN** an Operator that lists `test.missing` proposes a value for it, and no pack declares a schema named `test.missing`
@@ -137,20 +136,6 @@ SHALL store none of that run's proposals.
 #### Scenario: The largest count
 - **WHEN** an Operator proposes the value 9007199254740991 for a count facet
 - **THEN** core stores the value 9007199254740991
-
-#### Scenario: An allowed choice
-- **WHEN** an Operator proposes the text `PNG` for a choice facet whose allowed values are `PNG` and `JPEG`
-- **THEN** core stores the text `PNG`
-
-#### Scenario: A choice the schema does not allow
-- **WHEN** an Operator proposes the text `GIF`, or the text `png`, for a choice facet whose allowed values are `PNG` and `JPEG`
-- **THEN** the run is recorded as failed with a reason that names the facet
-- **AND** core stores no facet value from that run
-
-#### Scenario: A value of the other type
-- **WHEN** an Operator proposes the text `12` for a count facet, or the number 1 for a choice facet
-- **THEN** the run is recorded as failed with a reason that names the facet
-- **AND** core stores no facet value from that run
 
 #### Scenario: One refused proposal among valid ones
 - **WHEN** an Operator proposes a valid value for `test.size` and then a value for a facet it did not declare
@@ -263,30 +248,52 @@ version.
 - **WHEN** a run over an Asset version succeeds with one value for a facet whose schema describes the Asset
 - **THEN** the stored value belongs to the Asset that owns that version, and to no Asset version
 
+### Requirement: An Operator's values stay on its own input
+
+The Asset context SHALL give an Operator no way to name the Asset or Asset
+version that a proposed value belongs to. Core SHALL decide that from the
+run's input alone, and SHALL store no value from a run against any Asset or
+Asset version other than the version the run read and the Asset that owns
+it. This includes another version of the same Asset.
+
+#### Scenario: Other Assets and versions exist
+- **WHEN** the library holds Asset A with versions A1 and A2, and Asset B with version B1, and a run over A1 succeeds with one value for an Asset version facet and one value for an Asset facet
+- **THEN** the Asset version value belongs to A1 and the Asset value belongs to A
+- **AND** no value from that run belongs to A2, B or B1
+
+### Requirement: An Operator run makes no Asset
+
+Until core accepts derived Assets from an Operator, core SHALL record an
+Operator run that proposes an Asset as failed. Core
+SHALL add no Asset and no Asset version for that run, and SHALL store no
+facet value from it. When the Operator reports success after proposing an
+Asset, the reason SHALL say that an Operator run proposed an Asset.
+
+#### Scenario: An Operator proposes an Asset and reports success
+- **WHEN** an Operator proposes a valid value for `test.size`, then proposes an Asset of kind `image`, ignores the refusal and reports success
+- **THEN** its operation run is `failed` with a reason that says an operator run proposed an asset
+- **AND** the library holds the same Assets and Asset versions as before the run
+- **AND** core stores no facet value from that run
+
+#### Scenario: An Operator proposes an Asset and stops at the refusal
+- **WHEN** an Operator proposes a valid value for `test.size`, then proposes an Asset of kind `image`, and returns the failure `could not make a preview` when the context refuses it
+- **THEN** its operation run is `failed` with the reason `could not make a preview`
+- **AND** the library holds the same Assets and Asset versions as before the run
+- **AND** core stores no facet value from that run
+
 ### Requirement: A stored value keeps the schema it was written under
 
 Core SHALL keep each facet schema version that a stored value was written
-under, unchanged, with a choice's allowed values. A value SHALL be read with
-the label and unit of its own schema version. When a pack declares a kept
-schema version with a different label, unit, value type, scope, owner, or
-allowed values or their order, core SHALL record a run that writes that
-facet as failed, with a reason that names the facet and its version, and
-SHALL store none of its values.
+under, unchanged. A value SHALL be read with the label and unit of its own
+schema version. When a pack declares a schema version that core already
+keeps, with a different label, unit, value type, scope or owner, core SHALL
+record a run that writes that facet as failed, with a reason that names the
+facet and its version, and SHALL store none of its values.
 
 #### Scenario: A facet changed without a new version
 - **WHEN** a value of `test.size` at schema version 1 with the unit `bytes` is stored, and a later build declares `test.size` version 1 with the unit `KiB` and runs an Operator that writes it
 - **THEN** that run is recorded as failed with a reason that names `test.size` and version 1
 - **AND** the stored value still reads with the unit `bytes`
-
-#### Scenario: Allowed values changed without a new version
-- **WHEN** a value of `test.kind` at schema version 1, a choice of `a` or `b`, is stored, and a later build declares `test.kind` version 1 as a choice of `a`, `b` or `c` and runs an Operator that writes it
-- **THEN** that run is recorded as failed with a reason that names `test.kind` and version 1
-- **AND** core stores no value from that run
-
-#### Scenario: A new version adds an allowed value
-- **WHEN** a value of `test.kind` at schema version 1, a choice of `a` or `b`, is stored, and a later build declares `test.kind` version 2 as a choice of `a`, `b` or `c` and runs an Operator that proposes `c`
-- **THEN** core stores `c` under schema version 2
-- **AND** the value stored under version 1 still reads as before
 
 ### Requirement: The image pack records an image's file size
 
@@ -301,77 +308,45 @@ proposes, as its value, the number of bytes in the version it reads.
 - **THEN** the version's `image.file-size` value is 1234567
 - **AND** its provenance names the file-size Operator and the image pack's version
 
-### Requirement: A choice facet declares its allowed values
+### Requirement: The image pack declares the pixel dimension facets
 
-A facet schema whose value type is a choice SHALL list its allowed values:
-one or more pieces of text. Each allowed value SHALL NOT be empty, SHALL NOT
-hold a zero character (U+0000), and SHALL differ from every other allowed
-value of that schema. The Registry SHALL refuse a pack that declares a choice
-facet that breaks any of these rules, with an error that names the facet,
-and SHALL keep nothing that pack registered or declared.
-
-#### Scenario: A choice with no allowed values
-- **WHEN** the pack `test` declares `test.kind` as a choice with no allowed values
-- **THEN** the Registry refuses the pack with an error that names `test.kind`
-- **AND** the Registry has no schema `test.kind`
-
-#### Scenario: A choice with an empty allowed value
-- **WHEN** the pack `test` declares `test.kind` as a choice whose allowed values are `a` and the empty text
-- **THEN** the Registry refuses the pack with an error that names `test.kind`
-
-#### Scenario: A choice that allows one value twice
-- **WHEN** the pack `test` declares `test.kind` as a choice whose allowed values are `a`, `b` and `a`
-- **THEN** the Registry refuses the pack with an error that names `test.kind`
-
-#### Scenario: An allowed value with a zero character
-- **WHEN** the pack `test` declares `test.kind` as a choice whose allowed values are `a` and `b` U+0000
-- **THEN** the Registry refuses the pack with an error that names `test.kind`
-
-#### Scenario: A well-formed choice
-- **WHEN** the pack `test` declares `test.kind` as a choice whose allowed values are `a` and `b`
-- **THEN** the Registry keeps the schema `test.kind`, with the allowed values `a` and `b`
-
-### Requirement: The image pack declares the format and pixel dimension facets
-
-The image pack SHALL declare three facet schemas, each at schema version 1
+The image pack SHALL declare two facet schemas, each at schema version 1
 and each describing the Asset version:
 
-- `image.format`: the label `Format`, a choice whose allowed values are `PNG`
-  and `JPEG`, and an empty unit.
 - `image.width`: the label `Width`, a count, and the unit `pixels`.
 - `image.height`: the label `Height`, a count, and the unit `pixels`.
 
 #### Scenario: The image pack's schemas
 - **WHEN** the image pack registers
-- **THEN** the Registry keeps `image.format` with the label `Format`, a choice of `PNG` or `JPEG`, an empty unit, version 1 and the Asset version as what it describes
-- **AND** the Registry keeps `image.width` with the label `Width`, a count, the unit `pixels`, version 1 and the Asset version as what it describes
+- **THEN** the Registry keeps `image.width` with the label `Width`, a count, the unit `pixels`, version 1 and the Asset version as what it describes
 - **AND** the Registry keeps `image.height` with the label `Height`, a count, the unit `pixels`, version 1 and the Asset version as what it describes
+- **AND** the image pack declares no `image.format` schema
 
-### Requirement: The image pack records an image's format and pixel dimensions
+### Requirement: The image pack records an image's pixel dimensions
 
 The image pack SHALL register a header Operator, separate from its file-size
-Operator, that lists `image.format`, `image.width` and `image.height`. The
-header Operator SHALL find the format from the version's leading bytes,
-never from a file name. It SHALL read the width and height that the image's
-header stores, and SHALL ignore any EXIF orientation. It SHALL propose all
-three values in one run.
+Operator, that lists exactly `image.width` and `image.height`. The header
+Operator SHALL find the format from the version's leading bytes, never from
+a file name, and read the header by that format. It SHALL read the width and
+height that the image's header stores, and SHALL ignore any EXIF
+orientation. It SHALL propose both values in one run.
 
 #### Scenario: A PNG
 - **WHEN** core runs the header Operator over a stored PNG version whose header gives a width of 4,096 and a height of 2,160 pixels
-- **THEN** the version's `image.format` is `PNG`, its `image.width` is 4096 and its `image.height` is 2160
+- **THEN** the version's `image.width` is 4096 and its `image.height` is 2160
 - **AND** the provenance of each value names the header Operator and the image pack's version
 
 #### Scenario: A baseline JPEG
 - **WHEN** core runs the header Operator over a stored baseline JPEG version whose frame header gives a width of 6,000 and a height of 4,000 pixels
-- **THEN** the version's `image.format` is `JPEG`, its `image.width` is 6000 and its `image.height` is 4000
+- **THEN** the version's `image.width` is 6000 and its `image.height` is 4000
 
 #### Scenario: A progressive JPEG
 - **WHEN** core runs the header Operator over a stored progressive JPEG version whose frame header gives a width of 1,920 and a height of 1,080 pixels
-- **THEN** the version's `image.format` is `JPEG`, its `image.width` is 1920 and its `image.height` is 1080
+- **THEN** the version's `image.width` is 1920 and its `image.height` is 1080
 
 #### Scenario: A JPEG wider than 16,384 pixels
 - **WHEN** core runs the header Operator over a stored baseline JPEG version whose frame header gives a width of 20,000 and a height of 12,000 pixels
-- **THEN** the version's `image.format` is `JPEG`, its `image.width` is 20000 and its `image.height` is 12000
+- **THEN** the version's `image.width` is 20000 and its `image.height` is 12000
 
 #### Scenario: A JPEG whose metadata comes before its frame header
 - **WHEN** core runs the header Operator over a stored JPEG version that holds a 60,000-byte EXIF segment and an ICC profile segment before a frame header that gives 6,000 by 4,000 pixels
@@ -394,7 +369,7 @@ the reader does not support, or the decoder refuses it.
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
 - **THEN** its run is `failed` with the reason `the PNG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+- **AND** core stores no `image.width` or `image.height` value for that version
 
 #### Scenario: A PNG whose first chunk is not its header chunk
 - **WHEN** core runs the header Operator over a stored version that starts with the PNG signature followed by a chunk other than `IHDR`
@@ -403,7 +378,7 @@ the reader does not support, or the decoder refuses it.
 #### Scenario: A PNG whose header checksum does not match
 - **WHEN** core runs the header Operator over a stored version that starts with the PNG signature and a 13-byte `IHDR` chunk whose CRC-32 does not match its type and data
 - **THEN** its run is `failed` with the reason `the PNG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+- **AND** core stores no `image.width` or `image.height` value for that version
 
 #### Scenario: A PNG with a width of zero
 - **WHEN** core runs the header Operator over a stored PNG version whose header gives a width of 0 pixels
@@ -412,7 +387,7 @@ the reader does not support, or the decoder refuses it.
 #### Scenario: A JPEG with no frame header before its image data
 - **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and reaches its start-of-scan marker with no frame header before it
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+- **AND** core stores no `image.width` or `image.height` value for that version
 
 #### Scenario: A JPEG cut off inside a segment
 - **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and ends partway through a segment before any frame header
@@ -421,7 +396,7 @@ the reader does not support, or the decoder refuses it.
 #### Scenario: A lossless JPEG
 - **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and has a lossless (`0xC3`) frame header that gives 640 by 480 pixels
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+- **AND** core stores no `image.width` or `image.height` value for that version
 
 #### Scenario: Bytes of neither format
 - **WHEN** core runs the header Operator over a stored version whose bytes start with neither the PNG nor the JPEG signature
@@ -430,7 +405,19 @@ the reader does not support, or the decoder refuses it.
 #### Scenario: The file size is still recorded
 - **WHEN** core runs the file-size Operator and then the header Operator over a stored version of 1,000 bytes that holds only the start of a JPEG
 - **THEN** the file-size run is `succeeded` and the version's `image.file-size` is 1000
-- **AND** the header run is `failed`, and the version has no `image.format`, `image.width` or `image.height` value
+- **AND** the header run is `failed`, and the version has no `image.width` or `image.height` value
+
+### Requirement: A failed read of the stored file fails the header run
+
+When reading a stored version's first bytes fails, the header Operator
+SHALL fail its run as a storage problem, not as an unknown format. Core
+SHALL store no value from the run, and, when it can record the outcome, the
+run SHALL be `failed` with the reason `the stored file could not be read`.
+
+#### Scenario: The stored file cannot be read
+- **WHEN** core runs the header Operator over a stored version of a PNG and the first read of its stored file fails
+- **THEN** its run is `failed` with the reason `the stored file could not be read`
+- **AND** core stores no `image.width` or `image.height` value for that version
 
 ### Requirement: The header Operator reads at most 8 MiB of a JPEG
 
@@ -446,9 +433,9 @@ reason `the JPEG header could not be read`.
 #### Scenario: A JPEG whose header ends one byte past the limit
 - **WHEN** core runs the header Operator over a stored JPEG version whose first start-of-scan segment ends at byte 8,388,609, after a frame header that gives 640 by 480 pixels
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+- **AND** core stores no `image.width` or `image.height` value for that version
 
 #### Scenario: A JPEG whose header runs past 8 MiB
 - **WHEN** core runs the header Operator over a stored JPEG version that holds 9 MiB of ICC profile segments before a frame header that gives 640 by 480 pixels
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+- **AND** core stores no `image.width` or `image.height` value for that version

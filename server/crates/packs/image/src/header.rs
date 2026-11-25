@@ -1,12 +1,15 @@
-//! The header Operator: an image's format, width and height, read from its
-//! header by the decoders the `image` crate uses, called directly. It decodes
-//! no pixel data and ignores any EXIF orientation.
-use crate::{Format, FORMAT_FACET, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
+//! The header Operator: an image's width and height, read from its header by
+//! the decoders the `image` crate uses, called directly. It decodes no pixel
+//! data and ignores any EXIF orientation.
+use crate::{Format, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
 use sidereal_plugin_abi::{AssetContext, FacetValue, Operator, OperatorError};
 use std::io::{self, BufRead, Read, Seek, SeekFrom};
 
 /// The reason a run gives for bytes that start with neither signature.
 const NOT_RECOGNIZED: &str = "the image format is not recognized";
+
+/// The reason a run gives when reading the candidate's first bytes fails.
+const NOT_READ: &str = "the stored file could not be read";
 
 /// The largest width or height a PNG header may hold.
 const PNG_MAX_SIDE: u32 = i32::MAX as u32;
@@ -32,15 +35,16 @@ impl Operator for ReadHeader {
     }
 
     fn writes(&self) -> &[&str] {
-        &[FORMAT_FACET, WIDTH_FACET, HEIGHT_FACET]
+        &[WIDTH_FACET, HEIGHT_FACET]
     }
 
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         let mut reader = CandidateReader::new(context);
-        let format = reader
+        let head = reader
             .signature()
-            .and_then(|head| Format::of(&head))
-            .ok_or_else(|| OperatorError::Failed(NOT_RECOGNIZED.into()))?;
+            .ok_or_else(|| OperatorError::Failed(NOT_READ.into()))?;
+        let format =
+            Format::of(&head).ok_or_else(|| OperatorError::Failed(NOT_RECOGNIZED.into()))?;
         let unreadable =
             || OperatorError::Failed(format!("the {} header could not be read", format.name()));
         let (width, height) = match format {
@@ -53,7 +57,6 @@ impl Operator for ReadHeader {
         .filter(|&(width, height)| width > 0 && height > 0)
         .ok_or_else(unreadable)?;
         for (name, value) in [
-            (FORMAT_FACET, FacetValue::Text(format.name().into())),
             (WIDTH_FACET, FacetValue::Integer(width.into())),
             (HEIGHT_FACET, FacetValue::Integer(height.into())),
         ] {

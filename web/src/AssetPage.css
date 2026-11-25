@@ -123,6 +123,8 @@
   line-height: var(--sr-line-height-20);
   font-variant-numeric: tabular-nums;
   text-align: right;
-  /* A choice shows exactly as the server returns it, spaces included. */
+  /* A media type the page does not know shows exactly as the server
+     returns it, spaces included, and a long one wraps at any character. */
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

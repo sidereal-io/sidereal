@@ -101,25 +101,15 @@ fn scope_text(scope: FacetScope) -> &'static str {
     }
 }
 
-fn type_text(value_type: &FacetType) -> &'static str {
+fn type_text(value_type: FacetType) -> &'static str {
     match value_type {
         FacetType::Count => "count",
-        FacetType::Choice(_) => "choice",
     }
 }
 
-/// The allowed values a schema row keeps: a choice's, or none.
-fn allowed_values(value_type: &FacetType) -> Option<&[String]> {
-    match value_type {
-        FacetType::Count => None,
-        FacetType::Choice(allowed) => Some(allowed),
-    }
-}
-
-fn json(value: &FacetValue) -> serde_json::Value {
+fn json(value: FacetValue) -> serde_json::Value {
     match value {
-        FacetValue::Integer(n) => (*n).into(),
-        FacetValue::Text(text) => text.as_str().into(),
+        FacetValue::Integer(n) => n.into(),
     }
 }
 
@@ -129,19 +119,9 @@ fn json(value: &FacetValue) -> serde_json::Value {
 pub struct FacetEntry {
     pub name: String,
     pub label: String,
-    pub value: FacetValue,
+    pub value: i64,
     pub unit: String,
 }
-
-/// One stored value and the schema version it was written under.
-type StoredFacet = (
-    String,
-    String,
-    String,
-    Option<Vec<String>>,
-    serde_json::Value,
-    String,
-);
 
 impl Database {
     /// The facet values of the Asset `asset_id` and of its version
@@ -151,8 +131,8 @@ impl Database {
         asset_id: Uuid,
         version_id: Uuid,
     ) -> Result<Vec<FacetEntry>, DatabaseError> {
-        let rows: Vec<StoredFacet> = sqlx::query_as(
-            "SELECT v.facet, s.label, s.value_type, s.allowed_values, v.value, s.unit \
+        let rows: Vec<(String, String, String, serde_json::Value, String)> = sqlx::query_as(
+            "SELECT v.facet, s.label, s.value_type, v.value, s.unit \
              FROM public.facet_values v \
              JOIN public.facet_schemas s ON s.name = v.facet AND s.version = v.schema_version \
              WHERE v.asset_id = $1 OR v.asset_version_id = $2 \
@@ -163,19 +143,11 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
         rows.into_iter()
-            .map(|(name, label, value_type, allowed, value, unit)| {
-                // Only core writes these rows, after it checked each value
-                // against its schema: a value that does not fit its kept
-                // schema is a damaged database, not a fact.
-                let value = match (value_type.as_str(), allowed) {
-                    ("count", None) => value
-                        .as_i64()
-                        .filter(|n| (0..=MAX_COUNT).contains(n))
-                        .map(FacetValue::Integer),
-                    ("choice", Some(allowed)) => value
-                        .as_str()
-                        .filter(|text| allowed.iter().any(|a| a == text))
-                        .map(|text| FacetValue::Text(text.to_owned())),
+            .map(|(name, label, value_type, value, unit)| {
+                // Only core writes these rows, and only counts exist: any
+                // other stored value is a damaged database, not a fact.
+                let value = match value_type.as_str() {
+                    "count" => value.as_i64().filter(|n| (0..=MAX_COUNT).contains(n)),
                     _ => None,
                 }
                 .ok_or(DatabaseError::Schema)?;
@@ -330,24 +302,12 @@ fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> 
                 proposals.producer_id
             ));
         }
-        match (&declared.schema.value_type, &proposal.value) {
-            (FacetType::Count, FacetValue::Integer(n)) if (0..=MAX_COUNT).contains(n) => {}
+        match (declared.schema.value_type, proposal.value) {
+            (FacetType::Count, FacetValue::Integer(n)) if (0..=MAX_COUNT).contains(&n) => {}
             (FacetType::Count, FacetValue::Integer(n)) => {
                 return Err(format!(
                     "facet {name} is a count from 0 to {MAX_COUNT}, not {n}"
                 ))
-            }
-            (FacetType::Choice(allowed), FacetValue::Text(text)) if allowed.contains(text) => {}
-            // The proposed text is left out: an Operator's text is unbounded.
-            (FacetType::Choice(allowed), FacetValue::Text(_)) => {
-                return Err(format!(
-                    "facet {name} is a choice of {}, and the text is none of them",
-                    allowed.join(", ")
-                ))
-            }
-            (FacetType::Count, _) => return Err(format!("facet {name} is a count, not text")),
-            (FacetType::Choice(_), _) => {
-                return Err(format!("facet {name} is a choice, not a number"))
             }
         }
     }
@@ -386,9 +346,8 @@ async fn record_failure(
     }
 }
 
-/// The kept row of a schema version, in the order core compares it: owner,
-/// label, value type, unit, scope, and a choice's allowed values in order.
-type KeptSchema = (String, String, String, String, String, Option<Vec<String>>);
+/// The kept row of a schema version, in the order core compares it.
+type KeptSchema = (String, String, String, String, String);
 
 /// In one transaction: keep each used schema version, insert every value
 /// against the subject its scope names, and mark the run `succeeded`. A kept
@@ -419,22 +378,20 @@ async fn store(
         let schema = &declared.schema;
         sqlx::query(
             "INSERT INTO public.facet_schemas \
-             (name, version, owner_pack, label, value_type, unit, scope, allowed_values) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (name, version) DO NOTHING",
+             (name, version, owner_pack, label, value_type, unit, scope) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (name, version) DO NOTHING",
         )
         .bind(&schema.name)
         .bind(schema.version as i32)
         .bind(&declared.owner)
         .bind(&schema.label)
-        .bind(type_text(&schema.value_type))
+        .bind(type_text(schema.value_type))
         .bind(&schema.unit)
         .bind(scope_text(schema.scope))
-        .bind(allowed_values(&schema.value_type))
         .execute(&mut *tx)
         .await?;
         let kept: KeptSchema = sqlx::query_as(
-            "SELECT owner_pack, label, value_type, unit, scope, allowed_values \
-             FROM public.facet_schemas \
+            "SELECT owner_pack, label, value_type, unit, scope FROM public.facet_schemas \
              WHERE name = $1 AND version = $2",
         )
         .bind(&schema.name)
@@ -444,10 +401,9 @@ async fn store(
         let running: KeptSchema = (
             declared.owner.clone(),
             schema.label.clone(),
-            type_text(&schema.value_type).into(),
+            type_text(schema.value_type).into(),
             schema.unit.clone(),
             scope_text(schema.scope).into(),
-            allowed_values(&schema.value_type).map(<[String]>::to_vec),
         );
         if kept != running {
             return Ok(Err(format!(
@@ -476,7 +432,7 @@ async fn store(
         .bind(schema.version as i32)
         .bind(asset_id)
         .bind(asset_version_id)
-        .bind(json(&proposal.value))
+        .bind(json(proposal.value))
         .bind(&proposals.producer_id)
         .bind(&proposals.producer_version)
         .bind(run_id)
