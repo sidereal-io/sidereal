@@ -85,11 +85,12 @@ three values in one run.
 ### Requirement: A header that cannot be read fails the header run
 
 When the header Operator cannot read a width and a height from the bytes,
-its run SHALL fail, store no value and change no other run. The reason SHALL
-be `the PNG header could not be read` or `the JPEG header could not be read`,
-by signature, or `the image format is not recognized` for neither. A header
-is unreadable when it is cut off, malformed or damaged, gives a zero width
-or height, or is a JPEG kind the reader does not support.
+core SHALL store no value from its run and change no other run. When core
+can record the outcome, the run SHALL be `failed` with the reason `the PNG
+header could not be read` or `the JPEG header could not be read`, by
+signature, or `the image format is not recognized` for neither. A header is
+unreadable when it is cut off, gives a zero width or height, is a JPEG kind
+the reader does not support, or the decoder refuses it.
 
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
@@ -133,15 +134,24 @@ or height, or is a JPEG kind the reader does not support.
 - **THEN** the file-size run is `succeeded` and the version's `image.file-size` is 1000
 - **AND** the header run is `failed`, and the version has no `image.format`, `image.width` or `image.height` value
 
-### Requirement: The header Operator reads at most 32 MiB of a JPEG
+### Requirement: The header Operator reads at most 8 MiB of a JPEG
 
-The header Operator SHALL read no byte past the first 32 MiB (33,554,432
-bytes) of a JPEG. A JPEG whose header, up to its start-of-scan marker, does
-not fit there SHALL fail the header run with the reason `the JPEG header
-could not be read`.
+The header Operator SHALL read no byte past the first 8 MiB (8,388,608
+bytes) of a JPEG. A JPEG whose header, through the end of its first
+start-of-scan segment, does not fit there SHALL fail the header run with the
+reason `the JPEG header could not be read`.
 
-#### Scenario: A JPEG whose header runs past 32 MiB
-- **WHEN** core runs the header Operator over a stored JPEG version that holds 33 MiB of ICC profile segments before a frame header that gives 640 by 480 pixels
+#### Scenario: A JPEG whose header ends at the limit
+- **WHEN** core runs the header Operator over a stored JPEG version whose first start-of-scan segment ends exactly at byte 8,388,608, after a frame header that gives 640 by 480 pixels
+- **THEN** its run is `succeeded`, and the version's `image.width` is 640 and its `image.height` is 480
+
+#### Scenario: A JPEG whose header ends one byte past the limit
+- **WHEN** core runs the header Operator over a stored JPEG version whose first start-of-scan segment ends at byte 8,388,609, after a frame header that gives 640 by 480 pixels
+- **THEN** its run is `failed` with the reason `the JPEG header could not be read`
+- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
+
+#### Scenario: A JPEG whose header runs past 8 MiB
+- **WHEN** core runs the header Operator over a stored JPEG version that holds 9 MiB of ICC profile segments before a frame header that gives 640 by 480 pixels
 - **THEN** its run is `failed` with the reason `the JPEG header could not be read`
 - **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
 
@@ -200,9 +210,10 @@ SHALL store none of that run's proposals.
 When core can record its outcome, a run SHALL be `failed` when the Operator
 reports a failure, stops abnormally, or is cancelled, or when core refuses a
 proposal. A failed run SHALL record a reason that is not empty, and core
-SHALL store no facet value from it. When core cannot record the outcome, the
-run's record SHALL stay as it was, with no facet value stored. Before it records a reason, core SHALL remove every zero character
-(U+0000) from it, because PostgreSQL text cannot hold one.
+SHALL store no facet value from it. When the database refuses core's
+update of a failed outcome, the run SHALL stay `running` with no facet value
+stored. Before it records a reason, core SHALL remove every zero character
+(U+0000) from it, which PostgreSQL text cannot hold.
 
 #### Scenario: The Operator reports a failure
 - **WHEN** an Operator returns the failure `could not read the header`
