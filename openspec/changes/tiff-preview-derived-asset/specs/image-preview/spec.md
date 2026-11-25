@@ -117,6 +117,9 @@ When the preview Operator cannot make a preview, core SHALL record its run
   JPEG or TIFF signature;
 - `the TIFF image type is not supported` for a TIFF whose first image is of
   a type the previous requirement does not list;
+- `the image is wider or taller than a JPEG can hold` for an image more
+  than 65,535 pixels wide or tall, the largest side a JPEG can have,
+  checked before the memory limit below;
 - `the PNG image could not be decoded`, `the JPEG image could not be
   decoded` or `the TIFF image could not be decoded`, by signature, when the
   file is cut off, damaged or refused by the decoder.
@@ -133,6 +136,10 @@ When the preview Operator cannot make a preview, core SHALL record its run
 #### Scenario: An RGB TIFF with an alpha sample
 - **WHEN** core runs the preview Operator over a stored TIFF version whose first image is 8-bit RGB with a fourth, alpha sample
 - **THEN** its run is `failed` with the reason `the TIFF image type is not supported`
+
+#### Scenario: A TIFF wider than a JPEG can hold
+- **WHEN** core runs the preview Operator over a stored 8-bit grayscale TIFF version whose header gives 70,000 by 100 pixels
+- **THEN** its run is `failed` with the reason `the image is wider or taller than a JPEG can hold`
 
 #### Scenario: A TIFF cut off inside its pixels
 - **WHEN** core runs the preview Operator over a stored 8-bit RGB TIFF version whose last strip is cut off
