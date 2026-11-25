@@ -246,6 +246,13 @@ describe("Library", () => {
       fireEvent.change(picker(), { target: { files } });
     }
 
+    // The text of each line in the list of uploads, in order.
+    const lines = () =>
+      Array.from(
+        screen.getByRole("list", { name: "Uploads" }).querySelectorAll("li"),
+        (item) => item.textContent,
+      );
+
     const uploads = (fetch: ReturnType<typeof vi.fn>) =>
       fetch.mock.calls.filter(
         ([url, init]) =>
@@ -327,6 +334,57 @@ describe("Library", () => {
       expect(uploads(fetch)).toHaveLength(3);
     });
 
+    it("shows one line for each file of a pick, in pick order", async () => {
+      const second = deferred();
+      let sent = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) => {
+          if (init?.method !== "POST") {
+            return Promise.resolve(Response.json({ assets: [] }));
+          }
+          sent += 1;
+          return sent === 1
+            ? Promise.resolve(Response.json({ asset: nebula }, { status: 201 }))
+            : second.promise;
+        }),
+      );
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"), named("c.png"));
+      await screen.findByText("Uploading b.png…");
+      expect(lines()).toEqual([
+        "a.png was uploaded.",
+        "Uploading b.png…",
+        "c.png is waiting.",
+      ]);
+      const items = screen
+        .getByRole("list", { name: "Uploads" })
+        .querySelectorAll("li");
+      for (const item of items) {
+        expect(item.className).toBe("library-status");
+      }
+    });
+
+    it("shows a waiting filename holding markup as literal text", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) =>
+          init?.method === "POST"
+            ? new Promise<Response>(() => undefined)
+            : Promise.resolve(Response.json({ assets: [] })),
+        ),
+      );
+      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      await screen.findByRole("button", { name: "Upload" });
+      choose(
+        named("a.png"),
+        new File(["x"], "<b>m42</b>.png", { type: "image/png" }),
+      );
+      await screen.findByText("<b>m42</b>.png is waiting.");
+      expect(container.querySelector("b")).toBeNull();
+    });
+
     it("shows the filename while pending and sends no second request", async () => {
       const pending = deferred();
       const fetch = vi.fn((_input: string, init?: RequestInit) =>
@@ -361,7 +419,7 @@ describe("Library", () => {
       await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
       choose(png());
       await screen.findByRole("img", { name: "nebula.png" });
-      expect(screen.queryByText(/Uploading/)).toBeNull();
+      expect(lines()).toEqual(["nebula.png was uploaded."]);
       expect(
         fetch.mock.calls.filter(
           ([url, init]) => url === "/api/assets" && !init?.method,

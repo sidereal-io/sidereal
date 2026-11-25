@@ -129,12 +129,31 @@ async function sendFile(
   return { refused: refusal(response.status) };
 }
 
-type Upload =
-  | { kind: "idle" }
-  | { kind: "sending"; name: string }
-  | { kind: "refused"; name: string; reason: string }
-  | { kind: "found"; name: string; existing: string | null }
-  | { kind: "unconfirmed"; name: string };
+// One picked file's line: waiting, on its way, or its answer.
+type Line =
+  | { name: string; kind: "waiting" | "sending" | "saved" | "unconfirmed" }
+  | { name: string; kind: "refused"; reason: string }
+  | { name: string; kind: "found"; existing: string | null };
+
+// The words of one line. Every name is shown as text only.
+function lineText(line: Line): string {
+  switch (line.kind) {
+    case "waiting":
+      return `${line.name} is waiting.`;
+    case "sending":
+      return `Uploading ${line.name}…`;
+    case "saved":
+      return `${line.name} was uploaded.`;
+    case "unconfirmed":
+      return `No answer came back for ${line.name}. It is safe to upload it again: if it was saved, Sidereal will find it.`;
+    case "refused":
+      return `${line.name} was not uploaded: ${line.reason}`;
+    case "found":
+      return line.existing === null || line.existing === line.name
+        ? `${line.name} is already in the library.`
+        : `${line.name} is already in the library as ${line.existing}.`;
+  }
+}
 
 // One image, whole, at its own shape once it loads. Until then its frame
 // keeps the 3:2 shape that Library.css gives it.
@@ -187,7 +206,8 @@ function Library({
   const [list, setList] = useState<List>("loading");
   // Each change loads the list again.
   const [generation, setGeneration] = useState(0);
-  const [upload, setUpload] = useState<Upload>({ kind: "idle" });
+  // One line for each file of the last pick, in pick order.
+  const [lines, setLines] = useState<Line[]>([]);
   const pickerRef = useRef<HTMLInputElement>(null);
   // Set while a file is on its way, so a second choice sends nothing.
   const sendingRef = useRef(false);
@@ -224,26 +244,34 @@ function Library({
     // Read afresh after each await: an abort can come at any time.
     const stopped = () => signal.aborted;
     sendingRef.current = true;
-    for (const file of files) {
+    // A new pick replaces the last pick's lines.
+    setLines(files.map((file) => ({ name: file.name, kind: "waiting" })));
+    const mark = (index: number, line: Line) => {
+      setLines((current) =>
+        current.map((old, at) => (at === index ? line : old)),
+      );
+    };
+    for (const [index, file] of files.entries()) {
       if (stopped()) return;
-      setUpload({ kind: "sending", name: file.name });
+      const name = file.name;
+      mark(index, { name, kind: "sending" });
       const result = await sendFile(file, signal);
       if (stopped()) return;
       if (result === sessionEnded) {
         onSessionLost();
         return;
       } else if (result === "saved") {
-        setUpload({ kind: "idle" });
+        mark(index, { name, kind: "saved" });
         setGeneration((value) => value + 1);
       } else if (result === "unconfirmed") {
         // The file may have been saved, so the list loads again to show it.
-        setUpload({ kind: "unconfirmed", name: file.name });
+        mark(index, { name, kind: "unconfirmed" });
         setGeneration((value) => value + 1);
       } else if ("found" in result) {
         // Nothing changed in the library, so the list is not loaded again.
-        setUpload({ kind: "found", name: file.name, existing: result.found });
+        mark(index, { name, kind: "found", existing: result.found });
       } else {
-        setUpload({ kind: "refused", name: file.name, reason: result.refused });
+        mark(index, { name, kind: "refused", reason: result.refused });
       }
     }
     sendingRef.current = false;
@@ -263,7 +291,7 @@ function Library({
         <button
           className="button-primary"
           type="button"
-          disabled={upload.kind === "sending"}
+          disabled={lines.some((line) => line.kind === "sending")}
           onClick={() => pickerRef.current?.click()}
         >
           Upload
@@ -285,26 +313,15 @@ function Library({
           if (files.length > 0) void send(files);
         }}
       />
-      {upload.kind === "sending" && (
-        <p className="library-status">Uploading {upload.name}…</p>
-      )}
-      {upload.kind === "refused" && (
-        <p className="library-status">
-          {upload.name} was not uploaded: {upload.reason}
-        </p>
-      )}
-      {upload.kind === "found" && (
-        <p className="library-status">
-          {upload.existing === null || upload.existing === upload.name
-            ? `${upload.name} is already in the library.`
-            : `${upload.name} is already in the library as ${upload.existing}.`}
-        </p>
-      )}
-      {upload.kind === "unconfirmed" && (
-        <p className="library-status">
-          No answer came back for {upload.name}. It is safe to upload it again:
-          if it was saved, Sidereal will find it.
-        </p>
+      {lines.length > 0 && (
+        <ul className="library-uploads" aria-label="Uploads">
+          {lines.map((line, index) => (
+            // eslint-disable-next-line @eslint-react/no-array-index-key -- A pick's lines are only ever replaced whole, so an index is stable.
+            <li key={index} className="library-status">
+              {lineText(line)}
+            </li>
+          ))}
+        </ul>
       )}
       {notice && <p className="library-status">{notice}</p>}
       {list === "loading" && (
