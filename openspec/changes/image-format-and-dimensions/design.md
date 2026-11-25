@@ -74,7 +74,7 @@
 - **Blast radius:** the public plugin contract (`plugin-abi`), core's facet
   check, store and read paths, one forward-only migration on
   `facet_schemas`, the image pack and its first crates.io dependencies
-  (`image` for PNG, `zune-jpeg` for JPEG), the upload route's Operator list
+  (`png` for PNG, `zune-jpeg` for JPEG), the upload route's Operator list
   and log lines, the asset JSON,
   and the asset page. No authorization or trust
   boundary changes.
@@ -142,7 +142,7 @@ returns `DatabaseError::Schema`, as it does for a count out of range.
 `FacetEntry.value` becomes a `FacetValue`, so the server maps `Integer` to a
 JSON number and `Text` to a JSON string.
 
-### 5. The image pack reads headers with `image` for PNG and `zune-jpeg` for JPEG
+### 5. The image pack reads headers with `png` and `zune-jpeg`
 
 The header Operator, `image.read-header`, reads the first 8 bytes and picks
 the format from the signature, as the Source does. Both share one signature
@@ -150,21 +150,20 @@ function. Bytes that start with neither signature fail with `the image format
 is not recognized`.
 
 The Operator does not parse PNG or JPEG itself. It uses two pure-Rust crates
-from crates.io, and names the format from the signature, so neither crate
-guesses from a file name:
+from crates.io, the decoders that the `image` crate uses, called directly. It
+names the format from the signature, so neither crate guesses from a file
+name:
 
-- **PNG:** the [`image`](https://crates.io/crates/image) crate (0.25), with
-  default features off and only `png` on.
-  `ImageReader::with_format(reader, ImageFormat::Png)`, with `limits` setting
-  `max_alloc` to 32 MiB, then `into_dimensions()`.
-- **JPEG:** [`zune-jpeg`](https://crates.io/crates/zune-jpeg) (0.5), the
-  decoder that `image`'s `jpeg` feature uses, called directly:
+- **PNG:** [`png`](https://crates.io/crates/png) (0.18):
+  `png::Decoder::new(reader)`, then `read_header_info()`, which gives the
+  width and height. It reads the signature and the `IHDR` chunk and stops.
+  It keeps no text, colour profile or EXIF data, and reserves no row of
+  pixels.
+- **JPEG:** [`zune-jpeg`](https://crates.io/crates/zune-jpeg) (0.5):
   `JpegDecoder::new_with_options(reader, options)`, then `decode_headers()`
-  and `dimensions()`. The Operator does not go through `image` for JPEG,
-  because `image` 0.25 first reads the whole candidate into memory. `options`
-  raises zune-jpeg's default limit of 16,384 pixels per side to 65,535, the
-  most a JPEG frame header can hold, as `image` does, so a large mosaic is not
-  refused.
+  and `dimensions()`. `options` raises zune-jpeg's default limit of 16,384
+  pixels per side to 65,535, the most a JPEG frame header can hold, as
+  `image` does, so a large mosaic is not refused.
 
 Each decoder reads the header and gives the width and height that the header
 stores. Neither decodes pixel data or applies EXIF orientation (D8).
@@ -179,31 +178,37 @@ stores. Neither decodes pixel data or applies EXIF orientation (D8).
   read. A short read is not a failure: the adapter returns what it got, and
   only a read of 0 bytes means the end of the candidate. Before each fill it
   checks `is_cancelled`, and returns an I/O error when the run is cancelled.
+- **The JPEG read limit.** For a JPEG, `CandidateReader` treats the candidate
+  as if it ended after its first 32 MiB (33,554,432 bytes): it never asks
+  for a byte past that point, and a read there returns 0 bytes. A JPEG whose
+  header, up to its start-of-scan marker, does not fit in the first 32 MiB
+  therefore fails as a cut-off header. A valid ICC profile is under 16 MiB
+  and camera metadata is far smaller, so no ordinary file is refused. The
+  PNG reader needs no limit, because it stops after `IHDR`.
 - **The bound on reads.** When each `read_candidate` returns the whole window
   it asked for, as the server's file-backed candidate does for a regular
-  file, a run over a candidate of n bytes makes at most n / 65,536 + c
-  calls, where c is a small constant for seeks outside both windows. For the
-  100 MiB upload limit that is about 1,600 calls. A candidate that returns
-  fewer bytes costs more calls, but gives the same answer. No cap on the
-  number or length of segments applies, so no valid file is refused for its
-  layout.
+  file, a JPEG run makes at most n / 65,536 + c calls, where n is the
+  smaller of the candidate's size and 32 MiB, and c is a small constant for
+  seeks outside both windows. That is at most about 512 calls. A PNG run
+  makes one call. A candidate that returns fewer bytes costs more calls, but
+  gives the same answer. No cap on the number or length of segments
+  applies.
 - **Memory.** A run holds the two windows, 128 KiB, and what the decoder
-  keeps from the header. For PNG, `max_alloc` caps everything the decoder
-  allocates at 32 MiB, down from `image`'s default of 512 MiB. A chunk before
-  the image data that does not fit, such as a large text chunk, fails the
-  run. A colour profile (`iCCP`) that would inflate past the cap is dropped
-  by the decoder, and the run goes on to read the dimensions. For JPEG,
-  zune-jpeg keeps the last EXIF, XMP and IPTC segment, each under 64 KiB,
-  and every ICC profile segment it passes. Risks names the cost of that.
-- **PNG.** The decoder reads the chunks up to the first image data chunk. It
-  checks each chunk's CRC-32, including `IHDR`'s, so a damaged header fails
-  rather than giving wrong dimensions. A first chunk that is not a 13-byte
-  `IHDR`, or a header cut off early, also fails.
+  keeps from the header. The PNG decoder keeps only the `IHDR` fields.
+  zune-jpeg keeps the last EXIF, XMP and IPTC segment, each under 64 KiB, and
+  every ICC profile and HDR gain-map segment it passes before start-of-scan.
+  The read limit bounds those to about 32 MiB for each header run.
+- **PNG.** The decoder checks the `IHDR` chunk's CRC-32 before it parses the
+  chunk, so a damaged header fails rather than giving wrong dimensions. A
+  first chunk that is not a 13-byte `IHDR`, or a header cut off early, also
+  fails. Chunks after `IHDR` are never read.
 - **JPEG.** zune-jpeg reads the markers up to the start-of-scan marker and
   skips the body of each segment it does not keep. It reads the frame
-  headers of baseline and progressive JPEGs (`SOF0` to `SOF2`), and refuses
-  the other kinds, such as lossless (`SOF3`) and arithmetic-coded, as
-  unsupported.
+  headers of 8-bit baseline, extended and progressive JPEGs (`SOF0` to
+  `SOF2`). It skips other frame kinds, such as lossless (`SOF3`), as unknown
+  segments, so a JPEG with no supported frame header fails when it reaches
+  start-of-scan. A frame header with a precision other than 8 bits, such as
+  a 12-bit `SOF1`, fails too.
 - **Failures.** Any error from a decoder, including one from the adapter,
   fails the run. The reason is `the PNG header could not be read` or `the
   JPEG header could not be read`, by signature. The Operator also fails a
@@ -214,13 +219,17 @@ stores. Neither decodes pixel data or applies EXIF orientation (D8).
 - *Alternative:* a hand-written PNG and JPEG header reader, about 80 lines.
   It adds no dependency, but the review found it needs its own bound on
   work, its own CRC-32 and its own structural checks, each a place to get
-  wrong. The `image` crate is used widely, and #526 needs it to render TIFF
-  previews.
-- *Alternative:* `image` for JPEG too. It reads the whole candidate into
-  memory first, so each JPEG upload in flight holds up to 100 MiB.
-- *Alternative:* `image` for both formats, with at most two header runs at
-  once. JPEG memory then peaks near 200 MiB, but a third upload waits for
-  its answer.
+  wrong. `png` and `zune-jpeg` are the decoders the `image` crate uses, and
+  #526 adds `image` to render TIFF previews over the same decoders.
+- *Alternative:* `image` for PNG, with `max_alloc` at 32 MiB. `image` turns
+  on text parsing, and `png` charges each text payload but not the entry it
+  keeps, so a PNG of millions of tiny `tEXt` chunks still holds hundreds of
+  MiB.
+- *Alternative:* `image` for JPEG. It reads the whole candidate into memory
+  first, so each JPEG upload in flight holds up to 100 MiB.
+- *Alternative:* no JPEG read limit, with at most two header runs at once.
+  Each run could still keep close to the file size, about 200 MiB in all,
+  and a third upload would wait for its answer.
 - *Alternative:* libvips or exiftool. Both read headers well, but each adds
   a C or Perl dependency to the build and the Docker image.
 - *Alternative:* the `imagesize` crate. It reads from a slice or a file, not
@@ -267,44 +276,40 @@ tokens.
 - [A crafted file could make many small reads, such as a JPEG of 4-byte
   segments or fill bytes, or one of full-length segments that zune-jpeg
   reads ahead into and seeks back over] → The adapter reads in 64 KiB
-  windows and keeps the last two, so with full reads a run costs at most
-  size / 65,536 + c reads, about 1,600 for 100 MiB, whatever the layout.
-  Task 3.3 tests the bound with both files.
+  windows and keeps the last two, and reads no further than 32 MiB into a
+  JPEG, so with full reads a run costs at most about 512 reads, whatever the
+  layout. Task 3.3 tests the bound with both files.
 - [A crafted PNG could make its header run allocate a lot of memory, such as
-  a colour profile of about 500 KiB that inflates to 512 MiB, `image`'s
-  default limit] → `max_alloc` caps the PNG decoder at 32 MiB. A chunk
-  before the image data that does not fit fails the run; a profile that
-  would inflate past the cap is dropped. Task 3.2 tests a 33 MiB text chunk.
-- [zune-jpeg keeps every ICC profile segment it passes before the
-  start-of-scan marker, with no limit of its own. A valid profile has at
-  most 255 segments, under 16 MiB, but a crafted JPEG made of ICC segments
-  can make one header run hold up to its own size, 100 MiB at the upload
-  limit, for each upload in flight] → **Open question for the user,
-  affecting decision 5:** accept this cost, because only administrators
-  upload, or bound it. Bounding it needs either a limit on the header bytes
-  the decoder may pass, which refuses some valid layouts, or a limit on how
-  many header runs happen at once. Until the user decides, the plan accepts
-  the cost and records it here.
+  millions of tiny text chunks or a colour profile that inflates to hundreds
+  of MiB] → The PNG reader stops after `IHDR` and keeps nothing else. Task
+  3.2 tests a PNG of 200,000 text chunks after its `IHDR`.
+- [zune-jpeg keeps every ICC profile and HDR gain-map segment it passes
+  before the start-of-scan marker, with no limit of its own, so a crafted
+  JPEG made of such segments could make one header run hold close to its
+  own size] → The reader stops at 32 MiB into a JPEG, so a run keeps at most
+  about 32 MiB of them. Task 3.3 tests a JPEG with 33 MiB of ICC segments
+  before its frame header.
 - [The process stops after the Asset commits, for example when it runs out
   of memory, and the header run stays `running` with no outcome] → The
   Asset and its file are saved. #527 checks processing again at startup, as
   D9 says.
 - [Some valid files fail the header run: a JPEG whose height is set by a
-  later marker, a JPEG kind the decoder does not support (such as lossless or
-  arithmetic-coded), a PNG with more than 32 MiB of chunks before its image
-  data, or an Apple-optimized PNG whose first chunk is `CgBI`] → The run
+  later marker, a JPEG kind the decoder does not support (such as lossless,
+  12-bit or arithmetic-coded), a JPEG whose start-of-scan marker lies more
+  than 32 MiB into the file, or an Apple-optimized PNG whose first chunk is
+  `CgBI`] → The run
   fails with a clear reason and the file size is still recorded. These files
   are rare in astrophotography output, and #527 shows processing failures.
-- [A new `image` or `zune-jpeg` release changes which files it accepts] →
+- [A new `png` or `zune-jpeg` release changes which files it accepts] →
   `Cargo.lock` pins the versions, the header tests cover each case the specs
   name, and Dependabot updates arrive as pull requests that run those tests.
 - [Adding `PNG` or `JPEG` as display text makes it the stored value too, so
   renaming it later needs a new schema version] → That is the cost D3
   accepted. The values are the formats' common names and are not expected to
   change.
-- [The upload answers later, because it now waits for two runs] → A header
-  run reads up to the start-of-scan marker or the first image data chunk,
-  which in the usual file lies in the first 64 KiB window.
+- [The upload answers later, because it now waits for two runs] → A PNG
+  header run reads one 64 KiB window. A JPEG header run reads up to the
+  start-of-scan marker, which in the usual file lies in the first window.
 
 ## Migration & Rollback
 

@@ -89,8 +89,7 @@ its run SHALL fail, store no value and change no other run. The reason SHALL
 be `the PNG header could not be read` or `the JPEG header could not be read`,
 by signature, or `the image format is not recognized` for neither. A header
 is unreadable when it is cut off, malformed or damaged, gives a zero width
-or height, is a JPEG kind the reader does not support, or holds over 32 MiB
-before a PNG's image data.
+or height, or is a JPEG kind the reader does not support.
 
 #### Scenario: A PNG that ends after its signature
 - **WHEN** core runs the header Operator over a stored version that holds only the 8-byte PNG signature
@@ -110,10 +109,6 @@ before a PNG's image data.
 - **WHEN** core runs the header Operator over a stored PNG version whose header gives a width of 0 pixels
 - **THEN** its run is `failed` with the reason `the PNG header could not be read`
 
-#### Scenario: A PNG with more than 32 MiB before its image data
-- **WHEN** core runs the header Operator over a stored PNG version whose header gives 640 by 480 pixels and is followed by a 33 MiB text chunk before its image data
-- **THEN** its run is `failed` with the reason `the PNG header could not be read`
-- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
 
 #### Scenario: A JPEG with no frame header before its image data
 - **WHEN** core runs the header Operator over a stored version that starts with the JPEG signature and reaches its start-of-scan marker with no frame header before it
@@ -137,6 +132,18 @@ before a PNG's image data.
 - **WHEN** core runs the file-size Operator and then the header Operator over a stored version of 1,000 bytes that holds only the start of a JPEG
 - **THEN** the file-size run is `succeeded` and the version's `image.file-size` is 1000
 - **AND** the header run is `failed`, and the version has no `image.format`, `image.width` or `image.height` value
+
+### Requirement: The header Operator reads at most 32 MiB of a JPEG
+
+The header Operator SHALL read no byte past the first 32 MiB (33,554,432
+bytes) of a JPEG. A JPEG whose header, up to its start-of-scan marker, does
+not fit there SHALL fail the header run with the reason `the JPEG header
+could not be read`.
+
+#### Scenario: A JPEG whose header runs past 32 MiB
+- **WHEN** core runs the header Operator over a stored JPEG version that holds 33 MiB of ICC profile segments before a frame header that gives 640 by 480 pixels
+- **THEN** its run is `failed` with the reason `the JPEG header could not be read`
+- **AND** core stores no `image.format`, `image.width` or `image.height` value for that version
 
 ## MODIFIED Requirements
 
@@ -187,6 +194,48 @@ SHALL store none of that run's proposals.
 - **WHEN** an Operator proposes a valid value for `test.size` and then a value for a facet it did not declare
 - **THEN** the run is recorded as failed
 - **AND** core stores neither value
+
+### Requirement: A run that does not finish cleanly is recorded as failed
+
+When core can record its outcome, a run SHALL be `failed` when the Operator
+reports a failure, stops abnormally, or is cancelled, or when core refuses a
+proposal. A failed run SHALL record a reason that is not empty, and core
+SHALL store no facet value from it. When core cannot record the outcome, the
+run's record SHALL stay as it was, with no facet value stored. Before it records a reason, core SHALL remove every zero character
+(U+0000) from it, because PostgreSQL text cannot hold one.
+
+#### Scenario: The Operator reports a failure
+- **WHEN** an Operator returns the failure `could not read the header`
+- **THEN** its operation run is `failed` with the reason `could not read the header`
+- **AND** core stores no facet value from that run
+
+#### Scenario: The Operator reports a failure with no reason
+- **WHEN** an Operator returns a failure whose reason is empty
+- **THEN** its operation run is `failed` with the reason `the operator gave no reason`
+
+#### Scenario: A failure reason holds a zero character
+- **WHEN** an Operator returns the failure `bad` U+0000 `header`, or a failure whose reason is only U+0000
+- **THEN** its operation run is `failed` with the reason `badheader`, or `the operator gave no reason`
+- **AND** core stores no facet value from that run
+
+#### Scenario: A proposed facet name holds a zero character
+- **WHEN** an Operator proposes a value for the facet `test.` U+0000 `x`, which no schema declares
+- **THEN** its operation run is `failed` with a reason that names `test.x`
+
+#### Scenario: The Operator stops abnormally
+- **WHEN** an Operator panics during its run
+- **THEN** its operation run is `failed` with a reason that says the Operator stopped
+- **AND** core stores no facet value from that run
+
+#### Scenario: The host cancels the run
+- **WHEN** the host cancels a run after the Operator proposed a valid value
+- **THEN** the operation run is `failed` with a reason that says it was cancelled
+- **AND** core stores no facet value from that run
+
+#### Scenario: The outcome of a failed run cannot be recorded
+- **WHEN** an Operator returns the failure `could not read the header`, and the database refuses core's update of the run's outcome
+- **THEN** the run's record stays `running`
+- **AND** core stores no facet value from that run
 
 ### Requirement: A stored value keeps the schema it was written under
 
