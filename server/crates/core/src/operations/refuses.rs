@@ -1,6 +1,7 @@
 //! Core refuses a run's proposals, records the run `failed` with a reason
 //! that names the facet, and stores no value from it. An Operator run that
-//! proposes an Asset is refused the same way and adds no Asset.
+//! proposes an Asset is also recorded `failed` and stores no value, and adds
+//! no Asset or Asset version.
 use super::fixture::*;
 use super::*;
 use sidereal_plugin_abi::{
