@@ -297,6 +297,31 @@ fn neither_png_nor_jpeg_bytes_fail_as_unrecognized() {
     }
 }
 
+/// A candidate whose every read fails.
+struct FailsEveryRead(Bytes);
+
+impl Candidate for FailsEveryRead {
+    fn size(&self) -> u64 {
+        self.0.size()
+    }
+    fn read_at(&mut self, _offset: u64, _buf: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("the disk could not be read"))
+    }
+}
+
+/// A first read that fails is a storage problem, not an unknown format, so
+/// the run says the file could not be read.
+#[test]
+fn candidate_whose_first_read_fails_fails_as_unreadable() {
+    for bytes in [png(640, 480), jpeg(640, 480)] {
+        let mut candidate = FailsEveryRead(Bytes::new(bytes));
+        let outcome = registry()
+            .execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| false)
+            .map(|run| run.proposals);
+        assert_eq!(outcome, failed("the stored file could not be read"));
+    }
+}
+
 const JPEG_UNREADABLE: &str = "the JPEG header could not be read";
 
 /// The JPEG read limit: 8 MiB.

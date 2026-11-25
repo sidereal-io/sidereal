@@ -123,7 +123,8 @@ shape (D11). Core already reads the field; core does not change.
 The header Operator, `image.read-header`, reads the first 8 bytes and picks
 the format from the signature, as the Source does. Both share one signature
 function. Bytes that start with neither signature fail with `the image format
-is not recognized`.
+is not recognized`. A failed read of those first bytes is a storage problem,
+not an unknown format, so it fails with `the stored file could not be read`.
 
 The Operator does not parse PNG or JPEG itself. It uses two pure-Rust crates
 from crates.io, the decoders that the `image` crate uses, called directly. It

@@ -101,6 +101,18 @@ the reader does not support, or the decoder refuses it.
 - **THEN** the file-size run is `succeeded` and the version's `image.file-size` is 1000
 - **AND** the header run is `failed`, and the version has no `image.width` or `image.height` value
 
+### Requirement: A failed read of the stored file fails the header run
+
+When reading a stored version's first bytes fails, the header Operator
+SHALL fail its run as a storage problem, not as an unknown format. Core
+SHALL store no value from the run, and, when it can record the outcome, the
+run SHALL be `failed` with the reason `the stored file could not be read`.
+
+#### Scenario: The stored file cannot be read
+- **WHEN** core runs the header Operator over a stored version of a PNG and the first read of its stored file fails
+- **THEN** its run is `failed` with the reason `the stored file could not be read`
+- **AND** core stores no `image.width` or `image.height` value for that version
+
 ### Requirement: The header Operator reads at most 8 MiB of a JPEG
 
 The header Operator SHALL read no byte past the first 8 MiB (8,388,608
