@@ -1,12 +1,12 @@
 ---
-id: adrs-adr019
+id: adrs-adr018
 date: 2026-11-25
 status: accepted
-title: 'ADR-019: Operator Output Becomes a Derived Asset Linked by Lineage'
+title: 'ADR-018: Operator Output Becomes a Derived Asset Linked by Lineage'
 description: Architecture decision record (ADR) for how core records a file an Operator makes. The output is a new Asset marked derived, its version is linked to the version it was made from by a lineage row with a role, and the Operator streams its bytes through the Asset context into core's staging.
 ---
 
-# ADR-019: Operator Output Becomes a Derived Asset Linked by Lineage
+# ADR-018: Operator Output Becomes a Derived Asset Linked by Lineage
 
 ## Context
 

@@ -25,10 +25,10 @@ Rejected or failed Source execution SHALL create no Asset.
 The manual-upload Source SHALL accept recognized PNG, JPEG or TIFF bytes
 regardless of filename extension or client media type. A TIFF is recognized
 by the first four bytes of a classic TIFF or a BigTIFF, in either byte
-order. Its media type SHALL be `image/tiff`. The Source SHALL reject an
-unrecognized format with status 415 and the message
-`unsupported format: only PNG, JPEG and TIFF images are supported`, before
-creating any Asset. Recognition SHALL NOT require full image decoding.
+order. Its media type SHALL be `image/tiff`. The Source SHALL refuse an
+unrecognized format, before any Asset is created, with the reason
+`only PNG, JPEG and TIFF images are supported`, and the upload SHALL answer
+415. Recognition SHALL NOT require full image decoding.
 
 #### Scenario: Misleading extension
 - **WHEN** Nova uploads recognized PNG bytes with filename `nebula.txt` and client type `text/plain`
@@ -40,7 +40,7 @@ creating any Asset. Recognition SHALL NOT require full image decoding.
 
 #### Scenario: Unsupported bytes
 - **WHEN** Nova uploads GIF, SVG, empty bytes or plain text named `nebula.tif`
-- **THEN** the response is 415 with the message `unsupported format: only PNG, JPEG and TIFF images are supported`, and creates no Asset
+- **THEN** the response is 415 with the `error` `unsupported format: only PNG, JPEG and TIFF images are supported` and the `reason` `only PNG, JPEG and TIFF images are supported`, and creates no Asset
 
 #### Scenario: Recognizable but damaged image
 - **WHEN** a candidate has a recognized PNG, JPEG or TIFF signature but cannot fully decode
@@ -49,7 +49,8 @@ creating any Asset. Recognition SHALL NOT require full image decoding.
 ### Requirement: The signed-in library uploads the files Nova picks
 
 The Library SHALL show one `Upload` button that opens the file picker
-for one or more PNG, JPEG or TIFF files. Choosing files SHALL start their
+for one or more files of any type, because the server decides which formats
+it takes. Choosing files SHALL start their
 upload at once, as "The chosen files go one at a time" says. Each committed
 image SHALL show with its name, as text, and its image. Each saved file SHALL refresh
 the library without a page reload. Health, username, sign-out and
@@ -64,9 +65,9 @@ DESIGN.md.
 - **WHEN** Nova picks `nebula.png` and `m31.jpg` in one pick, and the server accepts both
 - **THEN** the library shows both images by name without reloading
 
-#### Scenario: The picker offers TIFF
+#### Scenario: The picker offers any file
 - **WHEN** Nova presses Upload
-- **THEN** the file picker offers PNG, JPEG and TIFF files
+- **THEN** the file picker limits the files it offers to no type
 
 #### Scenario: Upload in progress
 - **WHEN** an upload request is pending and the Library shows
@@ -89,23 +90,24 @@ client connected.
 
 #### Scenario: The client goes away while the Asset is being saved
 - **WHEN** the client closes its connection after the upload has passed its last cancellation check and before the Asset's transaction commits
-- **THEN** the Asset is saved, one file-size run, one header run and one preview run are recorded for its version, each with outcome `succeeded`, and reading the Asset afterwards returns its file size, format, width and height and a `preview_url`
+- **THEN** the Asset is saved, one file-size run, one header run and one preview run are recorded for its version, each with outcome `succeeded`, and reading the Asset afterwards returns its file size, width and height and a `preview_url`
 
 #### Scenario: The client goes away during the run
 - **WHEN** the client closes its connection after the Asset is saved and before its upload runs have ended
-- **THEN** the file-size run, the header run and the preview run all end `succeeded`, as they would have with the client connected, and reading the Asset afterwards returns its file size, format, width and height and a `preview_url`
+- **THEN** the file-size run, the header run and the preview run all end `succeeded`, as they would have with the client connected, and reading the Asset afterwards returns its file size, width and height and a `preview_url`
 
 ### Requirement: A refused file's line says why
 
 A refused file's line SHALL read `<name> was not uploaded: <reason>`. The
-`<reason>` SHALL be `it is larger than the 100 MiB limit.` for 413,
-`only PNG, JPEG and TIFF images are supported.` for 415,
-`choose one PNG, JPEG or TIFF file and try again.` for 400, and
-`the server could not save it. Try again later.` for any other refusal.
+`<reason>` SHALL be `it is larger than the 100 MiB limit.` for 413, the
+reason that "A refused format's line shows the server's reason" gives for
+415, `choose one image file and try again.` for 400, and
+`the server could not save it. Try again later.` for any other refusal. The
+web SHALL name no format of its own.
 
 #### Scenario: Each kind of refusal
-- **WHEN** Nova picks `a.png`, `b.png`, `c.png` and `d.png`, and the server answers 413, 415, 400 and 503
-- **THEN** the lines read `a.png was not uploaded: it is larger than the 100 MiB limit.`, `b.png was not uploaded: only PNG, JPEG and TIFF images are supported.`, `c.png was not uploaded: choose one PNG, JPEG or TIFF file and try again.` and `d.png was not uploaded: the server could not save it. Try again later.`, in that order
+- **WHEN** Nova picks `a.png`, `b.png`, `c.png` and `d.png`, and the server answers 413, 415 with the `reason` `only PNG, JPEG and TIFF images are supported`, 400 and 503
+- **THEN** the lines read `a.png was not uploaded: it is larger than the 100 MiB limit.`, `b.png was not uploaded: only PNG, JPEG and TIFF images are supported.`, `c.png was not uploaded: choose one image file and try again.` and `d.png was not uploaded: the server could not save it. Try again later.`, in that order
 
 ### Requirement: One file's answer does not stop the others
 
@@ -114,7 +116,7 @@ upload of the files after it in the same pick. Each of those files SHALL be
 sent as usual.
 
 #### Scenario: Every kind of answer in one pick
-- **WHEN** Nova picks `a.png`, `b.png`, `c.png` and `d.png`, and the server answers 415 for `a.png`, 409 for `b.png`, nothing for `c.png` and 201 for `d.png`
+- **WHEN** Nova picks `a.png`, `b.png`, `c.png` and `d.png`, and the server answers 415 with the `reason` `only PNG, JPEG and TIFF images are supported` for `a.png`, 409 for `b.png`, nothing for `c.png` and 201 for `d.png`
 - **THEN** four upload requests are sent, one for each file, in the order picked
 - **AND** the screen shows `a.png was not uploaded: only PNG, JPEG and TIFF images are supported.`, `b.png is already in the library.`, `No answer came back for c.png. It is safe to upload it again: if it was saved, Sidereal will find it.` and `d.png was uploaded.`, in that order
 
@@ -140,7 +142,7 @@ another run's values, and the server SHALL go on answering requests.
 
 #### Scenario: The preview run fails
 - **WHEN** Nova uploads a TIFF whose first image is CMYK, 800 by 600 pixels
-- **THEN** the response is 201, its `asset.preview_url` is `null`, and reading the Asset returns `image.format` `TIFF`, `image.width` 800 and `image.height` 600
+- **THEN** the response is 201, its `asset.preview_url` is `null`, and reading the Asset returns the `media_type` `image/tiff`, `image.width` 800 and `image.height` 600
 - **AND** the preview run is `failed` with the reason `the TIFF image type is not supported`
 
 #### Scenario: A run's Operator panics
@@ -154,10 +156,37 @@ another run's values, and the server SHALL go on answering requests.
 
 #### Scenario: A failed run whose outcome cannot be recorded
 - **WHEN** Nova uploads a file of 1,000 bytes that starts with the JPEG signature but has no readable frame header, and PostgreSQL refuses every update to the runs' outcomes after the Asset is saved
-- **THEN** the response is 201, the Asset and its version remain, and reading the Asset returns no `image.format`, `image.width` or `image.height` facet
+- **THEN** the response is 201, the Asset and its version remain, and reading the Asset returns no `image.width` or `image.height` facet
 - **AND** the server log has a line that starts `image.read-header run not recorded for asset <id>:`
 
 ## ADDED Requirements
+
+### Requirement: A refused upload carries the Source's reason
+
+When the Source refuses a file, the upload's 415 answer SHALL be a JSON
+body whose `reason` is the Source's own reason, and whose `error` is
+`unsupported format: ` followed by that reason. The server SHALL add no
+list of formats of its own.
+
+#### Scenario: The refusal is the Source's
+- **WHEN** a host's manual-upload Source refuses every file with the reason `only FITS files are supported`, and Nova uploads a PNG through it
+- **THEN** the response is 415 with the `error` `unsupported format: only FITS files are supported` and the `reason` `only FITS files are supported`, and creates no Asset
+
+### Requirement: A refused format's line shows the server's reason
+
+For a 415, a refused file's reason SHALL be the answer's `reason`,
+followed by a full stop unless it ends with one, when that `reason` is text
+of 1 to 200 characters with no control character. Otherwise it SHALL be
+`its format is not supported.` The line SHALL show the server's reason as
+literal text.
+
+#### Scenario: A 415 with no usable reason
+- **WHEN** Nova picks `a.gif`, `b.gif` and `c.gif`, and the server answers 415 with no `reason`, with a `reason` of 201 characters, and with a `reason` that holds a line break
+- **THEN** each line reads `<name> was not uploaded: its format is not supported.`
+
+#### Scenario: A reason holds markup
+- **WHEN** the server answers 415 with a `reason` that includes HTML markup
+- **THEN** the line shows the reason as literal text and runs no markup
 
 ### Requirement: Upload makes a preview of each new image
 
@@ -185,14 +214,14 @@ change SHALL get no preview.
 - **WHEN** the server starts with this change and reads an Asset saved before it
 - **THEN** its `preview_url` is `null`, and no preview run exists for its version
 
-### Requirement: An empty library names the formats it takes
+### Requirement: An empty library asks for an image
 
 A library with no Assets SHALL show the line
-`No images yet. Upload a PNG, JPEG or TIFF to start.`
+`No images yet. Upload an image to start.` It SHALL name no format.
 
 #### Scenario: An empty library
 - **WHEN** Nova opens the signed-in view of a library with no Assets
-- **THEN** the Library shows `No images yet. Upload a PNG, JPEG or TIFF to start.`
+- **THEN** the Library shows `No images yet. Upload an image to start.`
 
 ### Requirement: The Library shows each image through its preview
 

@@ -11,12 +11,13 @@ version, so the library can show an image the browser cannot show itself.
 
 The image pack SHALL register an Operator with the id `image.make-preview`,
 separate from its file-size and header Operators. It SHALL declare that it
-makes previews, and SHALL list no facets. Each successful run SHALL propose
-one preview of kind `image` and media type `image/jpeg`.
+makes previews, SHALL list no facets, and SHALL accept the media types
+`image/png`, `image/jpeg` and `image/tiff`. Each successful run SHALL
+propose one preview of kind `image` and media type `image/jpeg`.
 
 #### Scenario: The preview Operator's registration
 - **WHEN** the image pack registers
-- **THEN** the Registry holds the Operator `image.make-preview`, which makes previews and lists no facets
+- **THEN** the Registry holds the Operator `image.make-preview`, which makes previews, lists no facets and accepts exactly `image/png`, `image/jpeg` and `image/tiff`
 
 #### Scenario: A PNG's preview
 - **WHEN** core runs the preview Operator over a stored 8-bit RGB PNG version of `nebula.png`
@@ -44,8 +45,9 @@ SHALL NOT apply an EXIF orientation.
 
 ### Requirement: The preview Operator decodes PNG, JPEG and TIFF
 
-The preview Operator SHALL find the format from the version's leading bytes,
-never from a file name. It SHALL decode a PNG of any color type and bit
+The preview Operator SHALL read the image by the version's media type,
+which the Source set from the file's bytes, never by a file name. It SHALL
+decode a PNG of any color type and bit
 depth, an 8-bit baseline or progressive JPEG, and the first image of a TIFF
 of a type that "The preview Operator decodes these TIFF types" lists. It
 SHALL ignore every later image in a TIFF.
@@ -131,14 +133,14 @@ Core SHALL record its run `failed` with the reason
 - **WHEN** core runs the preview Operator over a stored TIFF version whose first image is 8-bit RGB with a fourth, alpha sample
 - **THEN** its run is `failed` with the reason `the TIFF image type is not supported`
 
-### Requirement: A damaged or unrecognized image fails the preview run
+### Requirement: A damaged image fails the preview run
 
 When the preview Operator cannot decode an image, core SHALL record its run
 `failed`, commit no Asset and change no other run. The reason SHALL be
-`the image format is not recognized` for bytes that start with no PNG, JPEG
-or TIFF signature. It SHALL be `the <FORMAT> image could not be decoded`,
-where `<FORMAT>` is `PNG`, `JPEG` or `TIFF` by signature, for a file that
-is cut off, damaged or refused by the decoder.
+`the <FORMAT> image could not be decoded`, where `<FORMAT>` is `PNG`,
+`JPEG` or `TIFF` by the version's media type, for a file that is cut off,
+damaged, refused by the decoder or not of that format. When a read of the
+stored file fails, the reason SHALL be `the stored file could not be read`.
 
 #### Scenario: A TIFF cut off inside its pixels
 - **WHEN** core runs the preview Operator over a stored 8-bit RGB TIFF version whose last strip is cut off
@@ -152,9 +154,15 @@ is cut off, damaged or refused by the decoder.
 - **WHEN** core runs the preview Operator over a stored version of 1,000 bytes that starts with the JPEG signature but has no readable frame header
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
-#### Scenario: Bytes of no supported format
-- **WHEN** core runs the preview Operator over a stored version whose bytes start with no PNG, JPEG or TIFF signature
-- **THEN** its run is `failed` with the reason `the image format is not recognized`
+#### Scenario: Bytes that do not match the media type
+- **WHEN** core runs the preview Operator over a stored version whose media type is `image/tiff` and whose bytes are a PNG
+- **THEN** its run is `failed` with the reason `the TIFF image could not be decoded`
+- **AND** the version has no preview
+
+#### Scenario: The stored file cannot be read
+- **WHEN** core runs the preview Operator over a stored PNG version and a read of its stored file fails
+- **THEN** its run is `failed` with the reason `the stored file could not be read`
+- **AND** the version has no preview
 
 ### Requirement: A preview's sides fit a JPEG
 
@@ -196,9 +204,15 @@ reason `the image needs more than 512 MiB to decode`.
 
 ### Requirement: A preview gets no runs of its own
 
-Core and the server SHALL run no Operator over a preview's version when it
-is made. A preview SHALL have no facet values and no preview of its own.
+Core and the server SHALL run no Operator over a preview's version, because
+no Operator accepts a derived Asset's version, as the asset-facets
+capability says. A preview SHALL have no facet values and no preview of its
+own.
 
 #### Scenario: The preview of a new upload
 - **WHEN** Nova uploads `nebula.png` and its preview run succeeds
 - **THEN** no operation run exists for the preview's version, and the preview has no facet value and no preview
+
+#### Scenario: An Operator asked to run over a preview
+- **WHEN** core is asked to run the image pack's header Operator, and then its preview Operator, over the version of the preview of `nebula.png`, whose media type is `image/jpeg`
+- **THEN** core records no operation run for either, and the preview has no facet value and no preview

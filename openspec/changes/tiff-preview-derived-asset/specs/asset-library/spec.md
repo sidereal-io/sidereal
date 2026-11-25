@@ -78,13 +78,31 @@ SHALL be served through the public web-file fallback.
 
 `GET /api/assets/{id}` SHALL return 200 with a JSON body of the form
 `{"asset": {…}}`. The `asset` object SHALL hold the same fields as a
-library list entry, `preview_url` included, plus a `facets` array. An id
-that no Asset has, the id of a derived Asset, or an id that is not
-well formed SHALL return 404. A database failure SHALL return 503.
+library list entry, `preview_url` included, plus `media_type`, the media
+type of the Asset's current version, and a `facets` array. A library list
+entry and the upload response SHALL NOT hold `media_type`. An id that no
+Asset has, the id of a derived Asset, or an id that is not well formed
+SHALL return 404. A database failure SHALL return 503.
 
 #### Scenario: The body wraps the Asset
 - **WHEN** a signed-in administrator reads the Asset of `nebula.png`
-- **THEN** the response is 200, its body has one field, `asset`, and `asset` holds the `id`, `kind`, `name`, `current_version_id`, `original_url` and `preview_url` that the library list gives for that Asset, and a `facets` array
+- **THEN** the response is 200, its body has one field, `asset`, and `asset` holds the `id`, `kind`, `name`, `current_version_id`, `original_url` and `preview_url` that the library list gives for that Asset, the `media_type` `image/png`, and a `facets` array
+
+#### Scenario: A JPEG's media type
+- **WHEN** a signed-in administrator reads the Asset of `nebula.jpg`
+- **THEN** the response is 200 and its `asset.media_type` is `image/jpeg`
+
+#### Scenario: A TIFF's media type
+- **WHEN** a signed-in administrator reads the Asset of `m42.tif`, a TIFF
+- **THEN** the response is 200 and its `asset.media_type` is `image/tiff`, not the preview's `image/jpeg`
+
+#### Scenario: The bytes decide the media type, not the name
+- **WHEN** a signed-in administrator reads the Asset of a file named `m31.jpg` that holds PNG bytes
+- **THEN** the response is 200 and its `asset.media_type` is `image/png`
+
+#### Scenario: The list and the upload keep their shape
+- **WHEN** a signed-in administrator uploads `nebula.png` and then lists the library
+- **THEN** neither the 201 body nor the library list entry for that Asset holds `media_type`
 
 #### Scenario: Unknown or malformed id
 - **WHEN** a signed-in administrator reads an id that no Asset has, or the id `not-an-id`

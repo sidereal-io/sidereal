@@ -20,6 +20,10 @@
 | D10 | What happens when someone uploads bytes that exactly match an existing preview? | The upload makes a new original asset, because the repeat-upload check looks only at originals. | User |
 | D11 | Glossary: what is a Preview? | A derived asset holding a browser-ready image made from one asset version at full resolution. The library and asset page show it in place of the original. Written to `openspec/glossary.md`. | User |
 | D12 | Glossary: what is an Original? | An asset a Source brought into the library, as opposed to a derived asset. The library lists originals only. Written to `openspec/glossary.md`. | User |
+| D13 | How does the image pack hold the code for each format? | One module per format: `formats/png.rs`, `formats/jpeg.rs` and `formats/tiff.rs`, behind an internal `ImageFormat` trait. The trait gives a format's name and media type, how many leading bytes it needs and whether they match, how to read its dimensions, and how to render a preview. `CandidateReader` moves to a format-agnostic `io.rs`. One `FORMATS` table drives recognition, registration and the refusal message, so adding a format touches one module and one table entry. Each format keeps its own read limits and memory tests beside its code. The Source reads as many leading bytes as the formats need, not a fixed 8. | User |
+| D14 | Who owns the list of formats that upload takes? | The image pack. The server passes the Source's own refusal reason to the client, in place of its fixed "only PNG and JPEG" text. The web names no formats: it shows the reason the server gives. | User |
+| D15 | How does an Operator learn a version's format, and which versions does it run on? | The Asset context gives an Operator the version's media type, so the header Operator no longer reads the signature the Source already read. Each Operator declares the media types it accepts, and core runs an upload's Operators only on a version whose media type they accept. This is a first, small step towards the `accepts` Selector and covers media types only. It also keeps Operators off a preview (D9): no upload Operator accepts a preview's media type in the preview's role. | User |
+| D16 | How does a TIFF show its format, now that #547 records no format facet? | From the version's media type: `image/tiff` shows as `Format TIFF`, through the asset page's map from media type to name that #547 added. This change adds no `image.format` facet and no choice type. | User |
 
 ## Changes from the story
 
@@ -27,5 +31,7 @@
 - **Added:** limits the packet did not state: which TIFF variants get a preview (D4), the 512 MiB decode limit (D6), and a failed preview run with a reason when either is not met.
 - **Cut:** backfilling previews for assets uploaded before this change (D8), and any automatic brightening of raw data (D5, left to FITS in #357).
 - No split: the story stays one change (D2).
+- **Reworked after #547 changed:** #547 dropped its `image.format` facet and its choice type, and shows the format from the media type. This change no longer adds TIFF to a choice; it adds `TIFF` to the asset page's names (D16).
+- **Added after the plan:** one module per format in the image pack (D13), the pack's own refusal reason on the upload screen (D14), and Operators that declare the media types they accept (D15).
 
 Confirmed by user: yes
