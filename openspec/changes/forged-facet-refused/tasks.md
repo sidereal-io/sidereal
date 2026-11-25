@@ -2,7 +2,7 @@ The behavior these tasks test already exists, so a new test passes at once. Each
 
 ## 1. Values stay on the run's own input
 
-- [ ] 1.1 [easy] `Fixture::another_version(&self, asset: &AssetRecord) -> Uuid` in `fixture.rs` adds one Asset version to an existing Asset, with a fresh id and the hash of 64 `f` characters, makes it the Asset's current version, and returns its id; a test in `stores.rs` reads the row back and checks its `asset_id` and that the Asset's `current_version_id` is the returned id (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core another_version)
+- [x] 1.1 [easy] `Fixture::another_version(&self, asset: &AssetRecord) -> Uuid` in `fixture.rs` adds one Asset version to an existing Asset, with a fresh id and the hash of 64 `f` characters, makes it the Asset's current version, and returns its id; a test in `stores.rs` reads the row back and checks its `asset_id` and that the Asset's `current_version_id` is the returned id (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core another_version) (✓ cargo test --manifest-path server/Cargo.toml -p sidereal-core another_version passed)
 - [ ] 1.2 [medium] With Asset A holding versions A1 and A2, A2 current, and Asset B holding B1, a run over A1 that proposes one Asset version facet and one Asset facet stores exactly two values: the version value against A1 only, and the Asset value against A only, with none against A2, B or B1. Red step: in `store` in `operations.rs`, swap the two scopes, so an Asset facet's value goes against the run's version and an Asset version facet's value against its Asset (verify: cargo test --manifest-path server/Cargo.toml -p sidereal-core values_stay_on_the_runs_own_input)
 
 ## 2. An Operator run makes no Asset

@@ -210,3 +210,20 @@ async fn a_run_keeps_its_schema_versions_in_name_order() {
     assert_eq!(outcome.unwrap(), RunOutcome::Succeeded);
     assert_eq!(fixture.values().await.len(), 2);
 }
+
+#[tokio::test]
+async fn another_version_becomes_the_current_version_of_the_same_asset() {
+    let fixture = Fixture::new(|_| {}).await;
+    let asset = fixture.version(b"abc").await;
+    let added = fixture.another_version(&asset).await;
+    let (owner, current): (Uuid, Uuid) = sqlx::query_as(
+        "SELECT v.asset_id, a.current_version_id FROM public.asset_versions v \
+         JOIN public.assets a ON a.id = v.asset_id WHERE v.id = $1",
+    )
+    .bind(added)
+    .fetch_one(&mut fixture.conn().await)
+    .await
+    .unwrap();
+    assert_eq!(owner, asset.id);
+    assert_eq!(current, added);
+}
