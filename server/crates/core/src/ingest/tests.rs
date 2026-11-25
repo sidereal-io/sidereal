@@ -71,12 +71,24 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_isolation(None).await
+    }
+
+    /// A fixture whose Database connections start every transaction at
+    /// `isolation`, when one is given, as a role or database setting could.
+    async fn with_isolation(isolation: Option<&str>) -> Self {
         let db = TestDatabase::new();
         let temp = TempRoot::new();
-        let (database, paired) =
-            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
-                .await
-                .unwrap();
+        let options = match isolation {
+            Some(level) => db
+                .options
+                .clone()
+                .options([("default_transaction_isolation", level)]),
+            None => db.options.clone(),
+        };
+        let (database, paired) = initialize_with_storage(options, SECONDS, SECONDS, &temp.root())
+            .await
+            .unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let mut registry = Registry::new();
         TestPack(seen.clone()).register(&mut registry);
@@ -101,7 +113,7 @@ impl Fixture {
         name: &str,
         bytes: &[u8],
         cancelled: bool,
-    ) -> Result<AssetRecord, IngestError> {
+    ) -> Result<Ingested, IngestError> {
         let mut staging = objects.begin().map_err(IngestError::Storage)?;
         staging.write(bytes).map_err(|e| match e {
             crate::storage::objects::StageError::Storage(e) => IngestError::Storage(e),
@@ -120,12 +132,20 @@ impl Fixture {
         .await
     }
 
-    async fn upload(&self, name: &str, bytes: &[u8]) -> Result<AssetRecord, IngestError> {
+    async fn upload(&self, name: &str, bytes: &[u8]) -> Result<Ingested, IngestError> {
         self.upload_with(&self.objects(None), name, bytes, false)
             .await
     }
 
-    async fn failing_at(&self, failing: Step, bytes: &[u8]) -> Result<AssetRecord, IngestError> {
+    /// Upload bytes not yet in the library, and return the new Asset.
+    async fn create(&self, name: &str, bytes: &[u8]) -> AssetRecord {
+        match self.upload(name, bytes).await {
+            Ok(Ingested::Created(record)) => record,
+            other => panic!("expected a new Asset, got {other:?}"),
+        }
+    }
+
+    async fn failing_at(&self, failing: Step, bytes: &[u8]) -> Result<Ingested, IngestError> {
         let hook: Hook = Arc::new(move |step| {
             if step == failing {
                 Err(std::io::Error::other("injected"))
@@ -180,7 +200,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn an_accepted_upload_commits_one_asset_pointing_to_its_version() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(
             (record.name.as_str(), record.kind.as_str()),
             ("nebula.png", "image")
@@ -195,7 +215,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn a_committed_asset_reads_back_from_the_database() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(
             fixture.database.asset(record.id).await.unwrap(),
             Some(record.clone())
@@ -206,7 +226,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn the_object_is_published_before_the_commit() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(
             std::fs::read(fixture.object(&record.version.content_hash)).unwrap(),
             b"abc"
@@ -217,7 +237,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn the_ids_are_fresh_uuids_not_the_name_or_hash() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_ne!(record.id, record.version.id);
         for id in [record.id, record.version.id] {
             assert_eq!(id.get_version_num(), 4);
@@ -228,7 +248,7 @@ mod ingest_commit {
     #[tokio::test]
     async fn provenance_names_the_registered_source_that_ran() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("nebula.png", b"abc").await.unwrap();
+        let record = fixture.create("nebula.png", b"abc").await;
         assert_eq!(*fixture.seen.lock().unwrap(), b"abc");
         assert_eq!(
             (
@@ -352,20 +372,398 @@ mod ingest_commit {
     }
 
     #[tokio::test]
-    async fn a_failed_commit_after_reuse_keeps_the_shared_object() {
+    async fn a_retry_after_a_failed_commit_reuses_the_kept_object() {
+        use std::os::unix::fs::MetadataExt;
         let fixture = Fixture::new().await;
-        let first = fixture.upload("first.png", b"abc").await.unwrap();
         break_version_inserts(&fixture).await;
-        assert!(fixture.upload("second.png", b"abc").await.is_err());
+        let outcome = fixture.upload("first.png", b"abc").await;
+        assert!(
+            matches!(outcome, Err(IngestError::Database(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(fixture.rows().await, 0);
+        let kept = std::fs::metadata(fixture.object(ABC)).unwrap().ino();
+        fixture
+            .conn()
+            .await
+            .execute("DROP TRIGGER refuse ON public.asset_versions")
+            .await
+            .unwrap();
+        let second = fixture.create("second.png", b"abc").await;
+        assert_eq!(second.name, "second.png");
         assert_eq!(fixture.rows().await, 2);
+        assert_eq!(std::fs::metadata(fixture.object(ABC)).unwrap().ino(), kept);
         assert_eq!(std::fs::read(fixture.object(ABC)).unwrap(), b"abc");
+        assert_eq!(fixture.database.assets().await.unwrap(), [second]);
+    }
+
+    #[tokio::test]
+    async fn the_same_bytes_under_another_name_find_the_first_asset() {
+        let fixture = Fixture::new().await;
+        let first = fixture.create("nebula.png", b"abc").await;
+        let outcome = fixture.upload("m31-final.png", b"abc").await.unwrap();
+        assert_eq!(outcome, Ingested::Found(first.clone()));
+        assert_eq!(first.name, "nebula.png");
+        assert_eq!(fixture.rows().await, 2);
         assert_eq!(fixture.database.assets().await.unwrap(), [first]);
+    }
+
+    #[tokio::test]
+    async fn different_bytes_make_a_new_asset() {
+        let fixture = Fixture::new().await;
+        let first = fixture.create("nebula.png", b"abc").await;
+        let second = fixture.create("nebula.jpg", b"abd").await;
+        assert_ne!(first.id, second.id);
+        assert_eq!(fixture.rows().await, 4);
+        assert_eq!(fixture.database.assets().await.unwrap(), [first, second]);
+    }
+
+    /// One version a test inserts directly, as a database built before this
+    /// change, or another Source, could hold it.
+    struct Row<'a> {
+        id: &'a str,
+        hash: &'a str,
+        source_id: &'a str,
+        ingested_at: &'a str,
+    }
+
+    impl Row<'_> {
+        fn new<'a>(id: &'a str, hash: &'a str, ingested_at: &'a str) -> Row<'a> {
+            Row {
+                id,
+                hash,
+                source_id: "test.recorder",
+                ingested_at,
+            }
+        }
+    }
+
+    /// Insert Asset `id`, named `name`, with `versions`; the last one is its
+    /// current version.
+    async fn insert_asset(fixture: &Fixture, id: &str, name: &str, versions: &[Row<'_>]) {
+        let current = versions.last().unwrap().id;
+        let mut sql = format!(
+            "BEGIN; INSERT INTO public.assets (id, kind, name, current_version_id) \
+             VALUES ('{id}', 'image', '{name}', '{current}');"
+        );
+        for v in versions {
+            sql += &format!(
+                " INSERT INTO public.asset_versions \
+                 (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) \
+                 VALUES ('{}', '{id}', '{}', 3, 'image/x-test', '{}', '1.0.0', '{}');",
+                v.id, v.hash, v.source_id, v.ingested_at
+            );
+        }
+        sql += " COMMIT;";
+        fixture
+            .conn()
+            .await
+            .execute(sqlx::AssertSqlSafe(sql))
+            .await
+            .unwrap();
+    }
+
+    /// Every Asset and Asset version row, as text, in id order.
+    async fn snapshot(fixture: &Fixture) -> String {
+        sqlx::query_scalar(
+            "SELECT coalesce((SELECT string_agg(a::text, ';' ORDER BY a.id) FROM public.assets a), '') \
+             || '|' || coalesce((SELECT string_agg(v::text, ';' ORDER BY v.id) FROM public.asset_versions v), '')",
+        )
+        .fetch_one(&mut fixture.conn().await)
+        .await
+        .unwrap()
+    }
+
+    fn found(outcome: Result<Ingested, IngestError>) -> AssetRecord {
+        match outcome {
+            Ok(Ingested::Found(record)) => record,
+            other => panic!("expected a found Asset, got {other:?}"),
+        }
+    }
+
+    const OLDER: &str = "a0000000-0000-4000-8000-000000000001";
+    const LOW: &str = "00000000-0000-4000-8000-000000000001";
+    const HIGH: &str = "ffffffff-0000-4000-8000-000000000001";
+    const OTHER: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    #[tokio::test]
+    async fn an_upload_finds_the_asset_whose_version_was_ingested_first() {
+        let fixture = Fixture::new().await;
+        fixture.create("nebula.png", b"abc").await;
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[Row::new(
+                "a0000000-0000-4000-8000-0000000000a1",
+                ABC,
+                "2000-01-01T00:00:00Z",
+            )],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(
+            (record.id.to_string().as_str(), record.name.as_str()),
+            (OLDER, "older.png")
+        );
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn among_versions_ingested_together_an_upload_finds_the_lowest_asset_id() {
+        let fixture = Fixture::new().await;
+        let at = "2000-01-01T00:00:00Z";
+        insert_asset(
+            &fixture,
+            HIGH,
+            "high.png",
+            &[Row::new("ffffffff-0000-4000-8000-0000000000a1", ABC, at)],
+        )
+        .await;
+        insert_asset(
+            &fixture,
+            LOW,
+            "low.png",
+            &[Row::new("00000000-0000-4000-8000-0000000000a1", ABC, at)],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(record.id.to_string(), LOW);
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn an_upload_finds_an_asset_whose_matching_version_is_not_current() {
+        let fixture = Fixture::new().await;
+        let current = "a0000000-0000-4000-8000-0000000000a2";
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[
+                Row::new(
+                    "a0000000-0000-4000-8000-0000000000a1",
+                    ABC,
+                    "2000-01-01T00:00:00Z",
+                ),
+                Row::new(current, OTHER, "2000-01-02T00:00:00Z"),
+            ],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(record.id.to_string(), OLDER);
+        assert_eq!(record.current_version_id.to_string(), current);
+        assert_eq!(record.version.content_hash, OTHER);
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn bytes_another_source_brought_in_are_found_and_keep_their_provenance() {
+        let fixture = Fixture::new().await;
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[Row {
+                source_id: "test.other",
+                ..Row::new(
+                    "a0000000-0000-4000-8000-0000000000a1",
+                    ABC,
+                    "2000-01-01T00:00:00Z",
+                )
+            }],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let record = found(fixture.upload("again.png", b"abc").await);
+        assert_eq!(*fixture.seen.lock().unwrap(), b"abc");
+        assert_eq!(record.id.to_string(), OLDER);
+        assert_eq!(
+            (
+                record.version.source_id.as_str(),
+                record.version.source_version.as_str()
+            ),
+            ("test.other", "1.0.0")
+        );
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[tokio::test]
+    async fn refused_bytes_already_in_the_library_are_still_refused() {
+        let fixture = Fixture::new().await;
+        let rejected = blake3::hash(b"rejected").to_hex().to_string();
+        insert_asset(
+            &fixture,
+            OLDER,
+            "older.png",
+            &[Row::new(
+                "a0000000-0000-4000-8000-0000000000a1",
+                &rejected,
+                "2000-01-01T00:00:00Z",
+            )],
+        )
+        .await;
+        let before = snapshot(&fixture).await;
+        let outcome = fixture.upload("again.png", b"rejected").await;
+        assert!(
+            matches!(outcome, Err(IngestError::Refused(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(snapshot(&fixture).await, before);
+    }
+
+    #[test]
+    fn the_content_lock_key_keeps_the_bits_of_the_first_eight_hex_digits() {
+        use crate::assets::content_lock_key;
+        let key = |prefix: &str| content_lock_key(&format!("{prefix}{}", &ABC[8..]));
+        assert_eq!(key("00000000"), 0);
+        assert_eq!(key("7fffffff"), i32::MAX);
+        assert_eq!(key("80000000"), i32::MIN);
+        assert_eq!(key("ffffffff"), -1);
+        assert_eq!(content_lock_key(ABC), 0x6437_b3ac);
+    }
+
+    /// The advisory lock key a held upload waits on before it commits.
+    const HOLD: i64 = 522;
+    /// How long a test waits for another connection before it fails.
+    const WAIT: Duration = Duration::from_secs(10);
+
+    /// How many backends in this test's database wait on an advisory lock.
+    async fn advisory_waiters(fixture: &Fixture) -> i64 {
+        sqlx::query_scalar(
+            "SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid \
+             WHERE a.datname = current_database() AND NOT l.granted AND l.locktype = 'advisory'",
+        )
+        .fetch_one(&mut fixture.conn().await)
+        .await
+        .unwrap()
+    }
+
+    /// Wait until `count` backends wait on an advisory lock, failing after
+    /// [`WAIT`].
+    async fn wait_for_waiters(fixture: &Fixture, count: i64) {
+        tokio::time::timeout(WAIT, async {
+            while advisory_waiters(fixture).await < count {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("waited too long for {count} advisory waiters"));
+    }
+
+    /// Two uploads of the same new bytes: A is held after its insert and
+    /// before its commit, then B starts. Each must end as one new Asset and
+    /// one found Asset.
+    async fn concurrent_uploads_make_one_asset(isolation: Option<&str>) {
+        let fixture = Arc::new(Fixture::with_isolation(isolation).await);
+        let mut hold = fixture.conn().await;
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_lock({HOLD}); \
+             CREATE FUNCTION public.hold() RETURNS trigger LANGUAGE plpgsql \
+             AS 'BEGIN PERFORM pg_advisory_xact_lock_shared({HOLD}); RETURN NULL; END'; \
+             CREATE TRIGGER hold AFTER INSERT ON public.asset_versions \
+             FOR EACH ROW EXECUTE FUNCTION public.hold()"
+        )))
+        .await
+        .unwrap();
+        let start = |name: &'static str| {
+            let fixture = fixture.clone();
+            tokio::spawn(async move { fixture.upload(name, b"abc").await })
+        };
+        let a = start("a.png");
+        wait_for_waiters(&fixture, 1).await;
+        let b = start("b.png");
+        wait_for_waiters(&fixture, 2).await;
+        assert!(!a.is_finished() && !b.is_finished());
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_unlock({HOLD})"
+        )))
+        .await
+        .unwrap();
+        let finish = |task: tokio::task::JoinHandle<_>| async move {
+            tokio::time::timeout(WAIT, task)
+                .await
+                .expect("waited too long for an upload")
+                .unwrap()
+        };
+        let outcomes = [finish(a).await.unwrap(), finish(b).await.unwrap()];
+        let (created, found): (Vec<_>, Vec<_>) = outcomes
+            .iter()
+            .partition(|outcome| matches!(outcome, Ingested::Created(_)));
+        assert_eq!((created.len(), found.len()), (1, 1), "{outcomes:?}");
+        let (Ingested::Created(new), Ingested::Found(existing)) = (created[0], found[0]) else {
+            unreachable!()
+        };
+        assert_eq!(existing.id, new.id);
+        let counts: (i64, i64) = sqlx::query_as(
+            "SELECT count(DISTINCT asset_id), count(*) FROM public.asset_versions WHERE content_hash = $1",
+        )
+        .bind(ABC)
+        .fetch_one(&mut fixture.conn().await)
+        .await
+        .unwrap();
+        assert_eq!(counts, (1, 1));
+        assert_eq!(fixture.rows().await, 2);
+    }
+
+    #[tokio::test]
+    async fn concurrent_uploads_of_the_same_new_bytes_make_one_asset() {
+        concurrent_uploads_make_one_asset(None).await;
+    }
+
+    #[tokio::test]
+    async fn concurrent_uploads_make_one_asset_under_a_repeatable_read_default() {
+        concurrent_uploads_make_one_asset(Some("repeatable read")).await;
+    }
+
+    /// The content lock is per content: while an upload of `abc` is held
+    /// before its commit, an upload of other bytes commits at once.
+    #[tokio::test]
+    async fn an_upload_of_other_bytes_does_not_wait_for_a_held_upload() {
+        let fixture = Arc::new(Fixture::new().await);
+        let mut hold = fixture.conn().await;
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_lock({HOLD}); \
+             CREATE FUNCTION public.hold() RETURNS trigger LANGUAGE plpgsql \
+             AS 'BEGIN IF NEW.content_hash = ''{ABC}'' THEN \
+             PERFORM pg_advisory_xact_lock_shared({HOLD}); END IF; RETURN NULL; END'; \
+             CREATE TRIGGER hold AFTER INSERT ON public.asset_versions \
+             FOR EACH ROW EXECUTE FUNCTION public.hold()"
+        )))
+        .await
+        .unwrap();
+        let a = {
+            let fixture = fixture.clone();
+            tokio::spawn(async move { fixture.upload("a.png", b"abc").await })
+        };
+        wait_for_waiters(&fixture, 1).await;
+        let other = tokio::time::timeout(WAIT, fixture.upload("b.png", b"abd"))
+            .await
+            .expect("an upload of other bytes waited for the held upload")
+            .unwrap();
+        assert!(matches!(other, Ingested::Created(_)), "{other:?}");
+        assert!(!a.is_finished());
+        hold.execute(sqlx::AssertSqlSafe(format!(
+            "SELECT pg_advisory_unlock({HOLD})"
+        )))
+        .await
+        .unwrap();
+        let held = tokio::time::timeout(WAIT, a)
+            .await
+            .expect("waited too long for the held upload")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(held, Ingested::Created(_)), "{held:?}");
+        assert_eq!(fixture.rows().await, 4);
     }
 
     #[tokio::test]
     async fn a_name_with_traversal_is_display_text_only() {
         let fixture = Fixture::new().await;
-        let record = fixture.upload("../../outside.png", b"abc").await.unwrap();
+        let record = fixture.create("../../outside.png", b"abc").await;
         assert_eq!(record.name, "../../outside.png");
         for escaped in [
             "../outside.png",

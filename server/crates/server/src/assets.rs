@@ -3,7 +3,7 @@
 //!
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
-//! the Asset. Every refusal has a fixed body, so no path or driver error
+//! the Asset, or finds the Asset that already holds the bytes (409). Every refusal has a fixed body, so no path or driver error
 //! reaches a client; the operational log names the cause.
 use crate::access::Log;
 use axum::{
@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use sidereal_core::{
     assets::AssetRecord,
     database::Database,
-    ingest::{ingest, IngestError},
+    ingest::{ingest, IngestError, Ingested},
     storage::objects::{ObjectStore, StageError, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
@@ -402,8 +402,13 @@ async fn upload(
     )
     .await
     {
-        Ok(record) => Ok((
+        Ok(Ingested::Created(record)) => Ok((
             StatusCode::CREATED,
+            Json(json!({ "asset": entry(&record) })),
+        )),
+        // The bytes are already in the library: not a failure, so no log.
+        Ok(Ingested::Found(record)) => Ok((
+            StatusCode::CONFLICT,
             Json(json!({ "asset": entry(&record) })),
         )),
         Err(IngestError::Refused(_)) => Err(UploadError::Unsupported),

@@ -27,26 +27,46 @@ function isObject(body: unknown): body is Record<string, unknown> {
   return typeof body === "object" && body !== null;
 }
 
-// The entries of a list body, or null when the body is not a list. Nothing
-// else from the body is kept, and the names are only ever shown as text.
+// One Asset entry, as the list and a repeat upload's answer hold it, or
+// null when it is not a valid entry. Nothing else from it is kept, and the
+// name is only ever shown as text.
+function toEntry(item: unknown): Entry | null {
+  if (
+    !isObject(item) ||
+    typeof item.id !== "string" ||
+    typeof item.name !== "string" ||
+    typeof item.current_version_id !== "string" ||
+    typeof item.original_url !== "string" ||
+    !ORIGINAL_URL.test(item.original_url) ||
+    item.original_url !== `/api/assets/${item.id}/original`
+  ) {
+    return null;
+  }
+  return { id: item.id, name: item.name, originalUrl: item.original_url };
+}
+
+// The entries of a list body, or null when the body is not a list or holds
+// an entry that is not valid.
 function entries(body: unknown): Entry[] | null {
   if (!isObject(body) || !Array.isArray(body.assets)) return null;
   const list: Entry[] = [];
   for (const item of body.assets as unknown[]) {
-    if (
-      !isObject(item) ||
-      typeof item.id !== "string" ||
-      typeof item.name !== "string" ||
-      typeof item.current_version_id !== "string" ||
-      typeof item.original_url !== "string" ||
-      !ORIGINAL_URL.test(item.original_url) ||
-      item.original_url !== `/api/assets/${item.id}/original`
-    ) {
-      return null;
-    }
-    list.push({ id: item.id, name: item.name, originalUrl: item.original_url });
+    const checked = toEntry(item);
+    if (!checked) return null;
+    list.push(checked);
   }
   return list;
+}
+
+// The name of the Asset a repeat upload found, or null when the answer's
+// body holds no valid entry or names it with nothing to show.
+async function foundName(response: Response): Promise<string | null> {
+  try {
+    const body: unknown = await response.json();
+    return isObject(body) ? toEntry(body.asset)?.name || null : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchList(
@@ -79,33 +99,41 @@ function refusal(status: number): string {
 
 // Sends one file as the multipart field `file`. Never retried: a lost
 // answer after the server saved the file cannot be told from a failure,
-// so no answer at all is "unconfirmed", never a refusal.
+// so no answer at all is "unconfirmed", never a refusal. A 409 means the
+// bytes are already in the library: `found` holds that Asset's name.
 async function sendFile(
   file: File,
   signal: AbortSignal,
 ): Promise<
-  "saved" | "unconfirmed" | { refused: string } | typeof sessionEnded
+  | "saved"
+  | "unconfirmed"
+  | { refused: string }
+  | { found: string | null }
+  | typeof sessionEnded
 > {
+  let response: Response;
   try {
     const body = new FormData();
     body.append("file", file);
-    const response = await fetch("/api/assets", {
+    response = await fetch("/api/assets", {
       method: "POST",
       body,
       signal,
     });
-    if (response.status === 201) return "saved";
-    if (response.status === 401) return sessionEnded;
-    return { refused: refusal(response.status) };
   } catch {
     return "unconfirmed";
   }
+  if (response.status === 201) return "saved";
+  if (response.status === 401) return sessionEnded;
+  if (response.status === 409) return { found: await foundName(response) };
+  return { refused: refusal(response.status) };
 }
 
 type Upload =
   | { kind: "idle" }
   | { kind: "sending"; name: string }
   | { kind: "refused"; name: string; reason: string }
+  | { kind: "found"; name: string; existing: string | null }
   | { kind: "unconfirmed"; name: string };
 
 // One image, whole, at its own shape once it loads. Until then its frame
@@ -205,6 +233,9 @@ function Library({
       // The file may have been saved, so the list loads again to show it.
       setUpload({ kind: "unconfirmed", name: file.name });
       setGeneration((value) => value + 1);
+    } else if ("found" in result) {
+      // Nothing changed in the library, so the list is not loaded again.
+      setUpload({ kind: "found", name: file.name, existing: result.found });
     } else {
       setUpload({ kind: "refused", name: file.name, reason: result.refused });
     }
@@ -252,10 +283,17 @@ function Library({
           {upload.name} was not uploaded: {upload.reason}
         </p>
       )}
+      {upload.kind === "found" && (
+        <p className="library-status">
+          {upload.existing === null || upload.existing === upload.name
+            ? `${upload.name} is already in the library.`
+            : `${upload.name} is already in the library as ${upload.existing}.`}
+        </p>
+      )}
       {upload.kind === "unconfirmed" && (
         <p className="library-status">
-          No answer came back for {upload.name}. It may have been saved: check
-          the library before you upload it again.
+          No answer came back for {upload.name}. It is safe to upload it again:
+          if it was saved, Sidereal will find it.
         </p>
       )}
       {notice && <p className="library-status">{notice}</p>}

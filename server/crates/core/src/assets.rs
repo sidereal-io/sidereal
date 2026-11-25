@@ -1,9 +1,13 @@
 //! Assets and their immutable versions in PostgreSQL (ADR-003).
 //!
-//! Core mints every id and records the hash it computed. This module creates
-//! an Asset with its first version and reads them back; it offers no way to
-//! change or delete a version.
-use crate::database::{Database, DatabaseError};
+//! Core mints every id and records the hash it computed. This module finds
+//! the Asset that already holds a set of bytes, or creates an Asset with its
+//! first version, and reads them back; it offers no way to change or delete
+//! a version.
+use crate::{
+    database::{Database, DatabaseError},
+    ingest::Ingested,
+};
 use sidereal_plugin_abi::Accepted;
 use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
@@ -39,6 +43,20 @@ pub(crate) struct NewVersion<'a> {
     pub accepted: &'a Accepted,
     pub content_hash: &'a str,
     pub byte_size: u64,
+}
+
+/// The first key of the transaction lock that serializes uploads of the
+/// same bytes: "Asset content". It differs from the startup lock's key.
+const ASSET_CONTENT: i32 = 1_095_979_860;
+
+/// The second key of that lock: the bits of the hash's first 8 hex digits,
+/// read as a `u32` and kept as an `i32`. Hashes that share these digits only
+/// wait for each other; the lookup still matches the full hash. A hash core
+/// did not compute, which the table's check refuses anyway, gets key 0.
+pub(crate) fn content_lock_key(hash: &str) -> i32 {
+    hash.get(..8)
+        .and_then(|digits| u32::from_str_radix(digits, 16).ok())
+        .unwrap_or(0) as i32
 }
 
 const INGESTED_AT: &str =
@@ -92,14 +110,47 @@ impl Database {
         Ok(row.as_ref().map(record).transpose()?)
     }
 
-    /// Insert a new Asset and its first version in one transaction. The
-    /// current-version check runs at commit, so neither row exists alone.
-    pub(crate) async fn create_asset(
+    /// Find the Asset with a version of `new`'s bytes, or else insert a new
+    /// Asset and its first version, in one transaction. The current-version
+    /// check runs at commit, so neither new row exists alone. A found Asset
+    /// is left as it is; `new.name` is used only for a new one.
+    pub(crate) async fn find_or_create_asset(
         &self,
         new: NewVersion<'_>,
-    ) -> Result<AssetRecord, DatabaseError> {
-        let (asset, version) = (Uuid::new_v4(), Uuid::new_v4());
+    ) -> Result<Ingested, DatabaseError> {
         let mut tx = self.pool().begin().await?;
+        // Never inherit a REPEATABLE READ default: its snapshot would be
+        // taken as the lock statement starts, before the lock is granted, and
+        // the lookup would miss the rows of the upload it waited for.
+        sqlx::raw_sql("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
+            .execute(&mut *tx)
+            .await?;
+        // Uploads of the same bytes commit one at a time. The lock has its
+        // own statement, so the lookup's snapshot is taken after it is
+        // granted.
+        sqlx::query("SELECT pg_advisory_xact_lock($1, $2)")
+            .bind(ASSET_CONTENT)
+            .bind(content_lock_key(new.content_hash))
+            .execute(&mut *tx)
+            .await?;
+        // The oldest matching version, of any Asset, current or not.
+        let existing: Option<Uuid> = sqlx::query_scalar(
+            "SELECT v.asset_id FROM public.asset_versions v WHERE v.content_hash = $1 \
+             ORDER BY v.ingested_at, v.asset_id LIMIT 1",
+        )
+        .bind(new.content_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(asset) = existing {
+            let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} WHERE a.id = $1", select())))
+                .bind(asset)
+                .fetch_one(&mut *tx)
+                .await?;
+            let found = record(&row)?;
+            tx.commit().await?;
+            return Ok(Ingested::Found(found));
+        }
+        let (asset, version) = (Uuid::new_v4(), Uuid::new_v4());
         sqlx::query(
             "INSERT INTO public.assets (id, kind, name, current_version_id) VALUES ($1, $2, $3, $4)",
         )
@@ -129,6 +180,6 @@ impl Database {
             .await?;
         let created = record(&row)?;
         tx.commit().await?;
-        Ok(created)
+        Ok(Ingested::Created(created))
     }
 }

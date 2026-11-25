@@ -362,6 +362,96 @@ describe("Library", () => {
       });
     });
 
+    const named = (name: string) =>
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, {
+        type: "image/png",
+      });
+
+    const listRequests = (fetch: ReturnType<typeof vi.fn>) =>
+      fetch.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/assets" && !(init as RequestInit | undefined)?.method,
+      );
+
+    it.each([
+      ["nebula.png", "nebula.png is already in the library."],
+      [
+        "m31-final.png",
+        "m31-final.png is already in the library as nebula.png.",
+      ],
+    ])(
+      "says %s is already in the library when the upload answers 409",
+      async (chosen, notice) => {
+        const fetch = stubServer({
+          "GET /api/assets": listAnswer(nebula),
+          "POST /api/assets": [409, { asset: nebula }],
+        });
+        showLibrary();
+        await screen.findByRole("img", { name: "nebula.png" });
+        choose(named(chosen));
+        await screen.findByText(notice);
+        expect(document.body.textContent).not.toContain("was not uploaded");
+        expect(screen.queryByText(/Uploading/)).toBeNull();
+        expect(listRequests(fetch)).toHaveLength(1);
+        expect(screen.getAllByRole("img")).toHaveLength(1);
+        // Nova can choose another file straight away.
+        expect(
+          screen
+            .getByRole("button", { name: "Upload" })
+            .hasAttribute("disabled"),
+        ).toBe(false);
+        expect(picker().value).toBe("");
+        choose(png());
+        await waitFor(() => {
+          expect(uploads(fetch)).toHaveLength(2);
+        });
+      },
+    );
+
+    it.each([
+      ["no body", undefined],
+      ["a body with no asset", { other: nebula }],
+      ["an entry with no name", { asset: { ...nebula, name: 3 } }],
+      ["an entry with an empty name", { asset: { ...nebula, name: "" } }],
+      [
+        "an entry with no current version",
+        { asset: { ...nebula, current_version_id: undefined } },
+      ],
+      [
+        "an original URL that names another Asset",
+        { asset: { ...nebula, original_url: "/api/assets/a2/original" } },
+      ],
+      ["a list instead of an entry", { asset: [nebula] }],
+    ])(
+      "gives the short notice, with no name from the body, for a 409 with %s",
+      async (_, body) => {
+        stubServer({
+          "GET /api/assets": listAnswer(),
+          "POST /api/assets": [409, body],
+        });
+        showLibrary();
+        await screen.findByRole("button", { name: "Upload" });
+        choose(named("m31-final.png"));
+        await screen.findByText("m31-final.png is already in the library.");
+        expect(document.body.textContent).not.toContain("nebula.png");
+        expect(document.body.textContent).not.toContain("was not uploaded");
+      },
+    );
+
+    it("shows an existing name holding markup as literal text", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [409, { asset: entry("a3", "<b>bold</b>.png") }],
+      });
+      const { container } = render(<Library onSessionLost={vi.fn()} />);
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("m31-final.png"));
+      await screen.findByText(
+        "m31-final.png is already in the library as <b>bold</b>.png.",
+      );
+      expect(container.querySelector("b")).toBeNull();
+    });
+
     it("says the outcome is unknown, and loads the list again, when no answer comes back", async () => {
       // The server saved the file, but its answer was lost on the way.
       const fetch = stubServer({
@@ -371,7 +461,7 @@ describe("Library", () => {
       await screen.findByRole("button", { name: "Upload" });
       choose(png());
       await screen.findByText(
-        "No answer came back for nebula.png. It may have been saved: check the library before you upload it again.",
+        "No answer came back for nebula.png. It is safe to upload it again: if it was saved, Sidereal will find it.",
       );
       expect(document.body.textContent).not.toContain("was not uploaded");
       await screen.findByRole("img", { name: "nebula.png" });
@@ -380,6 +470,8 @@ describe("Library", () => {
           ([url, init]) => url === "/api/assets" && !init?.method,
         ),
       ).toHaveLength(2);
+      // The screen never sends the file again by itself.
+      expect(uploads(fetch)).toHaveLength(1);
     });
 
     it("shows a filename holding markup as literal text", async () => {
