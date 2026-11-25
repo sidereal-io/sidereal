@@ -11,12 +11,12 @@
 //! objects by their BLAKE3 hash. A display filename never becomes a path.
 use super::{Entry, Operation, Problem, StorageError, StorageRoot, MARKER, MARKER_LIMIT};
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString, OsStr, OsString},
     fs::File,
     io::{self, Read, Write},
     os::{
         fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
-        unix::fs::FileExt,
+        unix::{ffi::OsStrExt, fs::FileExt},
     },
     path::{Path, PathBuf},
     sync::Arc,
@@ -497,6 +497,119 @@ impl ObjectStore {
     }
 }
 
+/// What startup cleanup did with the entries left in `tmp`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Cleanup {
+    /// How many entries it removed.
+    pub removed: usize,
+    /// The subfolders it left, by their raw names.
+    pub kept: Vec<OsString>,
+    /// The entries it could not remove, by their raw names, with the reason.
+    pub failed: Vec<(OsString, io::ErrorKind)>,
+}
+
+impl ObjectStore {
+    /// Remove the staging files that an interrupted ingest left in `tmp`.
+    /// Creates nothing: a root without `tmp` is left as it is.
+    pub fn remove_leftover_staging(&self) -> Result<Cleanup, StorageError> {
+        let tmp = match open_folder_at(self.root(), TMP) {
+            Ok(tmp) => tmp,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Cleanup::default()),
+            // A link or a file named `tmp` is never followed or removed.
+            Err(e) if is_refused_entry(&e) => return Err(self.error(Problem::Unsafe(Entry::Tmp))),
+            // An unreadable `tmp` cannot be listed, so the error names `tmp`.
+            Err(e) => return Err(self.io(Operation::ListTmp)(e)),
+        };
+        let mut cleanup = Cleanup::default();
+        for name in list(tmp.as_fd()).map_err(self.io(Operation::ListTmp))? {
+            let raw = || OsStr::from_bytes(name.to_bytes()).to_owned();
+            // Inspected without following a link or opening the entry, so a
+            // FIFO cannot block and a link's target is never touched.
+            let removed = stat_raw(tmp.as_fd(), &name).and_then(|found| {
+                if found.st_mode & libc::S_IFMT == libc::S_IFDIR {
+                    return Ok(false);
+                }
+                unlink_at(tmp.as_fd(), &name).map(|()| true)
+            });
+            match removed {
+                Ok(true) => cleanup.removed += 1,
+                Ok(false) => cleanup.kept.push(raw()),
+                // Gone already: nothing is left to remove.
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                // One stuck entry does not stop the others.
+                Err(e) => cleanup.failed.push((raw(), e.kind())),
+            }
+        }
+        Ok(cleanup)
+    }
+}
+
+/// The names in an open folder, except `.` and `..`, as raw bytes.
+fn list(folder: BorrowedFd<'_>) -> io::Result<Vec<CString>> {
+    // `fdopendir` takes ownership of its descriptor, so it gets a duplicate.
+    // SAFETY: `folder` is an open descriptor.
+    let fd = unsafe { libc::fcntl(folder.as_raw_fd(), libc::F_DUPFD_CLOEXEC, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: `fd` is an open directory descriptor that nothing else owns.
+    let dir = unsafe { libc::fdopendir(fd) };
+    if dir.is_null() {
+        let error = io::Error::last_os_error();
+        // SAFETY: `fdopendir` failed, so `fd` is still ours to close.
+        unsafe { libc::close(fd) };
+        return Err(error);
+    }
+    // A duplicate shares the file offset, so start from the first entry.
+    // SAFETY: `dir` is an open directory stream.
+    unsafe { libc::rewinddir(dir) };
+    let mut names = Vec::new();
+    let result = loop {
+        clear_errno();
+        // SAFETY: `dir` is an open directory stream.
+        let entry = unsafe { libc::readdir(dir) };
+        if entry.is_null() {
+            let error = io::Error::last_os_error();
+            break match error.raw_os_error() {
+                Some(0) => Ok(()),
+                _ => Err(error),
+            };
+        }
+        // SAFETY: `readdir` returned an entry whose name is NUL-terminated
+        // and valid until the next call on `dir`.
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        if name != c"." && name != c".." {
+            names.push(name.to_owned());
+        }
+    };
+    // SAFETY: `dir` is open, and closing it also closes `fd`.
+    unsafe { libc::closedir(dir) };
+    result.map(|()| names)
+}
+
+/// Reset `errno`, so a null `readdir` tells the end apart from an error.
+fn clear_errno() {
+    // SAFETY: errno is thread-local and writable.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        *libc::__errno_location() = 0;
+    }
+    // SAFETY: errno is thread-local and writable.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        *libc::__error() = 0;
+    }
+}
+
+/// Remove one entry that is not a folder, without following a link.
+fn unlink_at(folder: BorrowedFd<'_>, name: &CStr) -> io::Result<()> {
+    // SAFETY: `folder` is an open directory and `name` is NUL-terminated.
+    if unsafe { libc::unlinkat(folder.as_raw_fd(), name.as_ptr(), 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 fn device(fd: BorrowedFd<'_>) -> io::Result<libc::dev_t> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `fd` is open and `stat` has room for one `struct stat`.
@@ -509,7 +622,11 @@ fn device(fd: BorrowedFd<'_>) -> io::Result<libc::dev_t> {
 
 /// Inspect an entry without following a symbolic link or opening it.
 fn stat_at(folder: BorrowedFd<'_>, name: &str) -> io::Result<libc::stat> {
-    let c = name_cstring(name);
+    stat_raw(folder, &name_cstring(name))
+}
+
+/// [`stat_at`] for a name read from a folder, which may not be UTF-8.
+fn stat_raw(folder: BorrowedFd<'_>, c: &CStr) -> io::Result<libc::stat> {
     let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
     // SAFETY: `folder` is an open directory, `c` NUL-terminated, and `stat`
     // has room for one `struct stat`.

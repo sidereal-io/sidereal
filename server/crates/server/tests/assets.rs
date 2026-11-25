@@ -87,7 +87,7 @@ impl Instance {
         let db = TestDatabase::new();
         let storage = Dir::new();
         let root = StorageRoot::new(&storage.0).unwrap();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
                 .await
                 .unwrap();
@@ -1049,7 +1049,7 @@ mod original {
         let db = TestDatabase::new();
         let storage = Dir::new();
         let root = StorageRoot::new(&storage.0).unwrap();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
                 .await
                 .unwrap();
@@ -1113,7 +1113,7 @@ mod web_fallback {
         let root = StorageRoot::new(storage).unwrap();
         let web = web_root(Some(web.as_os_str())).unwrap().unwrap();
         sidereal_server::config::check_overlap(&root, &web).unwrap();
-        let (database, paired) =
+        let (database, paired, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
                 .await
                 .unwrap();

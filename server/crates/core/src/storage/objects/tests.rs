@@ -51,7 +51,7 @@ mod ingest_staging {
     async fn a_newly_paired_root_holds_only_its_marker() {
         let db = TestDatabase::new();
         let temp = TempRoot::new();
-        let (database, id) =
+        let (database, id, _) =
             initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &temp.root())
                 .await
                 .unwrap();
@@ -170,9 +170,10 @@ mod ingest_staging {
         std::fs::create_dir(&real).unwrap();
         symlink(&real, &link).unwrap();
         let root = StorageRoot::new(&link).unwrap();
-        let (database, id) = initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
-            .await
-            .unwrap();
+        let (database, id, _) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
+                .await
+                .unwrap();
         database.close().await;
         let store = ObjectStore::open(&root, id).unwrap();
         let _staged = staged(&store, b"abc");
@@ -190,9 +191,10 @@ mod ingest_staging {
         let (current, moved) = (temp.path.join("storage"), temp.path.join("moved"));
         std::fs::create_dir(&current).unwrap();
         let root = StorageRoot::new(&current).unwrap();
-        let (database, id) = initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
-            .await
-            .unwrap();
+        let (database, id, _) =
+            initialize_with_storage(db.options.clone(), SECONDS, SECONDS, &root)
+                .await
+                .unwrap();
         database.close().await;
         std::fs::rename(&current, &moved).unwrap();
         std::fs::create_dir(&current).unwrap();
@@ -655,5 +657,260 @@ mod object_publication {
             Problem::Io(Operation::SyncObject, io::ErrorKind::Other)
         );
         assert_eq!(std::fs::read(object_path(&temp.path, ABC)).unwrap(), b"abc");
+    }
+}
+
+mod staging_cleanup {
+    use super::*;
+
+    /// A paired root whose `tmp` holds the regular files named `files`.
+    fn leftovers(files: &[&str]) -> (TempRoot, ObjectStore) {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        std::fs::create_dir(temp.path.join("tmp")).unwrap();
+        for name in files {
+            std::fs::write(temp.path.join("tmp").join(name), b"left").unwrap();
+        }
+        (temp, store)
+    }
+
+    #[test]
+    fn leftover_staging_files_are_removed() {
+        let (temp, store) = leftovers(&["a", "b", "c"]);
+        store.remove_leftover_staging().unwrap();
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn cleanup_reports_how_many_files_it_removed() {
+        let (_temp, store) = leftovers(&["a", "b", "c"]);
+        assert_eq!(store.remove_leftover_staging().unwrap().removed, 3);
+    }
+
+    #[test]
+    fn cleanup_leaves_the_marker_and_store_unchanged() {
+        let (temp, store) = leftovers(&["a"]);
+        store.publish(staged(&store, b"abc")).unwrap();
+        let objects = || {
+            store_files(&temp)
+                .into_iter()
+                .map(|path| (fingerprint(&path), path))
+                .collect::<Vec<_>>()
+        };
+        let before = objects();
+        let marker = fingerprint(&temp.path.join(MARKER));
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(objects(), before);
+        assert_eq!(fingerprint(&temp.path.join(MARKER)), marker);
+    }
+
+    #[test]
+    fn a_root_without_tmp_reports_nothing_removed() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        assert_eq!(store.remove_leftover_staging().unwrap(), Cleanup::default());
+    }
+
+    #[test]
+    fn a_root_without_tmp_is_left_without_tmp() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(names(&temp.path), [MARKER]);
+    }
+
+    #[test]
+    fn a_symlink_in_tmp_is_removed() {
+        let (temp, store) = leftovers(&[]);
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("target"), b"keep").unwrap();
+        symlink(
+            outside.path.join("target"),
+            temp.path.join("tmp").join("link"),
+        )
+        .unwrap();
+        store.remove_leftover_staging().unwrap();
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn a_symlink_target_outside_the_root_keeps_its_bytes() {
+        let (temp, store) = leftovers(&[]);
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("target"), b"keep").unwrap();
+        symlink(
+            outside.path.join("target"),
+            temp.path.join("tmp").join("link"),
+        )
+        .unwrap();
+        let before = fingerprint(&outside.path.join("target"));
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(fingerprint(&outside.path.join("target")), before);
+    }
+
+    #[test]
+    fn a_fifo_with_no_writer_in_tmp_is_removed_promptly() {
+        let (temp, store) = leftovers(&[]);
+        let fifo = temp.path.join("tmp").join("fifo");
+        let c = CString::new(fifo.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: `c` is a NUL-terminated path.
+        assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o644) }, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(store.remove_leftover_staging()));
+        let cleanup = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("cleanup blocked")
+            .unwrap();
+        assert_eq!(cleanup.removed, 1);
+        assert!(names(&temp.path.join("tmp")).is_empty());
+    }
+
+    #[test]
+    fn a_subfolder_of_tmp_is_left_with_its_contents() {
+        let (temp, store) = leftovers(&["a"]);
+        std::fs::create_dir(temp.path.join("tmp").join("kept")).unwrap();
+        std::fs::write(temp.path.join("tmp").join("kept").join("inside"), b"keep").unwrap();
+        store.remove_leftover_staging().unwrap();
+        assert_eq!(
+            std::fs::read(temp.path.join("tmp").join("kept").join("inside")).unwrap(),
+            b"keep"
+        );
+    }
+
+    #[test]
+    fn a_left_subfolder_is_not_counted_as_removed() {
+        let (temp, store) = leftovers(&["a"]);
+        std::fs::create_dir(temp.path.join("tmp").join("kept")).unwrap();
+        assert_eq!(store.remove_leftover_staging().unwrap().removed, 1);
+    }
+
+    #[test]
+    fn cleanup_names_each_subfolder_it_left() {
+        let (temp, store) = leftovers(&[]);
+        std::fs::create_dir(temp.path.join("tmp").join("kept")).unwrap();
+        assert_eq!(
+            store.remove_leftover_staging().unwrap().kept,
+            [std::ffi::OsString::from("kept")]
+        );
+    }
+
+    #[test]
+    fn a_subfolder_name_is_reported_as_its_raw_bytes() {
+        use std::os::unix::ffi::OsStrExt;
+        let (temp, store) = leftovers(&[]);
+        let name = std::ffi::OsStr::from_bytes(b"k\xffept");
+        std::fs::create_dir(temp.path.join("tmp").join(name)).unwrap();
+        assert_eq!(store.remove_leftover_staging().unwrap().kept, [name]);
+    }
+
+    #[test]
+    fn a_symlinked_tmp_is_refused() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let outside = TempRoot::new();
+        symlink(&outside.path, temp.path.join("tmp")).unwrap();
+        assert_eq!(
+            problem(store.remove_leftover_staging()),
+            Problem::Unsafe(Entry::Tmp)
+        );
+    }
+
+    #[test]
+    fn a_symlinked_tmp_and_its_target_are_left_unchanged() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        let outside = TempRoot::new();
+        std::fs::write(outside.path.join("file"), b"keep").unwrap();
+        symlink(&outside.path, temp.path.join("tmp")).unwrap();
+        let _ = store.remove_leftover_staging();
+        assert_eq!(
+            std::fs::read_link(temp.path.join("tmp")).unwrap(),
+            outside.path
+        );
+        assert_eq!(std::fs::read(outside.path.join("file")).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn a_tmp_that_is_a_file_is_refused_unchanged() {
+        let temp = TempRoot::new();
+        let (store, _) = store(&temp);
+        std::fs::write(temp.path.join("tmp"), b"keep").unwrap();
+        assert_eq!(
+            problem(store.remove_leftover_staging()),
+            Problem::Unsafe(Entry::Tmp)
+        );
+        assert_eq!(std::fs::read(temp.path.join("tmp")).unwrap(), b"keep");
+    }
+
+    /// Sets the mode of `tmp` until dropped, then restores `0o755`. Mode
+    /// `0o555` keeps its entries from being removed; `0o000` keeps it from
+    /// being listed.
+    struct Mode(PathBuf);
+    impl Mode {
+        fn new(path: PathBuf, mode: u32) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).unwrap();
+            Self(path)
+        }
+    }
+    impl Drop for Mode {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+
+    #[test]
+    fn an_entry_that_cannot_be_removed_does_not_stop_cleanup() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a", "b"]);
+        let _read_only = Mode::new(temp.path.join("tmp"), 0o555);
+        assert!(store.remove_leftover_staging().is_ok());
+    }
+
+    #[test]
+    fn every_entry_that_cannot_be_removed_is_named_with_its_reason() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a", "b"]);
+        let _read_only = Mode::new(temp.path.join("tmp"), 0o555);
+        let mut failed = store.remove_leftover_staging().unwrap().failed;
+        failed.sort();
+        assert_eq!(
+            failed,
+            [
+                ("a".into(), io::ErrorKind::PermissionDenied),
+                ("b".into(), io::ErrorKind::PermissionDenied),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_entry_that_cannot_be_removed_stays_in_tmp() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a"]);
+        let _read_only = Mode::new(temp.path.join("tmp"), 0o555);
+        let _ = store.remove_leftover_staging();
+        assert_eq!(names(&temp.path.join("tmp")), ["a"]);
+    }
+
+    #[test]
+    fn an_unreadable_tmp_fails_with_an_error_that_names_tmp() {
+        if crate::storage::tests::running_as_root() {
+            return;
+        }
+        let (temp, store) = leftovers(&["a"]);
+        let unreadable = Mode::new(temp.path.join("tmp"), 0o000);
+        let result = store.remove_leftover_staging();
+        drop(unreadable);
+        assert_eq!(
+            problem(result),
+            Problem::Io(Operation::ListTmp, io::ErrorKind::PermissionDenied)
+        );
     }
 }
