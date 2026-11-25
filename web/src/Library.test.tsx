@@ -260,6 +260,34 @@ describe("Library", () => {
         (item) => item.textContent,
       );
 
+    const listRequests = (fetch: ReturnType<typeof vi.fn>) =>
+      fetch.mock.calls.filter(
+        ([url, init]) =>
+          url === "/api/assets" && !(init as RequestInit | undefined)?.method,
+      );
+
+    // A server whose list is empty and whose uploads each answer only when
+    // the test releases them, in the order they are sent.
+    function heldUploads(count: number) {
+      const held = Array.from({ length: count }, deferred);
+      let sent = 0;
+      const fetch = vi.fn((_input: string, init?: RequestInit) => {
+        if (init?.method !== "POST") {
+          return Promise.resolve(Response.json({ assets: [] }));
+        }
+        const next = held.at(sent++);
+        return next ? next.promise : Promise.reject(new TypeError("extra"));
+      });
+      vi.stubGlobal("fetch", fetch);
+      const release = async (index: number, response: Response) => {
+        await act(async () => {
+          held[index]?.answer(response);
+          await held[index]?.promise;
+        });
+      };
+      return { fetch, release };
+    }
+
     const uploads = (fetch: ReturnType<typeof vi.fn>) =>
       fetch.mock.calls.filter(
         ([url, init]) =>
@@ -460,6 +488,83 @@ describe("Library", () => {
       ]);
     });
 
+    it("loads the list again after each saved file, not after a 409", async () => {
+      const { fetch, release } = heldUploads(3);
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.png"), named("b.png"), named("c.png"));
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(1);
+      });
+      const before = listRequests(fetch).length;
+      await release(0, Response.json({ asset: nebula }, { status: 201 }));
+      await waitFor(() => {
+        expect(listRequests(fetch)).toHaveLength(before + 1);
+      });
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(2);
+      });
+      await release(1, new Response(null, { status: 409 }));
+      await screen.findByText("b.png is already in the library.");
+      await waitFor(() => {
+        expect(uploads(fetch)).toHaveLength(3);
+      });
+      expect(listRequests(fetch)).toHaveLength(before + 1);
+      await release(2, Response.json({ asset: nebula }, { status: 201 }));
+      await waitFor(() => {
+        expect(listRequests(fetch)).toHaveLength(before + 2);
+      });
+    });
+
+    it("loads the list again after a lost answer, before the next file answers", async () => {
+      let sent = 0;
+      const held = deferred();
+      const fetch = vi.fn((_input: string, init?: RequestInit) => {
+        if (init?.method !== "POST") {
+          return Promise.resolve(Response.json({ assets: [] }));
+        }
+        sent += 1;
+        return sent === 1
+          ? Promise.reject(new TypeError("network error"))
+          : held.promise;
+      });
+      vi.stubGlobal("fetch", fetch);
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      const before = listRequests(fetch).length;
+      choose(named("a.png"), named("b.png"));
+      await screen.findByText("Uploading b.png…");
+      await waitFor(() => {
+        expect(listRequests(fetch)).toHaveLength(before + 1);
+      });
+      screen.getByText("Uploading b.png…");
+    });
+
+    it("shows every saved file of a pick by name", async () => {
+      const saved: unknown[] = [];
+      const known = new Map([
+        ["nebula.png", nebula],
+        ["m31.jpg", andromeda],
+      ]);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string, init?: RequestInit) => {
+          if (init?.method !== "POST") {
+            return Promise.resolve(Response.json({ assets: [...saved] }));
+          }
+          const file = (init.body as FormData).get("file") as File;
+          const asset = known.get(file.name);
+          saved.push(asset);
+          return Promise.resolve(Response.json({ asset }, { status: 201 }));
+        }),
+      );
+      showLibrary();
+      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      choose(named("nebula.png"), named("m31.jpg"));
+      await screen.findByRole("img", { name: "nebula.png" });
+      await screen.findByRole("img", { name: "m31.jpg" });
+    });
+
     it("shows the filename while pending and sends no second request", async () => {
       const pending = deferred();
       const fetch = vi.fn((_input: string, init?: RequestInit) =>
@@ -544,12 +649,6 @@ describe("Library", () => {
         expect(uploads(fetch)).toHaveLength(2);
       });
     });
-
-    const listRequests = (fetch: ReturnType<typeof vi.fn>) =>
-      fetch.mock.calls.filter(
-        ([url, init]) =>
-          url === "/api/assets" && !(init as RequestInit | undefined)?.method,
-      );
 
     it.each([
       ["nebula.png", "nebula.png is already in the library."],
