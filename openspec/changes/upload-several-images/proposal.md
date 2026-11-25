@@ -24,8 +24,8 @@ alone.
   answer. Answers that come back before that reload starts may share it. A
   file found already in the library reloads nothing (D6, D13).
 - Once the screen knows the session has ended, files not yet sent are not
-  sent (D7). It knows when the sign-out has answered 204 or 401, a request
-  has answered 401, or the events connection says so. `Access` then aborts a signal it
+  sent (D7). It knows when the sign-out has answered 204 or 401, an upload
+  or list request has answered 401, or the events connection says so. `Access` then aborts a signal it
   passes to the Library at once, before the sign-in form shows (D14). Until
   then the pick goes on. The server checks the session when each request
   arrives: a file it admits gets its usual answer, and a file that arrives
