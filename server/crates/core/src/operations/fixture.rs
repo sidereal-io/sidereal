@@ -191,6 +191,31 @@ impl Fixture {
         }
     }
 
+    /// Add a version to `asset` and make it current. Ingest has no path for a
+    /// second version yet. No stored object backs it, so no run may read it.
+    pub async fn another_version(&self, asset: &AssetRecord) -> Uuid {
+        let id = Uuid::new_v4();
+        let mut conn = self.conn().await;
+        sqlx::query(
+            "INSERT INTO public.asset_versions (id, asset_id, content_hash, byte_size, \
+             media_type, source_id, source_version, ingested_at) \
+             VALUES ($1, $2, $3, 0, 'image/x-test', 'test.anything', '1', now())",
+        )
+        .bind(id)
+        .bind(asset.id)
+        .bind("f".repeat(64))
+        .execute(&mut conn)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE public.assets SET current_version_id = $1 WHERE id = $2")
+            .bind(id)
+            .bind(asset.id)
+            .execute(&mut conn)
+            .await
+            .unwrap();
+        id
+    }
+
     pub fn object(&self, hash: &str) -> PathBuf {
         self.temp
             .path

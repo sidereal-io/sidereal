@@ -1,9 +1,11 @@
 //! Core refuses a run's proposals, records the run `failed` with a reason
-//! that names the facet, and stores no value from it.
+//! that names the facet, and stores no value from it. An Operator run that
+//! proposes an Asset is also recorded `failed` and stores no value, and adds
+//! no Asset or Asset version.
 use super::fixture::*;
 use super::*;
 use sidereal_plugin_abi::{
-    AssetContext, FacetSchema, FacetScope, FacetValue, Operator, OperatorError,
+    AssetContext, AssetProposal, FacetSchema, FacetScope, FacetValue, Operator, OperatorError,
 };
 use sqlx::Executor;
 use std::sync::atomic::Ordering;
@@ -202,4 +204,63 @@ async fn a_kept_schema_with_another_type_or_owner_is_refused() {
             "{kept}: {reason}"
         );
     }
+}
+
+/// The counts of Assets and Asset versions in the library.
+async fn library(fixture: &Fixture) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT (SELECT count(*) FROM public.assets), (SELECT count(*) FROM public.asset_versions)",
+    )
+    .fetch_one(&mut fixture.conn().await)
+    .await
+    .unwrap()
+}
+
+/// Like `refused`, after also checking that the run added no Asset or
+/// Asset version.
+async fn refused_without_an_asset(fixture: &Fixture) -> String {
+    let version = fixture.version(b"abc").await;
+    let before = library(fixture).await;
+    let outcome = fixture.run(&version).await.unwrap();
+    assert_eq!(library(fixture).await, before);
+    let reason = fixture.failed_reason().await;
+    assert_eq!(outcome, RunOutcome::Failed(reason.clone()));
+    assert!(fixture.values().await.is_empty());
+    reason
+}
+
+fn an_image() -> AssetProposal {
+    AssetProposal::new("image", "image/x-test")
+}
+
+#[tokio::test]
+async fn an_operator_that_proposes_an_asset_and_succeeds_is_refused() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
+        r.register_operator(op(&["test.size"], |c| {
+            propose(c, "test.size", 3)?;
+            let _ignored = c.propose_asset(an_image());
+            Ok(())
+        }));
+    })
+    .await;
+    let reason = refused_without_an_asset(&fixture).await;
+    assert!(reason.contains("proposed an asset"), "{reason}");
+}
+
+#[tokio::test]
+async fn an_operator_that_proposes_an_asset_and_stops_keeps_its_own_reason() {
+    let fixture = Fixture::new(|r| {
+        r.declare_facet(count("test.size"));
+        r.register_operator(op(&["test.size"], |c| {
+            propose(c, "test.size", 3)?;
+            c.propose_asset(an_image())
+                .map_err(|_| OperatorError::Failed("could not make a preview".into()))
+        }));
+    })
+    .await;
+    assert_eq!(
+        refused_without_an_asset(&fixture).await,
+        "could not make a preview"
+    );
 }
