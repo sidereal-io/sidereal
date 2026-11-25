@@ -22,7 +22,10 @@ use std::fmt;
 /// - `2`: an [`Operator`] reports its version and the facets it writes, and
 ///   runs through an [`AssetContext`]; a pack declares its facet schemas, and
 ///   hosts register packs through [`Registry::register_pack`].
-pub const ABI_VERSION: u32 = 2;
+/// - `3`: a facet can be a [`FacetType::Choice`] of allowed text values, and
+///   an Operator proposes one as a [`FacetValue::Text`]. Neither type is
+///   `Copy` any more.
+pub const ABI_VERSION: u32 = 3;
 
 /// Brings files into the library as Assets (e.g. manual upload).
 pub trait Source: Send + Sync {
@@ -299,11 +302,14 @@ pub enum OperatorError {
 }
 
 /// A facet value an Operator proposes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FacetValue {
     /// A whole number. A [`FacetType::Count`] accepts 0 to [`MAX_COUNT`];
     /// the host refuses any other.
     Integer(i64),
+    /// A piece of text. A [`FacetType::Choice`] accepts one of its allowed
+    /// values, letter case included; the host refuses any other.
+    Text(String),
 }
 
 /// The largest count: the largest whole number a JavaScript client reads
@@ -355,10 +361,14 @@ impl RegisteredOperator {
 }
 
 /// The type of a facet's value.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum FacetType {
     /// A whole number from 0 to [`MAX_COUNT`].
     Count,
+    /// One of these allowed values, in their declared order. Each is
+    /// non-empty text with no zero character, and no two are the same.
+    /// Changing the list, or its order, needs a new schema version.
+    Choice(Vec<String>),
 }
 
 /// What a facet's value describes.
@@ -381,7 +391,8 @@ pub struct FacetSchema {
     pub value_type: FacetType,
     /// The value's unit, such as `"bytes"`. It may be empty.
     pub unit: String,
-    /// Raised whenever the label, unit, type or scope changes.
+    /// Raised whenever the label, unit, type, a choice's allowed values or
+    /// the scope changes.
     pub version: u32,
     pub scope: FacetScope,
 }
@@ -680,6 +691,27 @@ fn unstorable_facet(schema: &FacetSchema) -> Option<&'static str> {
         Some("its label holds a zero character")
     } else if schema.unit.contains('\0') {
         Some("its unit holds a zero character")
+    } else if let FacetType::Choice(allowed) = &schema.value_type {
+        unstorable_choice(allowed)
+    } else {
+        None
+    }
+}
+
+/// Why core could not store this choice's allowed values, if it could not.
+fn unstorable_choice(allowed: &[String]) -> Option<&'static str> {
+    if allowed.is_empty() {
+        Some("a choice needs one or more allowed values")
+    } else if allowed.iter().any(String::is_empty) {
+        Some("an allowed value is empty")
+    } else if allowed.iter().any(|value| value.contains('\0')) {
+        Some("an allowed value holds a zero character")
+    } else if allowed
+        .iter()
+        .enumerate()
+        .any(|(index, value)| allowed[..index].contains(value))
+    {
+        Some("an allowed value is listed twice")
     } else {
         None
     }
@@ -1255,8 +1287,83 @@ mod operator_registration {
     }
 
     #[test]
-    fn operator_registration_is_abi_version_2() {
-        assert_eq!(ABI_VERSION, 2);
+    fn operator_registration_is_abi_version_3() {
+        assert_eq!(ABI_VERSION, 3);
+    }
+}
+
+#[cfg(test)]
+mod choice_declaration {
+    use super::*;
+
+    struct TestPack(Vec<&'static str>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            registry.declare_facet(kind(&self.0));
+        }
+    }
+
+    fn kind(allowed: &[&str]) -> FacetSchema {
+        FacetSchema {
+            name: "test.kind".into(),
+            label: "Kind".into(),
+            value_type: FacetType::Choice(allowed.iter().map(|&a| a.to_owned()).collect()),
+            unit: String::new(),
+            version: 1,
+            scope: FacetScope::AssetVersion,
+        }
+    }
+
+    /// The Registry refuses the pack with an error that names `test.kind`,
+    /// and keeps no schema from it.
+    fn assert_refused(allowed: Vec<&'static str>) {
+        let mut registry = Registry::new();
+        let error = registry
+            .register_pack(&TestPack(allowed.clone()))
+            .unwrap_err();
+        assert!(
+            matches!(&error, RegistryError::InvalidFacet { facet, .. } if facet == "test.kind"),
+            "{allowed:?}: {error:?}"
+        );
+        assert!(error.to_string().contains("test.kind"), "{error}");
+        assert!(registry.facet_schema("test.kind").is_none());
+    }
+
+    #[test]
+    fn choice_declaration_refuses_a_choice_with_no_allowed_values() {
+        assert_refused(vec![]);
+    }
+
+    #[test]
+    fn choice_declaration_refuses_an_empty_allowed_value() {
+        assert_refused(vec!["a", ""]);
+    }
+
+    #[test]
+    fn choice_declaration_refuses_an_allowed_value_with_a_zero_character() {
+        assert_refused(vec!["a", "b\0"]);
+    }
+
+    #[test]
+    fn choice_declaration_refuses_a_value_listed_twice() {
+        assert_refused(vec!["a", "b", "a"]);
+    }
+
+    #[test]
+    fn choice_declaration_keeps_the_allowed_values_in_order() {
+        let mut registry = Registry::new();
+        registry.register_pack(&TestPack(vec!["a", "b"])).unwrap();
+        assert_eq!(
+            registry
+                .facet_schema("test.kind")
+                .unwrap()
+                .schema
+                .value_type,
+            FacetType::Choice(vec!["a".into(), "b".into()])
+        );
     }
 }
 

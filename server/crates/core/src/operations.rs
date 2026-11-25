@@ -101,15 +101,17 @@ fn scope_text(scope: FacetScope) -> &'static str {
     }
 }
 
-fn type_text(value_type: FacetType) -> &'static str {
+fn type_text(value_type: &FacetType) -> &'static str {
     match value_type {
         FacetType::Count => "count",
+        FacetType::Choice(_) => "choice",
     }
 }
 
-fn json(value: FacetValue) -> serde_json::Value {
+fn json(value: &FacetValue) -> serde_json::Value {
     match value {
-        FacetValue::Integer(n) => n.into(),
+        FacetValue::Integer(n) => (*n).into(),
+        FacetValue::Text(text) => text.as_str().into(),
     }
 }
 
@@ -302,13 +304,14 @@ fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> 
                 proposals.producer_id
             ));
         }
-        match (declared.schema.value_type, proposal.value) {
-            (FacetType::Count, FacetValue::Integer(n)) if (0..=MAX_COUNT).contains(&n) => {}
+        match (&declared.schema.value_type, &proposal.value) {
+            (FacetType::Count, FacetValue::Integer(n)) if (0..=MAX_COUNT).contains(n) => {}
             (FacetType::Count, FacetValue::Integer(n)) => {
                 return Err(format!(
                     "facet {name} is a count from 0 to {MAX_COUNT}, not {n}"
                 ))
             }
+            _ => return Err(format!("facet {name} does not accept this value")),
         }
     }
     Ok(())
@@ -385,7 +388,7 @@ async fn store(
         .bind(schema.version as i32)
         .bind(&declared.owner)
         .bind(&schema.label)
-        .bind(type_text(schema.value_type))
+        .bind(type_text(&schema.value_type))
         .bind(&schema.unit)
         .bind(scope_text(schema.scope))
         .execute(&mut *tx)
@@ -401,7 +404,7 @@ async fn store(
         let running: KeptSchema = (
             declared.owner.clone(),
             schema.label.clone(),
-            type_text(schema.value_type).into(),
+            type_text(&schema.value_type).into(),
             schema.unit.clone(),
             scope_text(schema.scope).into(),
         );
@@ -432,7 +435,7 @@ async fn store(
         .bind(schema.version as i32)
         .bind(asset_id)
         .bind(asset_version_id)
-        .bind(json(proposal.value))
+        .bind(json(&proposal.value))
         .bind(&proposals.producer_id)
         .bind(&proposals.producer_version)
         .bind(run_id)
