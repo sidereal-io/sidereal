@@ -5,7 +5,8 @@ import "./AssetPage.css";
 
 interface Fact {
   label: string;
-  value: number;
+  // A count, or a choice's text.
+  value: number | string;
   unit: string;
 }
 
@@ -27,6 +28,13 @@ function isObject(body: unknown): body is Record<string, unknown> {
   return typeof body === "object" && body !== null;
 }
 
+// Whether a facet's value is one this page shows: a count, a whole number of
+// zero or more that JavaScript reads exactly, or a choice, non-empty text.
+function isValue(value: unknown): value is number | string {
+  if (typeof value === "string") return value !== "";
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 // The facts of a facet list, or null when any item is not a fact. Only the
 // label, value and unit are kept: the page shows no provenance.
 function facts(list: unknown): Fact[] | null {
@@ -38,9 +46,7 @@ function facts(list: unknown): Fact[] | null {
       typeof item.name !== "string" ||
       typeof item.label !== "string" ||
       typeof item.unit !== "string" ||
-      typeof item.value !== "number" ||
-      !Number.isSafeInteger(item.value) ||
-      item.value < 0
+      !isValue(item.value)
     ) {
       return null;
     }
@@ -128,7 +134,10 @@ function Details({ asset }: { asset: Asset }) {
             <div className="asset-fact" key={index}>
               <dt>{fact.label}</dt>
               <dd>
-                {numbers.format(fact.value)} {fact.unit}
+                {typeof fact.value === "number"
+                  ? numbers.format(fact.value)
+                  : fact.value}
+                {fact.unit !== "" && ` ${fact.unit}`}
               </dd>
             </div>
           ))}

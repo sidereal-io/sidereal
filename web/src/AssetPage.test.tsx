@@ -132,6 +132,86 @@ describe("AssetPage", () => {
     ).toEqual(["1,234,567 bytes", "6,000 px"]);
   });
 
+  it("lists the four facts of a new PNG in the server's order", async () => {
+    stubServer([
+      200,
+      asset({
+        facets: [
+          fileSize,
+          { name: "image.format", label: "Format", value: "PNG", unit: "" },
+          {
+            name: "image.height",
+            label: "Height",
+            value: 2160,
+            unit: "pixels",
+          },
+          { name: "image.width", label: "Width", value: 4096, unit: "pixels" },
+        ],
+      }),
+    ]);
+    showPage();
+    await loaded();
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
+      ["File size", "Format", "Height", "Width"],
+    );
+    const values = screen.getAllByRole("definition");
+    expect(values.map((value) => value.textContent)).toEqual([
+      "1,234,567 bytes",
+      "PNG",
+      "2,160 pixels",
+      "4,096 pixels",
+    ]);
+    expect(values.map((value) => value.tagName)).toEqual([
+      "DD",
+      "DD",
+      "DD",
+      "DD",
+    ]);
+  });
+
+  it("shows a count with no unit without a trailing space", async () => {
+    stubServer([
+      200,
+      asset({ facets: [{ ...fileSize, value: 12, unit: "" }] }),
+    ]);
+    showPage();
+    await loaded();
+    expect(screen.getByRole("definition").textContent).toBe("12");
+  });
+
+  it("shows markup in a choice as text", async () => {
+    stubServer([
+      200,
+      asset({
+        facets: [
+          {
+            name: "image.format",
+            label: "Format",
+            value: "<i>PNG</i>",
+            unit: "",
+          },
+        ],
+      }),
+    ]);
+    const { container } = showPage();
+    await loaded();
+    expect(screen.getByRole("definition").textContent).toBe("<i>PNG</i>");
+    expect(container.querySelector("i")).toBeNull();
+  });
+
+  it("shows only the file size, and no processing failure, when the header was not read", async () => {
+    stubServer([200, asset()]);
+    const { container } = showPage();
+    await loaded();
+    fireEvent.error(screen.getByRole("img", { name: "nebula.png" }));
+    await screen.findByText("This image could not be displayed.");
+    expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
+      ["File size"],
+    );
+    expect(screen.queryByText(noFactsLine)).toBeNull();
+    expect(container.textContent).not.toMatch(/header|failed|run/i);
+  });
+
   it("shows no provenance", async () => {
     stubServer([200, asset()]);
     const { container } = showPage();
@@ -242,9 +322,14 @@ describe("AssetPage", () => {
       [200, asset({ facets: [{ ...fileSize, value: 9007199254740992 }] })],
     ],
     [
-      "a value given as text",
-      [200, asset({ facets: [{ ...fileSize, value: "12" }] })],
+      "an empty text value",
+      [200, asset({ facets: [{ ...fileSize, value: "" }] })],
     ],
+    [
+      "a value of true",
+      [200, asset({ facets: [{ ...fileSize, value: true }] })],
+    ],
+    ["a null value", [200, asset({ facets: [{ ...fileSize, value: null }] })]],
   ];
 
   it.each(failures)(
