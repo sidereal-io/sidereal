@@ -51,6 +51,19 @@ fn registration_gives_the_registry_the_manual_upload_source() {
 }
 
 #[test]
+fn registration_gives_every_operator_the_media_types_the_source_recognizes() {
+    let mut registry = Registry::new();
+    registry.register_pack(&ImagePack).unwrap();
+    for id in registry.operator_ids() {
+        assert_eq!(
+            registry.operator(id).unwrap().accepts(),
+            ["image/png", "image/jpeg"],
+            "{id}"
+        );
+    }
+}
+
+#[test]
 fn png_bytes_are_an_image_png() {
     assert_eq!(
         recognize(&png()),

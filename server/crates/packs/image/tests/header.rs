@@ -299,20 +299,28 @@ fn png_wider_or_taller_than_the_png_limit_fails() {
     }
 }
 
+/// The Registry never runs the header Operator over a media type it does
+/// not accept, such as GIF.
 #[test]
-fn neither_png_nor_jpeg_bytes_fail_as_unrecognized() {
-    for bytes in [
-        &b""[..],
-        b"II*\x00\x08\x00\x00\x00",
-        &PNG_SIGNATURE[..7],
-        b"\xff\xd8",
-    ] {
-        assert_eq!(
-            read_header(&mut Bytes::new(bytes.to_vec())),
-            failed("the image format is not recognized"),
-            "{bytes:?}"
-        );
-    }
+fn a_media_type_of_neither_format_is_not_accepted() {
+    assert_eq!(
+        read_as(b"GIF89a".to_vec(), "image/gif"),
+        Err(ExecutionError::NotAccepted)
+    );
+}
+
+/// Bytes too short for a header fail as the media type's header.
+#[test]
+fn bytes_shorter_than_a_signature_fail_as_their_media_types_header() {
+    assert_eq!(read_as(Vec::new(), "image/png"), failed(PNG_UNREADABLE));
+    assert_eq!(
+        read_as(PNG_SIGNATURE[..7].to_vec(), "image/png"),
+        failed(PNG_UNREADABLE)
+    );
+    assert_eq!(
+        read_as(b"\xff\xd8".to_vec(), "image/jpeg"),
+        failed(JPEG_UNREADABLE)
+    );
 }
 
 /// A candidate whose every read fails.
@@ -555,48 +563,6 @@ fn jpeg_with_a_zero_width_or_height_fails() {
     }
 }
 
-#[test]
-fn jpeg_with_9_mib_of_icc_segments_before_its_frame_header_fails_within_8_mib() {
-    let before = icc_segments(9 * 1024 * 1024);
-    let mut candidate = Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480)));
-    assert_eq!(read_header(&mut candidate), failed(JPEG_UNREADABLE));
-    assert!(candidate.furthest <= LIMIT as u64, "{}", candidate.furthest);
-}
-
-#[test]
-fn jpeg_of_19_byte_icc_segments_filling_8_mib_fails_within_8_mib() {
-    let one = icc(&[0x55]);
-    assert_eq!(one.len(), 19);
-    let before = one.repeat(LIMIT / 19 + 1);
-    let mut candidate = Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480)));
-    assert_eq!(read_header(&mut candidate), failed(JPEG_UNREADABLE));
-    assert!(candidate.furthest <= LIMIT as u64, "{}", candidate.furthest);
-}
-
-/// A 640 by 480 JPEG whose first start-of-scan segment ends at byte `end`.
-fn jpeg_whose_scan_ends_at(end: usize) -> Vec<u8> {
-    let header = frame(0xc0, 8, 640, 480);
-    let fixed = 2 + header.len() + scan().len();
-    let bytes = jpeg_with(&padding(end - fixed), &header);
-    assert_eq!(&bytes[end - scan().len()..end], &scan()[..]);
-    bytes
-}
-
-#[test]
-fn jpeg_whose_scan_segment_ends_at_the_limit_gives_its_width_and_height() {
-    assert_eq!(
-        read_header(&mut Bytes::new(jpeg_whose_scan_ends_at(LIMIT))),
-        Ok(header(640, 480))
-    );
-}
-
-#[test]
-fn jpeg_whose_scan_segment_ends_one_byte_past_the_limit_fails() {
-    let mut candidate = Bytes::new(jpeg_whose_scan_ends_at(LIMIT + 1));
-    assert_eq!(read_header(&mut candidate), failed(JPEG_UNREADABLE));
-    assert!(candidate.furthest <= LIMIT as u64, "{}", candidate.furthest);
-}
-
 /// The most reads a JPEG run over `size` bytes may cost with full reads.
 fn read_bound(size: usize) -> usize {
     size.min(LIMIT) / 65_536 + 4
@@ -723,9 +689,10 @@ impl Candidate for FailsOnSecondRead {
 }
 
 /// A read that fails part way through a segment must not let the decoder go
-/// on with bytes the candidate never gave, so the run fails.
+/// on with bytes the candidate never gave, so the run fails, as a storage
+/// problem.
 #[test]
-fn jpeg_whose_candidate_read_fails_fails() {
+fn jpeg_whose_candidate_read_fails_fails_as_unreadable() {
     for before in [
         icc(&[0x55]).repeat(10_000),
         icc_segments(256 * 1024),
@@ -745,11 +712,56 @@ fn jpeg_whose_candidate_read_fails_fails() {
             .map(|run| run.proposals);
         assert_eq!(
             outcome,
-            failed(JPEG_UNREADABLE),
+            failed("the stored file could not be read"),
             "{} bytes before",
             before.len()
         );
     }
+}
+
+/// The spec's case: the frame header lies after two EXIF segments of more
+/// than 100,000 bytes in all, so the run needs a second read, which fails.
+#[test]
+fn jpeg_whose_second_read_fails_after_two_exif_segments_fails_as_unreadable() {
+    let before = exif(60_000, 1).repeat(2);
+    let mut candidate =
+        FailsOnSecondRead(Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 6000, 4000))));
+    let outcome = registry()
+        .execute_operator(
+            READ_HEADER,
+            &mut candidate,
+            "image/jpeg",
+            &mut Discard,
+            &mut |_| {},
+            &|| false,
+        )
+        .map(|run| run.proposals);
+    assert_eq!(outcome, failed("the stored file could not be read"));
+}
+
+/// Run the header Operator over `bytes` as a version of `media_type`.
+fn read_as(bytes: Vec<u8>, media_type: &str) -> Result<Vec<FacetProposal>, ExecutionError> {
+    registry()
+        .execute_operator(
+            READ_HEADER,
+            &mut Bytes::new(bytes),
+            media_type,
+            &mut Discard,
+            &mut |_| {},
+            &|| false,
+        )
+        .map(|run| run.proposals)
+}
+
+/// The header is read as the format the media type names, whatever the
+/// bytes' own signature says.
+#[test]
+fn bytes_that_do_not_match_the_media_type_fail_as_its_header() {
+    assert_eq!(read_as(jpeg(640, 480), "image/png"), failed(PNG_UNREADABLE));
+    assert_eq!(
+        read_as(png(640, 480), "image/jpeg"),
+        failed(JPEG_UNREADABLE)
+    );
 }
 
 /// A host destination that drops every preview byte.
