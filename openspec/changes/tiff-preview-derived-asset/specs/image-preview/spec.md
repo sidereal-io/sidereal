@@ -91,8 +91,9 @@ for unsigned integers, floating-point for floats.
 
 ### Requirement: Sample values are scaled to 8-bit with no brightening
 
-The preview Operator SHALL turn each sample into an 8-bit value as follows,
-and SHALL apply no other change of brightness or contrast:
+After interpreting the image's photometric polarity, the preview Operator
+SHALL turn each sample into an 8-bit value as follows, and SHALL apply no
+other change of brightness or contrast:
 
 - an 8-bit sample stays as it is; a PNG sample of fewer bits is scaled so
   its largest value becomes 255;
@@ -133,6 +134,10 @@ Core SHALL record its run `failed` with the reason
 - **WHEN** core runs the preview Operator over a stored TIFF version whose first image is CMYK
 - **THEN** its run is `failed` with the reason `the TIFF image type is not supported`
 - **AND** the version has no preview
+
+#### Scenario: A CMYK TIFF is also over the nominal pixel budget
+- **WHEN** core runs the preview Operator over a 16,000 by 12,000 TIFF whose first image is 8-bit CMYK
+- **THEN** its run is `failed` with the reason `the TIFF image type is not supported`
 
 #### Scenario: A TIFF compressed with JPEG
 - **WHEN** core runs the preview Operator over a stored TIFF version whose first image is 8-bit RGB compressed with JPEG
@@ -178,6 +183,11 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 #### Scenario: A baseline JPEG ends before all components
 - **WHEN** core runs the preview Operator over a three-component baseline JPEG whose EOI follows only the first component scan
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+
+#### Scenario: A baseline JPEG ends inside its last scan
+- **WHEN** core runs the preview Operator over a baseline JPEG whose scan data ends before its expected blocks even though the file ends in EOI
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+- **AND** no preview exists for that version
 
 #### Scenario: A PNG has pixels but no IEND
 - **WHEN** core runs the preview Operator over a PNG whose complete image data is followed by an ancillary chunk and no IEND
@@ -267,6 +277,11 @@ allow the next preview to run.
 - **WHEN** a preview decoder is still alive at its deadline, even if its output has closed
 - **THEN** the preview run is `failed` with the timeout reason
 - **AND** a later valid upload completes with a preview
+
+#### Scenario: Staging blocks while a decoder times out
+- **WHEN** a preview decoder reaches its deadline while a staging write is blocked
+- **THEN** the server reaps the decoder and lets a later decoder run before the first write returns
+- **AND** when the first write returns successfully, core records the first preview run as `failed` with the timeout reason and publishes no preview
 
 ### Requirement: A preview gets no runs of its own
 

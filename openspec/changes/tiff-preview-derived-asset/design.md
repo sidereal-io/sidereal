@@ -417,17 +417,23 @@ it sets up, and the header run must succeed for every TIFF (D4).
   candidate and writes the result through that context. Core and the public
   plugin ABI know nothing about the helper (ADR-020).
 - **Input and output.** The runner copies at most 100 MiB to one anonymous
-  temporary file using a fixed-size buffer. The helper receives the rewound,
-  seekable file as standard input and the recorded media type as an argument.
-  It receives no storage path or inherited environment. It writes JPEG chunks
-  to standard output. The runner drains them through a bounded buffer into
-  the context's staging output. Discard standard error. Only the supervisor
-  keeps the write end of a liveness pipe, and the helper exits when its read
-  end reaches EOF. Start a 120-second deadline at spawn. Check the deadline
-  and cancellation while waiting for output and while waiting for exit
-  after stdout closes. Kill and reap the helper on cancellation, deadline
-  or output failure. Accept staged output only after EOF and a successful,
-  reaped exit. Hold the preview permit until the supervisor is done.
+  temporary file using a fixed-size buffer. The helper receives the rewound
+  file as standard input and the recorded media type as an argument. It
+  receives no storage path or inherited environment. It writes JPEG chunks
+  to stdout. The runner forwards them through a bounded handoff into
+  the Asset context, where storage writes can block. Discard stderr.
+- **Child ownership and deadline.** A supervisor task owns the child,
+  the liveness pipe's only write end, and the preview permit. It owns
+  neither the stdout read loop nor the Asset context. Start a 120-second
+  deadline at spawn. On deadline or a cancellation or output-failure
+  notification, kill and reap the child from the supervisor task even
+  if the runner is blocked in storage. On normal exit, reap it and
+  report the exit status. A parent exit makes the helper's liveness
+  reader see EOF. Release the preview permit only after reaping, before
+  waiting for any outstanding staging write to settle. A failed helper's
+  bytes cannot complete a proposal. Surface a child timeout once a
+  blocked staging call returns, discard the staging, and leave the
+  original available. Other previews can run while that write is blocked.
 - **Packaging.** Build and ship the helper beside the server. Resolve it
   from the server executable's directory. The dev launcher builds both
   binaries before starting the server. Document the same prerequisite for
@@ -456,13 +462,11 @@ it sets up, and the header run must succeed for every TIFF (D4).
   Keep codecs and their dependencies on the Rust allocator with no native
   codec, worker threads or separate mappings. Review that property when
   dependencies or codec features change.
-- **Preflight.** From bounded headers, check the dimensions (each side at
-  most 65,500) and that the minimum known pixel allocation fits the
-  available allocation budget, using checked arithmetic before invoking
-  a pixel decoder. Reject incompatible TIFF
-  types after checking dimensions and before constructing the decoder.
-  Read dimensions before metadata that may need heap space. The helper's
-  budget also covers allocations after preflight,
+- **Preflight.** From bounded headers, check the dimensions first, with
+  each side at most 65,500. For TIFF, check layout eligibility second.
+  Then use checked arithmetic to ensure the minimum known pixel allocation
+  fits the available allocation budget. Enter pixel decoding only after
+  these checks. The helper's budget also covers allocations after preflight,
   including the TIFF constructor, predictor scratch, multiple-scan
   baseline and progressive JPEGs and metadata between scans. Set PNG's
   resource limit and TIFF's decoding and intermediate buffer limits to
@@ -480,13 +484,16 @@ it sets up, and the header run must succeed for every TIFF (D4).
   Accept white-is-zero along with black-is-zero. Let the TIFF decoder
   invert white-is-zero pixels before scaling to 8-bit. Use `tiff` with
   only its LZW and Deflate features enabled.
-- **JPEG and PNG.** Keep JPEG's 8 MiB bound for frame-header reads, then
-  rewind to the full input with explicit zune-jpeg dimension options and
-  strict mode. Verify that the first image ends with an EOI marker at a
-  valid scan boundary, respecting segment lengths, byte stuffing and
-  restart markers. Require every baseline frame component in a completed
-  scan before accepting EOI. Keep PNG's `EXPAND` with 16-bit samples and
-  call `Reader::finish()` after decoding so the file must reach IEND.
+- **JPEG.** Keep the 8 MiB bound for the frame-header read and then rewind
+  to the full input. Require the first image's EOI, coverage of each
+  baseline frame component, and complete entropy data for the blocks
+  each scan declares. The pixel decoder must report premature scan
+  termination, even when a valid EOI follows. The codec selection
+  remains open. zune-jpeg 0.5.15's strict setting still allows synthetic
+  bits after a marker, and jpeg-decoder 0.3.2 also pads its lookahead.
+  A marker walk cannot certify that all blocks were decoded.
+- **PNG.** Keep `EXPAND` with 16-bit samples and call `Reader::finish()`
+  after decoding so the file must reach IEND.
 - **Preview output.** Decode into one `Pixels` buffer. `Rows` maps each
   row to 8-bit Luma or RGB according to the spec. Encode a quality-90
   baseline JPEG with 4:4:4 sampling and standard Huffman tables. Stream it
@@ -505,23 +512,27 @@ it sets up, and the header run must succeed for every TIFF (D4).
   overlapping growth. Check stack sizes on both platforms. Test real
   budget exhaustion during TIFF construction and decode. Exercise a
   helper that stalls before output, closes stdout and stalls, or fails
-  after returning some bytes. In every case verify that the next preview
-  can run and no failed output is published. Cover white-is-zero,
+  after returning some bytes. Block a staging write while the helper
+  is still running, verify the supervisor reaps the child at deadline,
+  then start a second preview before unblocking the first write.
+  Verify no failed output is published. Cover white-is-zero,
   floating-point strips and padded tiles, more than 64 tiles, an
   incompatible predictor, and a valid TIFF whose pixels exceed 256 MiB.
   Test JPEG separate component scans, inter-scan metadata, missing EOI and
-  EOI before all baseline components. Test PNG with complete pixels but
+  EOI before all baseline components or before all blocks in a final scan.
+  Test PNG with complete pixels but
   missing IEND. For a preflight refusal, instrument entry to pixel
   decoding and use an input with actual pixel data.
 
 ### 9. The server runs one preview at a time and passes the Source's refusal on
 
 - `upload_operators` becomes `FILE_SIZE`, `READ_HEADER`, `MAKE_PREVIEW`.
-- `Library` holds a `tokio::sync::Semaphore` with one permit. `save` takes it
-  around the preview run only, so two uploads at once never decode two
-  previews at once. The other runs do not wait for it. An overlapping-upload
-  test holds the first preview run, proves the second is waiting, and checks
-  that the second proceeds after the first fails.
+- The preview runner shares one `tokio::sync::Semaphore` across uploads.
+  The supervisor acquires an owned permit before launching each helper
+  and releases it after reaping. The permit covers the child lifetime.
+  The other Operators and final storage writes do not wait for it.
+  An overlapping-upload test holds the first helper, checks the second
+  waits to launch and verifies it can launch after the first is reaped.
 - `save` returns the record with `has_preview` set to whether the preview run
   succeeded. Core commits the lineage in the same transaction that records
   `succeeded`, so no second read is needed. `save` logs nothing for
