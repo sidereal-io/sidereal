@@ -11,11 +11,12 @@ use sidereal_core::{
     database::{initialize, initialize_with_storage},
     storage::{objects::ObjectStore, StorageRoot},
 };
-use sidereal_pack_image::{ImagePack, FILE_SIZE, READ_HEADER};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, MAKE_PREVIEW, READ_HEADER};
 use sidereal_plugin_abi::{
     AssetContext, FacetSchema, FacetScope, FacetType, FacetValue, Operator, OperatorError, Pack,
     Registry,
 };
+use sidereal_server::preview::{WorkerCommand, WorkerRunner};
 use sidereal_server::{
     app_with_database, app_with_library, config::AllowedOrigins, Library, Log, Tuning,
 };
@@ -32,6 +33,8 @@ use tower::ServiceExt;
 
 #[path = "../../core/src/database/test_support.rs"]
 mod test_support;
+#[path = "../../packs/image/tests/common/tiff.rs"]
+mod tiff;
 use test_support::TestDatabase;
 
 const PASSWORD: &str = "correct-horse-battery";
@@ -117,7 +120,7 @@ impl Instance {
                 log: Log::new(move |line| written.lock().unwrap().push(line.to_owned())),
                 ..Tuning::default()
             },
-            change(Library::new(Some(objects))),
+            change(Library::new(Some(objects)).with_previews(helper())),
         );
         let mut instance = Self::signed_in(db, Some(storage), app).await;
         instance.lines = lines;
@@ -203,18 +206,60 @@ impl Instance {
         .await
     }
 
+    /// Original Asset rows plus their version rows.
     async fn rows(&self) -> i64 {
-        let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
-        sqlx::query_scalar(
-            "SELECT (SELECT count(*) FROM public.assets) + (SELECT count(*) FROM public.asset_versions)",
+        self.count(
+            "SELECT (SELECT count(*) FROM public.assets WHERE origin = 'source') + \
+             (SELECT count(*) FROM public.asset_versions v JOIN public.assets a \
+              ON a.id = v.asset_id WHERE a.origin = 'source')",
         )
-        .fetch_one(&mut conn)
         .await
-        .unwrap()
+    }
+
+    /// Derived Asset rows, their version rows and lineage rows.
+    async fn derived_rows(&self) -> i64 {
+        self.count(
+            "SELECT (SELECT count(*) FROM public.assets WHERE origin = 'derived') + \
+             (SELECT count(*) FROM public.asset_versions v JOIN public.assets a \
+              ON a.id = v.asset_id WHERE a.origin = 'derived') + \
+             (SELECT count(*) FROM public.asset_lineage)",
+        )
+        .await
+    }
+
+    async fn count(&self, sql: &str) -> i64 {
+        let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+        sqlx::query_scalar(sqlx::AssertSqlSafe(sql.to_owned()))
+            .fetch_one(&mut conn)
+            .await
+            .unwrap()
     }
 
     fn store_files(&self) -> Vec<(PathBuf, Vec<u8>)> {
         files(&self.storage().join("store"))
+    }
+
+    /// The stored object that holds exactly `bytes`.
+    fn object_holding(&self, bytes: &[u8]) -> PathBuf {
+        let mut matching: Vec<_> = self
+            .store_files()
+            .into_iter()
+            .filter(|(_, stored)| stored == bytes)
+            .collect();
+        assert_eq!(matching.len(), 1, "one stored object holds those bytes");
+        matching.remove(0).0
+    }
+
+    /// The media type of the one original's version.
+    async fn original_media_type(&self) -> String {
+        let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+        sqlx::query_scalar(
+            "SELECT v.media_type FROM public.asset_versions v \
+             JOIN public.assets a ON a.id = v.asset_id WHERE a.origin = 'source'",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap()
     }
 }
 
@@ -334,7 +379,10 @@ mod upload {
         assert_eq!(asset["name"], "nebula.png");
         assert!(asset["current_version_id"].as_str().is_some());
         assert_eq!(asset["original_url"], format!("/api/assets/{id}/original"));
+        assert_eq!(asset["preview_url"], format!("/api/assets/{id}/preview"));
         assert_eq!(instance.rows().await, 2);
+        // The preview: a derived Asset, its version and its lineage row.
+        assert_eq!(instance.derived_rows().await, 3);
     }
 
     #[tokio::test]
@@ -477,8 +525,9 @@ mod upload {
         let instance = Instance::new().await;
         instance.upload("nebula.png", PNG).await;
         let stored = instance.store_files();
-        assert_eq!(stored.len(), 1);
-        assert_eq!(stored[0].1, PNG);
+        // The original, and its preview.
+        assert_eq!(stored.len(), 2);
+        instance.object_holding(PNG);
     }
 
     #[tokio::test]
@@ -492,15 +541,7 @@ mod upload {
         let response = instance.upload_body(body).await;
         assert_eq!(response.status(), StatusCode::CREATED);
         assert_eq!(json(response).await["asset"]["name"], "nebula.txt");
-        let format: String = sqlx::query_scalar("SELECT media_type FROM public.asset_versions")
-            .fetch_one(
-                &mut PgConnection::connect_with(&instance.db.options)
-                    .await
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(format, "image/png");
+        assert_eq!(instance.original_media_type().await, "image/png");
     }
 
     #[tokio::test]
@@ -508,15 +549,7 @@ mod upload {
         let instance = Instance::new().await;
         let response = instance.upload("nebula.jpg", JPEG).await;
         assert_eq!(response.status(), StatusCode::CREATED);
-        let format: String = sqlx::query_scalar("SELECT media_type FROM public.asset_versions")
-            .fetch_one(
-                &mut PgConnection::connect_with(&instance.db.options)
-                    .await
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(format, "image/jpeg");
+        assert_eq!(instance.original_media_type().await, "image/jpeg");
     }
 
     #[tokio::test]
@@ -660,7 +693,7 @@ mod upload {
             instance.upload_body(body).await.status(),
             StatusCode::CREATED
         );
-        assert_eq!(instance.store_files()[0].1, PNG);
+        instance.object_holding(PNG);
     }
 
     #[tokio::test]
@@ -730,29 +763,7 @@ mod upload {
             .body(Body::from_stream(arriving(chunks)))
             .unwrap();
         assert_eq!(instance.send(request).await.status(), StatusCode::CREATED);
-        assert_eq!(instance.store_files()[0].1, PNG);
-    }
-
-    #[tokio::test]
-    async fn upload_of_unsupported_bytes_answers_415_naming_png_and_jpeg() {
-        let instance = Instance::new().await;
-        for (name, bytes) in [
-            ("nebula.tif", &b"II*\x00\x08\x00\x00\x00"[..]),
-            ("nebula.svg", b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
-            ("empty.png", b""),
-            ("nebula.jpg", b"plain text, not a JPEG"),
-        ] {
-            let response = instance.upload(name, bytes).await;
-            assert_eq!(
-                response.status(),
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "{name}"
-            );
-            let error = json(response).await["error"].as_str().unwrap().to_owned();
-            assert!(error.contains("PNG") && error.contains("JPEG"), "{error}");
-        }
-        assert_eq!(instance.rows().await, 0);
-        assert!(instance.store_files().is_empty());
+        instance.object_holding(PNG);
     }
 
     #[tokio::test]
@@ -773,6 +784,8 @@ mod upload {
             serde_json::json!([first])
         );
         assert_eq!(instance.rows().await, 2);
+        assert_eq!(instance.derived_rows().await, 3);
+        assert_eq!(instance.store_files().len(), 2);
     }
 
     #[tokio::test]
@@ -793,7 +806,7 @@ mod upload {
     async fn upload_onto_an_object_whose_bytes_changed_answers_503() {
         let instance = Instance::new().await;
         instance.upload("first.png", PNG).await;
-        let (path, _) = instance.store_files().remove(0);
+        let path = instance.object_holding(PNG);
         let damaged = vec![0u8; PNG.len()];
         std::fs::write(&path, &damaged).unwrap();
         let response = instance.upload("second.png", PNG).await;
@@ -806,7 +819,7 @@ mod upload {
     async fn upload_onto_a_much_larger_object_answers_503_and_leaves_it_unchanged() {
         let instance = Instance::new().await;
         instance.upload("first.png", PNG).await;
-        let (path, _) = instance.store_files().remove(0);
+        let path = instance.object_holding(PNG);
         std::fs::OpenOptions::new()
             .write(true)
             .open(&path)
@@ -920,12 +933,22 @@ impl Pack for UploadPack {
     }
 }
 
+/// A preview runner over the helper built with this server.
+fn helper() -> Arc<WorkerRunner> {
+    Arc::new(WorkerRunner::new(WorkerCommand {
+        program: env!("CARGO_BIN_EXE_sidereal-preview-worker").into(),
+        args: Vec::new(),
+    }))
+}
+
 /// Make upload run `operator`, registered beside the image pack.
 fn running(operator: impl Operator + 'static) -> impl FnOnce(Library) -> Library {
     move |library| {
         let id = operator.id().to_owned();
         let mut registry = Registry::new();
-        registry.register_pack(&ImagePack).unwrap();
+        registry
+            .register_pack(&ImagePack::new(library.previews()))
+            .unwrap();
         registry
             .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
             .unwrap();
@@ -941,7 +964,9 @@ fn running_first(operator: impl Operator + 'static) -> impl FnOnce(Library) -> L
     move |library| {
         let id = operator.id().to_owned();
         let mut registry = Registry::new();
-        registry.register_pack(&ImagePack).unwrap();
+        registry
+            .register_pack(&ImagePack::new(library.previews()))
+            .unwrap();
         registry
             .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
             .unwrap();
@@ -949,6 +974,7 @@ fn running_first(operator: impl Operator + 'static) -> impl FnOnce(Library) -> L
             id,
             FILE_SIZE.to_owned(),
             READ_HEADER.to_owned(),
+            MAKE_PREVIEW.to_owned(),
         ])
     }
 }
@@ -992,6 +1018,9 @@ impl Operator for Blocking {
     }
     fn writes(&self) -> &[&str] {
         &["test.size"]
+    }
+    fn accepts(&self) -> &[&str] {
+        &["image/png", "image/jpeg"]
     }
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         self.started.store(true, Ordering::SeqCst);
@@ -1069,9 +1098,19 @@ mod upload_disconnect {
             .await
             .unwrap();
         instance
-            .eventually_has_every_upload_fact(&["image.measure-file-size", "image.read-header"])
+            .eventually_has_every_upload_fact(&[
+                "image.measure-file-size",
+                "image.read-header",
+                "image.make-preview",
+            ])
             .await;
         assert_eq!(instance.rows().await, 2);
+        let listed = json(instance.list().await).await;
+        let id = listed["assets"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            listed["assets"][0]["preview_url"],
+            format!("/api/assets/{id}/preview")
+        );
     }
 
     #[tokio::test]
@@ -1112,8 +1151,15 @@ mod upload_disconnect {
                 "test.block",
                 "image.measure-file-size",
                 "image.read-header",
+                "image.make-preview",
             ])
             .await;
+        let listed = json(instance.list().await).await;
+        let id = listed["assets"][0]["id"].as_str().unwrap();
+        assert_eq!(
+            listed["assets"][0]["preview_url"],
+            format!("/api/assets/{id}/preview")
+        );
         instance
             .eventually(&format!(
                 "SELECT count(*) = 1 FROM public.facet_values \
@@ -1520,6 +1566,327 @@ mod original {
             assert_eq!(bytes(original).await, bytes(session).await, "{case}");
         }
     }
+
+    // ---- the preview route, and originals only ----
+
+    impl Instance {
+        async fn preview(&self, id: &str) -> Response {
+            self.get(&format!("/api/assets/{id}/preview"), Some(&self.cookie))
+                .await
+        }
+
+        /// The derived Asset id, the media type and the stored path of the
+        /// one preview of the original `id`.
+        async fn preview_record(&self, id: &str) -> (String, String, PathBuf) {
+            let mut conn = PgConnection::connect_with(&self.db.options).await.unwrap();
+            let (derived, media_type, hash): (String, String, String) = sqlx::query_as(
+                "SELECT p.id::text, v.media_type, v.content_hash FROM public.assets o \
+                 JOIN public.asset_lineage l ON l.input_version_id = o.current_version_id \
+                 JOIN public.asset_versions v ON v.id = l.output_version_id \
+                 JOIN public.assets p ON p.id = v.asset_id WHERE o.id = $1::uuid",
+            )
+            .bind(id)
+            .fetch_one(&mut conn)
+            .await
+            .unwrap();
+            let path = self
+                .storage()
+                .join("store")
+                .join(&hash[..2])
+                .join(&hash[2..4])
+                .join(&hash);
+            (derived, media_type, path)
+        }
+    }
+
+    fn rgb_tiff() -> Vec<u8> {
+        tiff::Tiff::classic(vec![tiff::Image::rgb8(64, 48, |x, y| {
+            [(x * 4) as u8, (y * 5) as u8, 60]
+        })])
+        .bytes()
+    }
+
+    fn cmyk_tiff() -> Vec<u8> {
+        tiff::Tiff::classic(vec![tiff::Image::chunky(
+            64,
+            48,
+            8,
+            4,
+            5,
+            vec![9; 64 * 48 * 4],
+        )])
+        .bytes()
+    }
+
+    #[tokio::test]
+    async fn preview_route_of_a_tiff_returns_the_bytes_the_run_wrote_as_a_private_jpeg() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("m42.tif", &rgb_tiff()).await;
+        let (_, media_type, path) = instance.preview_record(&id).await;
+        assert_eq!(media_type, "image/jpeg");
+        let response = instance.preview(&id).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers();
+        assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
+        assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        assert_eq!(bytes(response).await, std::fs::read(path).unwrap());
+    }
+
+    /// Makes a PNG preview: a few bytes the host stores as they are.
+    struct PngPreviews;
+    impl Operator for PngPreviews {
+        fn id(&self) -> &str {
+            "test.png-previews"
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn writes(&self) -> &[&str] {
+            &[]
+        }
+        fn accepts(&self) -> &[&str] {
+            &["image/png"]
+        }
+        fn makes_previews(&self) -> bool {
+            true
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            context.propose_preview(sidereal_plugin_abi::AssetProposal::new(
+                "image",
+                "image/png",
+            ))?;
+            context.write_preview(b"a png preview")?;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn preview_route_of_a_generic_png_preview_streams_it_as_image_png() {
+        let instance = Instance::with_library(running(PngPreviews)).await;
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let id = json(response).await["asset"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let response = instance.preview(&id).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/png");
+        assert_eq!(bytes(response).await, b"a png preview");
+    }
+
+    async fn assert_not_found(response: Response) {
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body = bytes(response).await;
+        assert_eq!(body, br#"{"error":"not found"}"#);
+    }
+
+    #[tokio::test]
+    async fn preview_route_of_an_original_with_no_preview_is_404() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("m31.tif", &cmyk_tiff()).await;
+        assert_not_found(instance.preview(&id).await).await;
+    }
+
+    #[tokio::test]
+    async fn preview_route_of_an_unknown_malformed_or_derived_id_is_404() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let (derived, _, _) = instance.preview_record(&id).await;
+        for asked in [
+            uuid::Uuid::new_v4().to_string(),
+            "not-an-id".to_owned(),
+            derived,
+        ] {
+            assert_not_found(instance.preview(&asked).await).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn preview_route_of_a_missing_object_answers_503_and_changes_nothing() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let (_, _, path) = instance.preview_record(&id).await;
+        std::fs::remove_file(path).unwrap();
+        let before = instance.library_rows().await;
+        let response = instance.preview(&id).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            bytes(response).await,
+            br#"{"error":"the library is unavailable; try again later"}"#
+        );
+        assert_eq!(instance.library_rows().await, before);
+    }
+
+    #[tokio::test]
+    async fn preview_route_whose_read_fails_midway_is_a_failed_transfer() {
+        let instance = Instance::with_library(|library| {
+            library.with_original_reader(Arc::new(|_file| {
+                Box::new(FailsAfter(b"\xff\xd8\xff partial".to_vec())) as Box<dyn Read + Send>
+            }))
+        })
+        .await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let response = instance.preview(&id).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .is_err());
+        assert!(
+            instance
+                .logged()
+                .iter()
+                .any(|line| line.starts_with(&format!("preview read failed for asset {id}"))),
+            "{:?}",
+            instance.logged()
+        );
+    }
+
+    #[tokio::test]
+    async fn preview_route_without_a_valid_session_answers_the_guards_401() {
+        for (case, sql) in INVALID_SESSIONS {
+            let instance = Instance::new().await;
+            let (id, _) = instance.uploaded("nebula.png", PNG).await;
+            let cookie = match sql {
+                Some(sql) => Some(instance.with_session(sql).await.to_owned()),
+                None => None,
+            };
+            let preview = instance
+                .get(&format!("/api/assets/{id}/preview"), cookie.as_deref())
+                .await;
+            let session = instance.get("/api/session", cookie.as_deref()).await;
+            assert_eq!(preview.status(), StatusCode::UNAUTHORIZED, "{case}");
+            assert!(preview.headers().get("x-content-type-options").is_none());
+            assert_eq!(bytes(preview).await, bytes(session).await, "{case}");
+        }
+    }
+
+    #[tokio::test]
+    async fn originals_are_all_the_list_holds() {
+        let instance = Instance::new().await;
+        instance.uploaded("nebula.png", PNG).await;
+        instance.uploaded("m42.tif", &rgb_tiff()).await;
+        let listed = json(instance.list().await).await;
+        let names: Vec<_> = listed["assets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["name"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(names, ["nebula.png", "m42.tif"]);
+        for entry in listed["assets"].as_array().unwrap() {
+            let id = entry["id"].as_str().unwrap();
+            assert_eq!(entry["preview_url"], format!("/api/assets/{id}/preview"));
+        }
+    }
+
+    #[tokio::test]
+    async fn originals_an_asset_saved_before_previews_has_a_null_preview_url() {
+        let instance = Instance::new().await;
+        let (asset, version) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+        instance
+            .execute(&format!(
+                "BEGIN; \
+                 INSERT INTO public.assets (id, kind, name, current_version_id, origin) \
+                 VALUES ('{asset}', 'image', 'm31.png', '{version}', 'source'); \
+                 INSERT INTO public.asset_versions (id, asset_id, content_hash, byte_size, \
+                 media_type, source_id, source_version, ingested_at) VALUES ('{version}', \
+                 '{asset}', '{}', 4, 'image/png', 'image.manual-upload', '0.1.0', now()); \
+                 COMMIT;",
+                "a".repeat(64)
+            ))
+            .await;
+        let listed = json(instance.list().await).await;
+        assert_eq!(listed["assets"][0]["name"], "m31.png");
+        assert_eq!(listed["assets"][0]["preview_url"], Value::Null);
+        assert_not_found(instance.preview(&asset.to_string()).await).await;
+    }
+
+    #[tokio::test]
+    async fn originals_a_previews_id_is_404_on_every_asset_route() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let (derived, _, _) = instance.preview_record(&id).await;
+        for uri in [
+            format!("/api/assets/{derived}"),
+            format!("/api/assets/{derived}/original"),
+            format!("/api/assets/{derived}/preview"),
+        ] {
+            assert_not_found(instance.get(&uri, Some(&instance.cookie)).await).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn originals_of_a_tiff_read_and_stream_as_image_tiff() {
+        let instance = Instance::new().await;
+        let bytes_of_tiff = rgb_tiff();
+        let (id, _) = instance.uploaded("m42.tif", &bytes_of_tiff).await;
+        let read = json(
+            instance
+                .get(&format!("/api/assets/{id}"), Some(&instance.cookie))
+                .await,
+        )
+        .await;
+        assert_eq!(read["asset"]["media_type"], "image/tiff");
+        let response = instance.original(&id).await;
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/tiff");
+        assert_eq!(bytes(response).await, bytes_of_tiff);
+    }
+
+    #[tokio::test]
+    async fn originals_an_upload_of_a_previews_bytes_makes_a_new_original() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("m42.tif", &rgb_tiff()).await;
+        let (_, _, path) = instance.preview_record(&id).await;
+        let preview_bytes = std::fs::read(&path).unwrap();
+        let response = instance.upload("m42-preview.jpg", &preview_bytes).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let new = json(response).await["asset"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_ne!(new, id);
+        let names: Vec<_> = json(instance.list().await).await["assets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["name"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(names, ["m42.tif", "m42-preview.jpg"]);
+        let (derived, _, _) = instance.preview_record(&id).await;
+        let shared = instance
+            .count(&format!(
+                "SELECT count(*) FROM public.asset_versions n \
+                 JOIN public.asset_versions p ON p.content_hash = n.content_hash \
+                 WHERE n.asset_id = '{new}'::uuid AND p.asset_id = '{derived}'::uuid"
+            ))
+            .await;
+        assert_eq!(shared, 1, "the new original shares the preview's object");
+    }
+
+    #[tokio::test]
+    async fn originals_a_first_image_is_one_original_with_one_version() {
+        let instance = Instance::new().await;
+        let (id, _) = instance.uploaded("nebula.png", PNG).await;
+        let (name, origin, versions): (String, String, i64) = sqlx::query_as(
+            "SELECT a.name, a.origin, (SELECT count(*) FROM public.asset_versions v \
+             WHERE v.asset_id = a.id) FROM public.assets a WHERE a.id = $1::uuid",
+        )
+        .bind(&id)
+        .fetch_one(
+            &mut PgConnection::connect_with(&instance.db.options)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (name.as_str(), origin.as_str(), versions),
+            ("nebula.png", "source", 1)
+        );
+        assert_eq!(instance.original_media_type().await, "image/png");
+    }
 }
 
 mod web_fallback {
@@ -1872,6 +2239,9 @@ mod upload_run {
         fn writes(&self) -> &[&str] {
             &["test.size"]
         }
+        fn accepts(&self) -> &[&str] {
+            &["image/png", "image/jpeg"]
+        }
         fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
             (self.0)(context)
         }
@@ -2043,6 +2413,11 @@ mod upload_run {
         assert_eq!(
             runs(&instance).await,
             [
+                (
+                    "image.make-preview".into(),
+                    "failed".into(),
+                    Some("the JPEG image could not be decoded".into())
+                ),
                 ("image.measure-file-size".into(), "succeeded".into(), None),
                 (
                     "image.read-header".into(),
@@ -2113,6 +2488,7 @@ mod upload_run {
         assert_eq!(
             runs(&instance).await,
             [
+                ("image.make-preview".into(), "succeeded".into(), None),
                 (
                     "image.measure-file-size".into(),
                     "failed".into(),
@@ -2125,5 +2501,348 @@ mod upload_run {
             "image.measure-file-size run failed for asset {id}: the values could not be stored"
         );
         assert!(instance.logged().contains(&line), "{:?}", instance.logged());
+    }
+}
+
+mod preview_upload {
+    use super::*;
+    use sidereal_plugin_abi::{Source, SourceError};
+    use tiff::{Image, Tiff};
+
+    /// An 8-bit RGB TIFF of `width` by `height`.
+    fn rgb_tiff(width: u64, height: u64) -> Vec<u8> {
+        Tiff::classic(vec![Image::rgb8(width, height, |x, y| {
+            [(x % 256) as u8, (y % 256) as u8, 90]
+        })])
+        .bytes()
+    }
+
+    /// An 8-bit CMYK TIFF of 800 by 600, which gets no preview.
+    fn cmyk_tiff() -> Vec<u8> {
+        Tiff::classic(vec![Image::chunky(
+            800,
+            600,
+            8,
+            4,
+            5,
+            vec![40; 800 * 600 * 4],
+        )])
+        .bytes()
+    }
+
+    /// Every run, in the order the runs started: its Operator, status,
+    /// reason, actor and whether it ended no earlier than the run before.
+    async fn runs_in_order(instance: &Instance) -> Vec<(String, String, Option<String>, i64)> {
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        let in_order: bool = sqlx::query_scalar(
+            "SELECT coalesce(bool_and(ended_at >= previous), true) FROM ( \
+             SELECT ended_at, lag(ended_at) OVER (ORDER BY started_at, ended_at) AS previous \
+             FROM public.operation_runs) r WHERE previous IS NOT NULL",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert!(in_order, "a run ended before the run started before it");
+        sqlx::query_as(
+            "SELECT operator_id, status, reason, actor_user_id FROM public.operation_runs \
+             ORDER BY started_at, ended_at",
+        )
+        .fetch_all(&mut conn)
+        .await
+        .unwrap()
+    }
+
+    async fn uploader(instance: &Instance) -> i64 {
+        instance
+            .count("SELECT id FROM public.users WHERE username = 'sam'")
+            .await
+    }
+
+    #[tokio::test]
+    async fn upload_of_an_8_bit_rgb_tiff_answers_201_with_its_preview() {
+        let instance = Instance::new().await;
+        let response = instance.upload("m31.tif", &rgb_tiff(800, 600)).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let asset = json(response).await["asset"].clone();
+        let id = asset["id"].as_str().unwrap();
+        assert_eq!(asset["preview_url"], format!("/api/assets/{id}/preview"));
+        let sam = uploader(&instance).await;
+        let previews: Vec<_> = runs_in_order(&instance)
+            .await
+            .into_iter()
+            .filter(|run| run.0 == MAKE_PREVIEW)
+            .collect();
+        assert_eq!(
+            previews,
+            [(MAKE_PREVIEW.to_owned(), "succeeded".to_owned(), None, sam)]
+        );
+        let read = json(
+            instance
+                .get(&format!("/api/assets/{id}"), Some(&instance.cookie))
+                .await,
+        )
+        .await;
+        assert_eq!(read["asset"]["media_type"], "image/tiff");
+        let facts: Vec<(String, i64)> = read["asset"]["facets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| {
+                (
+                    f["name"].as_str().unwrap().to_owned(),
+                    f["value"].as_i64().unwrap(),
+                )
+            })
+            .filter(|(name, _)| name != "image.file-size")
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                ("image.height".to_owned(), 600),
+                ("image.width".to_owned(), 800)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_of_a_png_a_jpeg_and_a_tiff_runs_each_upload_operator_once_in_order() {
+        for (name, bytes) in [
+            ("nebula.png", PNG.to_vec()),
+            ("nebula.jpg", JPEG.to_vec()),
+            ("m31.tif", rgb_tiff(64, 48)),
+        ] {
+            let instance = Instance::new().await;
+            assert_eq!(
+                instance.upload(name, &bytes).await.status(),
+                StatusCode::CREATED
+            );
+            let operators: Vec<(String, String)> = runs_in_order(&instance)
+                .await
+                .into_iter()
+                .map(|run| (run.0, run.1))
+                .collect();
+            assert_eq!(
+                operators,
+                [FILE_SIZE, READ_HEADER, MAKE_PREVIEW]
+                    .map(|o| (o.to_owned(), "succeeded".to_owned())),
+                "{name}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_of_nebula_png_gets_a_jpeg_preview_with_no_runs_of_its_own() {
+        let instance = Instance::new().await;
+        instance.upload("nebula.png", PNG).await;
+        let mut conn = PgConnection::connect_with(&instance.db.options)
+            .await
+            .unwrap();
+        let (media_type, hash): (String, String) = sqlx::query_as(
+            "SELECT v.media_type, v.content_hash FROM public.asset_lineage l \
+             JOIN public.asset_versions v ON v.id = l.output_version_id",
+        )
+        .fetch_one(&mut conn)
+        .await
+        .unwrap();
+        assert_eq!(media_type, "image/jpeg");
+        let path = instance
+            .storage()
+            .join("store")
+            .join(&hash[..2])
+            .join(&hash[2..4])
+            .join(&hash);
+        assert_eq!(&std::fs::read(path).unwrap()[..2], [0xff, 0xd8]);
+        let preview_runs = instance
+            .count(
+                "SELECT count(*) FROM public.operation_runs r \
+                 JOIN public.asset_lineage l ON l.output_version_id = r.asset_version_id",
+            )
+            .await;
+        assert_eq!(preview_runs, 0);
+        let preview_facts = instance
+            .count(
+                "SELECT count(*) FROM public.facet_values f \
+                 JOIN public.asset_lineage l ON l.output_version_id = f.asset_version_id",
+            )
+            .await;
+        assert_eq!(preview_facts, 0);
+        let previews_of_previews = instance
+            .count(
+                "SELECT count(*) FROM public.asset_lineage a \
+                 JOIN public.asset_lineage b ON b.input_version_id = a.output_version_id",
+            )
+            .await;
+        assert_eq!(previews_of_previews, 0);
+    }
+
+    #[tokio::test]
+    async fn upload_of_a_cmyk_tiff_answers_201_with_no_preview_and_a_failed_run() {
+        let instance = Instance::new().await;
+        let response = instance.upload("m31.tif", &cmyk_tiff()).await;
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let first = json(response).await["asset"].clone();
+        assert_eq!(first["preview_url"], Value::Null);
+        let preview = runs_in_order(&instance)
+            .await
+            .into_iter()
+            .find(|run| run.0 == MAKE_PREVIEW)
+            .unwrap();
+        assert_eq!(
+            (preview.1.as_str(), preview.2.as_deref()),
+            ("failed", Some("the TIFF image type is not supported"))
+        );
+        let again = instance.upload("again.tif", &cmyk_tiff()).await;
+        assert_eq!(again.status(), StatusCode::CONFLICT);
+        let found = json(again).await["asset"].clone();
+        assert_eq!(found, first);
+        assert_eq!(found["preview_url"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn upload_of_the_same_bytes_again_runs_nothing_and_answers_the_first_preview_url() {
+        let instance = Instance::new().await;
+        let first = json(instance.upload("nebula.png", PNG).await).await["asset"].clone();
+        let runs = instance
+            .count("SELECT count(*) FROM public.operation_runs")
+            .await;
+        let response = instance.upload("copy.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let found = json(response).await["asset"].clone();
+        assert_eq!(found["preview_url"], first["preview_url"]);
+        assert!(found["preview_url"].is_string());
+        assert_eq!(
+            instance
+                .count("SELECT count(*) FROM public.operation_runs")
+                .await,
+            runs
+        );
+        assert_eq!(instance.derived_rows().await, 3);
+    }
+
+    const REFUSAL: &str = "only PNG, JPEG and TIFF images are supported";
+
+    #[tokio::test]
+    async fn refused_gif_svg_empty_and_text_answer_415_with_the_packs_reason() {
+        let instance = Instance::new().await;
+        for (name, bytes) in [
+            ("nebula.gif", &b"GIF89a\x01\x00\x01\x00\x00\x00\x00;"[..]),
+            ("nebula.svg", b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
+            ("empty.tif", b""),
+            ("nebula.tif", b"plain text, not a TIFF"),
+        ] {
+            let response = instance.upload(name, bytes).await;
+            assert_eq!(
+                response.status(),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "{name}"
+            );
+            assert_eq!(
+                json(response).await,
+                serde_json::json!({
+                    "error": format!("unsupported format: {REFUSAL}"),
+                    "reason": REFUSAL,
+                }),
+                "{name}"
+            );
+        }
+        assert_eq!(instance.rows().await, 0);
+        assert!(instance.store_files().is_empty());
+    }
+
+    /// A manual-upload Source that takes only FITS files, and so refuses
+    /// every test file.
+    struct FitsOnly;
+    impl Source for FitsOnly {
+        fn id(&self) -> &str {
+            sidereal_pack_image::MANUAL_UPLOAD
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), SourceError> {
+            Err(SourceError::Refused("only FITS files are supported".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn refused_by_another_source_answers_415_with_that_sources_reason() {
+        let instance = Instance::with_library(|library| {
+            let mut registry = Registry::new();
+            registry.register_source(Box::new(FitsOnly));
+            library
+                .with_registry(registry)
+                .with_upload_operators(Vec::new())
+        })
+        .await;
+        let response = instance.upload("nebula.png", PNG).await;
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(
+            json(response).await,
+            serde_json::json!({
+                "error": "unsupported format: only FITS files are supported",
+                "reason": "only FITS files are supported",
+            })
+        );
+    }
+
+    /// The lines of `path`, or none before it exists.
+    fn lines(path: &Path) -> usize {
+        std::fs::read_to_string(path).map_or(0, |text| text.lines().count())
+    }
+
+    #[tokio::test]
+    async fn upload_previews_overlap_one_at_a_time() {
+        let scratch = Dir::new();
+        let launches = scratch.0.join("launches");
+        let release = scratch.0.join("release");
+        // A helper that logs its launch, waits for `release`, then answers
+        // its input as the preview's bytes.
+        let script = format!(
+            "echo launched >> '{}'; while [ ! -f '{}' ]; do sleep 0.05; done; exec cat",
+            launches.display(),
+            release.display()
+        );
+        let runner = Arc::new(WorkerRunner::new(WorkerCommand {
+            program: "/bin/sh".into(),
+            args: vec!["-c".into(), script.into(), "worker".into()],
+        }));
+        let shared = runner.clone();
+        let instance = Instance::with_library(move |library| library.with_previews(shared)).await;
+        let first = instance.start_upload(PNG);
+        let deadline = tokio::time::Instant::now() + SECONDS;
+        while lines(&launches) < 1 {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "the first helper never started"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let second = instance.start_upload(JPEG);
+        // The second upload's other runs end; its preview waits for the slot.
+        instance
+            .eventually(
+                "SELECT count(*) = 2 FROM public.operation_runs \
+                 WHERE operator_id = 'image.read-header' AND status <> 'running'",
+            )
+            .await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(
+            runner.copies_begun(),
+            1,
+            "the second preview copied its input"
+        );
+        assert_eq!(lines(&launches), 1, "the second helper launched");
+        assert!(!second.is_finished());
+        std::fs::write(&release, b"").unwrap();
+        let first = first.await.unwrap();
+        assert_eq!(first.status(), StatusCode::CREATED);
+        assert!(json(first).await["asset"]["preview_url"].is_string());
+        let second = second.await.unwrap();
+        assert_eq!(second.status(), StatusCode::CREATED);
+        assert!(json(second).await["asset"]["preview_url"].is_string());
+        assert_eq!(runner.copies_begun(), 2);
+        assert_eq!(lines(&launches), 2);
     }
 }

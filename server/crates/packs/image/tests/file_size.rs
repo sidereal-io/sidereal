@@ -1,7 +1,10 @@
 //! The file-size Operator, through the public contract only.
-use sidereal_pack_image::{ImagePack, FILE_SIZE, FILE_SIZE_FACET};
+#[path = "common/runner.rs"]
+mod runner;
+
+use sidereal_pack_image::{FILE_SIZE, FILE_SIZE_FACET};
 use sidereal_plugin_abi::{
-    Candidate, FacetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Registry,
+    Candidate, FacetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Output, Registry,
 };
 
 /// A candidate of `size` bytes that refuses every read: the size is the fact.
@@ -17,7 +20,7 @@ impl Candidate for Unread {
 
 fn registry() -> Registry {
     let mut registry = Registry::new();
-    registry.register_pack(&ImagePack).unwrap();
+    registry.register_pack(&runner::pack()).unwrap();
     registry
 }
 
@@ -52,7 +55,14 @@ fn file_size_operator_lists_only_the_file_size_facet() {
 #[test]
 fn file_size_of_a_png_of_known_size_is_its_byte_count() {
     let run = registry()
-        .execute_operator(FILE_SIZE, &mut Unread(1_234_567), &mut |_| {}, &|| false)
+        .execute_operator(
+            FILE_SIZE,
+            &mut Unread(1_234_567),
+            "image/png",
+            &mut Discard,
+            &mut |_| {},
+            &|| false,
+        )
         .unwrap();
     assert_eq!(
         run.proposals,
@@ -63,4 +73,13 @@ fn file_size_of_a_png_of_known_size_is_its_byte_count() {
     );
     assert_eq!(run.producer_id, "image.measure-file-size");
     assert_eq!(run.producer_version, env!("CARGO_PKG_VERSION"));
+}
+
+/// A host destination that drops every preview byte.
+struct Discard;
+
+impl Output for Discard {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
+        Ok(())
+    }
 }

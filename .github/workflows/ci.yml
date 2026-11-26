@@ -65,6 +65,33 @@ jobs:
         if: always()
         run: mise run db-down
 
+  # The preview helper's own suite needs no database. It runs on Linux and
+  # macOS, because the helper measures its stack and maps its heap through
+  # each system's own calls.
+  preview-worker:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install tools from mise.lock
+        uses: jdx/mise-action@v5
+        with:
+          install_args: --locked
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+          cmd-format: mise exec -- {0}
+
+      - name: Preview helper suite
+        run: mise exec -- cargo test --manifest-path server/Cargo.toml -p sidereal-server --test preview_worker
+
   web:
     runs-on: ubuntu-latest
     steps:

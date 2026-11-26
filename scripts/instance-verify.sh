@@ -380,8 +380,8 @@ instance() {
         || fail 'siderealctl --help does not name reset-admin-password'
 
     say "checking storage initialization ($1)"
-    [ "$(sql 'SELECT count(*) FROM _sqlx_migrations WHERE success')" = 5 ] \
-        || fail 'the database does not hold five successful migrations'
+    [ "$(sql 'SELECT count(*) FROM _sqlx_migrations WHERE success')" = 6 ] \
+        || fail 'the database does not hold six successful migrations'
     [ "$(compose exec -T app ls -A "$storage")" = "$marker" ] \
         || fail "storage holds more than its identity marker after the first start"
     id=$(sql 'SELECT storage_id FROM sidereal_metadata')
@@ -406,6 +406,34 @@ instance() {
     [ "$(fetch /readyz)" = '{"status":"ready"}' ] || fail "/readyz did not return {\"status\":\"ready\"} after the second start ($1)"
 }
 
+# preview <label>: claim the instance, sign in, upload a PNG and fetch its
+# preview. The server runs as the app user and starts the preview helper
+# beside it in the image, so a preview shows that the shipped helper runs.
+preview() {
+    say "checking an upload and its preview ($1)"
+    base="http://127.0.0.1:$port"
+    credentials='{"username":"verify","password":"'"$(new_password)"'"}'
+    curl -fsS --max-time 10 -H 'Content-Type: application/json' -d "$credentials" \
+        "$base/api/claim" >/dev/null || fail "could not claim the instance ($1)"
+    cookie=$(curl -fsS --max-time 10 -D - -o /dev/null -H 'Content-Type: application/json' \
+        -d "$credentials" "$base/api/session" \
+        | sed -n 's/^[Ss]et-[Cc]ookie: \([^;]*\).*/\1/p' | head -n 1)
+    [ -n "$cookie" ] || fail "could not sign in ($1)"
+    image="$root/server/crates/server/tests/fixtures/nebula.png"
+    curl -sS --max-time 150 -H "Cookie: $cookie" -F "file=@$image;type=image/png" \
+        -o "$work/upload.json" -w '%{http_code}' "$base/api/assets" >"$work/upload.status" \
+        || fail "the upload did not answer ($1)"
+    [ "$(cat "$work/upload.status")" = 201 ] \
+        || fail "the upload answered $(cat "$work/upload.status"): $(cat "$work/upload.json") ($1)"
+    url=$(sed -n 's/.*"preview_url":"\(\/api\/assets\/[0-9a-f-]*\/preview\)".*/\1/p' "$work/upload.json")
+    [ -n "$url" ] || fail "the upload has no preview, so the preview helper did not run: $(cat "$work/upload.json") ($1)"
+    curl -fsS --max-time 10 -H "Cookie: $cookie" -D "$work/preview.headers" -o "$work/preview.jpg" \
+        "$base$url" || fail "the preview did not load ($1)"
+    grep -iq '^content-type: image/jpeg' "$work/preview.headers" || fail "the preview is not image/jpeg ($1)"
+    [ "$(head -c 2 "$work/preview.jpg" | od -An -tx1 | tr -d ' \n')" = ffd8 ] \
+        || fail "the preview's bytes are not a JPEG ($1)"
+}
+
 # --- Absent bind sources: Compose refuses, creates no directory, and mounts
 # no fallback volume.
 say 'checking that absent bind directories are refused'
@@ -422,6 +450,7 @@ compose down --volumes --timeout 10 >"$work/down.log" 2>&1 || fail "docker compo
 # --- Default named volumes.
 settings volumes
 instance 'named volumes' "volume ${project}_storage $storage" "volume ${project}_database /var/lib/postgresql"
+preview 'named volumes'
 
 # --- The app stays alive through a real database outage and recovers in place.
 say 'checking database outage and recovery'

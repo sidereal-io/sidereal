@@ -55,3 +55,7 @@ Shared vocabulary for Sidereal. A spec folder under `openspec/specs/` may hold i
 - **Lineage** — a recorded link that says which asset versions another version was made from.
 - **Derived asset** — an asset an operator made from another asset's version, such as a
   preview. Lineage links it to its source.
+- **Preview** — a derived asset holding a browser-ready image made from one asset version at
+  full resolution. The library and asset page show it in place of the original.
+- **Original** — an asset a Source brought into the library, as opposed to a derived asset.
+  The library lists originals only.

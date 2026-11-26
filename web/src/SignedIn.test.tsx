@@ -42,6 +42,7 @@ const entry = (id: string, name: string) => ({
   name,
   current_version_id: `${id.slice(0, 8)}-0000-4000-8000-000000000000`,
   original_url: `/api/assets/${id}/original`,
+  preview_url: null,
 });
 
 const withFacts = (id: string, name: string, value: number) => ({
@@ -109,7 +110,7 @@ describe("SignedIn", () => {
         <span>nova</span>
       </SignedIn>,
     );
-    await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    await screen.findByText("No images yet. Upload an image to start.");
     screen.getByRole("region", { name: "Library" });
     screen.getByRole("button", { name: "Upload" });
     screen.getByText("nova");

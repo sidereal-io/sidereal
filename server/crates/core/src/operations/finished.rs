@@ -71,8 +71,9 @@ async fn values_for_a_run_that_already_ended_are_not_stored() {
             asset_id: version.id,
             content_hash: version.version.content_hash.clone(),
             byte_size: 3,
+            media_type: "image/x-test".into(),
         },
-        &FacetProposals {
+        &OperatorProposals {
             producer_id: "test.op".into(),
             producer_version: "1.2.3".into(),
             grants: vec!["test.size".into()],
@@ -80,7 +81,11 @@ async fn values_for_a_run_that_already_ended_are_not_stored() {
                 name: "test.size".into(),
                 value: FacetValue::Integer(4),
             }],
+            makes_previews: false,
+            preview: None,
+            preview_bytes: 0,
         },
+        None,
     )
     .await
     .unwrap();

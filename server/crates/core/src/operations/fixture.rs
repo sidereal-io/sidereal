@@ -38,6 +38,8 @@ pub(super) struct Scripted {
     pub id: &'static str,
     pub version: &'static str,
     pub writes: &'static [&'static str],
+    pub accepts: &'static [&'static str],
+    pub makes_previews: bool,
     pub script: fn(&mut AssetContext<'_>) -> Result<(), OperatorError>,
 }
 impl Operator for Scripted {
@@ -49,6 +51,12 @@ impl Operator for Scripted {
     }
     fn writes(&self) -> &[&str] {
         self.writes
+    }
+    fn accepts(&self) -> &[&str] {
+        self.accepts
+    }
+    fn makes_previews(&self) -> bool {
+        self.makes_previews
     }
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         (self.script)(context)
@@ -64,6 +72,8 @@ pub(super) fn op(
         id: "test.op",
         version: "1.2.3",
         writes,
+        accepts: &["image/x-test"],
+        makes_previews: false,
         script,
     })
 }
@@ -137,6 +147,8 @@ pub(super) struct Fixture {
     pub registry: Arc<Registry>,
     /// The `users.id` of the claimed administrator.
     pub nova: i64,
+    /// The storage UUID that pairing committed.
+    pub paired: Uuid,
 }
 
 impl Fixture {
@@ -163,6 +175,7 @@ impl Fixture {
             objects,
             registry: registry(register),
             nova,
+            paired,
         }
     }
 
@@ -238,18 +251,42 @@ impl Fixture {
         version: &AssetRecord,
         cancelled: Arc<AtomicBool>,
     ) -> Result<RunOutcome, OperationError> {
+        self.run_version(registry, operator, version.version.id, cancelled)
+            .await
+    }
+
+    /// Run `operator` over the version `version_id`.
+    pub async fn run_version(
+        &self,
+        registry: Arc<Registry>,
+        operator: &str,
+        version_id: Uuid,
+        cancelled: Arc<AtomicBool>,
+    ) -> Result<RunOutcome, OperationError> {
         run_operator(
             &self.database,
             &self.objects,
             registry,
             RunRequest {
                 operator_id: operator.into(),
-                asset_version_id: version.version.id,
+                asset_version_id: version_id,
                 actor: self.nova,
             },
             cancelled,
         )
         .await
+    }
+
+    /// Store `bytes` as a new Asset whose version has `media_type`.
+    pub async fn version_of(&self, bytes: &[u8], media_type: &str) -> AssetRecord {
+        let record = self.version(bytes).await;
+        sqlx::query("UPDATE public.asset_versions SET media_type = $1 WHERE id = $2")
+            .bind(media_type)
+            .bind(record.version.id)
+            .execute(&mut self.conn().await)
+            .await
+            .unwrap();
+        record
     }
 
     pub async fn runs(&self) -> Vec<Run> {

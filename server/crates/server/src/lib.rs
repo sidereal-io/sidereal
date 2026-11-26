@@ -21,6 +21,8 @@ use tower_http::services::{ServeDir, ServeFile};
 pub mod access;
 pub mod assets;
 pub mod config;
+pub mod preview;
+pub mod preview_worker;
 pub mod siderealctl;
 pub mod storage;
 

@@ -30,19 +30,42 @@ export function lineText(line: Line): string {
   }
 }
 
-// Why an upload was refused, in fixed words. The server's own words never
-// reach the screen.
+// Why an upload was refused, in fixed words. The only server words that
+// reach the screen are a 415's `reason`, the Source's own reason, which
+// `formatReason` checks; the web names no format of its own.
 function refusal(status: number): string {
   switch (status) {
     case 413:
       return "it is larger than the 100 MiB limit.";
-    case 415:
-      return "only PNG and JPEG images are supported.";
     case 400:
-      return "choose one PNG or JPEG file and try again.";
+      return "choose one image file and try again.";
     default:
       return "the server could not save it. Try again later.";
   }
+}
+
+// What a refused format's line says: the 415 body's `reason`, when it is
+// text of 1 to 200 characters with no control character, ending in a full
+// stop; otherwise fixed words. It is only ever shown as text.
+async function formatReason(response: Response): Promise<string> {
+  const fallback = "its format is not supported.";
+  let reason: unknown;
+  try {
+    const body: unknown = await response.json();
+    reason = isObject(body) ? body.reason : undefined;
+  } catch {
+    return fallback;
+  }
+  if (
+    typeof reason !== "string" ||
+    reason.length < 1 ||
+    reason.length > 200 ||
+    // eslint-disable-next-line no-control-regex -- control characters are what it refuses.
+    /[\u0000-\u001f\u007f-\u009f]/.test(reason)
+  ) {
+    return fallback;
+  }
+  return reason.endsWith(".") ? reason : `${reason}.`;
 }
 
 // The name of the Asset a repeat upload found, or null when the answer's
@@ -85,6 +108,7 @@ async function sendFile(
   if (response.status === 201) return "saved";
   if (response.status === 401) return sessionEnded;
   if (response.status === 409) return { found: await foundName(response) };
+  if (response.status === 415) return { refused: await formatReason(response) };
   return { refused: refusal(response.status) };
 }
 

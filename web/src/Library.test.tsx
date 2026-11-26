@@ -60,6 +60,7 @@ const entry = (id: string, name: string) => ({
   name,
   current_version_id: `${id}-v`,
   original_url: `/api/assets/${id}/original`,
+  preview_url: null,
 });
 
 const nebula = entry("a1", "nebula.png");
@@ -68,6 +69,12 @@ const andromeda = entry("a2", "m31.jpg");
 const listAnswer = (...assets: unknown[]): Answer => [200, { assets }];
 
 const button = (name: string) => screen.queryByRole("button", { name });
+
+// The body of the image pack's 415.
+const refusedFormat = {
+  error: "unsupported format: only PNG, JPEG and TIFF images are supported",
+  reason: "only PNG, JPEG and TIFF images are supported",
+};
 
 // A session signal that Access never aborts.
 const live = () => new AbortController().signal;
@@ -95,7 +102,7 @@ describe("Library", () => {
   it("shows the empty-library message for an empty list", async () => {
     stubServer({ "GET /api/assets": listAnswer() });
     showLibrary();
-    await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    await screen.findByText("No images yet. Upload an image to start.");
     expect(screen.queryByText("Loading the library…")).toBeNull();
     expect(button("Retry")).toBeNull();
   });
@@ -111,7 +118,7 @@ describe("Library", () => {
       screen.getByRole("img", { name: "m31.jpg" }).getAttribute("src"),
     ).toBe("/api/assets/a2/original");
     expect(
-      screen.queryByText("No images yet. Upload a PNG or JPEG to start."),
+      screen.queryByText("No images yet. Upload an image to start."),
     ).toBeNull();
   });
 
@@ -190,6 +197,34 @@ describe("Library", () => {
         }),
       },
     ],
+    [
+      "a preview URL off the API",
+      {
+        "GET /api/assets": listAnswer({
+          ...nebula,
+          preview_url: "https://example.com/x.jpg",
+        }),
+      },
+    ],
+    [
+      "a preview URL that names another Asset",
+      {
+        "GET /api/assets": listAnswer({
+          ...nebula,
+          preview_url: "/api/assets/a2/preview",
+        }),
+      },
+    ],
+    [
+      "a preview URL that is not text",
+      { "GET /api/assets": listAnswer({ ...nebula, preview_url: 1 }) },
+    ],
+    [
+      "an entry with no preview URL",
+      {
+        "GET /api/assets": listAnswer({ ...nebula, preview_url: undefined }),
+      },
+    ],
   ] satisfies [string, Answers][])(
     "shows a list error with Retry, not the empty message, on %s",
     async (_, answers) => {
@@ -198,7 +233,7 @@ describe("Library", () => {
       await screen.findByText("The library could not be loaded.");
       screen.getByRole("button", { name: "Retry" });
       expect(
-        screen.queryByText("No images yet. Upload a PNG or JPEG to start."),
+        screen.queryByText("No images yet. Upload an image to start."),
       ).toBeNull();
       expect(screen.queryByRole("img")).toBeNull();
       expect(document.body.textContent).not.toContain("unavailable");
@@ -214,6 +249,45 @@ describe("Library", () => {
     await screen.findByRole("img", { name: "nebula.png" });
     expect(screen.queryByText("The library could not be loaded.")).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an image from its preview when it has one", async () => {
+    stubServer({
+      "GET /api/assets": listAnswer(
+        { ...entry("a3", "m42.tif"), preview_url: "/api/assets/a3/preview" },
+        nebula,
+      ),
+    });
+    showLibrary();
+    const image = await screen.findByRole("img", { name: "m42.tif" });
+    expect(image.getAttribute("src")).toBe("/api/assets/a3/preview");
+    screen.getByText("m42.tif");
+    expect(
+      screen.getByRole("img", { name: "nebula.png" }).getAttribute("src"),
+    ).toBe("/api/assets/a1/original");
+  });
+
+  it("shows a preview that a later list gives after the original failed to show", async () => {
+    const tiff = entry("a3", "m42.tif");
+    stubServer({
+      "GET /api/assets": [
+        listAnswer(tiff),
+        listAnswer({ ...tiff, preview_url: "/api/assets/a3/preview" }),
+      ],
+    });
+    const props = {
+      onSessionLost: vi.fn(),
+      lines: [],
+      busy: false,
+      onUpload: vi.fn(),
+    };
+    const { rerender } = render(<Library {...props} saved={0} />);
+    fireEvent.error(await screen.findByRole("img", { name: "m42.tif" }));
+    screen.getByText("This image could not be displayed.");
+    rerender(<Library {...props} saved={1} />);
+    const image = await screen.findByRole("img", { name: "m42.tif" });
+    expect(image.getAttribute("src")).toBe("/api/assets/a3/preview");
+    expect(screen.queryByText("This image could not be displayed.")).toBeNull();
   });
 
   it("keeps the name and says so when an image cannot display", async () => {
@@ -267,7 +341,7 @@ describe("Library", () => {
       onUpload: vi.fn(),
     };
     const { rerender } = render(<Library {...props} saved={0} />);
-    await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    await screen.findByText("No images yet. Upload an image to start.");
     rerender(<Library {...props} saved={0} />);
     expect(fetch).toHaveBeenCalledTimes(1);
     rerender(<Library {...props} saved={1} />);
@@ -362,14 +436,14 @@ describe("Library", () => {
           (init as RequestInit | undefined)?.method === "POST",
       );
 
-    it("opens the file picker from one Upload button, for PNG and JPEG", async () => {
+    it("opens the file picker from one Upload button, for any file", async () => {
       stubServer({ "GET /api/assets": listAnswer() });
       showLibrary();
       const upload = await screen.findByRole("button", { name: "Upload" });
       const click = vi.spyOn(picker(), "click");
       fireEvent.click(upload);
       expect(click).toHaveBeenCalledTimes(1);
-      expect(picker().accept).toBe("image/png,image/jpeg");
+      expect(picker().hasAttribute("accept")).toBe(false);
       expect(picker().multiple).toBe(true);
     });
 
@@ -506,7 +580,12 @@ describe("Library", () => {
     it("sends every file of a pick, whatever the answers before it", async () => {
       const fetch = stubServer({
         "GET /api/assets": listAnswer(),
-        "POST /api/assets": [[415], [409], noAnswer, [201, { asset: nebula }]],
+        "POST /api/assets": [
+          [415, refusedFormat],
+          [409],
+          noAnswer,
+          [201, { asset: nebula }],
+        ],
       });
       showLibrary();
       await screen.findByRole("button", { name: "Upload" });
@@ -519,7 +598,7 @@ describe("Library", () => {
         ),
       ).toEqual(files);
       expect(lines()).toEqual([
-        "a.png was not uploaded: only PNG and JPEG images are supported.",
+        "a.png was not uploaded: only PNG, JPEG and TIFF images are supported.",
         "b.png is already in the library.",
         "No answer came back for c.png. It is safe to upload it again: if it was saved, Sidereal will find it.",
         "d.png was uploaded.",
@@ -529,7 +608,7 @@ describe("Library", () => {
     it("gives each refused file of a pick its own reason", async () => {
       stubServer({
         "GET /api/assets": listAnswer(),
-        "POST /api/assets": [[413], [415], [400], [503]],
+        "POST /api/assets": [[413], [415, refusedFormat], [400], [503]],
       });
       showLibrary();
       await screen.findByRole("button", { name: "Upload" });
@@ -537,8 +616,8 @@ describe("Library", () => {
       await screen.findByText(/^d\.png was not uploaded/);
       expect(lines()).toEqual([
         "a.png was not uploaded: it is larger than the 100 MiB limit.",
-        "b.png was not uploaded: only PNG and JPEG images are supported.",
-        "c.png was not uploaded: choose one PNG or JPEG file and try again.",
+        "b.png was not uploaded: only PNG, JPEG and TIFF images are supported.",
+        "c.png was not uploaded: choose one image file and try again.",
         "d.png was not uploaded: the server could not save it. Try again later.",
       ]);
     });
@@ -614,7 +693,7 @@ describe("Library", () => {
         }),
       );
       showLibrary();
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
       choose(named("nebula.png"), named("m31.jpg"));
       await screen.findByRole("img", { name: "nebula.png" });
       await screen.findByRole("img", { name: "m31.jpg" });
@@ -645,7 +724,7 @@ describe("Library", () => {
       expect(uploads(fetch)).toHaveLength(2);
       await release(1, new Response(null, { status: 415 }));
       await screen.findByText(
-        "b.png was not uploaded: only PNG and JPEG images are supported.",
+        "b.png was not uploaded: its format is not supported.",
       );
       expect(upload.hasAttribute("disabled")).toBe(false);
     });
@@ -656,7 +735,7 @@ describe("Library", () => {
         "POST /api/assets": [201, { asset: nebula }],
       });
       showLibrary();
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
       choose(png());
       await screen.findByRole("img", { name: "nebula.png" });
       expect(lines()).toEqual(["nebula.png was uploaded."]);
@@ -672,13 +751,10 @@ describe("Library", () => {
         413,
         "nebula.png was not uploaded: it is larger than the 100 MiB limit.",
       ],
-      [
-        415,
-        "nebula.png was not uploaded: only PNG and JPEG images are supported.",
-      ],
+      [415, "nebula.png was not uploaded: its format is not supported."],
       [
         400,
-        "nebula.png was not uploaded: choose one PNG or JPEG file and try again.",
+        "nebula.png was not uploaded: choose one image file and try again.",
       ],
       [
         503,
@@ -708,6 +784,71 @@ describe("Library", () => {
       await waitFor(() => {
         expect(uploads(fetch)).toHaveLength(2);
       });
+    });
+
+    it.each([
+      ["no reason", { error: "unsupported format" }],
+      ["a reason of 201 characters", { reason: "x".repeat(201) }],
+      ["a reason that holds a line break", { reason: "only FITS\nfiles" }],
+      ["an empty reason", { reason: "" }],
+      ["a reason that is not text", { reason: 7 }],
+    ])(
+      "says the format is not supported for a 415 with %s",
+      async (_, body) => {
+        stubServer({
+          "GET /api/assets": listAnswer(),
+          "POST /api/assets": [415, body],
+        });
+        showLibrary();
+        await screen.findByRole("button", { name: "Upload" });
+        choose(named("a.gif"));
+        await screen.findByText(
+          "a.gif was not uploaded: its format is not supported.",
+        );
+      },
+    );
+
+    it.each([
+      [
+        "a full stop added",
+        "only FITS files are supported",
+        "only FITS files are supported.",
+      ],
+      [
+        "its own full stop kept",
+        "only FITS files are supported.",
+        "only FITS files are supported.",
+      ],
+      ["200 characters kept", "y".repeat(200), `${"y".repeat(200)}.`],
+    ])(
+      "shows the server's reason for a 415, with %s",
+      async (_, reason, shown) => {
+        stubServer({
+          "GET /api/assets": listAnswer(),
+          "POST /api/assets": [
+            415,
+            { error: `unsupported format: ${reason}`, reason },
+          ],
+        });
+        showLibrary();
+        await screen.findByRole("button", { name: "Upload" });
+        choose(named("a.fits"));
+        await screen.findByText(`a.fits was not uploaded: ${shown}`);
+      },
+    );
+
+    it("shows a 415 reason that holds markup as literal text", async () => {
+      stubServer({
+        "GET /api/assets": listAnswer(),
+        "POST /api/assets": [415, { reason: "<b>bold</b> formats only" }],
+      });
+      showLibrary();
+      await screen.findByRole("button", { name: "Upload" });
+      choose(named("a.gif"));
+      await screen.findByText(
+        "a.gif was not uploaded: <b>bold</b> formats only.",
+      );
+      expect(document.querySelector("b")).toBeNull();
     });
 
     it.each([

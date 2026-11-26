@@ -14,6 +14,12 @@ path = "src/main.rs"
 name = "siderealctl"
 path = "src/bin/siderealctl.rs"
 
+# Makes one preview in its own memory-capped process. It ships beside the
+# server, which looks for it in its own folder (ADR-020).
+[[bin]]
+name = "sidereal-preview-worker"
+path = "src/bin/preview-worker.rs"
+
 [dependencies]
 sidereal-core = { workspace = true }
 sidereal-pack-astro = { workspace = true }
@@ -31,6 +37,13 @@ url = { workspace = true }
 uuid = { workspace = true }
 futures-util = { workspace = true }
 http-body-util = { workspace = true }
+linked_list_allocator = { workspace = true }
 
 [dev-dependencies]
 tokio-tungstenite = { workspace = true }
+# Build and read the images the preview tests use.
+png = { workspace = true }
+jpeg-encoder = { workspace = true }
+zune-jpeg = { workspace = true }
+weezl = { workspace = true }
+flate2 = { workspace = true }

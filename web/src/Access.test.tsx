@@ -288,6 +288,7 @@ describe("Access", () => {
               name: "nebula.png",
               current_version_id: "v1",
               original_url: "/api/assets/a1/original",
+              preview_url: null,
             },
           ],
         },
@@ -347,6 +348,7 @@ describe("Access", () => {
               name: "nebula.png",
               current_version_id: "v1",
               original_url: "/api/assets/a1/original",
+              preview_url: null,
             },
           ],
         }),
@@ -367,6 +369,7 @@ describe("Access", () => {
         name: "nebula.png",
         current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
         original_url: `/api/assets/${id}/original`,
+        preview_url: null,
         media_type: "image/png",
         facets: [
           {
@@ -581,7 +584,7 @@ describe("Access", () => {
 
     async function signedInAsSam() {
       render(<Access />);
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
     }
 
     // Nova picks the files and presses Sign out while the first one is on
@@ -748,7 +751,7 @@ describe("Access", () => {
         sockets.at(0)?.serverClose(1008);
       });
       await submit("Sign in");
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
     }
 
     it("lets a late sign-out answer leave the next sign-in alone", async () => {
@@ -824,7 +827,7 @@ describe("Access", () => {
         server.signIn(0).answer(sam());
         await server.signIn(0).promise;
       });
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
       pick("a.png", "b.png");
       await waitFor(() => {
         expect(server.sent()).toEqual(["a.png"]);
@@ -866,7 +869,7 @@ describe("Access", () => {
         await server.signOut().promise;
         await server.signIn(1).promise;
       });
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
       expect(lines()).toEqual([]);
       expect(
         screen.getByRole("button", { name: "Upload" }).hasAttribute("disabled"),
@@ -882,7 +885,7 @@ describe("Access", () => {
         await server.signOut().promise;
       });
       await submit("Sign in");
-      await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+      await screen.findByText("No images yet. Upload an image to start.");
       pick("c.png", "d.png");
       await waitFor(() => {
         expect(server.sent()).toEqual(["c.png"]);

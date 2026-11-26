@@ -2,7 +2,7 @@
 //! `plugin-abi` — no `core` involved (astro does not even depend on it).
 
 use sidereal_pack_astro::AstroPack;
-use sidereal_plugin_abi::{Pack, Registry};
+use sidereal_plugin_abi::{Output, Pack, Registry};
 
 #[test]
 fn astro_pack_registration_makes_it_discoverable() {
@@ -40,7 +40,23 @@ fn operator_execution_of_the_plate_solve_stub_says_it_cannot_run_yet() {
     let mut registry = Registry::new();
     registry.register_pack(&AstroPack).unwrap();
     assert_eq!(
-        registry.execute_operator("astro.plate-solve", &mut Empty, &mut |_| {}, &|| false),
+        registry.execute_operator(
+            "astro.plate-solve",
+            &mut Empty,
+            "image/fits",
+            &mut Discard,
+            &mut |_| {},
+            &|| false
+        ),
         Err(sidereal_plugin_abi::ExecutionError::Unsupported)
     );
+}
+
+/// A host destination that drops every preview byte.
+struct Discard;
+
+impl Output for Discard {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
+        Ok(())
+    }
 }

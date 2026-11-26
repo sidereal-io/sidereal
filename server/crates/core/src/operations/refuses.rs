@@ -65,6 +65,9 @@ impl Operator for Widening {
             &["test.size"]
         }
     }
+    fn accepts(&self) -> &[&str] {
+        &["image/x-test"]
+    }
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         propose(context, "test.width", 1)
     }

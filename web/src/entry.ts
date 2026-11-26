@@ -3,6 +3,8 @@ export interface Entry {
   id: string;
   name: string;
   originalUrl: string;
+  // The address the image shows from: its preview, or else its original.
+  imageUrl: string;
 }
 
 // An original is always fetched from this server's API, never from an
@@ -11,6 +13,15 @@ const ORIGINAL_URL = /^\/api\/assets\/[\w-]+\/original$/;
 
 export function isObject(body: unknown): body is Record<string, unknown> {
   return typeof body === "object" && body !== null;
+}
+
+// The address an Asset's image shows from, given its id and its
+// `preview_url`: the preview, when it has one, or else the original. Null
+// when `preview_url` is neither null nor this Asset's own preview route.
+export function imageUrlOf(id: string, previewUrl: unknown): string | null {
+  if (previewUrl === null) return `/api/assets/${id}/original`;
+  if (previewUrl === `/api/assets/${id}/preview`) return previewUrl;
+  return null;
 }
 
 // One Asset entry, as the list and a repeat upload's answer hold it, or
@@ -28,5 +39,12 @@ export function toEntry(item: unknown): Entry | null {
   ) {
     return null;
   }
-  return { id: item.id, name: item.name, originalUrl: item.original_url };
+  const imageUrl = imageUrlOf(item.id, item.preview_url);
+  if (imageUrl === null) return null;
+  return {
+    id: item.id,
+    name: item.name,
+    originalUrl: item.original_url,
+    imageUrl,
+  };
 }

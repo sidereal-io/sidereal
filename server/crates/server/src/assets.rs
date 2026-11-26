@@ -3,11 +3,14 @@
 //!
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
-//! the Asset, or finds the Asset that already holds the bytes (409). A new
-//! Asset then has the file-size and header Operators run over its version.
-//! Every refusal has a fixed body, so no path or driver error reaches a
-//! client; the operational log names the cause.
+//! the Asset, or finds the original that already holds the bytes (409). A
+//! new Asset then has the file-size, header and preview Operators run over
+//! its version, in that order. The preview run waits for the server's one
+//! preview slot first. Every refusal has a fixed body, apart from the
+//! Source's own reason for refusing a file, so no path or driver error
+//! reaches a client; the operational log names the cause.
 use crate::access::Log;
+use crate::preview::{WorkerCommand, WorkerRunner};
 use axum::{
     body::{Body, BodyDataStream, Bytes},
     extract::{
@@ -26,14 +29,14 @@ use http_body_util::LengthLimitError;
 use serde_json::{json, Value};
 use sidereal_core::{
     access::User,
-    assets::AssetRecord,
+    assets::{AssetRecord, VersionRecord},
     database::Database,
     ingest::{ingest, IngestError, Ingested},
     operations::{run_operator, OperationError, RunOutcome, RunRequest},
     storage::objects::{ObjectStore, StageError, Staged, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
-use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD, READ_HEADER};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, MAKE_PREVIEW, MANUAL_UPLOAD, READ_HEADER};
 use sidereal_plugin_abi::Registry;
 use std::{
     convert::Infallible,
@@ -54,7 +57,8 @@ pub const TRANSPORT_LIMIT: usize = 105_906_176;
 /// Staged writes go to disk in chunks of about this size.
 const WRITE_CHUNK: usize = 1024 * 1024;
 
-/// Turns an opened object into the reader an original is streamed from.
+/// Turns an opened object into the reader an original or a preview is
+/// streamed from.
 pub type OriginalReader = Arc<dyn Fn(std::fs::File) -> Box<dyn Read + Send> + Send + Sync>;
 
 /// What the Asset routes work with: the object store, when the server has
@@ -66,6 +70,8 @@ pub struct Library {
     registry: Arc<Registry>,
     upload_operators: Vec<String>,
     reader: OriginalReader,
+    /// Runs every preview, one at a time, in the preview helper.
+    previews: Arc<WorkerRunner>,
 }
 
 impl Library {
@@ -76,17 +82,38 @@ impl Library {
     /// When a compiled-in pack is refused. That is a build defect, which
     /// the server's unit tests find before any start.
     pub fn new(objects: Option<ObjectStore>) -> Self {
-        let mut registry = Registry::new();
-        for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &ImagePack] {
-            if let Err(error) = registry.register_pack(pack) {
-                panic!("a compiled-in pack was refused: {error}");
-            }
-        }
+        let command = WorkerCommand::beside_current_exe().unwrap_or_else(|_| WorkerCommand {
+            program: WorkerCommand::HELPER.into(),
+            args: Vec::new(),
+        });
+        let previews = Arc::new(WorkerRunner::new(command));
         Self {
             objects,
-            registry: Arc::new(registry),
-            upload_operators: vec![FILE_SIZE.to_owned(), READ_HEADER.to_owned()],
+            registry: Arc::new(production_registry(&previews)),
+            upload_operators: vec![
+                FILE_SIZE.to_owned(),
+                READ_HEADER.to_owned(),
+                MAKE_PREVIEW.to_owned(),
+            ],
             reader: Arc::new(|file| Box::new(file)),
+            previews,
+        }
+    }
+
+    /// The runner that makes this library's previews.
+    #[doc(hidden)]
+    pub fn previews(&self) -> Arc<WorkerRunner> {
+        self.previews.clone()
+    }
+
+    /// Make previews with `runner`, in place of the helper beside the
+    /// server's executable, and rebuild the production Registry around it.
+    #[doc(hidden)]
+    pub fn with_previews(self, runner: Arc<WorkerRunner>) -> Self {
+        Self {
+            registry: Arc::new(production_registry(&runner)),
+            previews: runner,
+            ..self
         }
     }
 
@@ -139,6 +166,7 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
         )
         .route("/api/assets/{id}", get(read))
         .route("/api/assets/{id}/original", get(original))
+        .route("/api/assets/{id}/preview", get(preview))
         .with_state(Assets {
             database,
             library,
@@ -146,7 +174,21 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
         })
 }
 
-/// One Asset as the API shows it.
+/// The Registry of every compiled-in pack, with the image pack's previews
+/// made by `previews`.
+fn production_registry(previews: &Arc<WorkerRunner>) -> Registry {
+    let images = ImagePack::new(previews.clone());
+    let mut registry = Registry::new();
+    for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &images] {
+        if let Err(error) = registry.register_pack(pack) {
+            panic!("a compiled-in pack was refused: {error}");
+        }
+    }
+    registry
+}
+
+/// One Asset as the API shows it. `preview_url` is `null` when its current
+/// version has no preview.
 fn entry(record: &AssetRecord) -> Value {
     json!({
         "id": record.id.to_string(),
@@ -154,6 +196,9 @@ fn entry(record: &AssetRecord) -> Value {
         "name": record.name,
         "current_version_id": record.current_version_id.to_string(),
         "original_url": format!("/api/assets/{}/original", record.id),
+        "preview_url": record
+            .has_preview
+            .then(|| format!("/api/assets/{}/preview", record.id)),
     })
 }
 
@@ -176,8 +221,6 @@ async fn list(State(assets): State<Assets>) -> Response {
 /// A database failure is 503, so it never reads as a missing Asset or as an
 /// Asset with no facets.
 async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
-    let not_found =
-        || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
     let Ok(id) = uuid::Uuid::try_parse(&id) else {
         return not_found();
     };
@@ -216,41 +259,71 @@ async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response 
 
 /// The bytes stored at the current version's hash path. Every failure found
 /// before the response starts is 503; a read that fails later ends the body
-/// early, so the client never receives a complete 200.
+/// early, so the client never receives a complete 200. A derived Asset's id
+/// is 404.
 async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
-    let not_found =
-        || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
     let Ok(id) = uuid::Uuid::try_parse(&id) else {
         return not_found();
     };
-    let record = match assets.database.asset(id).await {
-        Ok(Some(record)) => record,
+    let version = match assets.database.asset(id).await {
+        Ok(Some(record)) => record.version,
         Ok(None) => return not_found(),
         Err(error) => {
             assets.log.line(&format!("original lookup failed: {error}"));
             return unavailable();
         }
     };
+    stream(&assets, id, &version, "original").await
+}
+
+/// The bytes of the preview of the current version, as `original` streams
+/// an original. An unknown id, a derived Asset's id and an original with no
+/// preview are 404.
+async fn preview(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
+    let Ok(id) = uuid::Uuid::try_parse(&id) else {
+        return not_found();
+    };
+    let version = match assets.database.preview(id).await {
+        Ok(Some(version)) => version,
+        Ok(None) => return not_found(),
+        Err(error) => {
+            assets.log.line(&format!("preview lookup failed: {error}"));
+            return unavailable();
+        }
+    };
+    stream(&assets, id, &version, "preview").await
+}
+
+fn not_found() -> Response {
+    (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response()
+}
+
+/// Stream the object of `version`, the `what` of Asset `id`, with its media
+/// type, `nosniff` and `no-store`. Every failure found before the response
+/// starts is 503; a read that fails later ends the body early.
+async fn stream(assets: &Assets, id: uuid::Uuid, version: &VersionRecord, what: &str) -> Response {
     // An Asset is found first, so an unknown id is 404 even without storage.
     let Some(objects) = assets.library.objects.clone() else {
         return unavailable();
     };
-    let hash = record.version.content_hash.clone();
+    let hash = version.content_hash.clone();
     let opened = tokio::task::spawn_blocking(move || objects.open_object(&hash)).await;
     let (file, size) = match opened {
         Ok(Ok(opened)) => opened,
         Ok(Err(error)) => {
             assets
                 .log
-                .line(&format!("original unavailable for asset {id}: {error}"));
+                .line(&format!("{what} unavailable for asset {id}: {error}"));
             return unavailable();
         }
         Err(_) => return unavailable(),
     };
     let reader = (assets.library.reader)(file);
     let log = assets.log.clone();
+    let what = what.to_owned();
     let chunks = futures_util::stream::unfold(Some(reader), move |reader| {
         let log = log.clone();
+        let what = what.clone();
         async move {
             let mut reader = reader?;
             let read = tokio::task::spawn_blocking(move || {
@@ -266,7 +339,7 @@ async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Respo
                     Some((Ok(Bytes::from(buf)), Some(reader)))
                 }
                 Ok((_, _, Err(error))) => {
-                    log.line(&format!("original read failed for asset {id}: {error}"));
+                    log.line(&format!("{what} read failed for asset {id}: {error}"));
                     Some((Err(error), None))
                 }
                 Err(_) => Some((Err(std::io::Error::other("the read task stopped")), None)),
@@ -275,7 +348,7 @@ async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Respo
     });
     (
         [
-            (CONTENT_TYPE, record.version.media_type.clone()),
+            (CONTENT_TYPE, version.media_type.clone()),
             (CONTENT_LENGTH, size.to_string()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
             (CACHE_CONTROL, "no-store".to_owned()),
@@ -294,12 +367,15 @@ fn unavailable() -> Response {
         .into_response()
 }
 
-/// Every refusal an upload can get, each with a fixed message.
+/// Every refusal an upload can get, each with a fixed message, apart from
+/// the Source's reason for a format it does not take.
 #[derive(Debug)]
 enum UploadError {
     Malformed,
     TooLarge,
-    Unsupported,
+    /// The Source refused the file, with its own reason. The server names
+    /// no format.
+    Unsupported(String),
     NoStorage,
     Failed,
 }
@@ -315,10 +391,13 @@ impl IntoResponse for UploadError {
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "the file is larger than the 100 MiB limit",
             ),
-            Self::Unsupported => (
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "unsupported format: only PNG and JPEG images are supported",
-            ),
+            Self::Unsupported(reason) => {
+                let body = json!({
+                    "error": format!("unsupported format: {reason}"),
+                    "reason": reason,
+                });
+                return (StatusCode::UNSUPPORTED_MEDIA_TYPE, Json(body)).into_response();
+            }
             Self::NoStorage => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "storage unavailable: this server has no managed storage",
@@ -489,7 +568,7 @@ async fn upload(
             StatusCode::CONFLICT,
             Json(json!({ "asset": entry(&record) })),
         )),
-        Ok(Err(IngestError::Refused(_))) => Err(UploadError::Unsupported),
+        Ok(Err(IngestError::Refused(reason))) => Err(UploadError::Unsupported(reason)),
         Ok(Err(IngestError::EmptyName)) => Err(UploadError::Malformed),
         Ok(Err(error)) => Err(failed(&error)),
         Err(_) => Err(failed(&"the upload task stopped")),
@@ -501,7 +580,9 @@ async fn upload(
 /// reaches ingest only: the runs get their own flag, which nothing sets. Each
 /// run is independent: a failed run never stops the next one, and never
 /// fails the upload. This task logs each failure under its Operator's id,
-/// since the request may be gone.
+/// since the request may be gone. The preview run first waits, without a
+/// thread, for the preview slot; the record it answers says whether that run
+/// made the version's preview.
 async fn save(
     assets: Assets,
     actor: i64,
@@ -524,11 +605,17 @@ async fn save(
         cancelled,
     )
     .await?;
-    let Ingested::Created(record) = &ingested else {
+    let Ingested::Created(mut record) = ingested else {
         // The bytes are already in the library: its version needs no new run.
         return Ok(ingested);
     };
     for operator in &assets.library.upload_operators {
+        let previewing = operator == MAKE_PREVIEW;
+        let admission = if previewing {
+            Some(assets.library.previews.admit().await)
+        } else {
+            None
+        };
         let outcome = run_operator(
             &assets.database,
             objects,
@@ -541,9 +628,16 @@ async fn save(
             Arc::new(AtomicBool::new(false)),
         )
         .await;
+        drop(admission);
         let id = record.id;
+        if previewing {
+            // Core commits the preview with the run's success.
+            record.has_preview = outcome == Ok(RunOutcome::Succeeded);
+        }
         match outcome {
-            Ok(RunOutcome::Succeeded) => {}
+            // An Operator that does not accept the version did not run, so
+            // there is nothing to log.
+            Ok(RunOutcome::Succeeded | RunOutcome::NotAccepted) => {}
             Ok(RunOutcome::Failed(reason)) => assets
                 .log
                 .line(&format!("{operator} run failed for asset {id}: {reason}")),
@@ -554,7 +648,7 @@ async fn save(
             )),
         }
     }
-    Ok(ingested)
+    Ok(Ingested::Created(record))
 }
 
 /// Write `bytes` to staging on a blocking worker.
@@ -588,11 +682,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_production_registry_runs_the_file_size_and_header_operators_on_upload() {
+    fn the_production_registry_runs_the_file_size_header_and_preview_operators_on_upload() {
         let library = Library::new(None);
         assert!(library.registry.operator(FILE_SIZE).is_some());
         assert!(library.registry.operator(READ_HEADER).is_some());
+        assert!(library.registry.operator(MAKE_PREVIEW).is_some());
         assert!(library.registry.source(MANUAL_UPLOAD).is_some());
-        assert_eq!(library.upload_operators, [FILE_SIZE, READ_HEADER]);
+        assert_eq!(
+            library.upload_operators,
+            [FILE_SIZE, READ_HEADER, MAKE_PREVIEW]
+        );
     }
 }

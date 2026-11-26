@@ -27,8 +27,12 @@ trap 'exit 130' HUP INT TERM
 mkdir -p "$fx/app/scripts" "$fx/app/web" "$fx/bin" "$fx/nosetsid"
 cp "$root/scripts/dev.sh" "$fx/app/scripts/dev.sh"
 # Each stub records its PID, then runs the case's script for that worker.
+# The cargo stub also records each call; a build call exits with
+# $STUB_BUILD, 0 by default, and starts nothing.
 cat >"$fx/bin/cargo" <<'EOF'
 #!/bin/sh
+echo "$*" >>"$FX/cargo-calls"
+[ "$1" = build ] && exit "${STUB_BUILD:-0}"
 echo $$ >>"$FX/pids"
 eval "$STUB_SERVER"
 EOF
@@ -54,6 +58,7 @@ fail() {
 # start SHELL...: starts the supervisor in the background as $sup.
 start() {
   : >"$fx/pids"
+  : >"$fx/cargo-calls"
   rm -f "$fx/child"
   (cd "$fx/app" && PATH=$route_path exec perl -e '$SIG{INT} = "DEFAULT"; exec @ARGV or die' "$@" scripts/dev.sh) \
     >"$fx/log" 2>&1 &
@@ -129,6 +134,38 @@ interrupt_detached_descendant() {
   gone "$(cat "$fx/child")" || fail "the detached descendant outlived the supervisor"
 }
 
+server_builds_the_helper_first() {
+  label="$shell_name, $route: the server worker builds both binaries, then runs"
+  STUB_SERVER='exit 0' STUB_WEB='exec sleep 30' FX=$fx
+  export STUB_SERVER STUB_WEB FX
+  # shellcheck disable=SC2086
+  start $shell
+  finish
+  [ "$status" -eq 0 ] || fail "exit status $status, expected 0"
+  build=$(sed -n 1p "$fx/cargo-calls")
+  run=$(sed -n 2p "$fx/cargo-calls")
+  case "$build" in
+    build*--bin\ sidereal-server*--bin\ sidereal-preview-worker*) ;;
+    *) fail "the first cargo call was '$build', not a build of both binaries" ;;
+  esac
+  case "$run" in
+    run\ -p\ sidereal-server*) ;;
+    *) fail "the second cargo call was '$run', not the server's run" ;;
+  esac
+}
+
+failed_build_runs_no_server() {
+  label="$shell_name, $route: a failed build starts no server"
+  STUB_SERVER='exit 0' STUB_WEB='exec sleep 30' STUB_BUILD=9 FX=$fx
+  export STUB_SERVER STUB_WEB STUB_BUILD FX
+  # shellcheck disable=SC2086
+  start $shell
+  finish
+  unset STUB_BUILD
+  [ "$status" -eq 9 ] || fail "exit status $status, expected 9"
+  [ "$(wc -l <"$fx/cargo-calls" | tr -d ' ')" -eq 1 ] || fail "cargo ran after the failed build"
+}
+
 shells=
 command -v dash >/dev/null 2>&1 && shells="dash"
 command -v bash >/dev/null 2>&1 && shells="$shells bash"
@@ -157,6 +194,8 @@ for shell_name in $shells; do
       'sleep 0.1; exit 7' 'exec sleep 30' 7
     finished_worker_child
     interrupt_detached_descendant
+    server_builds_the_helper_first
+    failed_build_runs_no_server
   done
 done
 

@@ -65,6 +65,7 @@ function asset(overrides: Record<string, unknown> = {}) {
       name: "nebula.png",
       current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
       original_url: `/api/assets/${id}/original`,
+      preview_url: null,
       media_type: "image/png",
       facets: [fileSize],
       ...overrides,
@@ -114,6 +115,67 @@ describe("AssetPage", () => {
     expect(terms()).toEqual(["Format", "File size"]);
     expect(definitions()).toEqual(["PNG", "1,234,567 bytes"]);
     expect(screen.queryByText(noFactsLine)).toBeNull();
+  });
+
+  it("shows the image from its preview when it has one", async () => {
+    stubServer([200, asset({ preview_url: `/api/assets/${id}/preview` })]);
+    showPage();
+    await loaded();
+    const image = screen.getByRole("img", { name: "nebula.png" });
+    expect(image.getAttribute("src")).toBe(`/api/assets/${id}/preview`);
+  });
+
+  it("shows a TIFF's page: its preview, then Format TIFF and its facts", async () => {
+    stubServer([
+      200,
+      asset({
+        name: "m42.tif",
+        media_type: "image/tiff",
+        preview_url: `/api/assets/${id}/preview`,
+        facets: [
+          fileSize,
+          { name: "image.height", label: "Height", value: 600, unit: "pixels" },
+          { name: "image.width", label: "Width", value: 800, unit: "pixels" },
+        ],
+      }),
+    ]);
+    showPage();
+    await screen.findByRole("heading", { name: "m42.tif" });
+    expect(
+      screen.getByRole("img", { name: "m42.tif" }).getAttribute("src"),
+    ).toBe(`/api/assets/${id}/preview`);
+    expect(terms()).toEqual(["Format", "File size", "Height", "Width"]);
+    expect(definitions()).toEqual([
+      "TIFF",
+      "1,234,567 bytes",
+      "600 pixels",
+      "800 pixels",
+    ]);
+  });
+
+  it("shows a TIFF whose preview failed beside the broken-image line", async () => {
+    stubServer([200, asset({ name: "cmyk.tif", media_type: "image/tiff" })]);
+    showPage();
+    await screen.findByRole("heading", { name: "cmyk.tif" });
+    fireEvent.error(screen.getByRole("img", { name: "cmyk.tif" }));
+    screen.getByText("This image could not be displayed.");
+    expect(terms()[0]).toBe("Format");
+    expect(definitions()[0]).toBe("TIFF");
+  });
+
+  it.each([
+    ["off the API", "https://example.com/x.jpg"],
+    [
+      "for another Asset",
+      "/api/assets/5e1d7a40-2b3c-4d5e-8f60-718293a4b5c6/preview",
+    ],
+    ["that is not text", 1],
+  ])("shows the load failure for a preview URL %s", async (_, previewUrl) => {
+    stubServer([200, asset({ preview_url: previewUrl })]);
+    showPage();
+    await screen.findByText(failedLine);
+    screen.getByRole("button", { name: "Retry" });
+    expect(screen.queryByRole("img")).toBeNull();
   });
 
   it("lists every fact in the order the server gives", async () => {

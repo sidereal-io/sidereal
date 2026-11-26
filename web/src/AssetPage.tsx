@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { InBar } from "./Bar.tsx";
+import { imageUrlOf } from "./entry.ts";
 import { Link } from "./navigation.tsx";
 import "./AssetPage.css";
 
@@ -11,7 +12,8 @@ interface Fact {
 
 interface Asset {
   name: string;
-  originalUrl: string;
+  // The address the image shows from: its preview, or else its original.
+  imageUrl: string;
   // The current version's media type, such as `image/png`.
   mediaType: string;
   facts: Fact[];
@@ -34,6 +36,7 @@ function isObject(body: unknown): body is Record<string, unknown> {
 const formats: Record<string, string> = {
   "image/png": "PNG",
   "image/jpeg": "JPEG",
+  "image/tiff": "TIFF",
 };
 
 function formatOf(mediaType: string): string {
@@ -63,8 +66,9 @@ function facts(list: unknown): Fact[] | null {
 }
 
 // The Asset in a body, or null when the body is not this page's Asset with
-// its media type and facets. The original is fetched only from this Asset's
-// own route, and the name, media type and labels are only ever shown as text.
+// its media type and facets. The image is fetched only from this Asset's own
+// preview route, or else its original route, and the name, media type and
+// labels are only ever shown as text.
 function assetOf(body: unknown, id: string): Asset | null {
   if (!isObject(body) || !isObject(body.asset)) return null;
   const { asset } = body;
@@ -80,9 +84,11 @@ function assetOf(body: unknown, id: string): Asset | null {
   }
   const list = facts(asset.facets);
   if (!list) return null;
+  const imageUrl = imageUrlOf(id, asset.preview_url);
+  if (imageUrl === null) return null;
   return {
     name: asset.name,
-    originalUrl: original,
+    imageUrl,
     mediaType: asset.media_type,
     facts: list,
   };
@@ -122,7 +128,7 @@ function Picture({ asset }: { asset: Asset }) {
       ) : (
         <img
           className="asset-image"
-          src={asset.originalUrl}
+          src={asset.imageUrl}
           alt={asset.name}
           onError={() => {
             setBroken(true);

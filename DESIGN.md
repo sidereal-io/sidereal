@@ -346,7 +346,8 @@ it holds the name and the facts.
   runs past the column.
 - **Format is always the first fact line,** with no unit. It comes from the
   current Asset version's media type: `image/png` shows as `PNG`,
-  `image/jpeg` as `JPEG`, and any other media type as it is. Every version
+  `image/jpeg` as `JPEG`, `image/tiff` as `TIFF`, and any other media type as
+  it is. Every version
   has a media type, so the line shows even when no facets are recorded, and
   the facts are never empty.
 - **An image that cannot display keeps its name and facts.** Its 3:2 frame

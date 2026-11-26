@@ -92,6 +92,10 @@ supervise() {
 
 case "${1:-}" in
   server)
+    # The server starts the preview helper from its own folder, so both
+    # binaries are built before the server runs.
+    cargo build --manifest-path server/Cargo.toml -p sidereal-server \
+      --bin sidereal-server --bin sidereal-preview-worker
     exec cargo run -p sidereal-server --manifest-path server/Cargo.toml
     ;;
   web)

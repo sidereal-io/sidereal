@@ -44,7 +44,10 @@ async function fetchList(
 
 // One image, whole, at its own shape once it loads. Until then its frame
 // keeps the 3:2 shape that Library.css gives it. The image and its name are
-// one link to the image's asset page, named for the image.
+// one link to the image's asset page, named for the image. The image shows
+// from its preview, or else its original; the list gives a new card when
+// that address changes, so a failure to show the original does not hide a
+// preview that arrives later.
 function Picture({ entry }: { entry: Entry }) {
   const [ratio, setRatio] = useState<number | null>(null);
   const [broken, setBroken] = useState(false);
@@ -67,7 +70,7 @@ function Picture({ entry }: { entry: Entry }) {
         ) : (
           <img
             className="library-frame"
-            src={entry.originalUrl}
+            src={entry.imageUrl}
             alt={entry.name}
             onLoad={(event) => {
               const { naturalWidth, naturalHeight } = event.currentTarget;
@@ -155,7 +158,6 @@ function Library({
       <input
         ref={pickerRef}
         type="file"
-        accept="image/png,image/jpeg"
         aria-label="Image to upload"
         multiple
         hidden
@@ -191,13 +193,13 @@ function Library({
       )}
       {Array.isArray(list) && list.length === 0 && (
         <p className="library-status">
-          No images yet. Upload a PNG or JPEG to start.
+          No images yet. Upload an image to start.
         </p>
       )}
       {Array.isArray(list) && list.length > 0 && (
         <div className="library-grid">
           {list.map((item) => (
-            <Picture key={item.id} entry={item} />
+            <Picture key={`${item.id} ${item.imageUrl}`} entry={item} />
           ))}
         </div>
       )}

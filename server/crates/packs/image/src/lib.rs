@@ -4,23 +4,33 @@
 //! [`sidereal_plugin_abi`] only, the same contract a third-party pack uses.
 //! `server/scripts/check-arch.sh` enforces that direction.
 //!
-//! Its manual-upload Source recognizes PNG and JPEG from their leading bytes.
-//! It does not decode them: an image with a valid signature but damaged
-//! content is still recognized, and the browser reports when it cannot show
-//! it.
+//! Its manual-upload Source recognizes each format in its `formats` table
+//! from the leading bytes. It does not decode them: an image with a valid
+//! signature but damaged content is still recognized, and the browser
+//! reports when it cannot show it. Every Operator of the pack accepts the
+//! media types of that same table.
 //!
 //! Its file-size Operator records how many bytes an Asset version holds, as
 //! the facet `image.file-size`. Its header Operator records an image's pixel
 //! dimensions, as `image.width` and `image.height`. The format is not a
-//! facet: the Source sets each version's media type from its bytes.
+//! facet: the Source sets each version's media type from its bytes. Its
+//! preview Operator makes a browser-ready JPEG of each image, as a derived
+//! Asset, through a runner the host supplies.
 
+mod formats;
 mod header;
+mod io;
+pub mod preview;
+#[cfg(test)]
+mod testing;
 
 use header::ReadHeader;
+use preview::PreviewRunner;
 use sidereal_plugin_abi::{
     AssetContext, AssetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Operator,
     OperatorError, Pack, Registry, Source, SourceError,
 };
+use std::sync::Arc;
 
 /// The id of the manual-upload Source.
 pub const MANUAL_UPLOAD: &str = "image.manual-upload";
@@ -40,11 +50,26 @@ pub const WIDTH_FACET: &str = "image.width";
 /// The facet the header Operator writes for an image's height in pixels.
 pub const HEIGHT_FACET: &str = "image.height";
 
-/// The refusal a Source run gives for bytes that are neither PNG nor JPEG.
-pub const UNSUPPORTED: &str = "only PNG and JPEG images are supported";
+/// The id of the preview Operator.
+pub const MAKE_PREVIEW: &str = "image.make-preview";
 
-/// The image pack.
-pub struct ImagePack;
+/// The refusal a Source run gives for bytes of no format the pack reads,
+/// such as `only PNG, JPEG and TIFF images are supported`.
+pub fn unsupported() -> String {
+    formats::refusal()
+}
+
+/// The image pack. Its preview Operator makes each preview through
+/// `runner`, which the host supplies.
+pub struct ImagePack {
+    runner: Arc<dyn PreviewRunner>,
+}
+
+impl ImagePack {
+    pub fn new(runner: Arc<dyn PreviewRunner>) -> Self {
+        Self { runner }
+    }
+}
 
 impl Pack for ImagePack {
     fn id(&self) -> &str {
@@ -73,61 +98,8 @@ impl Pack for ImagePack {
             });
         }
         registry.register_operator(Box::new(ReadHeader));
+        registry.register_operator(Box::new(preview::MakePreview(self.runner.clone())));
     }
-}
-
-const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-const JPEG_SIGNATURE: &[u8] = b"\xff\xd8\xff";
-
-/// An image format the pack recognizes from its leading bytes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Format {
-    Png,
-    Jpeg,
-}
-
-impl Format {
-    /// The format whose signature `head` starts with, if any.
-    fn of(head: &[u8]) -> Option<Self> {
-        if head.starts_with(PNG_SIGNATURE) {
-            Some(Self::Png)
-        } else if head.starts_with(JPEG_SIGNATURE) {
-            Some(Self::Jpeg)
-        } else {
-            None
-        }
-    }
-
-    /// The format's name, as the header Operator's failure reasons give it.
-    fn name(self) -> &'static str {
-        match self {
-            Self::Png => "PNG",
-            Self::Jpeg => "JPEG",
-        }
-    }
-
-    fn media_type(self) -> &'static str {
-        match self {
-            Self::Png => "image/png",
-            Self::Jpeg => "image/jpeg",
-        }
-    }
-}
-
-/// The candidate's first bytes, up to the length of the longest signature.
-/// Fewer when the candidate is shorter; `None` when a read fails.
-fn head(context: &mut AssetContext<'_>) -> Option<Vec<u8>> {
-    let mut head = vec![0; PNG_SIGNATURE.len()];
-    let mut read = 0;
-    while read < head.len() {
-        match context.read_candidate(read as u64, &mut head[read..]) {
-            Ok(0) => break,
-            Ok(n) => read += n,
-            Err(_) => return None,
-        }
-    }
-    head.truncate(read);
-    Some(head)
 }
 
 /// Brings one file a person chose into the library.
@@ -143,9 +115,10 @@ impl Source for ManualUpload {
     }
 
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), SourceError> {
-        let head = head(context)
+        let head = io::head(context, formats::probe_len())
             .ok_or_else(|| SourceError::Failed("could not read the candidate".into()))?;
-        let format = Format::of(&head).ok_or_else(|| SourceError::Refused(UNSUPPORTED.into()))?;
+        let format =
+            formats::recognize(&head).ok_or_else(|| SourceError::Refused(unsupported()))?;
         context
             .propose_asset(AssetProposal::new("image", format.media_type()))
             .map_err(|_| SourceError::Failed("the proposal was refused".into()))
@@ -167,6 +140,10 @@ impl Operator for MeasureFileSize {
 
     fn writes(&self) -> &[&str] {
         &[FILE_SIZE_FACET]
+    }
+
+    fn accepts(&self) -> &[&str] {
+        formats::media_types()
     }
 
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {

@@ -109,11 +109,42 @@ describe("useUpload", () => {
         {
           name: "m31.png",
           kind: "refused",
-          reason: "only PNG and JPEG images are supported.",
+          reason: "its format is not supported.",
         },
       ]);
     });
     expect(result.current.saved).toBe(0);
+  });
+
+  it("gives a 415's reason from the server's answer", async () => {
+    const refused = deferred();
+    stubUploads(refused);
+    const { result } = renderHook(() => useUpload(vi.fn(), live()));
+    act(() => {
+      result.current.send([png()]);
+    });
+    await act(async () => {
+      refused.answer(
+        Response.json(
+          {
+            error:
+              "unsupported format: only PNG, JPEG and TIFF images are supported",
+            reason: "only PNG, JPEG and TIFF images are supported",
+          },
+          { status: 415 },
+        ),
+      );
+      await refused.promise;
+    });
+    await waitFor(() => {
+      expect(result.current.lines).toEqual([
+        {
+          name: "m31.png",
+          kind: "refused",
+          reason: "only PNG, JPEG and TIFF images are supported.",
+        },
+      ]);
+    });
   });
 
   it("does not count a repeat upload, and keeps the found Asset's name", async () => {
@@ -133,6 +164,7 @@ describe("useUpload", () => {
               name: "nebula.png",
               current_version_id: "v1",
               original_url: "/api/assets/a1/original",
+              preview_url: null,
             },
           },
           { status: 409 },
