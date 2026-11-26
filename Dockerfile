@@ -34,6 +34,8 @@ RUN useradd --uid 10001 --user-group --no-create-home app \
 COPY --from=server /build/target/release/sidereal-server /usr/local/bin/sidereal-server
 # The operator's recovery command runs beside the server with its settings.
 COPY --from=server /build/target/release/siderealctl /usr/local/bin/siderealctl
+# The server starts the preview helper from its own folder (ADR-020).
+COPY --from=server /build/target/release/sidereal-preview-worker /usr/local/bin/sidereal-preview-worker
 # Root owns the web shell, so the app user cannot change what the server serves.
 COPY --from=web /build/web/dist /usr/share/sidereal/web
 USER app

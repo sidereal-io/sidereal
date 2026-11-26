@@ -893,6 +893,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked_list_allocator"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b23ac50abb8261cb38c6e2a7192d3302e0836dac1628f6a93b82b4fad185897"
+
+[[package]]
 name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1433,6 +1439,7 @@ dependencies = [
  "futures-util",
  "http-body-util",
  "libc",
+ "linked_list_allocator",
  "percent-encoding",
  "serde_json",
  "sidereal-core",

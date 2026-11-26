@@ -18,6 +18,7 @@
 mod formats;
 mod header;
 mod io;
+pub mod preview;
 #[cfg(test)]
 mod testing;
 

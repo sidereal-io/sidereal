@@ -55,12 +55,16 @@ Database tests use unique temporary databases with a separate supervisor for cle
 on success and assertion failure. Missing or unreachable `TEST_DATABASE_URL` fails
 the gate; tests never fall back to `DATABASE_URL`.
 
-A Rust-only contributor can run cargo directly after preparing the same fixture:
+A Rust-only contributor can run cargo directly after preparing the same fixture.
+Build the preview helper, `sidereal-preview-worker`, before the server runs:
+the server starts it from its own folder to make each image's preview, and an
+upload's preview run fails without it. `mise run server` builds both.
 
 ```sh
 export DATABASE_URL=$(mise run db-url)
 export TEST_DATABASE_URL=$(mise run db-test-url)
 cd server
+cargo build -p sidereal-server --bin sidereal-server --bin sidereal-preview-worker
 cargo run -p sidereal-server
 cargo test
 ```
