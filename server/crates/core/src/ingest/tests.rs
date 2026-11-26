@@ -444,8 +444,8 @@ mod ingest_commit {
     async fn insert_asset(fixture: &Fixture, id: &str, name: &str, versions: &[Row<'_>]) {
         let current = versions.last().unwrap().id;
         let mut sql = format!(
-            "BEGIN; INSERT INTO public.assets (id, kind, name, current_version_id) \
-             VALUES ('{id}', 'image', '{name}', '{current}');"
+            "BEGIN; INSERT INTO public.assets (id, kind, name, current_version_id, origin) \
+             VALUES ('{id}', 'image', '{name}', '{current}', 'source');"
         );
         for v in versions {
             sql += &format!(

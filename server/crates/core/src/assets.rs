@@ -152,7 +152,8 @@ impl Database {
         }
         let (asset, version) = (Uuid::new_v4(), Uuid::new_v4());
         sqlx::query(
-            "INSERT INTO public.assets (id, kind, name, current_version_id) VALUES ($1, $2, $3, $4)",
+            "INSERT INTO public.assets (id, kind, name, current_version_id, origin) \
+             VALUES ($1, $2, $3, $4, 'source')",
         )
         .bind(asset)
         .bind(&new.accepted.proposal.kind)
