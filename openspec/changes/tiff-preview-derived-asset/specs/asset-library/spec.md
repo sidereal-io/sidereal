@@ -2,6 +2,27 @@
 
 ## MODIFIED Requirements
 
+### Requirement: An accepted image has a durable Asset and immutable version
+
+A successful first upload SHALL persist an original Asset with an opaque id,
+kind, display name and current-version reference, and an Asset version with
+its own opaque id, BLAKE3 content hash, byte size, recognized format and
+Source provenance. Core SHALL mint identities and compute hashes. The content
+hash SHALL NOT be the primary identity or a unique constraint on versions.
+Persisted version bytes and their descriptive record SHALL be immutable.
+
+#### Scenario: A first image enters the library
+- **WHEN** Nova successfully uploads a PNG named `nebula.png` to an empty library
+- **THEN** one original Asset named `nebula.png` points to one persisted version
+- **AND** its hash and size describe the original bytes, its format is PNG, and its provenance identifies the manual-upload Source
+- **AND** neither opaque id is derived from the filename or content hash
+
+#### Scenario: Restart preserves identity and content
+- **WHEN** the server restarts with the same database and paired storage after a successful upload
+- **THEN** the same original Asset id, name, current-version id, version hash, size, format and provenance remain available
+- **AND** retrieving its original returns the exact uploaded bytes
+- **AND** its preview and the preview's lineage remain
+
 ### Requirement: The administrator can list library Assets
 
 `GET /api/assets` SHALL return 200 with a JSON `assets` array of committed

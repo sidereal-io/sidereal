@@ -265,6 +265,10 @@ its name" applies.
 - **WHEN** the library holds `nebula.png`, saved before this change, whose `preview_url` is `null`
 - **THEN** the Library shows its image from `/api/assets/<id>/original`
 
+#### Scenario: A preview arrives after the original failed to show
+- **WHEN** the Library lists `m42.tif` with `preview_url` `null`, its original fails to show, and a later list gives it `/api/assets/<id>/preview`
+- **THEN** the Library shows its image from `/api/assets/<id>/preview`
+
 #### Scenario: A TIFF whose preview run failed
 - **WHEN** the library holds `cmyk.tif`, whose preview run failed, and the browser cannot show its original
 - **THEN** the Library shows the name `cmyk.tif` beside `This image could not be displayed.`

@@ -62,7 +62,7 @@ types" lists. It SHALL ignore every later image in a TIFF.
 - **THEN** its preview decodes as a JPEG of 1,920 by 1,080 pixels
 
 #### Scenario: A JPEG exceeds the header read limit after its frame header
-- **WHEN** core runs the preview Operator over a valid JPEG whose header fits the header read limit and whose full file is larger than 8 MiB
+- **WHEN** core runs the preview Operator over a valid JPEG whose segments through its first SOS header lie in its first 8 MiB and whose full file is larger than 8 MiB
 - **THEN** the run is `succeeded` and its preview keeps the width and height of the image
 
 ### Requirement: The preview Operator decodes these TIFF types
@@ -216,8 +216,12 @@ budget still fail the run, and the original stays stored unchanged.
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
 #### Scenario: An end marker more than 8 MiB in
-- **WHEN** core runs the preview Operator over a valid baseline JPEG whose frame header lies in its first 8 MiB and whose EOI lies after 8 MiB
+- **WHEN** core runs the preview Operator over a valid baseline JPEG whose segments through its first SOS header lie in its first 8 MiB and whose EOI lies after 8 MiB
 - **THEN** its run is `succeeded`
+
+#### Scenario: A first scan header past 8 MiB
+- **WHEN** core runs the preview Operator over a JPEG whose comment segments push the end of its first SOS header to one byte past 8 MiB
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
 ### Requirement: A JPEG layout the decoder cannot read fails the preview run
 
@@ -233,7 +237,7 @@ The web then shows the original.
 
 #### Scenario: A 4:4:4 baseline JPEG with one scan per component
 - **WHEN** core runs the preview Operator over a valid 4:4:4 baseline JPEG of 640 by 480 pixels whose three components are in three separate scans
-- **THEN** its run is `succeeded` and its preview matches the original's colors
+- **THEN** its run is `succeeded`, and over each 16 by 16 block the preview's mean of each RGB channel is within 8 of libjpeg's decode of the original
 
 ### Requirement: A preview's sides fit a JPEG
 
@@ -300,8 +304,8 @@ accept later requests and SHALL NOT publish a partial preview.
 
 ### Requirement: A stalled preview run releases the preview slot
 
-The preview Operator SHALL stop a decoder that has not exited after two
-minutes. Core SHALL record the preview run as `failed` with the reason
+The preview Operator SHALL stop a preview run whose input copy or decoder
+has not finished two minutes after the run takes the preview slot. Core SHALL record the preview run as `failed` with the reason
 `the preview decoder timed out`. The server SHALL keep the original and
 allow the next preview to run.
 
@@ -309,6 +313,11 @@ allow the next preview to run.
 - **WHEN** a preview decoder is still alive at its deadline, even if its output has closed
 - **THEN** the preview run is `failed` with the timeout reason
 - **AND** a later valid upload completes with a preview
+
+#### Scenario: The input copy stalls
+- **WHEN** reading the original stalls while a preview run copies it for the decoder
+- **THEN** after two minutes the preview run is `failed` with the reason `the preview decoder timed out`
+- **AND** a later upload's preview runs, and an original download is served while it waits
 
 #### Scenario: Staging blocks while a decoder times out
 - **WHEN** a preview decoder reaches its deadline while a staging write is blocked

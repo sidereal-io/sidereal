@@ -154,9 +154,12 @@ crate's behavior is checked at its own boundary.
   an error. A Source run gets `ContextError::NotAllowed` and `broken`, as an
   Operator calling `propose_asset` does today. A new
   `ContextError::Write` reports a write the host refused. A new
-  `ExecutionError::Output` lets an Operator say that it stopped because
-  a preview write failed. `From<ContextError::Write>` gives it, so `?` on
-  `write_preview` reports it.
+  `OperatorError::Output` lets an Operator say that it stopped because a
+  preview write failed, and `impl From<ContextError> for OperatorError`
+  maps `Write` to it, so `?` on `write_preview` reports it. Every other
+  context error maps to `OperatorError::Failed` with its text.
+  `execute_operator` maps `OperatorError::Output` to a new
+  `ExecutionError::Output`, as it maps `Failed` today.
 - The host supplies the destination: a new public trait
   `Output { fn write(&mut self, bytes: &[u8]) -> std::io::Result<()>; }`.
   `execute_operator` takes `output: &mut dyn Output` after the media type
@@ -265,10 +268,11 @@ runs that never ran, which #527's view of processing failures would show.
   occurred (`the preview could not be stored`).
 - **Which reason wins.** The cause that stopped the run is recorded. A
   staging reason replaces the Operator's result only when the Operator
-  reports success or returns `ExecutionError::Output`. When the Operator
+  reports success or `execute_operator` returns `ExecutionError::Output`.
+  When the Operator
   fails for any other reason, such as a decoder timeout, its own reason
   stands and the staging is dropped, even if a staging write also
-  failed. The preview runner returns `ExecutionError::Output` only when a
+  failed. The preview runner returns `OperatorError::Output` only when a
   write failure is what stopped the helper.
 - After the cancellation check, core calls `finish()` and `publish()` on a
   blocking worker. After publication, check cancellation again before
@@ -314,7 +318,7 @@ The pack's source files become:
 | File | Holds |
 |---|---|
 | `src/lib.rs` | `ImagePack`, the public ids, the facet schemas, the manual-upload Source and the file-size Operator. It registers every Operator with the media types from `FORMATS`. |
-| `src/io.rs` | `CandidateReader`, moved from `header.rs` with no format in it, and `head(context, len)`, which reads up to `len` leading bytes. |
+| `src/io.rs` | `ImageInput`, a pack-internal trait with one method, `read_at(offset, buf)`, and its two implementations: one over the Asset context for the host, one over the helper's seekable stdin file. `CandidateReader`, moved from `header.rs` with no format in it, reads through `&mut dyn ImageInput` and records a failed read. `head(context, len)` reads up to `len` leading bytes. |
 | `src/formats/mod.rs` | The `ImageFormat` trait, the `FORMATS` table and the functions built on it. |
 | `src/formats/png.rs`, `jpeg.rs`, `tiff.rs` | One format each, with its read limits and its own unit tests. `tiff.rs` has a private submodule, `tiff/ifd.rs`, for the directory reader (decision 7). |
 | `src/header.rs` | The header Operator, with no format in it. |
@@ -325,6 +329,8 @@ The pack's source files become:
   it is not part of the plugin contract:
 
   ```rust
+  // `CandidateReader` reads through `ImageInput`, so the same format code
+  // runs over the Asset context in the host and over the helper's file.
   pub(crate) trait ImageFormat: Sync {
       /// The name in failure reasons and the refusal, such as `PNG`.
       fn name(&self) -> &'static str;
@@ -429,10 +435,13 @@ it sets up, and the header run must succeed for every TIFF (D4).
   output and uses the runner with its Asset context. The runner reads the
   candidate and writes the result through that context. Core and the public
   plugin ABI know nothing about the helper (ADR-020).
-- **Input and output.** The runner first acquires the preview permit
-  (decision 9), then copies at most 100 MiB to one anonymous temporary
-  file using a fixed-size buffer. A queued run holds no copy, so the
-  server holds at most one copy, at most 100 MiB, at a time. The runner
+- **Admission.** The server's upload waits for the preview permit
+  (decision 9) in async code, before it asks core to run the preview
+  Operator, and hands the permit to the runner. A queued preview holds
+  no blocking worker, no copy and no child.
+- **Input and output.** Holding the permit, the runner copies at most
+  100 MiB to one anonymous temporary file in 64 KiB chunks. A queued run
+  holds no copy. The runner
   closes its handle once the helper has the file, and the copy is freed
   when the helper is reaped. The helper receives the rewound
   file as standard input and the recorded media type as an argument. It
@@ -441,8 +450,16 @@ it sets up, and the header run must succeed for every TIFF (D4).
   the Asset context, where storage writes can block. Discard stderr.
 - **Child ownership and deadline.** A supervisor task owns the child,
   the liveness pipe's only write end, and the preview permit. It owns
-  neither the stdout read loop nor the Asset context. Start a 120-second
-  deadline at spawn. On deadline or a cancellation or output-failure
+  neither the stdout read loop nor the Asset context. It starts when the
+  runner takes the permit, before the copy, and starts a 120-second
+  deadline then, so the deadline covers the copy as well as the child.
+  When the deadline passes during the copy, the supervisor releases the
+  permit and the run fails with the timeout reason; the copy checks for
+  that between chunks and stops, and no child is launched. A read
+  blocked inside the operating system cannot be interrupted, so each
+  timed-out run can leave one blocking worker and one partial copy of at
+  most 100 MiB until that read returns. The next preview may start
+  meanwhile. On deadline or a cancellation or output-failure
   notification, kill and reap the child from the supervisor task even
   if the runner is blocked in storage. On normal exit, reap it and
   report the exit status. A parent exit makes the helper's liveness
@@ -501,8 +518,10 @@ it sets up, and the header run must succeed for every TIFF (D4).
   Accept white-is-zero along with black-is-zero. Let the TIFF decoder
   invert white-is-zero pixels before scaling to 8-bit. Use `tiff` with
   only its LZW and Deflate features enabled.
-- **JPEG.** Keep the 8 MiB bound for the frame-header read and then rewind
-  to the full input. Decode with `zune-jpeg` in strict mode, unmodified.
+- **JPEG.** Keep the existing header bound: the segments through the end
+  of the first SOS header must lie in the first 8 MiB, as the header
+  Operator reads them. Then rewind to the full input. Decode with
+  `zune-jpeg` in strict mode, unmodified.
   zune-jpeg's strict mode alone accepts many files with no EOI, so
   before pixel decoding the helper walks the first image's markers:
   - It reads through one fixed 64 KiB buffer charged to the decoder
@@ -518,16 +537,19 @@ it sets up, and the header run must succeed for every TIFF (D4).
     know, or the end of input before EOI means
     `the JPEG image could not be decoded`.
   - The decoder then reads a view limited to the bytes through that
-    EOI. The frame-header read keeps its own 8 MiB view, separate from
-    the walk, so the walk is not limited to 8 MiB.
+    EOI. The header read keeps its own 8 MiB view through the first SOS
+    header, separate from the walk, so the walk is not limited to 8 MiB.
   - It refuses a sequential frame (SOF0 or SOF1) with any sampling
     factor above 1 whose first scan holds fewer components than the
     frame, with `the JPEG image type is not supported` (D19).
     zune-jpeg 0.5.15 decodes that layout wrongly and reports success.
     With no preview, the web shows the original, which a browser
-    displays itself (D8). Within the scans, take the decoder's best effort: a
-  file that reaches EOI with scan data short of its declared blocks
-  gets a preview with the missing blocks filled by the decoder (D18).
+    displays itself (D8).
+
+  Within the scans, take the decoder's best effort: short scan data in a
+  file that reaches EOI adds no refusal of its own, and the file gets a
+  preview when the decoder succeeds, with the missing blocks filled in
+  (D18). A decoder refusal still fails the run.
   zune-jpeg, jpeg-decoder and libjpeg-turbo all fill such data, and
   certifying every block would mean patching the codec or writing a
   second entropy decoder.
@@ -545,7 +567,7 @@ it sets up, and the header run must succeed for every TIFF (D4).
   later fails a staging write or exits with a signal: a deadline that
   passed before a blocked write failed records the timeout, and a write
   failure that stopped the helper before its deadline returns
-  `ExecutionError::Output`. A candidate read error records
+  `OperatorError::Output`. A candidate read error records
   `the stored file could not be read`, deadline records
   `the preview decoder timed out`, and other unexpected exits record
   `the preview decoder stopped`. Cancellation and output write failure
@@ -575,13 +597,17 @@ it sets up, and the header run must succeed for every TIFF (D4).
 
 - `upload_operators` becomes `FILE_SIZE`, `READ_HEADER`, `MAKE_PREVIEW`.
 - The preview runner shares one `tokio::sync::Semaphore` across uploads.
-  The runner acquires an owned permit before it copies the input, and
-  hands it to the supervisor, which releases it after reaping. The permit
-  covers the copy and the child lifetime.
+  The upload acquires an owned permit with an async wait before it runs
+  the preview Operator, and the runner hands it to the supervisor, which
+  releases it after reaping or at the deadline. The permit covers the
+  copy and the child lifetime.
   The other Operators and final storage writes do not wait for it.
   An overlapping-upload test holds the first helper, checks the second
   has made no input copy and has not launched, and verifies it copies and
-  launches after the first is reaped.
+  launches after the first is reaped. A second test blocks the first
+  run's input copy, then checks that the first run times out, a later
+  preview runs, and an original download is served while the previews
+  wait.
 - `save` returns the record with `has_preview` set to whether the preview run
   succeeded. Core commits the lineage in the same transaction that records
   `succeeded`, so no second read is needed. `save` logs nothing for
@@ -604,7 +630,10 @@ starts with what went wrong, and a client that logs `error` would lose that.
 - `toEntry` accepts `preview_url` only when it is `null` or exactly
   `/api/assets/<id>/preview`, and gives `Entry.imageUrl`, the preview or else
   the original. `AssetPage.tsx`'s `assetOf` does the same. `Library.tsx`
-  and `AssetPage.tsx` use `imageUrl` in their `<img>`.
+  and `AssetPage.tsx` use `imageUrl` in their `<img>`. A Library card
+  resets its image failure and measured ratio when its `imageUrl`
+  changes, so a TIFF that failed from its original shows once its
+  preview arrives.
 - `AssetPage.tsx`'s map from media type to name gains `image/tiff` as
   `TIFF` (D16).
 - **The refusal line (D14).** For a 415, `upload.ts` reads the body's
@@ -646,8 +675,8 @@ types. It is more API than one picker needs today.
 - [A wide-gamut or tagged TIFF (Adobe RGB, ProPhoto) looks less saturated,
   because the preview carries no colour profile] → out of scope. A follow-up
   can copy the ICC profile into the JPEG; `jpeg-encoder` can write one.
-- [A JPEG whose scan data stops short but still ends in EOI gets a preview
-  with filled-in blocks (D18)] → accepted: browsers show the original the
+- [A JPEG whose scan data stops short but still ends in EOI can get a
+  preview with filled-in blocks when the decoder succeeds (D18)] → accepted: browsers show the original the
   same way, the original is kept, and the far more common cut, a file with
   no EOI, fails. A strict option upstream would let a later change refuse
   them.
