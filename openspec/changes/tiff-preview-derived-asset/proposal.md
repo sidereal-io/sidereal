@@ -92,7 +92,8 @@ Operator learn a version's format from the media type the Source recorded
   failure reason `the TIFF header could not be read`; any failed read of the
   stored file fails as a storage problem.
 - `image-upload`: upload recognizes TIFF, and its 415 answer carries the
-  Source's reason. Upload runs the preview Operator after the header run.
+  Source's reason. Upload runs the preview Operator after the header run,
+  and the 409 answer for a repeat upload carries `preview_url`.
   The library screen shows each image through its preview, shows the
   server's reason for a refused format, offers any file in its picker and
   names no format when it is empty.
@@ -108,7 +109,8 @@ Operator learn a version's format from the media type the Source recorded
 - **`server/crates/plugin-abi`:** the public contract changes (ABI 3). An
   Operator declares the media types it accepts and whether it makes
   previews. The Asset context gives the version's media type, and gains a
-  way to propose a derived asset and write its bytes. `execute_operator`
+  way to propose a derived asset and write its bytes. A new error says
+  that a failed preview write stopped the Operator. `execute_operator`
   takes the version's media type and a host-supplied writer for those
   bytes.
 - **`server/crates/core`:** migration 6 adds the asset origin and the

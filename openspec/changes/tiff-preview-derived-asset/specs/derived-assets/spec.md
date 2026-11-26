@@ -112,12 +112,20 @@ exist.
 ### Requirement: A failed write invalidates the preview
 
 A failed staging write SHALL invalidate the preview, even when the
-Operator continues or reports success.
+Operator continues or reports success. Core SHALL record the staging
+reason when the Operator reports success or reports that a preview write
+stopped it. When the Operator fails for another reason, core SHALL record
+the Operator's reason.
 
 #### Scenario: An Operator ignores a storage write failure
 - **WHEN** a test Operator writes part of a preview, ignores a storage error on its next write and reports success
 - **THEN** its run is `failed` with the reason `the preview could not be stored`
 - **AND** no preview is published and no new Asset, version or lineage link exists
+
+#### Scenario: An Operator fails for its own reason after a write failure
+- **WHEN** a test Operator's preview write fails, and the Operator then fails with the reason `stopped early`
+- **THEN** its run is `failed` with the reason `stopped early`
+- **AND** no preview is published
 
 ### Requirement: Cancellation before the preview transaction stops the run
 

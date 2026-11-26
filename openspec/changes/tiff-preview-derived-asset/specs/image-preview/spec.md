@@ -48,9 +48,10 @@ SHALL NOT apply an EXIF orientation.
 The preview Operator SHALL read the image by the version's media type,
 which the Source set from the file's bytes, never by a file name. It SHALL
 decode a PNG of any color type and bit
-depth, an 8-bit baseline or progressive JPEG, and the first image of a TIFF
-of a type that "The preview Operator decodes these TIFF types" lists. It
-SHALL ignore every later image in a TIFF.
+depth, an 8-bit baseline or progressive JPEG except the layout that "A JPEG
+layout the decoder cannot read fails the preview run" names, and the first
+image of a TIFF of a type that "The preview Operator decodes these TIFF
+types" lists. It SHALL ignore every later image in a TIFF.
 
 #### Scenario: A TIFF with several images
 - **WHEN** core runs the preview Operator over a stored TIFF version whose first image is 800 by 600 pixels and whose second image is 200 by 150 pixels
@@ -196,13 +197,43 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 
 ### Requirement: A JPEG that reaches its end marker gets a best-effort preview
 
-A JPEG whose first image reaches its EOI SHALL get a preview even when its
-scan data stops before every block it declares. The decoder fills the
-missing blocks, as browsers do, and the original stays stored unchanged.
+When a JPEG's first image reaches its EOI, the preview Operator SHALL try
+to decode it, and scan data that stops before every block it declares
+SHALL NOT fail the run by itself. The decoder fills the missing blocks, as
+browsers do. The decoder's own refusals, the side limit and the memory
+budget still fail the run, and the original stays stored unchanged.
 
 #### Scenario: A JPEG whose scan data stops short before its EOI
-- **WHEN** core runs the preview Operator over a baseline JPEG of 800 by 600 pixels whose last scan loses its final bytes but still ends in EOI
+- **WHEN** core runs the preview Operator over a baseline 4:2:0 JPEG of 800 by 600 pixels whose last scan loses its final 8 bytes but still ends in EOI
 - **THEN** its run is `succeeded` and its preview decodes as a JPEG of 800 by 600 pixels
+
+#### Scenario: A JPEG that reaches its EOI but that the decoder refuses
+- **WHEN** core runs the preview Operator over a baseline JPEG that ends in EOI and whose scan names a Huffman table that no DHT segment defines
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+
+#### Scenario: An embedded thumbnail's end marker does not count
+- **WHEN** core runs the preview Operator over a JPEG whose EXIF segment holds a thumbnail with its own EOI, and whose main image is cut off with no EOI
+- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
+
+#### Scenario: An end marker more than 8 MiB in
+- **WHEN** core runs the preview Operator over a valid baseline JPEG whose frame header lies in its first 8 MiB and whose EOI lies after 8 MiB
+- **THEN** its run is `succeeded`
+
+### Requirement: A JPEG layout the decoder cannot read fails the preview run
+
+A sequential JPEG whose frame has a component sampling factor above 1, and
+whose first scan holds fewer components than the frame, SHALL get no
+preview. The preview Operator SHALL decode no pixel, and core SHALL record
+its run `failed` with the reason `the JPEG image type is not supported`.
+The web then shows the original.
+
+#### Scenario: A 4:2:0 baseline JPEG with one scan per component
+- **WHEN** core runs the preview Operator over a valid 4:2:0 baseline JPEG whose three components are in three separate scans
+- **THEN** its run is `failed` with the reason `the JPEG image type is not supported`, and the version has no preview
+
+#### Scenario: A 4:4:4 baseline JPEG with one scan per component
+- **WHEN** core runs the preview Operator over a valid 4:4:4 baseline JPEG of 640 by 480 pixels whose three components are in three separate scans
+- **THEN** its run is `succeeded` and its preview matches the original's colors
 
 ### Requirement: A preview's sides fit a JPEG
 
@@ -283,6 +314,14 @@ allow the next preview to run.
 - **WHEN** a preview decoder reaches its deadline while a staging write is blocked
 - **THEN** the server reaps the decoder and lets a later decoder run before the first write returns
 - **AND** when the first write returns successfully, core records the first preview run as `failed` with the timeout reason and publishes no preview
+
+#### Scenario: A blocked write fails after the timeout
+- **WHEN** a preview decoder reaches its deadline while a staging write is blocked, and that write then fails
+- **THEN** core records the preview run as `failed` with the reason `the preview decoder timed out` and publishes no preview
+
+#### Scenario: A write failure stops the decoder before its deadline
+- **WHEN** a staging write fails while the preview decoder is running, before its deadline
+- **THEN** the server stops the decoder, and core records the preview run as `failed` with the reason `the preview could not be stored`
 
 ### Requirement: A preview gets no runs of its own
 

@@ -153,7 +153,10 @@ crate's behavior is checked at its own boundary.
   A second proposal, or a write before a proposal, sets `broken` and returns
   an error. A Source run gets `ContextError::NotAllowed` and `broken`, as an
   Operator calling `propose_asset` does today. A new
-  `ContextError::Write` reports a write the host refused.
+  `ContextError::Write` reports a write the host refused. A new
+  `ExecutionError::Output` lets an Operator say that it stopped because
+  a preview write failed. `From<ContextError::Write>` gives it, so `?` on
+  `write_preview` reports it.
 - The host supplies the destination: a new public trait
   `Output { fn write(&mut self, bytes: &[u8]) -> std::io::Result<()>; }`.
   `execute_operator` takes `output: &mut dyn Output` after the media type
@@ -258,9 +261,15 @@ runs that never ran, which #527's view of processing failures would show.
   none (the context's own reason); the media type is not `image/jpeg` or
   `image/png` (`a preview cannot be <media type>`); no byte was written
   (`the preview is empty`); or staging refused a write
-  (`the preview is larger than 100 MiB`, which takes the place of the
-  Operator's reason); or another staging error occurred (`the preview could
-  not be stored`).
+  (`the preview is larger than 100 MiB`); or another staging error
+  occurred (`the preview could not be stored`).
+- **Which reason wins.** The cause that stopped the run is recorded. A
+  staging reason replaces the Operator's result only when the Operator
+  reports success or returns `ExecutionError::Output`. When the Operator
+  fails for any other reason, such as a decoder timeout, its own reason
+  stands and the staging is dropped, even if a staging write also
+  failed. The preview runner returns `ExecutionError::Output` only when a
+  write failure is what stopped the helper.
 - After the cancellation check, core calls `finish()` and `publish()` on a
   blocking worker. After publication, check cancellation again before
   starting `store`. Once that transaction starts, it decides the outcome.
@@ -399,8 +408,12 @@ Source.
   (256), length (257), bits per sample (258), compression (259),
   photometric interpretation (262), samples per pixel (277), planar
   configuration (284), predictor (317), extra samples (338) and sample
-  format (339) in preview mode. It reads at most 4,096 directory entries.
-  The 64-entry limit applies to arrays of sample properties. The helper
+  format (339) in preview mode. It streams directory entries through a
+  fixed buffer and keeps only the tags it needs, so the number of
+  entries costs time but no memory. It has no entry cap beyond the
+  directory's own count and the file's length, so unrelated private
+  tags never prevent a dimension read. The 64-entry limit applies to
+  arrays of sample properties. The helper
   checks layout arrays separately as decision 8 describes.
 - In dimensions mode it reads only width and height values.
 
@@ -416,8 +429,12 @@ it sets up, and the header run must succeed for every TIFF (D4).
   output and uses the runner with its Asset context. The runner reads the
   candidate and writes the result through that context. Core and the public
   plugin ABI know nothing about the helper (ADR-020).
-- **Input and output.** The runner copies at most 100 MiB to one anonymous
-  temporary file using a fixed-size buffer. The helper receives the rewound
+- **Input and output.** The runner first acquires the preview permit
+  (decision 9), then copies at most 100 MiB to one anonymous temporary
+  file using a fixed-size buffer. A queued run holds no copy, so the
+  server holds at most one copy, at most 100 MiB, at a time. The runner
+  closes its handle once the helper has the file, and the copy is freed
+  when the helper is reaped. The helper receives the rewound
   file as standard input and the recorded media type as an argument. It
   receives no storage path or inherited environment. It writes JPEG chunks
   to stdout. The runner forwards them through a bounded handoff into
@@ -486,9 +503,29 @@ it sets up, and the header run must succeed for every TIFF (D4).
   only its LZW and Deflate features enabled.
 - **JPEG.** Keep the 8 MiB bound for the frame-header read and then rewind
   to the full input. Decode with `zune-jpeg` in strict mode, unmodified.
-  Before pixel decoding, walk the markers of the first image to its EOI
-  and refuse a file with none; zune-jpeg's strict mode alone accepts
-  many such files. Within the scans, take the decoder's best effort: a
+  zune-jpeg's strict mode alone accepts many files with no EOI, so
+  before pixel decoding the helper walks the first image's markers:
+  - It reads through one fixed 64 KiB buffer charged to the decoder
+    budget, and keeps only a few counters and the frame's sampling.
+  - Outside a scan it skips `0xFF` fill bytes, then reads a marker.
+    APPn, COM, DQT, DHT, DRI, DNL and SOFn segments are skipped by their
+    length, checked against the input's end, so an EXIF thumbnail and
+    its own EOI are never read as markers.
+  - After an SOS header it reads entropy data: `0xFF 0x00` is a stuffed
+    byte, `0xFF` followed by `0xFF` is fill, RST0 to RST7 continue the
+    scan, and any other marker ends it.
+  - It stops at the first EOI. A second SOI, a marker it does not
+    know, or the end of input before EOI means
+    `the JPEG image could not be decoded`.
+  - The decoder then reads a view limited to the bytes through that
+    EOI. The frame-header read keeps its own 8 MiB view, separate from
+    the walk, so the walk is not limited to 8 MiB.
+  - It refuses a sequential frame (SOF0 or SOF1) with any sampling
+    factor above 1 whose first scan holds fewer components than the
+    frame, with `the JPEG image type is not supported` (D19).
+    zune-jpeg 0.5.15 decodes that layout wrongly and reports success.
+    With no preview, the web shows the original, which a browser
+    displays itself (D8). Within the scans, take the decoder's best effort: a
   file that reaches EOI with scan data short of its declared blocks
   gets a preview with the missing blocks filled by the decoder (D18).
   zune-jpeg, jpeg-decoder and libjpeg-turbo all fill such data, and
@@ -501,10 +538,14 @@ it sets up, and the header run must succeed for every TIFF (D4).
   baseline JPEG with 4:4:4 sampling and standard Huffman tables. Stream it
   without buffering a whole JPEG. An unexpected helper exit is a preview
   failure and never completes the proposal. Separate exit statuses identify
-  a decode budget rejection, unsupported TIFF, oversized dimensions and
+  a decode budget rejection, an unsupported TIFF or JPEG layout,
+  oversized dimensions and
   invalid image data. Use the spec's failure reason for each status.
   Report the first host failure that caused shutdown even if the process
-  later exits with a signal. A candidate read error records
+  later fails a staging write or exits with a signal: a deadline that
+  passed before a blocked write failed records the timeout, and a write
+  failure that stopped the helper before its deadline returns
+  `ExecutionError::Output`. A candidate read error records
   `the stored file could not be read`, deadline records
   `the preview decoder timed out`, and other unexpected exits record
   `the preview decoder stopped`. Cancellation and output write failure
@@ -521,8 +562,11 @@ it sets up, and the header run must succeed for every TIFF (D4).
   floating-point strips and padded tiles, more than 64 tiles, an
   incompatible predictor, and a valid TIFF whose pixels exceed 256 MiB.
   Test JPEG separate component scans with 4:4:4 sampling, inter-scan
-  metadata, missing EOI, and a final scan cut short before its EOI, which
-  succeeds.
+  metadata, missing EOI, an EXIF thumbnail whose own EOI sits inside a
+  cut-off file, a valid EOI more than 8 MiB in, a valid multi-scan
+  progressive file, a refused subsampled separate-scan layout, a final
+  scan cut short before its EOI, which succeeds, and a file with an EOI
+  that the decoder refuses.
   Test PNG with complete pixels but
   missing IEND. For a preflight refusal, instrument entry to pixel
   decoding and use an input with actual pixel data.
@@ -531,11 +575,13 @@ it sets up, and the header run must succeed for every TIFF (D4).
 
 - `upload_operators` becomes `FILE_SIZE`, `READ_HEADER`, `MAKE_PREVIEW`.
 - The preview runner shares one `tokio::sync::Semaphore` across uploads.
-  The supervisor acquires an owned permit before launching each helper
-  and releases it after reaping. The permit covers the child lifetime.
+  The runner acquires an owned permit before it copies the input, and
+  hands it to the supervisor, which releases it after reaping. The permit
+  covers the copy and the child lifetime.
   The other Operators and final storage writes do not wait for it.
   An overlapping-upload test holds the first helper, checks the second
-  waits to launch and verifies it can launch after the first is reaped.
+  has made no input copy and has not launched, and verifies it copies and
+  launches after the first is reaped.
 - `save` returns the record with `has_preview` set to whether the preview run
   succeeded. Core commits the lineage in the same transaction that records
   `succeeded`, so no second read is needed. `save` logs nothing for
@@ -606,10 +652,11 @@ types. It is more API than one picker needs today.
   no EOI, fails. A strict option upstream would let a later change refuse
   them.
 - [zune-jpeg 0.5.15 decodes a subsampled baseline JPEG with separate
-  component scans wrongly but reports success] → accepted for now: such
-  files need a custom scan script and are rare. The fix (upstream issue
-  448) is in the 0.5.16 release candidates, and the dependency update will
-  bring it.
+  component scans wrongly but reports success] → the marker walk refuses
+  that layout (D19), and the web shows the original instead. Such files
+  need a custom scan script and are rare. The fix (upstream issue 448)
+  is in the 0.5.16 release candidates. A later change can lift the
+  refusal once a release with the fix is pinned and tested.
 - [A phone JPEG with an EXIF rotation shows unrotated, where the browser
   rotated the original before] → the spec says so. Astro images rarely carry
   a rotation; a follow-up can apply it.

@@ -159,6 +159,33 @@ another run's values, and the server SHALL go on answering requests.
 - **THEN** the response is 201, the Asset and its version remain, and reading the Asset returns no `image.width` or `image.height` facet
 - **AND** the server log has a line that starts `image.read-header run not recorded for asset <id>:`
 
+### Requirement: A repeat upload answers 409 with the existing Asset
+
+When ingest finds the existing Asset for an upload, as the asset-library
+capability defines, `POST /api/assets` SHALL answer 409 Conflict with a JSON
+body holding an `asset` object for the found Asset. The object SHALL use the
+same entry fields as the library list and the 201 answer: `id`, `kind`,
+`name`, `current_version_id`, `original_url` and `preview_url`. A first upload
+SHALL still answer 201. A failed publication SHALL still answer 503, not 409.
+
+#### Scenario: The same PNG again
+- **WHEN** Nova uploads `nebula.png`, and then uploads the same bytes as `m31-final.png`
+- **THEN** the first answer is 201 and the second is 409
+- **AND** the 409 body's `asset` has the first answer's `id`, `current_version_id`, `original_url` and `preview_url`, and `name` `nebula.png`
+
+#### Scenario: A repeat of an image with no preview
+- **WHEN** Nova uploads a CMYK TIFF whose preview run fails, and then uploads the same bytes again
+- **THEN** the second answer is 409, and its `asset.preview_url` is `null`
+
+#### Scenario: A refused upload is not a repeat
+- **WHEN** Nova uploads plain text named `nebula.png`
+- **THEN** the answer is 415, and not 409
+
+#### Scenario: The stored object of the existing Asset is damaged
+- **WHEN** Nova uploads `nebula.png`, its stored object's bytes then change, and Nova uploads the same bytes again
+- **THEN** the second answer is 503, and not 409
+- **AND** the library still holds one original and its one version, and the original's stored object is unchanged
+
 ## ADDED Requirements
 
 ### Requirement: A refused upload carries the Source's reason
