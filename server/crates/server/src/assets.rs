@@ -29,7 +29,7 @@ use http_body_util::LengthLimitError;
 use serde_json::{json, Value};
 use sidereal_core::{
     access::User,
-    assets::AssetRecord,
+    assets::{AssetRecord, VersionRecord},
     database::Database,
     ingest::{ingest, IngestError, Ingested},
     operations::{run_operator, OperationError, RunOutcome, RunRequest},
@@ -57,7 +57,8 @@ pub const TRANSPORT_LIMIT: usize = 105_906_176;
 /// Staged writes go to disk in chunks of about this size.
 const WRITE_CHUNK: usize = 1024 * 1024;
 
-/// Turns an opened object into the reader an original is streamed from.
+/// Turns an opened object into the reader an original or a preview is
+/// streamed from.
 pub type OriginalReader = Arc<dyn Fn(std::fs::File) -> Box<dyn Read + Send> + Send + Sync>;
 
 /// What the Asset routes work with: the object store, when the server has
@@ -165,6 +166,7 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
         )
         .route("/api/assets/{id}", get(read))
         .route("/api/assets/{id}/original", get(original))
+        .route("/api/assets/{id}/preview", get(preview))
         .with_state(Assets {
             database,
             library,
@@ -219,8 +221,6 @@ async fn list(State(assets): State<Assets>) -> Response {
 /// A database failure is 503, so it never reads as a missing Asset or as an
 /// Asset with no facets.
 async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
-    let not_found =
-        || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
     let Ok(id) = uuid::Uuid::try_parse(&id) else {
         return not_found();
     };
@@ -259,41 +259,71 @@ async fn read(State(assets): State<Assets>, Path(id): Path<String>) -> Response 
 
 /// The bytes stored at the current version's hash path. Every failure found
 /// before the response starts is 503; a read that fails later ends the body
-/// early, so the client never receives a complete 200.
+/// early, so the client never receives a complete 200. A derived Asset's id
+/// is 404.
 async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
-    let not_found =
-        || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
     let Ok(id) = uuid::Uuid::try_parse(&id) else {
         return not_found();
     };
-    let record = match assets.database.asset(id).await {
-        Ok(Some(record)) => record,
+    let version = match assets.database.asset(id).await {
+        Ok(Some(record)) => record.version,
         Ok(None) => return not_found(),
         Err(error) => {
             assets.log.line(&format!("original lookup failed: {error}"));
             return unavailable();
         }
     };
+    stream(&assets, id, &version, "original").await
+}
+
+/// The bytes of the preview of the current version, as `original` streams
+/// an original. An unknown id, a derived Asset's id and an original with no
+/// preview are 404.
+async fn preview(State(assets): State<Assets>, Path(id): Path<String>) -> Response {
+    let Ok(id) = uuid::Uuid::try_parse(&id) else {
+        return not_found();
+    };
+    let version = match assets.database.preview(id).await {
+        Ok(Some(version)) => version,
+        Ok(None) => return not_found(),
+        Err(error) => {
+            assets.log.line(&format!("preview lookup failed: {error}"));
+            return unavailable();
+        }
+    };
+    stream(&assets, id, &version, "preview").await
+}
+
+fn not_found() -> Response {
+    (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response()
+}
+
+/// Stream the object of `version`, the `what` of Asset `id`, with its media
+/// type, `nosniff` and `no-store`. Every failure found before the response
+/// starts is 503; a read that fails later ends the body early.
+async fn stream(assets: &Assets, id: uuid::Uuid, version: &VersionRecord, what: &str) -> Response {
     // An Asset is found first, so an unknown id is 404 even without storage.
     let Some(objects) = assets.library.objects.clone() else {
         return unavailable();
     };
-    let hash = record.version.content_hash.clone();
+    let hash = version.content_hash.clone();
     let opened = tokio::task::spawn_blocking(move || objects.open_object(&hash)).await;
     let (file, size) = match opened {
         Ok(Ok(opened)) => opened,
         Ok(Err(error)) => {
             assets
                 .log
-                .line(&format!("original unavailable for asset {id}: {error}"));
+                .line(&format!("{what} unavailable for asset {id}: {error}"));
             return unavailable();
         }
         Err(_) => return unavailable(),
     };
     let reader = (assets.library.reader)(file);
     let log = assets.log.clone();
+    let what = what.to_owned();
     let chunks = futures_util::stream::unfold(Some(reader), move |reader| {
         let log = log.clone();
+        let what = what.clone();
         async move {
             let mut reader = reader?;
             let read = tokio::task::spawn_blocking(move || {
@@ -309,7 +339,7 @@ async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Respo
                     Some((Ok(Bytes::from(buf)), Some(reader)))
                 }
                 Ok((_, _, Err(error))) => {
-                    log.line(&format!("original read failed for asset {id}: {error}"));
+                    log.line(&format!("{what} read failed for asset {id}: {error}"));
                     Some((Err(error), None))
                 }
                 Err(_) => Some((Err(std::io::Error::other("the read task stopped")), None)),
@@ -318,7 +348,7 @@ async fn original(State(assets): State<Assets>, Path(id): Path<String>) -> Respo
     });
     (
         [
-            (CONTENT_TYPE, record.version.media_type.clone()),
+            (CONTENT_TYPE, version.media_type.clone()),
             (CONTENT_LENGTH, size.to_string()),
             (X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
             (CACHE_CONTROL, "no-store".to_owned()),
