@@ -419,6 +419,29 @@ impl Candidate for Stalls {
     }
 }
 
+/// Upload A's run frees the slot, upload B takes it, and then A's admission
+/// is dropped. B must keep its slot until its own run takes it.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_earlier_uploads_admission_leaves_a_later_uploads_slot_alone() {
+    let runner = script_runner("exec cat");
+    let first = runner.admit().await;
+    let ran = {
+        let runner = runner.clone();
+        tokio::task::spawn_blocking(move || run(&runner, b"first"))
+            .await
+            .unwrap()
+    };
+    assert_eq!(ran, (Ok(()), b"first".to_vec()));
+    let second = runner.admit().await;
+    drop(first);
+    let third = tokio::time::timeout(Duration::from_millis(200), runner.admit()).await;
+    assert!(
+        third.is_err(),
+        "a third upload took the second upload's slot"
+    );
+    drop(second);
+}
+
 #[test]
 fn a_stalled_input_read_that_fails_after_the_deadline_keeps_the_timeout_reason() {
     let runner = script_runner("exec cat");

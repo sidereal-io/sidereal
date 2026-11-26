@@ -24,7 +24,7 @@ use std::{
     pin::pin,
     process::{Child, ChildStdout, Command, ExitStatus, Stdio},
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc, Condvar, Mutex, MutexGuard,
     },
     task::{Context, Poll, Wake, Waker},
@@ -78,19 +78,28 @@ pub struct WorkerRunner {
     command: WorkerCommand,
     deadline: Duration,
     slot: Arc<Semaphore>,
-    /// A slot permit an upload took before it asked core to run the preview.
-    admitted: Mutex<Option<OwnedSemaphorePermit>>,
+    /// A slot permit an upload took before it asked core to run the preview,
+    /// with the ticket of the admission that took it.
+    admitted: Mutex<Option<(u64, OwnedSemaphorePermit)>>,
+    /// The ticket the next admission gets.
+    tickets: AtomicU64,
     /// How many runs have begun copying their input.
     copies: AtomicUsize,
 }
 
 /// The slot an upload holds for the preview run it starts next. Dropping it
-/// frees a slot no run took.
-pub struct Admission<'a>(&'a WorkerRunner);
+/// frees a slot no run took. It never frees a slot a later upload holds.
+pub struct Admission<'a> {
+    runner: &'a WorkerRunner,
+    ticket: u64,
+}
 
 impl Drop for Admission<'_> {
     fn drop(&mut self) {
-        lock(&self.0.admitted).take();
+        let mut admitted = lock(&self.runner.admitted);
+        if matches!(&*admitted, Some((ticket, _)) if *ticket == self.ticket) {
+            admitted.take();
+        }
     }
 }
 
@@ -104,6 +113,7 @@ impl WorkerRunner {
             deadline: Self::DEADLINE,
             slot: Arc::new(Semaphore::new(1)),
             admitted: Mutex::new(None),
+            tickets: AtomicU64::new(0),
             copies: AtomicUsize::new(0),
         }
     }
@@ -123,8 +133,12 @@ impl WorkerRunner {
             .acquire_owned()
             .await
             .expect("the slot is never closed");
-        *lock(&self.admitted) = Some(permit);
-        Admission(self)
+        let ticket = self.tickets.fetch_add(1, Ordering::SeqCst);
+        *lock(&self.admitted) = Some((ticket, permit));
+        Admission {
+            runner: self,
+            ticket,
+        }
     }
 
     /// How many runs have begun copying their input. A run begins its copy
@@ -136,7 +150,7 @@ impl WorkerRunner {
     /// The slot an upload took for this run, or else the slot once it is
     /// free.
     fn take_slot(&self) -> OwnedSemaphorePermit {
-        if let Some(permit) = lock(&self.admitted).take() {
+        if let Some((_, permit)) = lock(&self.admitted).take() {
             return permit;
         }
         block_on(self.slot.clone().acquire_owned()).expect("the slot is never closed")
