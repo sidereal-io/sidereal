@@ -134,5 +134,7 @@ Operator learn a version's format from the media type the Source recorded
   derived asset with lineage, the open question that ADR-003 left for the
   Operator contract. ADR-019 records that Operators declare the media types
   they accept.
-- **Cost:** every new upload stores a second object, its preview (D1), and
-  a large TIFF makes the upload answer later (D7).
+- **Cost:** each new upload whose preview succeeds gets a derived Asset
+  and version for that preview (D1). It also stores a second object,
+  unless the library already holds a file with the same bytes. A large
+  TIFF makes the upload answer later (D7).
