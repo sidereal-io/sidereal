@@ -396,10 +396,12 @@ fn a_helper_that_closes_its_output_but_never_exits_times_out() {
     assert!(!exists(recorded_pid(&scratch)));
 }
 
-/// A candidate whose first read blocks until `release` gets a message.
+/// A candidate whose first read blocks until `release` gets a message, then
+/// returns its bytes, or fails when `fails` is set.
 struct Stalls {
     release: Mutex<mpsc::Receiver<()>>,
     started: mpsc::Sender<()>,
+    fails: bool,
 }
 
 impl Candidate for Stalls {
@@ -409,9 +411,34 @@ impl Candidate for Stalls {
     fn read_at(&mut self, _: u64, buf: &mut [u8]) -> std::io::Result<usize> {
         let _ = self.started.send(());
         let _ = self.release.lock().unwrap().recv();
+        if self.fails {
+            return Err(std::io::Error::other("the disk went away"));
+        }
         buf[..5].copy_from_slice(b"bytes");
         Ok(5)
     }
+}
+
+#[test]
+fn a_stalled_input_read_that_fails_after_the_deadline_keeps_the_timeout_reason() {
+    let runner = script_runner("exec cat");
+    let (release, wait) = mpsc::channel();
+    let (started, has_started) = mpsc::channel();
+    let first = {
+        let runner = runner.clone();
+        std::thread::spawn(move || {
+            let mut candidate = Stalls {
+                release: Mutex::new(wait),
+                started,
+                fails: true,
+            };
+            run_with(&runner, &mut candidate, &mut Kept::default(), &|| false)
+        })
+    };
+    has_started.recv().unwrap();
+    std::thread::sleep(DEADLINE + Duration::from_millis(500));
+    release.send(()).unwrap();
+    assert_eq!(first.join().unwrap(), failed(TIMED_OUT));
 }
 
 #[test]
@@ -430,6 +457,7 @@ fn a_stalled_input_copy_times_out_and_frees_the_slot_for_the_next_preview() {
             let mut candidate = Stalls {
                 release: Mutex::new(wait),
                 started,
+                fails: false,
             };
             let start = Instant::now();
             let outcome = run_with(&runner, &mut candidate, &mut Kept::default(), &|| false);

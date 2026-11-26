@@ -387,13 +387,21 @@ fn copy(context: &mut AssetContext<'_>, shared: &Shared) -> Result<Option<File>,
             shared.stop(Cause::Cancelled);
             return Ok(None);
         }
-        let read = context
-            .read_candidate(offset, &mut chunk)
-            .map_err(|_| OperatorError::Failed(UNREADABLE.into()))?;
+        // A read or write that fails after the run stopped keeps the stop's
+        // reason, such as the deadline that passed while it was blocked.
+        let read = match context.read_candidate(offset, &mut chunk) {
+            Ok(read) => read,
+            Err(_) if shared.cause().is_some() => return Ok(None),
+            Err(_) => return Err(OperatorError::Failed(UNREADABLE.into())),
+        };
         if read == 0 {
             break;
         }
-        file.write_all(&chunk[..read]).map_err(stopped)?;
+        match file.write_all(&chunk[..read]) {
+            Ok(()) => {}
+            Err(_) if shared.cause().is_some() => return Ok(None),
+            Err(error) => return Err(stopped(error)),
+        }
         offset += read as u64;
     }
     // A read that returned after the deadline must not launch a helper.
