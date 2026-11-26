@@ -13,7 +13,9 @@
 //! Its file-size Operator records how many bytes an Asset version holds, as
 //! the facet `image.file-size`. Its header Operator records an image's pixel
 //! dimensions, as `image.width` and `image.height`. The format is not a
-//! facet: the Source sets each version's media type from its bytes.
+//! facet: the Source sets each version's media type from its bytes. Its
+//! preview Operator makes a browser-ready JPEG of each image, as a derived
+//! Asset, through a runner the host supplies.
 
 mod formats;
 mod header;
@@ -23,10 +25,12 @@ pub mod preview;
 mod testing;
 
 use header::ReadHeader;
+use preview::PreviewRunner;
 use sidereal_plugin_abi::{
     AssetContext, AssetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Operator,
     OperatorError, Pack, Registry, Source, SourceError,
 };
+use std::sync::Arc;
 
 /// The id of the manual-upload Source.
 pub const MANUAL_UPLOAD: &str = "image.manual-upload";
@@ -46,14 +50,26 @@ pub const WIDTH_FACET: &str = "image.width";
 /// The facet the header Operator writes for an image's height in pixels.
 pub const HEIGHT_FACET: &str = "image.height";
 
+/// The id of the preview Operator.
+pub const MAKE_PREVIEW: &str = "image.make-preview";
+
 /// The refusal a Source run gives for bytes of no format the pack reads,
 /// such as `only PNG and JPEG images are supported`.
 pub fn unsupported() -> String {
     formats::refusal()
 }
 
-/// The image pack.
-pub struct ImagePack;
+/// The image pack. Its preview Operator makes each preview through
+/// `runner`, which the host supplies.
+pub struct ImagePack {
+    runner: Arc<dyn PreviewRunner>,
+}
+
+impl ImagePack {
+    pub fn new(runner: Arc<dyn PreviewRunner>) -> Self {
+        Self { runner }
+    }
+}
 
 impl Pack for ImagePack {
     fn id(&self) -> &str {
@@ -82,6 +98,7 @@ impl Pack for ImagePack {
             });
         }
         registry.register_operator(Box::new(ReadHeader));
+        registry.register_operator(Box::new(preview::MakePreview(self.runner.clone())));
     }
 }
 

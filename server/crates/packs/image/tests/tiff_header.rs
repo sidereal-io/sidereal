@@ -3,7 +3,10 @@
 #[path = "common/tiff.rs"]
 mod tiff;
 
-use sidereal_pack_image::{ImagePack, READ_HEADER};
+#[path = "common/runner.rs"]
+mod runner;
+
+use sidereal_pack_image::READ_HEADER;
 use sidereal_plugin_abi::{Candidate, ExecutionError, FacetProposal, FacetValue, Output, Registry};
 use tiff::*;
 
@@ -32,7 +35,7 @@ impl Output for Discard {
 /// Run the header Operator over `bytes`, a version of `image/tiff`.
 fn read_header(bytes: Vec<u8>) -> Result<Vec<FacetProposal>, ExecutionError> {
     let mut registry = Registry::new();
-    registry.register_pack(&ImagePack).unwrap();
+    registry.register_pack(&runner::pack()).unwrap();
     registry
         .execute_operator(
             READ_HEADER,

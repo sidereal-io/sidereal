@@ -254,7 +254,17 @@ fn decode(job: Job) -> u8 {
     DECODING.with(|d| d.set(true));
     let heap = mapped.heap;
     let outcome = match job.check.as_deref() {
-        None => Err(JobFailure::Unsupported),
+        None => {
+            // SAFETY: descriptor 0 is the candidate's copy, open for the
+            // life of the process.
+            let input = std::mem::ManuallyDrop::new(unsafe { File::from_raw_fd(0) });
+            sidereal_pack_image::preview::make_preview(
+                &input,
+                &job.media_type,
+                heap,
+                &mut *stdout(),
+            )
+        }
         Some("describe") => {
             let text = format!(
                 "stack={} heap={} page={} budget={}\n",

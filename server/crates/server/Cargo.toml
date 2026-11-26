@@ -41,3 +41,7 @@ linked_list_allocator = { workspace = true }
 
 [dev-dependencies]
 tokio-tungstenite = { workspace = true }
+# Build and read the images the preview tests use.
+png = { workspace = true }
+jpeg-encoder = { workspace = true }
+zune-jpeg = { workspace = true }

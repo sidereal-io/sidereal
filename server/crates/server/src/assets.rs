@@ -8,6 +8,7 @@
 //! Every refusal has a fixed body, so no path or driver error reaches a
 //! client; the operational log names the cause.
 use crate::access::Log;
+use crate::preview::{WorkerCommand, WorkerRunner};
 use axum::{
     body::{Body, BodyDataStream, Bytes},
     extract::{
@@ -76,8 +77,14 @@ impl Library {
     /// When a compiled-in pack is refused. That is a build defect, which
     /// the server's unit tests find before any start.
     pub fn new(objects: Option<ObjectStore>) -> Self {
+        let command = WorkerCommand::beside_current_exe().unwrap_or_else(|_| WorkerCommand {
+            program: WorkerCommand::HELPER.into(),
+            args: Vec::new(),
+        });
+        let previews = Arc::new(WorkerRunner::new(command));
+        let images = ImagePack::new(previews);
         let mut registry = Registry::new();
-        for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &ImagePack] {
+        for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &images] {
             if let Err(error) = registry.register_pack(pack) {
                 panic!("a compiled-in pack was refused: {error}");
             }

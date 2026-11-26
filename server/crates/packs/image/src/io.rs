@@ -12,6 +12,15 @@ pub(crate) trait ImageInput {
     fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> io::Result<usize>;
 }
 
+/// The helper's input: a seekable file, read with positioned reads.
+pub(crate) struct FileInput<'f>(pub &'f std::fs::File);
+
+impl ImageInput for FileInput<'_> {
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
+        std::os::unix::fs::FileExt::read_at(self.0, buf, offset)
+    }
+}
+
 /// An Operator's candidate, read through its Asset context. A read after
 /// the host cancelled the run fails.
 pub(crate) struct ContextInput<'c, 'a>(pub &'c mut AssetContext<'a>);

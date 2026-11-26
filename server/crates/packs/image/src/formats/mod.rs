@@ -1,7 +1,10 @@
 //! The image formats the pack reads, one module each, and the one table that
 //! drives recognition, the Operators' accepted media types and the refusal
 //! text. Adding a format adds one module and one entry in [`FORMATS`].
-use crate::io::CandidateReader;
+use crate::{
+    io::{CandidateReader, ImageInput},
+    preview::{JobFailure, Pixels},
+};
 use std::sync::LazyLock;
 
 mod jpeg;
@@ -30,6 +33,15 @@ pub(crate) trait ImageFormat: Sync {
     /// The width and height the header stores, read under this format's
     /// own read limits, or `None` when they cannot be read.
     fn dimensions(&self, reader: &mut CandidateReader<'_>) -> Option<(u32, u32)>;
+    /// Render the first image for its preview from `input`, which holds
+    /// `size` bytes: read the header, check it against the shared limits
+    /// and `budget`, then decode its pixels.
+    fn render_preview(
+        &self,
+        input: &mut dyn ImageInput,
+        size: u64,
+        budget: usize,
+    ) -> Result<Pixels, JobFailure>;
 }
 
 /// Every format the pack reads, in the order the Source tries them.

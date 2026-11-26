@@ -1,6 +1,6 @@
 //! Test-only: the counting allocator of the pack's unit-test build, an
 //! in-memory candidate, and small builders for crafted files.
-use crate::{ImagePack, READ_HEADER};
+use crate::{preview::PreviewRunner, ImagePack, READ_HEADER};
 use sidereal_plugin_abi::{Candidate, ExecutionError, FacetProposal, Output, Registry};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -109,6 +109,33 @@ impl Candidate for Bytes {
     }
 }
 
+/// An input held in memory, for the format modules' own tests.
+pub(crate) struct Memory(pub Vec<u8>);
+
+impl crate::io::ImageInput for Memory {
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+        let start = (offset as usize).min(self.0.len());
+        let n = buf.len().min(self.0.len() - start);
+        buf[..n].copy_from_slice(&self.0[start..start + n]);
+        Ok(n)
+    }
+}
+
+/// Run the preview job over `bytes`, a version of `media_type`, with a
+/// 512 MiB budget. Gives the JPEG's length and the most the job held
+/// beyond what the thread held before, input and output not counted.
+pub(crate) fn measured_preview(
+    bytes: Vec<u8>,
+    media_type: &str,
+) -> (Result<usize, crate::preview::JobFailure>, usize) {
+    let size = bytes.len() as u64;
+    let mut input = Memory(bytes);
+    let mut output = Vec::with_capacity(64 * MIB);
+    let (outcome, held) =
+        measured(|| crate::preview::render(&mut input, size, media_type, 512 * MIB, &mut output));
+    (outcome.map(|()| output.len()), held)
+}
+
 /// A host destination that drops every preview byte.
 pub(crate) struct Discard;
 
@@ -118,13 +145,31 @@ impl Output for Discard {
     }
 }
 
+struct NoPreviews;
+
+impl PreviewRunner for NoPreviews {
+    fn run(
+        &self,
+        _: &mut sidereal_plugin_abi::AssetContext<'_>,
+    ) -> Result<(), sidereal_plugin_abi::OperatorError> {
+        Err(sidereal_plugin_abi::OperatorError::Failed(
+            "this test runs no preview".into(),
+        ))
+    }
+}
+
+/// The image pack, with a runner that makes no preview.
+pub(crate) fn pack() -> ImagePack {
+    ImagePack::new(std::sync::Arc::new(NoPreviews))
+}
+
 /// Run the header Operator over `candidate` as a version of `media_type`.
 pub(crate) fn read_header(
     candidate: &mut Bytes,
     media_type: &str,
 ) -> Result<Vec<FacetProposal>, ExecutionError> {
     let mut registry = Registry::new();
-    registry.register_pack(&ImagePack).unwrap();
+    registry.register_pack(&pack()).unwrap();
     registry
         .execute_operator(
             READ_HEADER,

@@ -2,7 +2,10 @@
 //! the first image's width and length and nothing else, so every TIFF
 //! records its dimensions, whatever its type.
 use super::ImageFormat;
-use crate::io::CandidateReader;
+use crate::{
+    io::{CandidateReader, ImageInput},
+    preview::{JobFailure, Pixels},
+};
 use std::io::{Seek, SeekFrom};
 
 // The preview reads the sample-property arrays; until it does, only the
@@ -48,6 +51,15 @@ impl ImageFormat for Tiff {
         let width = u32::try_from(directory.scalar(IMAGE_WIDTH)?).ok()?;
         let length = u32::try_from(directory.scalar(IMAGE_LENGTH)?).ok()?;
         Some((width, length))
+    }
+
+    fn render_preview(
+        &self,
+        _: &mut dyn ImageInput,
+        _: u64,
+        _: usize,
+    ) -> Result<Pixels, JobFailure> {
+        Err(JobFailure::Unsupported)
     }
 }
 

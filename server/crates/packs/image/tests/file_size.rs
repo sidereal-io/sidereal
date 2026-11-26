@@ -1,5 +1,8 @@
 //! The file-size Operator, through the public contract only.
-use sidereal_pack_image::{ImagePack, FILE_SIZE, FILE_SIZE_FACET};
+#[path = "common/runner.rs"]
+mod runner;
+
+use sidereal_pack_image::{FILE_SIZE, FILE_SIZE_FACET};
 use sidereal_plugin_abi::{
     Candidate, FacetProposal, FacetSchema, FacetScope, FacetType, FacetValue, Output, Registry,
 };
@@ -17,7 +20,7 @@ impl Candidate for Unread {
 
 fn registry() -> Registry {
     let mut registry = Registry::new();
-    registry.register_pack(&ImagePack).unwrap();
+    registry.register_pack(&runner::pack()).unwrap();
     registry
 }
 

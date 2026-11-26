@@ -1,6 +1,9 @@
 //! The header Operator, through the public contract only: it reads an image's
 //! pixel dimensions from its leading bytes.
-use sidereal_pack_image::{ImagePack, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
+#[path = "common/runner.rs"]
+mod runner;
+
+use sidereal_pack_image::{HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
 use sidereal_plugin_abi::{
     Candidate, ExecutionError, FacetProposal, FacetSchema, FacetScope, FacetType, FacetValue,
     Output, Registry,
@@ -8,7 +11,7 @@ use sidereal_plugin_abi::{
 
 fn registry() -> Registry {
     let mut registry = Registry::new();
-    registry.register_pack(&ImagePack).unwrap();
+    registry.register_pack(&runner::pack()).unwrap();
     registry
 }
 

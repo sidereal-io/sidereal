@@ -16,6 +16,7 @@ use sidereal_plugin_abi::{
     AssetContext, FacetSchema, FacetScope, FacetType, FacetValue, Operator, OperatorError, Pack,
     Registry,
 };
+use sidereal_server::preview::{WorkerCommand, WorkerRunner};
 use sidereal_server::{
     app_with_database, app_with_library, config::AllowedOrigins, Library, Log, Tuning,
 };
@@ -920,12 +921,20 @@ impl Pack for UploadPack {
     }
 }
 
+/// The image pack, whose preview runs in the helper built with this server.
+fn image_pack() -> ImagePack {
+    ImagePack::new(Arc::new(WorkerRunner::new(WorkerCommand {
+        program: env!("CARGO_BIN_EXE_sidereal-preview-worker").into(),
+        args: Vec::new(),
+    })))
+}
+
 /// Make upload run `operator`, registered beside the image pack.
 fn running(operator: impl Operator + 'static) -> impl FnOnce(Library) -> Library {
     move |library| {
         let id = operator.id().to_owned();
         let mut registry = Registry::new();
-        registry.register_pack(&ImagePack).unwrap();
+        registry.register_pack(&image_pack()).unwrap();
         registry
             .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
             .unwrap();
@@ -941,7 +950,7 @@ fn running_first(operator: impl Operator + 'static) -> impl FnOnce(Library) -> L
     move |library| {
         let id = operator.id().to_owned();
         let mut registry = Registry::new();
-        registry.register_pack(&ImagePack).unwrap();
+        registry.register_pack(&image_pack()).unwrap();
         registry
             .register_pack(&UploadPack(Mutex::new(vec![Box::new(operator)])))
             .unwrap();

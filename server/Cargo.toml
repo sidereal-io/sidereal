@@ -59,6 +59,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 # called directly, so a header run reads no pixel data.
 png = "0.18"
 zune-jpeg = "0.5"
+jpeg-encoder = { version = "0.7", default-features = false, features = ["std"] }
 linked_list_allocator = { version = "0.10", default-features = false }
 
 # Lighter debug information for development and test builds, to keep each

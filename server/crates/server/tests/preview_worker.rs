@@ -555,3 +555,526 @@ fn the_production_command_names_the_helper_beside_the_server() {
     );
     assert!(command.args.is_empty());
 }
+
+// ---- the preview job, through the image pack's Operator ----
+
+/// The image pack, whose previews run in the real helper.
+fn image_registry() -> Registry {
+    let runner = Arc::new(WorkerRunner::new(WorkerCommand {
+        program: HELPER.into(),
+        args: Vec::new(),
+    }));
+    let mut registry = Registry::new();
+    registry
+        .register_pack(&sidereal_pack_image::ImagePack::new(runner))
+        .unwrap();
+    registry
+}
+
+/// The preview of `bytes`, a version of `media_type`, or why it failed.
+fn preview(bytes: &[u8], media_type: &str) -> Result<Vec<u8>, ExecutionError> {
+    let mut output = Kept::default();
+    let run = image_registry().execute_operator(
+        sidereal_pack_image::MAKE_PREVIEW,
+        &mut Bytes(bytes.to_vec()),
+        media_type,
+        &mut output,
+        &mut |_| {},
+        &|| false,
+    )?;
+    assert_eq!(run.preview, Some(AssetProposal::new("image", "image/jpeg")));
+    assert_eq!(run.preview_bytes, output.0.len() as u64);
+    Ok(output.0)
+}
+
+/// A decoded JPEG: its size, its number of components, and its pixels as
+/// RGB.
+struct Decoded {
+    width: usize,
+    height: usize,
+    components: u8,
+    rgb: Vec<u8>,
+}
+
+impl Decoded {
+    fn pixel(&self, x: usize, y: usize) -> [u8; 3] {
+        let at = (y * self.width + x) * 3;
+        [self.rgb[at], self.rgb[at + 1], self.rgb[at + 2]]
+    }
+}
+
+fn decode(jpeg: &[u8]) -> Decoded {
+    use zune_jpeg::zune_core::{
+        bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions,
+    };
+    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::RGB);
+    let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(jpeg), options);
+    decoder.decode_headers().unwrap();
+    let components = decoder.info().unwrap().components;
+    let (width, height) = decoder.dimensions().unwrap();
+    let rgb = decoder.decode().unwrap();
+    Decoded {
+        width,
+        height,
+        components,
+        rgb,
+    }
+}
+
+/// The marker of the first frame header in `jpeg`.
+fn frame_marker(jpeg: &[u8]) -> u8 {
+    let mut at = 2;
+    loop {
+        let marker = jpeg[at + 1];
+        if (0xc0..=0xcf).contains(&marker) && ![0xc4, 0xc8, 0xcc].contains(&marker) {
+            return marker;
+        }
+        at += 2 + usize::from(u16::from_be_bytes([jpeg[at + 2], jpeg[at + 3]]));
+    }
+}
+
+fn near(a: [u8; 3], b: [u8; 3]) -> bool {
+    a.iter().zip(b).all(|(&x, y)| x.abs_diff(y) <= 8)
+}
+
+/// A PNG of `width` by `height` in `color` at `depth`, whose samples are
+/// `data`.
+fn png(
+    width: u32,
+    height: u32,
+    color: png::ColorType,
+    depth: png::BitDepth,
+    data: &[u8],
+) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, width, height);
+    encoder.set_color(color);
+    encoder.set_depth(depth);
+    encoder.set_compression(png::Compression::Fast);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(data).unwrap();
+    writer.finish().unwrap();
+    out
+}
+
+/// An 8-bit RGB image whose pixel at x, y is `pixel(x, y)`.
+fn rgb_samples(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 3]) -> Vec<u8> {
+    let mut data = Vec::with_capacity((width * height * 3) as usize);
+    for y in 0..height {
+        for x in 0..width {
+            data.extend_from_slice(&pixel(x, y));
+        }
+    }
+    data
+}
+
+fn gradient(x: u32, y: u32) -> [u8; 3] {
+    [(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8]
+}
+
+/// A JPEG of an 8-bit RGB image, at `sampling`, progressive or baseline,
+/// with `app1` as an EXIF segment when given.
+fn jpeg(
+    width: u16,
+    height: u16,
+    sampling: jpeg_encoder::SamplingFactor,
+    progressive: bool,
+    app1: Option<&[u8]>,
+) -> Vec<u8> {
+    let data = rgb_samples(width.into(), height.into(), gradient);
+    let mut out = Vec::new();
+    let mut encoder = jpeg_encoder::Encoder::new(&mut out, 90);
+    encoder.set_sampling_factor(sampling);
+    encoder.set_progressive(progressive);
+    if let Some(app1) = app1 {
+        encoder.add_app_segment(1, app1.to_vec()).unwrap();
+    }
+    encoder
+        .encode(&data, width, height, jpeg_encoder::ColorType::Rgb)
+        .unwrap();
+    out
+}
+
+fn baseline(width: u16, height: u16) -> Vec<u8> {
+    jpeg(
+        width,
+        height,
+        jpeg_encoder::SamplingFactor::R_4_2_0,
+        false,
+        None,
+    )
+}
+
+fn undecodable(format: &str) -> Result<Vec<u8>, ExecutionError> {
+    Err(ExecutionError::Failed(format!(
+        "the {format} image could not be decoded"
+    )))
+}
+
+const BUDGET: &str = "the image needs more than 512 MiB to decode";
+
+#[test]
+fn png_and_jpeg_an_rgb_png_gets_a_baseline_jpeg_of_the_same_size() {
+    let bytes = png(
+        4096,
+        2160,
+        png::ColorType::Rgb,
+        png::BitDepth::Eight,
+        &rgb_samples(4096, 2160, gradient),
+    );
+    let jpeg = preview(&bytes, "image/png").unwrap();
+    assert_eq!(frame_marker(&jpeg), 0xc0, "not a baseline JPEG");
+    let decoded = decode(&jpeg);
+    assert_eq!(
+        (decoded.width, decoded.height, decoded.components),
+        (4096, 2160, 3)
+    );
+    for (x, y) in [(10, 10), (300, 1000), (4000, 2100)] {
+        assert!(
+            near(decoded.pixel(x, y), gradient(x as u32, y as u32)),
+            "{x}, {y}"
+        );
+    }
+}
+
+#[test]
+fn png_and_jpeg_a_gray_png_gets_a_gray_jpeg() {
+    let data: Vec<u8> = (0..64 * 64).map(|n| (n % 64 * 4) as u8).collect();
+    let jpeg = preview(
+        &png(
+            64,
+            64,
+            png::ColorType::Grayscale,
+            png::BitDepth::Eight,
+            &data,
+        ),
+        "image/png",
+    )
+    .unwrap();
+    let decoded = decode(&jpeg);
+    assert_eq!(
+        (decoded.width, decoded.height, decoded.components),
+        (64, 64, 1)
+    );
+}
+
+#[test]
+fn png_and_jpeg_a_16_bit_png_scales_to_8_bits_with_no_brightening() {
+    let mut data = Vec::new();
+    for y in 0..48u32 {
+        for _ in 0..48u32 {
+            let value: u16 = [0, 32_768, 1_000][(y / 16) as usize];
+            data.extend_from_slice(&value.to_be_bytes());
+        }
+    }
+    let jpeg = preview(
+        &png(
+            48,
+            48,
+            png::ColorType::Grayscale,
+            png::BitDepth::Sixteen,
+            &data,
+        ),
+        "image/png",
+    )
+    .unwrap();
+    let decoded = decode(&jpeg);
+    for (y, shown) in [(8, 0u8), (24, 128), (40, 4)] {
+        assert!(
+            near(decoded.pixel(24, y), [shown; 3]),
+            "{:?}",
+            decoded.pixel(24, y)
+        );
+    }
+}
+
+#[test]
+fn png_and_jpeg_a_transparent_png_pixel_shows_over_black() {
+    let mut data = Vec::new();
+    for _ in 0..64u32 {
+        for x in 0..64u32 {
+            data.extend_from_slice(if x < 32 {
+                &[255, 255, 255, 0]
+            } else {
+                &[255, 128, 0, 255]
+            });
+        }
+    }
+    let jpeg = preview(
+        &png(64, 64, png::ColorType::Rgba, png::BitDepth::Eight, &data),
+        "image/png",
+    )
+    .unwrap();
+    let decoded = decode(&jpeg);
+    assert!(
+        near(decoded.pixel(8, 32), [0, 0, 0]),
+        "{:?}",
+        decoded.pixel(8, 32)
+    );
+    assert!(
+        near(decoded.pixel(56, 32), [255, 128, 0]),
+        "{:?}",
+        decoded.pixel(56, 32)
+    );
+}
+
+/// An EXIF segment whose orientation says to rotate the image 90 degrees.
+fn exif_rotated() -> Vec<u8> {
+    let mut exif =
+        b"Exif\0\0MM\0*\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0".to_vec();
+    exif.resize(64, 0);
+    exif
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_with_an_exif_rotation_keeps_its_stored_width_and_height() {
+    let bytes = jpeg(
+        600,
+        400,
+        jpeg_encoder::SamplingFactor::R_4_2_0,
+        false,
+        Some(&exif_rotated()),
+    );
+    let decoded = decode(&preview(&bytes, "image/jpeg").unwrap());
+    assert_eq!((decoded.width, decoded.height), (600, 400));
+}
+
+#[test]
+fn png_and_jpeg_a_progressive_jpeg_of_several_scans_gets_a_preview() {
+    let bytes = jpeg(
+        1920,
+        1080,
+        jpeg_encoder::SamplingFactor::R_4_2_0,
+        true,
+        None,
+    );
+    assert_eq!(frame_marker(&bytes), 0xc2);
+    let decoded = decode(&preview(&bytes, "image/jpeg").unwrap());
+    assert_eq!((decoded.width, decoded.height), (1920, 1080));
+    assert!(near(decoded.pixel(500, 500), gradient(500, 500)));
+}
+
+/// A PNG's signature and its 13-byte header chunk only.
+fn png_header(width: u32, height: u32, color: u8) -> Vec<u8> {
+    let whole = png(1, 1, png::ColorType::Rgb, png::BitDepth::Eight, &[0, 0, 0]);
+    let mut bytes = whole[..33].to_vec();
+    bytes[16..20].copy_from_slice(&width.to_be_bytes());
+    bytes[20..24].copy_from_slice(&height.to_be_bytes());
+    bytes[25] = color;
+    let crc = crc32(&bytes[12..29]);
+    bytes[29..33].copy_from_slice(&crc.to_be_bytes());
+    bytes
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in bytes {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+#[test]
+fn png_and_jpeg_a_png_over_the_budget_is_refused_before_decoding() {
+    let mut bytes = png_header(20_000, 10_000, 6);
+    bytes
+        .extend_from_slice(&png(1, 1, png::ColorType::Rgb, png::BitDepth::Eight, &[0, 0, 0])[33..]);
+    assert_eq!(
+        preview(&bytes, "image/png"),
+        Err(ExecutionError::Failed(BUDGET.into()))
+    );
+}
+
+/// A JPEG's SOI, a baseline three-component frame header of `width` by
+/// `height`, and EOI.
+fn jpeg_frame_only(width: u16, height: u16) -> Vec<u8> {
+    let mut bytes = vec![0xff, 0xd8, 0xff, 0xc0, 0, 17, 8];
+    bytes.extend_from_slice(&height.to_be_bytes());
+    bytes.extend_from_slice(&width.to_be_bytes());
+    bytes.extend_from_slice(&[3, 1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0]);
+    bytes.extend_from_slice(&[0xff, 0xda, 0, 12, 3, 1, 0, 2, 0x11, 3, 0x11, 0, 63, 0]);
+    bytes.extend_from_slice(&[0xff, 0xd9]);
+    bytes
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_over_the_budget_is_refused_before_decoding() {
+    assert_eq!(
+        preview(&jpeg_frame_only(60_000, 60_000), "image/jpeg"),
+        Err(ExecutionError::Failed(BUDGET.into()))
+    );
+}
+
+#[test]
+fn png_and_jpeg_a_png_cut_off_after_its_header_fails() {
+    assert_eq!(
+        preview(&png_header(64, 64, 2), "image/png"),
+        undecodable("PNG")
+    );
+}
+
+#[test]
+fn png_and_jpeg_a_png_with_complete_pixels_but_no_iend_fails() {
+    let whole = png(
+        64,
+        64,
+        png::ColorType::Rgb,
+        png::BitDepth::Eight,
+        &rgb_samples(64, 64, gradient),
+    );
+    let mut bytes = whole[..whole.len() - 12].to_vec();
+    assert_eq!(&whole[whole.len() - 8..whole.len() - 4], b"IEND");
+    let text = b"tEXtkey\0value";
+    bytes.extend_from_slice(&((text.len() - 4) as u32).to_be_bytes());
+    bytes.extend_from_slice(text);
+    bytes.extend_from_slice(&crc32(text).to_be_bytes());
+    assert_eq!(preview(&bytes, "image/png"), undecodable("PNG"));
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_with_no_readable_frame_header_fails() {
+    let mut bytes = vec![0xff, 0xd8, 0xff, 0xfe, 0x03, 0xe6];
+    bytes.resize(1000, b'x');
+    assert_eq!(preview(&bytes, "image/jpeg"), undecodable("JPEG"));
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_with_no_eoi_fails() {
+    let whole = baseline(800, 600);
+    assert_eq!(
+        preview(&whole[..whole.len() - 2], "image/jpeg"),
+        undecodable("JPEG")
+    );
+    let progressive = jpeg(640, 480, jpeg_encoder::SamplingFactor::R_4_2_0, true, None);
+    let cut = &progressive[..progressive.len() * 2 / 3];
+    assert_eq!(preview(cut, "image/jpeg"), undecodable("JPEG"));
+}
+
+#[test]
+fn png_and_jpeg_an_exif_thumbnails_eoi_inside_a_cut_off_file_fails() {
+    let thumbnail = baseline(16, 16);
+    let mut exif = b"Exif\0\0".to_vec();
+    exif.extend_from_slice(&thumbnail);
+    let whole = jpeg(
+        800,
+        600,
+        jpeg_encoder::SamplingFactor::R_4_2_0,
+        false,
+        Some(&exif),
+    );
+    assert!(whole.windows(2).filter(|w| w == &[0xff, 0xd9]).count() >= 2);
+    let cut = &whole[..whole.len() - 100];
+    assert_eq!(preview(cut, "image/jpeg"), undecodable("JPEG"));
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_whose_last_scan_loses_its_final_8_bytes_gets_a_full_preview() {
+    let whole = baseline(800, 600);
+    let mut bytes = whole[..whole.len() - 10].to_vec();
+    bytes.extend_from_slice(&[0xff, 0xd9]);
+    let decoded = decode(&preview(&bytes, "image/jpeg").unwrap());
+    assert_eq!((decoded.width, decoded.height), (800, 600));
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_that_names_an_undefined_huffman_table_fails() {
+    let mut bytes = baseline(64, 64);
+    let sos = bytes.windows(2).position(|w| w == [0xff, 0xda]).unwrap();
+    // The first component's table selectors: DC and AC table 3, which no
+    // DHT segment defines.
+    bytes[sos + 6] = 0x33;
+    assert_eq!(preview(&bytes, "image/jpeg"), undecodable("JPEG"));
+}
+
+const SEPARATE_444: &[u8] =
+    include_bytes!("../../packs/image/tests/fixtures/jpeg-444-separate-scans.jpg");
+const SEPARATE_420: &[u8] =
+    include_bytes!("../../packs/image/tests/fixtures/jpeg-420-separate-scans.jpg");
+const SEPARATE_444_MEANS: &[u8] =
+    include_bytes!("../../packs/image/tests/fixtures/jpeg-444-separate-scans.means");
+
+#[test]
+fn png_and_jpeg_a_subsampled_jpeg_with_separate_component_scans_is_refused() {
+    assert_eq!(
+        preview(SEPARATE_420, "image/jpeg"),
+        Err(ExecutionError::Failed(
+            "the JPEG image type is not supported".into()
+        ))
+    );
+}
+
+#[test]
+fn png_and_jpeg_a_444_jpeg_with_separate_component_scans_matches_the_reference_decode() {
+    let decoded = decode(&preview(SEPARATE_444, "image/jpeg").unwrap());
+    assert_eq!((decoded.width, decoded.height), (640, 480));
+    let mut at = 0;
+    for by in 0..30 {
+        for bx in 0..40 {
+            for channel in 0..3 {
+                let mut sum = 0u32;
+                for y in by * 16..by * 16 + 16 {
+                    for x in bx * 16..bx * 16 + 16 {
+                        sum += u32::from(decoded.pixel(x, y)[channel]);
+                    }
+                }
+                let mean = (sum as f64 / 256.0).round() as u8;
+                let reference = SEPARATE_444_MEANS[at];
+                assert!(
+                    mean.abs_diff(reference) <= 8,
+                    "block {bx}, {by}, channel {channel}: {mean} against {reference}"
+                );
+                at += 1;
+            }
+        }
+    }
+}
+
+/// `jpeg` with comment segments after its SOI, so that its first SOS
+/// header ends at byte `end`.
+fn first_scan_header_ending_at(jpeg: &[u8], end: usize) -> Vec<u8> {
+    let sos = jpeg.windows(2).position(|w| w == [0xff, 0xda]).unwrap();
+    let header_end = sos + 2 + usize::from(u16::from_be_bytes([jpeg[sos + 2], jpeg[sos + 3]]));
+    let mut padding = end - header_end;
+    let mut bytes = jpeg[..2].to_vec();
+    while padding > 0 {
+        let take = match padding {
+            n if n > 65_537 + 4 => 65_537,
+            n if n > 65_537 => n - 4,
+            n => n,
+        };
+        bytes.extend_from_slice(&[0xff, 0xfe]);
+        bytes.extend_from_slice(&((take - 2) as u16).to_be_bytes());
+        bytes.resize(bytes.len() + take - 4, b'x');
+        padding -= take;
+    }
+    bytes.extend_from_slice(&jpeg[2..]);
+    bytes
+}
+
+const LIMIT: usize = 8 * 1024 * 1024;
+
+#[test]
+fn png_and_jpeg_a_jpeg_whose_eoi_lies_after_8_mib_gets_a_preview() {
+    let bytes = first_scan_header_ending_at(&baseline(640, 480), LIMIT);
+    let sos = bytes.windows(2).rposition(|w| w == [0xff, 0xda]).unwrap();
+    assert_eq!(
+        sos + 2 + usize::from(u16::from_be_bytes([bytes[sos + 2], bytes[sos + 3]])),
+        LIMIT
+    );
+    assert!(bytes.len() > LIMIT + 1000);
+    let decoded = decode(&preview(&bytes, "image/jpeg").unwrap());
+    assert_eq!((decoded.width, decoded.height), (640, 480));
+}
+
+#[test]
+fn png_and_jpeg_a_jpeg_whose_first_scan_header_ends_one_byte_past_8_mib_fails() {
+    let bytes = first_scan_header_ending_at(&baseline(640, 480), LIMIT + 1);
+    assert_eq!(preview(&bytes, "image/jpeg"), undecodable("JPEG"));
+}
