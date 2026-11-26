@@ -133,6 +133,7 @@ describe("useUpload", () => {
               name: "nebula.png",
               current_version_id: "v1",
               original_url: "/api/assets/a1/original",
+              preview_url: null,
             },
           },
           { status: 409 },

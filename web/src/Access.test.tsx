@@ -288,6 +288,7 @@ describe("Access", () => {
               name: "nebula.png",
               current_version_id: "v1",
               original_url: "/api/assets/a1/original",
+              preview_url: null,
             },
           ],
         },
@@ -347,6 +348,7 @@ describe("Access", () => {
               name: "nebula.png",
               current_version_id: "v1",
               original_url: "/api/assets/a1/original",
+              preview_url: null,
             },
           ],
         }),
@@ -367,6 +369,7 @@ describe("Access", () => {
         name: "nebula.png",
         current_version_id: "7d2c9e10-1f3a-4b5c-8d6e-9f0a1b2c3d4e",
         original_url: `/api/assets/${id}/original`,
+        preview_url: null,
         media_type: "image/png",
         facets: [
           {

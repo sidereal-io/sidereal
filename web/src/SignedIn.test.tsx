@@ -42,6 +42,7 @@ const entry = (id: string, name: string) => ({
   name,
   current_version_id: `${id.slice(0, 8)}-0000-4000-8000-000000000000`,
   original_url: `/api/assets/${id}/original`,
+  preview_url: null,
 });
 
 const withFacts = (id: string, name: string, value: number) => ({

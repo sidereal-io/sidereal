@@ -60,6 +60,7 @@ const entry = (id: string, name: string) => ({
   name,
   current_version_id: `${id}-v`,
   original_url: `/api/assets/${id}/original`,
+  preview_url: null,
 });
 
 const nebula = entry("a1", "nebula.png");
@@ -190,6 +191,34 @@ describe("Library", () => {
         }),
       },
     ],
+    [
+      "a preview URL off the API",
+      {
+        "GET /api/assets": listAnswer({
+          ...nebula,
+          preview_url: "https://example.com/x.jpg",
+        }),
+      },
+    ],
+    [
+      "a preview URL that names another Asset",
+      {
+        "GET /api/assets": listAnswer({
+          ...nebula,
+          preview_url: "/api/assets/a2/preview",
+        }),
+      },
+    ],
+    [
+      "a preview URL that is not text",
+      { "GET /api/assets": listAnswer({ ...nebula, preview_url: 1 }) },
+    ],
+    [
+      "an entry with no preview URL",
+      {
+        "GET /api/assets": listAnswer({ ...nebula, preview_url: undefined }),
+      },
+    ],
   ] satisfies [string, Answers][])(
     "shows a list error with Retry, not the empty message, on %s",
     async (_, answers) => {
@@ -214,6 +243,45 @@ describe("Library", () => {
     await screen.findByRole("img", { name: "nebula.png" });
     expect(screen.queryByText("The library could not be loaded.")).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an image from its preview when it has one", async () => {
+    stubServer({
+      "GET /api/assets": listAnswer(
+        { ...entry("a3", "m42.tif"), preview_url: "/api/assets/a3/preview" },
+        nebula,
+      ),
+    });
+    showLibrary();
+    const image = await screen.findByRole("img", { name: "m42.tif" });
+    expect(image.getAttribute("src")).toBe("/api/assets/a3/preview");
+    screen.getByText("m42.tif");
+    expect(
+      screen.getByRole("img", { name: "nebula.png" }).getAttribute("src"),
+    ).toBe("/api/assets/a1/original");
+  });
+
+  it("shows a preview that a later list gives after the original failed to show", async () => {
+    const tiff = entry("a3", "m42.tif");
+    stubServer({
+      "GET /api/assets": [
+        listAnswer(tiff),
+        listAnswer({ ...tiff, preview_url: "/api/assets/a3/preview" }),
+      ],
+    });
+    const props = {
+      onSessionLost: vi.fn(),
+      lines: [],
+      busy: false,
+      onUpload: vi.fn(),
+    };
+    const { rerender } = render(<Library {...props} saved={0} />);
+    fireEvent.error(await screen.findByRole("img", { name: "m42.tif" }));
+    screen.getByText("This image could not be displayed.");
+    rerender(<Library {...props} saved={1} />);
+    const image = await screen.findByRole("img", { name: "m42.tif" });
+    expect(image.getAttribute("src")).toBe("/api/assets/a3/preview");
+    expect(screen.queryByText("This image could not be displayed.")).toBeNull();
   });
 
   it("keeps the name and says so when an image cannot display", async () => {
