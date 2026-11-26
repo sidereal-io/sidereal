@@ -543,7 +543,9 @@ async fn save(
         .await;
         let id = record.id;
         match outcome {
-            Ok(RunOutcome::Succeeded) => {}
+            // An Operator that does not accept the version did not run, so
+            // there is nothing to log.
+            Ok(RunOutcome::Succeeded | RunOutcome::NotAccepted) => {}
             Ok(RunOutcome::Failed(reason)) => assets
                 .log
                 .line(&format!("{operator} run failed for asset {id}: {reason}")),

@@ -37,6 +37,10 @@ pub enum RunOutcome {
     Succeeded,
     /// The run is `failed`, with this reason, and stored no value.
     Failed(String),
+    /// The Operator does not accept the version, because the version
+    /// belongs to a derived Asset or the Operator did not register its media
+    /// type. Core recorded no run and the Operator did not run.
+    NotAccepted,
 }
 
 /// Why core could not report a recorded outcome.
@@ -185,14 +189,20 @@ pub async fn run_operator(
     let entry = registry
         .operator(&run.operator_id)
         .ok_or(OperationError::UnknownOperator)?;
-    let row: (Uuid, String, i64, String) = sqlx::query_as(
-        "SELECT asset_id, content_hash, byte_size, media_type \
-         FROM public.asset_versions WHERE id = $1",
+    let row: (Uuid, String, i64, String, String) = sqlx::query_as(
+        "SELECT v.asset_id, v.content_hash, v.byte_size, v.media_type, a.origin \
+         FROM public.asset_versions v JOIN public.assets a ON a.id = v.asset_id \
+         WHERE v.id = $1",
     )
     .bind(run.asset_version_id)
     .fetch_optional(database.pool())
     .await?
     .ok_or(OperationError::UnknownVersion)?;
+    // An Operator lists originals' media types only, so no Operator accepts
+    // a derived Asset's version, such as a preview (ADR-019).
+    if row.4 != "source" || !entry.accepts_media_type(&row.3) {
+        return Ok(RunOutcome::NotAccepted);
+    }
     let version = Version {
         asset_id: row.0,
         content_hash: row.1,
@@ -470,6 +480,8 @@ async fn store(
     Ok(Ok(()))
 }
 
+#[cfg(test)]
+mod accepts;
 #[cfg(test)]
 mod fails;
 #[cfg(test)]
