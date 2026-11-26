@@ -173,21 +173,12 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
 #### Scenario: A progressive JPEG cut off inside its pixels
-- **WHEN** core runs the preview Operator over a progressive JPEG that ends in the middle of a scan
+- **WHEN** core runs the preview Operator over a progressive JPEG that ends in the middle of a scan, with no end-of-image marker
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
 
 #### Scenario: A baseline JPEG ends before its end marker
 - **WHEN** core runs the preview Operator over a baseline JPEG that ends without its end-of-image marker
 - **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
-
-#### Scenario: A baseline JPEG ends before all components
-- **WHEN** core runs the preview Operator over a three-component baseline JPEG whose EOI follows only the first component scan
-- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
-
-#### Scenario: A baseline JPEG ends inside its last scan
-- **WHEN** core runs the preview Operator over a baseline JPEG whose scan data ends before its expected blocks even though the file ends in EOI
-- **THEN** its run is `failed` with the reason `the JPEG image could not be decoded`
-- **AND** no preview exists for that version
 
 #### Scenario: A PNG has pixels but no IEND
 - **WHEN** core runs the preview Operator over a PNG whose complete image data is followed by an ancillary chunk and no IEND
@@ -202,6 +193,16 @@ stored file fails, the reason SHALL be `the stored file could not be read`.
 - **WHEN** core runs the preview Operator over a stored PNG version and a read of its stored file fails
 - **THEN** its run is `failed` with the reason `the stored file could not be read`
 - **AND** the version has no preview
+
+### Requirement: A JPEG that reaches its end marker gets a best-effort preview
+
+A JPEG whose first image reaches its EOI SHALL get a preview even when its
+scan data stops before every block it declares. The decoder fills the
+missing blocks, as browsers do, and the original stays stored unchanged.
+
+#### Scenario: A JPEG whose scan data stops short before its EOI
+- **WHEN** core runs the preview Operator over a baseline JPEG of 800 by 600 pixels whose last scan loses its final bytes but still ends in EOI
+- **THEN** its run is `succeeded` and its preview decodes as a JPEG of 800 by 600 pixels
 
 ### Requirement: A preview's sides fit a JPEG
 

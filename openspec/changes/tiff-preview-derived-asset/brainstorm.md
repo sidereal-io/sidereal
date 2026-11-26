@@ -25,6 +25,7 @@
 | D15 | How does an Operator learn a version's format, and which versions does it run on? | The Asset context gives an Operator the version's media type, so the header Operator no longer reads the signature the Source already read. Each Operator declares the media types it accepts, and core runs an upload's Operators only on a version whose media type they accept. This is a first, small step towards the `accepts` Selector and covers media types only. It also keeps Operators off a preview (D9): no upload Operator accepts a preview's media type in the preview's role. | User |
 | D16 | How does a TIFF show its format, now that #547 records no format facet? | From the version's media type: `image/tiff` shows as `Format TIFF`, through the asset page's map from media type to name that #547 added. This change adds no `image.format` facet and no choice type. | User |
 | D17 | How does Sidereal enforce the decode budget? | Run the built-in preview decoder and encoder in a short-lived, memory-capped child process. The upload still waits for the run and the Operator still reads and writes through its Asset context. | User |
+| D18 | Does a JPEG whose scan data stops short, but which still ends in EOI, fail its preview? | No. It gets a best-effort preview, filled in by the decoder as browsers do. A JPEG with no EOI still fails. No JPEG decoder that fits the plan refuses short scan data, upstream zune-jpeg has no strict option for it, and Sidereal will not patch the dependency. | User |
 
 ## Changes from the story
 
@@ -34,5 +35,6 @@
 - No split: the story stays one change (D2).
 - **Reworked after #547 changed:** #547 dropped its `image.format` facet and its choice type, and shows the format from the media type. This change no longer adds TIFF to a choice; it adds `TIFF` to the asset page's names (D16).
 - **Added after the plan:** one module per format in the image pack (D13), the pack's own refusal reason on the upload screen (D14), and Operators that declare the media types they accept (D15).
+- **Changed during plan review:** a JPEG that still ends in EOI gets a best-effort preview when its scan data stops short, instead of failing (D18).
 
 Confirmed by user: yes

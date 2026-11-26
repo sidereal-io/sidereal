@@ -485,13 +485,15 @@ it sets up, and the header run must succeed for every TIFF (D4).
   invert white-is-zero pixels before scaling to 8-bit. Use `tiff` with
   only its LZW and Deflate features enabled.
 - **JPEG.** Keep the 8 MiB bound for the frame-header read and then rewind
-  to the full input. Require the first image's EOI, coverage of each
-  baseline frame component, and complete entropy data for the blocks
-  each scan declares. The pixel decoder must report premature scan
-  termination, even when a valid EOI follows. The codec selection
-  remains open. zune-jpeg 0.5.15's strict setting still allows synthetic
-  bits after a marker, and jpeg-decoder 0.3.2 also pads its lookahead.
-  A marker walk cannot certify that all blocks were decoded.
+  to the full input. Decode with `zune-jpeg` in strict mode, unmodified.
+  Before pixel decoding, walk the markers of the first image to its EOI
+  and refuse a file with none; zune-jpeg's strict mode alone accepts
+  many such files. Within the scans, take the decoder's best effort: a
+  file that reaches EOI with scan data short of its declared blocks
+  gets a preview with the missing blocks filled by the decoder (D18).
+  zune-jpeg, jpeg-decoder and libjpeg-turbo all fill such data, and
+  certifying every block would mean patching the codec or writing a
+  second entropy decoder.
 - **PNG.** Keep `EXPAND` with 16-bit samples and call `Reader::finish()`
   after decoding so the file must reach IEND.
 - **Preview output.** Decode into one `Pixels` buffer. `Rows` maps each
@@ -518,8 +520,9 @@ it sets up, and the header run must succeed for every TIFF (D4).
   Verify no failed output is published. Cover white-is-zero,
   floating-point strips and padded tiles, more than 64 tiles, an
   incompatible predictor, and a valid TIFF whose pixels exceed 256 MiB.
-  Test JPEG separate component scans, inter-scan metadata, missing EOI and
-  EOI before all baseline components or before all blocks in a final scan.
+  Test JPEG separate component scans with 4:4:4 sampling, inter-scan
+  metadata, missing EOI, and a final scan cut short before its EOI, which
+  succeeds.
   Test PNG with complete pixels but
   missing IEND. For a preflight refusal, instrument entry to pixel
   decoding and use an input with actual pixel data.
@@ -597,6 +600,16 @@ types. It is more API than one picker needs today.
 - [A wide-gamut or tagged TIFF (Adobe RGB, ProPhoto) looks less saturated,
   because the preview carries no colour profile] → out of scope. A follow-up
   can copy the ICC profile into the JPEG; `jpeg-encoder` can write one.
+- [A JPEG whose scan data stops short but still ends in EOI gets a preview
+  with filled-in blocks (D18)] → accepted: browsers show the original the
+  same way, the original is kept, and the far more common cut, a file with
+  no EOI, fails. A strict option upstream would let a later change refuse
+  them.
+- [zune-jpeg 0.5.15 decodes a subsampled baseline JPEG with separate
+  component scans wrongly but reports success] → accepted for now: such
+  files need a custom scan script and are rare. The fix (upstream issue
+  448) is in the 0.5.16 release candidates, and the dependency update will
+  bring it.
 - [A phone JPEG with an EXIF rotation shows unrotated, where the browser
   rotated the original before] → the spec says so. Astro images rarely carry
   a rotation; a follow-up can apply it.
