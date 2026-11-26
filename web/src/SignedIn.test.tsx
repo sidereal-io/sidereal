@@ -110,7 +110,7 @@ describe("SignedIn", () => {
         <span>nova</span>
       </SignedIn>,
     );
-    await screen.findByText("No images yet. Upload a PNG or JPEG to start.");
+    await screen.findByText("No images yet. Upload an image to start.");
     screen.getByRole("region", { name: "Library" });
     screen.getByRole("button", { name: "Upload" });
     screen.getByText("nova");

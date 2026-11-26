@@ -54,7 +54,7 @@ test("Nova uploads a PNG and a JPEG and sees them after a restart", async ({
   await signIn(page, "Claim");
   await signIn(page, "Sign in");
   await expect(
-    page.getByText("No images yet. Upload a PNG or JPEG to start."),
+    page.getByText("No images yet. Upload an image to start."),
   ).toBeVisible();
 
   // Both images in one pick, through the browser's multiple-file picker.

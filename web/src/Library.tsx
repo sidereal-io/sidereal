@@ -158,7 +158,6 @@ function Library({
       <input
         ref={pickerRef}
         type="file"
-        accept="image/png,image/jpeg"
         aria-label="Image to upload"
         multiple
         hidden
@@ -194,7 +193,7 @@ function Library({
       )}
       {Array.isArray(list) && list.length === 0 && (
         <p className="library-status">
-          No images yet. Upload a PNG or JPEG to start.
+          No images yet. Upload an image to start.
         </p>
       )}
       {Array.isArray(list) && list.length > 0 && (
