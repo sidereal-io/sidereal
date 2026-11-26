@@ -256,3 +256,159 @@ impl Tiff {
         out
     }
 }
+
+// ---- compression and prediction, as a TIFF writer applies them ----
+
+/// Compression codes.
+pub const UNCOMPRESSED: u64 = 1;
+pub const LZW_CODE: u64 = 5;
+pub const DEFLATE_CODE: u64 = 8;
+pub const PACKBITS_CODE: u64 = 32773;
+
+/// `data` compressed with the TIFF compression `code`.
+pub fn compress(data: &[u8], code: u64) -> Vec<u8> {
+    match code {
+        UNCOMPRESSED => data.to_vec(),
+        LZW_CODE => weezl::encode::Encoder::with_tiff_size_switch(weezl::BitOrder::Msb, 8)
+            .encode(data)
+            .unwrap(),
+        DEFLATE_CODE => {
+            use std::io::Write;
+            let mut encoder =
+                flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            encoder.write_all(data).unwrap();
+            encoder.finish().unwrap()
+        }
+        PACKBITS_CODE => packbits(data),
+        other => panic!("no compressor for {other}"),
+    }
+}
+
+/// PackBits: runs of 2 to 128 equal bytes, and literals of up to 128.
+pub fn packbits(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    while at < data.len() {
+        let run = data[at..]
+            .iter()
+            .take(128)
+            .take_while(|&&b| b == data[at])
+            .count();
+        if run >= 2 {
+            out.push((257 - run) as u8);
+            out.push(data[at]);
+            at += run;
+        } else {
+            let start = at;
+            while at < data.len()
+                && at - start < 128
+                && !(at + 1 < data.len() && data[at] == data[at + 1])
+            {
+                at += 1;
+            }
+            if at == start {
+                at += 1;
+            }
+            out.push((at - start - 1) as u8);
+            out.extend_from_slice(&data[start..at]);
+        }
+    }
+    out
+}
+
+/// Apply the horizontal predictor to `rows`, each `row_len` bytes of
+/// samples `size` bytes wide in the file's byte order, `samples` per pixel.
+pub fn horizontal(rows: &mut [u8], row_len: usize, samples: usize, size: usize, big_endian: bool) {
+    let read = |bytes: &[u8]| -> u64 {
+        let mut value = 0u64;
+        let ordered: Vec<u8> = if big_endian {
+            bytes.to_vec()
+        } else {
+            bytes.iter().rev().copied().collect()
+        };
+        for b in ordered {
+            value = value << 8 | u64::from(b);
+        }
+        value
+    };
+    let write = |bytes: &mut [u8], value: u64| {
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            let shift = if big_endian {
+                (size - 1 - index) * 8
+            } else {
+                index * 8
+            };
+            *byte = (value >> shift) as u8;
+        }
+    };
+    let mask = if size == 8 {
+        u64::MAX
+    } else {
+        (1u64 << (size * 8)) - 1
+    };
+    for row in rows.chunks_mut(row_len) {
+        let stride = samples * size;
+        for at in (stride..row.len()).step_by(size).rev() {
+            let previous = read(&row[at - stride..at - stride + size]);
+            let current = read(&row[at..at + size]);
+            write(
+                &mut row[at..at + size],
+                current.wrapping_sub(previous) & mask,
+            );
+        }
+    }
+}
+
+/// One row of 32-bit floats with the floating-point predictor applied: the
+/// bytes of each value, most significant first, split into byte planes,
+/// then differenced byte by byte.
+pub fn floating_point_row(values: &[f32]) -> Vec<u8> {
+    let count = values.len();
+    let mut planes = vec![0u8; count * 4];
+    for (index, value) in values.iter().enumerate() {
+        for (plane, byte) in value.to_be_bytes().into_iter().enumerate() {
+            planes[plane * count + index] = byte;
+        }
+    }
+    for at in (1..planes.len()).rev() {
+        planes[at] = planes[at].wrapping_sub(planes[at - 1]);
+    }
+    planes
+}
+
+/// Cut `pixels`, rows of `width` pixels of `pixel` bytes each, into tiles
+/// of `tile_width` by `tile_length`, padded with zero bytes at the edges.
+pub fn tiles_of(
+    pixels: &[u8],
+    width: usize,
+    height: usize,
+    pixel: usize,
+    tile_width: usize,
+    tile_length: usize,
+) -> Vec<Vec<u8>> {
+    let mut tiles = Vec::new();
+    for top in (0..height).step_by(tile_length) {
+        for left in (0..width).step_by(tile_width) {
+            let mut tile = vec![0u8; tile_width * tile_length * pixel];
+            for y in 0..tile_length.min(height - top) {
+                let across = tile_width.min(width - left);
+                let from = ((top + y) * width + left) * pixel;
+                tile[y * tile_width * pixel..][..across * pixel]
+                    .copy_from_slice(&pixels[from..from + across * pixel]);
+            }
+            tiles.push(tile);
+        }
+    }
+    tiles
+}
+
+impl Image {
+    /// The image with these compression and predictor codes.
+    pub fn coded(self, compression: u64, predictor: Option<u64>) -> Self {
+        let image = self.with(COMPRESSION, SHORT, &[compression]);
+        match predictor {
+            Some(predictor) => image.with(PREDICTOR, SHORT, &[predictor]),
+            None => image.without(PREDICTOR),
+        }
+    }
+}

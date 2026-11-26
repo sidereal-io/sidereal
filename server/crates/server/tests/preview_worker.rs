@@ -1,6 +1,9 @@
 //! The preview helper and its runner, with no database. The real helper is
 //! the `sidereal-preview-worker` binary built with the server; small shell
 //! scripts stand in for a helper that stalls, closes its output or fails.
+#[path = "../../packs/image/tests/common/tiff.rs"]
+mod tiff;
+
 use sidereal_pack_image::preview::PreviewRunner;
 use sidereal_plugin_abi::{
     AssetContext, AssetProposal, Candidate, ExecutionError, Operator, OperatorError, Output,
@@ -94,8 +97,17 @@ fn growth_that_must_hold_the_old_and_new_buffer_exits_with_the_budget_status() {
 /// would. Dropping it is what the helper sees when its parent exits.
 #[test]
 fn the_helper_exits_when_its_parent_goes_away() {
+    // Both ends close on exec, so no helper another test starts meanwhile
+    // keeps the write end open.
     let mut fds = [0; 2];
-    assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+    #[cfg(target_os = "linux")]
+    assert_eq!(unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) }, 0);
+    #[cfg(not(target_os = "linux"))]
+    unsafe {
+        assert_eq!(libc::pipe(fds.as_mut_ptr()), 0);
+        libc::fcntl(fds[0], libc::F_SETFD, libc::FD_CLOEXEC);
+        libc::fcntl(fds[1], libc::F_SETFD, libc::FD_CLOEXEC);
+    }
     let (read, write) = unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) };
     let raw_read = read.as_raw_fd();
     let raw_write = write.as_raw_fd();
@@ -108,7 +120,12 @@ fn the_helper_exits_when_its_parent_goes_away() {
     unsafe {
         command.pre_exec(move || {
             libc::close(raw_write);
-            if libc::dup2(raw_read, 3) < 0 {
+            // `dup2` clears close-on-exec on descriptor 3, but does nothing
+            // when the read end already is 3.
+            if raw_read == 3 {
+                let flags = libc::fcntl(3, libc::F_GETFD);
+                libc::fcntl(3, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+            } else if libc::dup2(raw_read, 3) < 0 {
                 return Err(std::io::Error::last_os_error());
             }
             Ok(())
@@ -607,7 +624,10 @@ fn decode(jpeg: &[u8]) -> Decoded {
     use zune_jpeg::zune_core::{
         bytestream::ZCursor, colorspace::ColorSpace, options::DecoderOptions,
     };
-    let options = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::RGB);
+    let options = DecoderOptions::default()
+        .set_max_width(65_535)
+        .set_max_height(65_535)
+        .jpeg_set_out_colorspace(ColorSpace::RGB);
     let mut decoder = zune_jpeg::JpegDecoder::new_with_options(ZCursor::new(jpeg), options);
     decoder.decode_headers().unwrap();
     let components = decoder.info().unwrap().components;
@@ -1077,4 +1097,630 @@ fn png_and_jpeg_a_jpeg_whose_eoi_lies_after_8_mib_gets_a_preview() {
 fn png_and_jpeg_a_jpeg_whose_first_scan_header_ends_one_byte_past_8_mib_fails() {
     let bytes = first_scan_header_ending_at(&baseline(640, 480), LIMIT + 1);
     assert_eq!(preview(&bytes, "image/jpeg"), undecodable("JPEG"));
+}
+
+// ---- TIFF previews ----
+
+use tiff::{
+    compress, floating_point_row, horizontal, tiles_of, Image, Tag, Tiff, BITS_PER_SAMPLE,
+    COMPRESSION, DEFLATE_CODE, EXTRA_SAMPLES, LZW_CODE, PACKBITS_CODE, PHOTOMETRIC, ROWS_PER_STRIP,
+    SAMPLES_PER_PIXEL, SAMPLE_FORMAT, SHORT, TILE_LENGTH, TILE_WIDTH, UNCOMPRESSED,
+};
+
+const TIFF_UNSUPPORTED: &str = "the TIFF image type is not supported";
+const TOO_WIDE: &str = "the image is wider or taller than a browser-ready JPEG can hold";
+
+fn tiff_failed(reason: &str) -> Result<Vec<u8>, ExecutionError> {
+    Err(ExecutionError::Failed(reason.into()))
+}
+
+/// Samples of `width` by `height` pixels, `samples` each, from
+/// `value(x, y, sample)`, as `size`-byte numbers in the file's byte order.
+fn samples_of(
+    width: usize,
+    height: usize,
+    samples: usize,
+    size: usize,
+    big_endian: bool,
+    value: impl Fn(usize, usize, usize) -> u64,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(width * height * samples * size);
+    for y in 0..height {
+        for x in 0..width {
+            for sample in 0..samples {
+                let bytes = value(x, y, sample).to_be_bytes();
+                let field = &bytes[8 - size..];
+                if big_endian {
+                    out.extend_from_slice(field);
+                } else {
+                    out.extend(field.iter().rev());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// An image of chunky samples in one strip, compressed with `compression`.
+fn strip_image(
+    width: u64,
+    height: u64,
+    bits: u64,
+    samples: u64,
+    photometric: u64,
+    compression: u64,
+    data: Vec<u8>,
+) -> Image {
+    let mut image = Image::chunky(
+        width,
+        height,
+        bits,
+        samples,
+        photometric,
+        compress(&data, compression),
+    );
+    image = image.with(COMPRESSION, SHORT, &[compression]);
+    image
+}
+
+fn rgb8_pixels(width: usize, height: usize) -> Vec<u8> {
+    samples_of(width, height, 3, 1, false, |x, y, s| {
+        u64::from(gradient(x as u32, y as u32)[s])
+    })
+}
+
+#[test]
+fn tiff_an_8_bit_rgb_tiff_gets_a_color_preview_of_its_size() {
+    let bytes = Tiff::classic(vec![strip_image(
+        800,
+        600,
+        8,
+        3,
+        2,
+        UNCOMPRESSED,
+        rgb8_pixels(800, 600),
+    )])
+    .bytes();
+    let decoded = decode(&preview(&bytes, "image/tiff").unwrap());
+    assert_eq!(
+        (decoded.width, decoded.height, decoded.components),
+        (800, 600, 3)
+    );
+    assert!(near(decoded.pixel(400, 300), gradient(400, 300)));
+}
+
+#[test]
+fn tiff_the_first_of_several_images_gives_the_preview() {
+    let bytes = Tiff::classic(vec![
+        strip_image(800, 600, 8, 3, 2, PACKBITS_CODE, rgb8_pixels(800, 600)),
+        strip_image(200, 150, 8, 3, 2, UNCOMPRESSED, rgb8_pixels(200, 150)),
+    ])
+    .bytes();
+    let decoded = decode(&preview(&bytes, "image/tiff").unwrap());
+    assert_eq!((decoded.width, decoded.height), (800, 600));
+}
+
+#[test]
+fn tiff_a_big_endian_big_tiff_of_16_bit_rgb_with_deflate_gets_a_preview() {
+    let data = samples_of(256, 128, 3, 2, true, |x, y, s| {
+        [x * 256, y * 512, 40_000][s] as u64
+    });
+    let bytes = Tiff::classic(vec![strip_image(256, 128, 16, 3, 2, DEFLATE_CODE, data)])
+        .big_endian()
+        .big_tiff()
+        .bytes();
+    assert_eq!(&bytes[..4], b"MM\0+");
+    let decoded = decode(&preview(&bytes, "image/tiff").unwrap());
+    assert_eq!((decoded.width, decoded.height), (256, 128));
+    let expected = |x: usize, y: usize| {
+        [x * 256, y * 512, 40_000].map(|v| ((v as f64) * 255.0 / 65_535.0).round() as u8)
+    };
+    assert!(
+        near(decoded.pixel(100, 50), expected(100, 50)),
+        "{:?}",
+        decoded.pixel(100, 50)
+    );
+}
+
+#[test]
+fn tiff_an_lzw_tiff_in_tiles_with_a_horizontal_predictor_gets_a_preview() {
+    let (width, height, tile) = (80usize, 48usize, 32usize);
+    let pixels = rgb8_pixels(width, height);
+    let tiles: Vec<Vec<u8>> = tiles_of(&pixels, width, height, 3, tile, tile)
+        .into_iter()
+        .map(|mut data| {
+            horizontal(&mut data, tile * 3, 3, 1, false);
+            compress(&data, LZW_CODE)
+        })
+        .collect();
+    let image = Image {
+        tags: Image::chunky(width as u64, height as u64, 8, 3, 2, Vec::new())
+            .without(ROWS_PER_STRIP)
+            .coded(LZW_CODE, Some(2))
+            .with(TILE_WIDTH, SHORT, &[tile as u64])
+            .with(TILE_LENGTH, SHORT, &[tile as u64])
+            .tags,
+        strips: None,
+        tiles: Some(tiles),
+    };
+    let decoded = decode(&preview(&Tiff::classic(vec![image]).bytes(), "image/tiff").unwrap());
+    assert_eq!((decoded.width, decoded.height), (80, 48));
+    for (x, y) in [(5, 5), (70, 40), (40, 20)] {
+        assert!(
+            near(decoded.pixel(x, y), gradient(x as u32, y as u32)),
+            "{x}, {y}"
+        );
+    }
+}
+
+#[test]
+fn tiff_more_than_64_tiles_get_a_preview() {
+    let (width, height, tile) = (160usize, 160usize, 16usize);
+    let pixels = samples_of(width, height, 1, 1, false, |x, _, _| (x % 256) as u64);
+    let tiles = tiles_of(&pixels, width, height, 1, tile, tile);
+    assert_eq!(tiles.len(), 100);
+    let image = Image {
+        tags: Image::chunky(width as u64, height as u64, 8, 1, 1, Vec::new())
+            .without(ROWS_PER_STRIP)
+            .with(TILE_WIDTH, SHORT, &[tile as u64])
+            .with(TILE_LENGTH, SHORT, &[tile as u64])
+            .tags,
+        strips: None,
+        tiles: Some(tiles),
+    };
+    let decoded = decode(&preview(&Tiff::classic(vec![image]).bytes(), "image/tiff").unwrap());
+    assert_eq!(
+        (decoded.width, decoded.height, decoded.components),
+        (160, 160, 1)
+    );
+}
+
+fn gray_regions(photometric: u64, bits: u64, size: usize, values: &[u64]) -> Vec<u8> {
+    let (width, height) = (16 * values.len(), 16);
+    let data = samples_of(width, height, 1, size, false, |x, _, _| values[x / 16]);
+    let mut image = strip_image(
+        width as u64,
+        height as u64,
+        bits,
+        1,
+        photometric,
+        UNCOMPRESSED,
+        data,
+    );
+    if size == 4 {
+        image = image.with(SAMPLE_FORMAT, SHORT, &[3]);
+    }
+    preview(&Tiff::classic(vec![image]).bytes(), "image/tiff").unwrap()
+}
+
+/// The gray value at the middle of each 16-pixel region.
+fn region_values(jpeg: &[u8], regions: usize) -> Vec<u8> {
+    let decoded = decode(jpeg);
+    assert_eq!(decoded.components, 1);
+    (0..regions)
+        .map(|r| decoded.pixel(r * 16 + 8, 8)[0])
+        .collect()
+}
+
+fn all_near(found: &[u8], expected: &[u8]) {
+    assert_eq!(found.len(), expected.len());
+    for (f, e) in found.iter().zip(expected) {
+        assert!(f.abs_diff(*e) <= 8, "{found:?} against {expected:?}");
+    }
+}
+
+#[test]
+fn tiff_an_8_bit_gray_tiff_gets_a_gray_preview() {
+    all_near(
+        &region_values(&gray_regions(1, 8, 1, &[0, 128, 255]), 3),
+        &[0, 128, 255],
+    );
+}
+
+#[test]
+fn tiff_a_white_is_zero_tiff_shows_0_as_white_and_255_as_black() {
+    all_near(
+        &region_values(&gray_regions(0, 8, 1, &[0, 255]), 2),
+        &[255, 0],
+    );
+}
+
+#[test]
+fn tiff_a_16_bit_tiff_scales_to_8_bits() {
+    all_near(
+        &region_values(&gray_regions(1, 16, 2, &[0, 32_768, 65_535]), 3),
+        &[0, 128, 255],
+    );
+}
+
+#[test]
+fn tiff_a_32_bit_decimal_tiff_clips_to_0_and_1() {
+    let values = [-0.5f32, 0.5, 2.0, f32::NAN].map(|v| u64::from(v.to_bits()));
+    all_near(
+        &region_values(&gray_regions(1, 32, 4, &values), 4),
+        &[0, 128, 255, 0],
+    );
+}
+
+#[test]
+fn tiff_unstretched_16_bit_data_stays_dark() {
+    let data = samples_of(64, 64, 3, 2, false, |x, y, s| {
+        ((x * 7 + y * 3 + s * 100) % 1001) as u64
+    });
+    let jpeg = preview(
+        &Tiff::classic(vec![strip_image(64, 64, 16, 3, 2, UNCOMPRESSED, data)]).bytes(),
+        "image/tiff",
+    )
+    .unwrap();
+    let decoded = decode(&jpeg);
+    assert!(
+        decoded.rgb.iter().all(|&v| v <= 4 + 8),
+        "a sample is brighter than 12"
+    );
+}
+
+/// A Deflate-compressed float gray image of `width` by `height` in tiles of
+/// `tile` by `tile`, with the floating-point predictor.
+fn float_tiles(
+    width: usize,
+    height: usize,
+    tile: usize,
+    value: impl Fn(usize, usize) -> f32,
+) -> Vec<u8> {
+    let mut values = Vec::with_capacity(width * height);
+    for y in 0..height {
+        for x in 0..width {
+            values.push(value(x, y));
+        }
+    }
+    let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_ne_bytes()).collect();
+    let tiles: Vec<Vec<u8>> = tiles_of(&bytes, width, height, 4, tile, tile)
+        .into_iter()
+        .map(|data| {
+            let mut predicted = Vec::new();
+            for row in data.chunks(tile * 4) {
+                let row: Vec<f32> = row
+                    .chunks(4)
+                    .map(|b| f32::from_ne_bytes(b.try_into().unwrap()))
+                    .collect();
+                predicted.extend(floating_point_row(&row));
+            }
+            compress(&predicted, DEFLATE_CODE)
+        })
+        .collect();
+    let image = Image {
+        tags: Image::chunky(width as u64, height as u64, 32, 1, 1, Vec::new())
+            .without(ROWS_PER_STRIP)
+            .with(SAMPLE_FORMAT, SHORT, &[3])
+            .coded(DEFLATE_CODE, Some(3))
+            .with(TILE_WIDTH, SHORT, &[tile as u64])
+            .with(TILE_LENGTH, SHORT, &[tile as u64])
+            .tags,
+        strips: None,
+        tiles: Some(tiles),
+    };
+    Tiff::classic(vec![image]).bytes()
+}
+
+#[test]
+fn tiff_a_float_tiff_with_a_padded_edge_tile_keeps_its_size() {
+    let bytes = float_tiles(40, 24, 32, |x, _| x as f32 / 40.0);
+    let decoded = decode(&preview(&bytes, "image/tiff").unwrap());
+    assert_eq!((decoded.width, decoded.height), (40, 24));
+    assert!(
+        decoded.pixel(20, 10)[0].abs_diff(128) <= 8,
+        "{:?}",
+        decoded.pixel(20, 10)
+    );
+}
+
+/// An 800 by 600 8-bit image with one strip of its samples, with `change`
+/// applied to its tags.
+fn eight_bit(samples: u64, photometric: u64, change: impl FnOnce(Image) -> Image) -> Vec<u8> {
+    let data = vec![100u8; (800 * 600 * samples) as usize];
+    Tiff::classic(vec![change(Image::chunky(
+        800,
+        600,
+        8,
+        samples,
+        photometric,
+        data,
+    ))])
+    .bytes()
+}
+
+#[test]
+fn tiff_of_another_type_fails_as_not_supported() {
+    for (what, bytes) in [
+        ("CMYK", eight_bit(4, 5, |i| i)),
+        ("JPEG-compressed", eight_bit(3, 2, |i| i.coded(7, None))),
+        (
+            "RGB with alpha",
+            eight_bit(4, 2, |i| i.with(EXTRA_SAMPLES, SHORT, &[2])),
+        ),
+        ("signed 16-bit", {
+            let data = vec![0u8; 800 * 600 * 2];
+            Tiff::classic(vec![Image::chunky(800, 600, 16, 1, 1, data).with(
+                SAMPLE_FORMAT,
+                SHORT,
+                &[2],
+            )])
+            .bytes()
+        }),
+        (
+            "a float predictor on integers",
+            eight_bit(1, 1, |i| i.coded(LZW_CODE, Some(3))),
+        ),
+        ("a horizontal predictor on floats", {
+            let data = vec![0u8; 800 * 600 * 4];
+            Tiff::classic(vec![Image::chunky(800, 600, 32, 1, 1, data)
+                .with(SAMPLE_FORMAT, SHORT, &[3])
+                .coded(LZW_CODE, Some(2))])
+            .bytes()
+        }),
+        (
+            "a predictor with no compression",
+            eight_bit(1, 1, |i| i.coded(UNCOMPRESSED, Some(2))),
+        ),
+        (
+            "planar samples",
+            eight_bit(3, 2, |i| i.with(284, SHORT, &[2])),
+        ),
+        (
+            "12-bit samples",
+            eight_bit(1, 1, |i| i.with(BITS_PER_SAMPLE, SHORT, &[12])),
+        ),
+        (
+            "mixed sample sizes",
+            eight_bit(3, 2, |i| i.with(BITS_PER_SAMPLE, SHORT, &[8, 8, 16])),
+        ),
+        (
+            "more than 64 samples",
+            eight_bit(1, 1, |i| i.with(BITS_PER_SAMPLE, SHORT, &[8; 65])),
+        ),
+    ] {
+        assert_eq!(
+            preview(&bytes, "image/tiff"),
+            tiff_failed(TIFF_UNSUPPORTED),
+            "{what}"
+        );
+    }
+}
+
+/// A PackBits-compressed image of `width` by `height`, every sample the
+/// same, in strips of 16 rows: real pixel data in a small file.
+fn uniform(width: u64, height: u64, bits: u64, samples: u64, photometric: u64) -> Image {
+    let row = vec![7u8; (width * samples * bits / 8) as usize];
+    let strip: Vec<u8> = row.repeat(16);
+    let packed = compress(&strip, PACKBITS_CODE);
+    let strips = vec![packed; height.div_ceil(16) as usize];
+    let mut image = Image::chunky(width, height, bits, samples, photometric, Vec::new())
+        .with(ROWS_PER_STRIP, SHORT, &[16])
+        .coded(PACKBITS_CODE, None);
+    image.strips = Some(strips);
+    image
+}
+
+#[test]
+fn tiff_a_cmyk_tiff_over_the_budget_fails_as_not_supported() {
+    let bytes = Tiff::classic(vec![uniform(16_000, 12_000, 8, 4, 5)]).bytes();
+    assert_eq!(preview(&bytes, "image/tiff"), tiff_failed(TIFF_UNSUPPORTED));
+}
+
+#[test]
+fn tiff_a_side_over_65500_fails_and_one_of_65500_gets_a_preview() {
+    let wide = Tiff::classic(vec![uniform(65_501, 100, 8, 1, 1)]).bytes();
+    assert_eq!(preview(&wide, "image/tiff"), tiff_failed(TOO_WIDE));
+    let widest = Tiff::classic(vec![uniform(65_500, 100, 8, 1, 1)]).bytes();
+    let decoded = decode(&preview(&widest, "image/tiff").unwrap());
+    assert_eq!((decoded.width, decoded.height), (65_500, 100));
+}
+
+#[test]
+fn tiff_pixels_over_the_budget_fail_before_decoding() {
+    for (what, image) in [
+        (
+            "16-bit RGB of 540,000,000 bytes",
+            uniform(15_000, 6_000, 16, 3, 2),
+        ),
+        ("8-bit gray of 512 MiB", uniform(32_768, 16_384, 8, 1, 1)),
+    ] {
+        let bytes = Tiff::classic(vec![image]).bytes();
+        assert_eq!(preview(&bytes, "image/tiff"), tiff_failed(BUDGET), "{what}");
+    }
+}
+
+#[test]
+fn tiff_tile_scratch_over_the_budget_fails() {
+    // One tile row is wider than the whole budget.
+    let image = Image {
+        tags: Image::chunky(16, 16, 32, 1, 1, Vec::new())
+            .without(ROWS_PER_STRIP)
+            .with(SAMPLE_FORMAT, SHORT, &[3])
+            .coded(DEFLATE_CODE, Some(3))
+            .with(TILE_WIDTH, tiff::LONG, &[1 << 27])
+            .with(TILE_LENGTH, SHORT, &[16])
+            .tags,
+        strips: None,
+        tiles: Some(vec![compress(&[0u8; 64], DEFLATE_CODE)]),
+    };
+    assert_eq!(
+        preview(&Tiff::classic(vec![image]).bytes(), "image/tiff"),
+        tiff_failed(BUDGET)
+    );
+}
+
+#[test]
+fn tiff_beyond_the_codecs_default_256_mib_output_gets_a_preview() {
+    let bytes = Tiff::classic(vec![uniform(16_384, 6_400, 8, 3, 2)]).bytes();
+    let jpeg = preview(&bytes, "image/tiff").unwrap();
+    let decoded = decode(&jpeg);
+    assert_eq!((decoded.width, decoded.height), (16_384, 6_400));
+}
+
+#[test]
+fn tiff_a_tiff_cut_off_inside_its_last_strip_fails() {
+    let mut image = Image::chunky(64, 64, 8, 3, 2, Vec::new()).with(ROWS_PER_STRIP, SHORT, &[16]);
+    image.strips = Some(
+        rgb8_pixels(64, 64)
+            .chunks(64 * 16 * 3)
+            .map(<[u8]>::to_vec)
+            .collect(),
+    );
+    let bytes = Tiff::classic(vec![image]).bytes();
+    // The writer puts the strips before the directory. Keep the directory,
+    // but cut the last strip short and move the directory up to follow it.
+    let directory = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let mut cut = bytes[..directory - 1000].to_vec();
+    let moved = cut.len() as u32;
+    cut.extend_from_slice(&bytes[directory..]);
+    cut[4..8].copy_from_slice(&moved.to_le_bytes());
+    // The values outside the directory moved by the same distance.
+    let shift = (directory - moved as usize) as u32;
+    let mut fixed = cut.clone();
+    let entries = u16::from_le_bytes([fixed[moved as usize], fixed[moved as usize + 1]]) as usize;
+    for entry in 0..entries {
+        let at = moved as usize + 2 + entry * 12;
+        let kind = u16::from_le_bytes([fixed[at + 2], fixed[at + 3]]);
+        let count = u32::from_le_bytes(fixed[at + 4..at + 8].try_into().unwrap());
+        let size = match kind {
+            3 => 2,
+            4 => 4,
+            _ => 1,
+        };
+        if count * size > 4 {
+            let offset = u32::from_le_bytes(fixed[at + 8..at + 12].try_into().unwrap());
+            fixed[at + 8..at + 12].copy_from_slice(&(offset - shift).to_le_bytes());
+        }
+    }
+    assert_eq!(
+        preview(&fixed, "image/tiff"),
+        tiff_failed("the TIFF image could not be decoded")
+    );
+}
+
+#[test]
+fn tiff_bytes_that_are_a_png_fail_as_a_tiff() {
+    let bytes = png(
+        16,
+        16,
+        png::ColorType::Rgb,
+        png::BitDepth::Eight,
+        &rgb_samples(16, 16, gradient),
+    );
+    assert_eq!(
+        preview(&bytes, "image/tiff"),
+        tiff_failed("the TIFF image could not be decoded")
+    );
+}
+
+/// The preview of `bytes` in a helper whose budget is `budget` bytes.
+fn preview_within(bytes: &[u8], budget: usize) -> Result<Vec<u8>, ExecutionError> {
+    let runner = Arc::new(WorkerRunner::new(WorkerCommand {
+        program: HELPER.into(),
+        args: vec!["--budget".into(), budget.to_string().into()],
+    }));
+    let mut registry = Registry::new();
+    registry
+        .register_pack(&sidereal_pack_image::ImagePack::new(runner))
+        .unwrap();
+    let mut output = Kept::default();
+    registry
+        .execute_operator(
+            sidereal_pack_image::MAKE_PREVIEW,
+            &mut Bytes(bytes.to_vec()),
+            "image/tiff",
+            &mut output,
+            &mut |_| {},
+            &|| false,
+        )
+        .map(|_| output.0)
+}
+
+/// The stack the helper charges, read from the helper itself.
+fn stack() -> usize {
+    let (_, out) = helper(&["--self-check", "describe", "image/tiff"]);
+    out.split_whitespace()
+        .find_map(|part| part.strip_prefix("stack="))
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+const KIB: usize = 1024;
+
+/// The smallest heap, in whole 4 KiB pages, at which the helper makes a
+/// preview of `bytes`; every smaller one is refused with the budget reason.
+fn smallest_heap(bytes: &[u8]) -> usize {
+    let stack = stack();
+    let (mut refused, mut made) = (0usize, 64 * 1024 * KIB);
+    assert!(
+        preview_within(bytes, stack + made).is_ok(),
+        "no preview even with 64 MiB"
+    );
+    while made - refused > 4 * KIB {
+        let middle = (refused + made) / 2 / (4 * KIB) * (4 * KIB);
+        match preview_within(bytes, stack + middle) {
+            Ok(_) => made = middle,
+            Err(error) => {
+                assert_eq!(Err::<Vec<u8>, _>(error), tiff_failed(BUDGET));
+                refused = middle;
+            }
+        }
+    }
+    made
+}
+
+/// What the preflight check counts for an image: its pixels and one row of
+/// a strip or tile. A smallest heap above this means that, just below it,
+/// the check passed and the heap refused an allocation during the decode.
+fn counted(pixels: usize, row: usize) -> usize {
+    pixels + row
+}
+
+#[test]
+fn tiff_constructor_allocations_count_against_a_reduced_budget() {
+    // The same 16 by 4,096 pixels in one strip, and in 4,096 one-row
+    // strips, whose offsets and byte counts the decoder keeps as it starts.
+    let image = |rows: u64| {
+        let mut image =
+            Image::chunky(16, 4_096, 8, 1, 1, Vec::new()).with(ROWS_PER_STRIP, SHORT, &[rows]);
+        image.strips = Some(
+            vec![9u8; 16 * 4_096]
+                .chunks(16 * rows as usize)
+                .map(<[u8]>::to_vec)
+                .collect(),
+        );
+        Tiff::classic(vec![image]).bytes()
+    };
+    let one = smallest_heap(&image(4_096));
+    let many = smallest_heap(&image(1));
+    assert!(
+        many >= one + 64 * KIB,
+        "one strip {one}, 4,096 strips {many}"
+    );
+    assert!(many > counted(16 * 4_096, 16));
+}
+
+#[test]
+fn tiff_float_strip_decoding_counts_against_a_reduced_budget() {
+    let values: Vec<u8> = (0..256 * 64)
+        .flat_map(|n| (n as f32 / 16_384.0).to_le_bytes())
+        .collect();
+    let image =
+        strip_image(256, 64, 32, 1, 1, DEFLATE_CODE, values).with(SAMPLE_FORMAT, SHORT, &[3]);
+    let heap = smallest_heap(&Tiff::classic(vec![image]).bytes());
+    assert!(heap > counted(256 * 64 * 4, 256 * 4), "{heap}");
+}
+
+#[test]
+fn tiff_padded_tile_decoding_counts_against_a_reduced_budget() {
+    // 40 by 40 pixels in one 256 by 256 tile: the decoder reads padded rows.
+    let heap = smallest_heap(&float_tiles(40, 40, 256, |x, y| ((x + y) % 2) as f32));
+    assert!(heap > counted(40 * 40 * 4, 256 * 4), "{heap}");
+}
+
+#[allow(dead_code)]
+fn unused(_: Tag, _: u16, _: u16) {
+    let _ = (PHOTOMETRIC, SAMPLES_PER_PIXEL, COMPRESSION);
 }

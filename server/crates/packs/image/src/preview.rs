@@ -152,7 +152,6 @@ pub(crate) enum Sample {
     U16,
     /// 32-bit floating point, with 0 to 1 the range shown. Only a TIFF has
     /// it.
-    #[allow(dead_code)]
     F32,
 }
 

@@ -171,6 +171,11 @@ impl Directory {
         self.entry(tag).is_some()
     }
 
+    /// How many values the entry for `tag` holds, read from the entry only.
+    pub(crate) fn count(&self, tag: u16) -> Option<u64> {
+        self.entry(tag).map(|entry| entry.count)
+    }
+
     /// The one whole-number value of `tag`, when it holds exactly one value
     /// of a whole-number type, stored in the entry.
     pub(crate) fn scalar(&self, tag: u16) -> Option<u64> {

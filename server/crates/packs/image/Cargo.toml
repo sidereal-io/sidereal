@@ -15,3 +15,10 @@ png = { workspace = true }
 zune-jpeg = { workspace = true }
 # Writes each preview: a baseline JPEG, one row of blocks at a time.
 jpeg-encoder = { workspace = true }
+# Decodes a TIFF's first image for its preview: LZW and Deflate only.
+tiff = { workspace = true }
+
+[dev-dependencies]
+# Compress the TIFFs that tests/common/tiff.rs builds.
+weezl = { workspace = true }
+flate2 = { workspace = true }

@@ -45,3 +45,5 @@ tokio-tungstenite = { workspace = true }
 png = { workspace = true }
 jpeg-encoder = { workspace = true }
 zune-jpeg = { workspace = true }
+weezl = { workspace = true }
+flate2 = { workspace = true }
