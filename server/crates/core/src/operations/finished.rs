@@ -85,6 +85,7 @@ async fn values_for_a_run_that_already_ended_are_not_stored() {
             preview: None,
             preview_bytes: 0,
         },
+        None,
     )
     .await
     .unwrap();

@@ -1,16 +1,18 @@
 //! Run one registered Operator over one Asset version, record the attempt as
-//! an operation run, and store the facet values it proposed (ADR-008).
+//! an operation run, and store the facet values and the preview it proposed
+//! (ADR-008, ADR-018).
 //!
-//! Core is the only writer of facet values. It checks every proposal against
-//! the Registry's schemas and the Operator's grants before it stores any, and
-//! takes the producer from the Operator's registration, never from the run.
+//! Core is the only writer of facet values and derived Assets. It checks
+//! every proposal against the Registry's schemas, the Operator's grants and
+//! its registration before it stores any, and takes the producer from the
+//! Operator's registration, never from the run.
 use crate::{
     database::{Database, DatabaseError},
-    storage::objects::ObjectStore,
+    storage::objects::{ObjectStore, Published, StageError, Staging},
 };
 use sidereal_plugin_abi::{
-    Candidate, ExecutionError, FacetScope, FacetType, FacetValue, OperatorProposals, Output,
-    Registry, MAX_COUNT,
+    AssetProposal, Candidate, ExecutionError, FacetScope, FacetType, FacetValue, OperatorProposals,
+    Output, Registry, MAX_COUNT,
 };
 use std::{
     fs::File,
@@ -91,14 +93,56 @@ impl Candidate for ObjectBytes {
     }
 }
 
-/// Where an Operator's preview bytes go. Core keeps no preview yet, so it
-/// refuses every write.
-struct NoPreviews;
+/// Where an Operator's preview bytes go: a staging file, begun on the first
+/// write. The first failure is kept, and every later write is refused, so a
+/// failed preview is never published, even when the Operator ignores the
+/// error and reports success.
+struct StagingOutput {
+    objects: ObjectStore,
+    staging: Option<Staging>,
+    failure: Option<&'static str>,
+}
 
-impl Output for NoPreviews {
-    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
-        Err(std::io::Error::other("this host keeps no previews"))
+impl StagingOutput {
+    fn new(objects: ObjectStore) -> Self {
+        Self {
+            objects,
+            staging: None,
+            failure: None,
+        }
     }
+
+    fn stage(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
+        let staging = match &mut self.staging {
+            Some(staging) => staging,
+            None => self
+                .staging
+                .insert(self.objects.begin().map_err(|_| PREVIEW_NOT_STORED)?),
+        };
+        staging.write(bytes).map_err(|error| match error {
+            StageError::TooLarge => PREVIEW_TOO_LARGE,
+            StageError::Storage(_) => PREVIEW_NOT_STORED,
+        })
+    }
+}
+
+impl Output for StagingOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        if let Some(failure) = self.failure {
+            return Err(std::io::Error::other(failure));
+        }
+        self.stage(bytes).map_err(|failure| {
+            self.failure = Some(failure);
+            self.staging = None;
+            std::io::Error::other(failure)
+        })
+    }
+}
+
+/// A run's checked preview, staged and not yet published.
+struct StagedPreview {
+    proposal: AssetProposal,
+    staging: Staging,
 }
 
 /// The version row a run reads.
@@ -223,14 +267,27 @@ pub async fn run_operator(
     .execute(database.pool())
     .await?;
 
-    let proposals = match execute(objects, &registry, &run.operator_id, &version, &cancelled).await
-    {
-        Ok(proposals) => proposals,
+    let (proposals, staging) =
+        match execute(objects, &registry, &run.operator_id, &version, &cancelled).await {
+            Ok(ran) => ran,
+            Err(reason) => return Ok(record_failure(database, run_id, &reason).await?),
+        };
+    let preview = match check(&registry, &proposals, staging) {
+        Ok(preview) => preview,
         Err(reason) => return Ok(record_failure(database, run_id, &reason).await?),
     };
-    if let Err(reason) = check(&registry, &proposals) {
-        return Ok(record_failure(database, run_id, &reason).await?);
+    if cancelled.load(Ordering::SeqCst) {
+        return Ok(record_failure(database, run_id, CANCELLED).await?);
     }
+    let published = match preview {
+        None => None,
+        Some(preview) => match publish(objects, preview.staging).await {
+            Ok(published) => Some((preview.proposal, published)),
+            Err(reason) => return Ok(record_failure(database, run_id, reason).await?),
+        },
+    };
+    // Publication can take a while; a cancellation during it stops the run
+    // before core records anything. An object it published stays, unused.
     if cancelled.load(Ordering::SeqCst) {
         return Ok(record_failure(database, run_id, CANCELLED).await?);
     }
@@ -241,6 +298,7 @@ pub async fn run_operator(
         run.asset_version_id,
         &version,
         &proposals,
+        published.as_ref(),
     )
     .await;
     match stored {
@@ -256,17 +314,23 @@ pub async fn run_operator(
 
 const CANCELLED: &str = "the run was cancelled";
 const VALUES_NOT_STORED: &str = "the values could not be stored";
+const PREVIEW_NOT_STORED: &str = "the preview could not be stored";
+const PREVIEW_TOO_LARGE: &str = "the preview is larger than 100 MiB";
+
+/// The media types a browser shows, which a preview may have.
+const PREVIEW_MEDIA_TYPES: &[&str] = &["image/jpeg", "image/png"];
 
 /// On a blocking worker: open the version's object, check that its length
-/// is the version's recorded size, and run the Operator over it. The error
-/// is the reason the run failed.
+/// is the version's recorded size, and run the Operator over it, staging
+/// any preview bytes it writes. The error is the reason the run failed; the
+/// staging is dropped with it.
 async fn execute(
     objects: &ObjectStore,
     registry: &Arc<Registry>,
     operator_id: &str,
     version: &Version,
     cancelled: &Arc<AtomicBool>,
-) -> Result<OperatorProposals, String> {
+) -> Result<(OperatorProposals, Option<Staging>), String> {
     let objects = objects.clone();
     let registry = registry.clone();
     let operator_id = operator_id.to_owned();
@@ -281,21 +345,29 @@ async fn execute(
         if length != size {
             return Err("the stored object does not match its version".to_owned());
         }
-        registry
-            .execute_operator(
-                &operator_id,
-                &mut ObjectBytes { file, size },
-                &media_type,
-                &mut NoPreviews,
-                &mut |line| eprintln!("operator {operator_id}: {line:?}"),
-                &|| cancelled.load(Ordering::SeqCst),
-            )
-            .map_err(|error| match error {
+        let mut output = StagingOutput::new(objects);
+        let outcome = registry.execute_operator(
+            &operator_id,
+            &mut ObjectBytes { file, size },
+            &media_type,
+            &mut output,
+            &mut |line| eprintln!("operator {operator_id}: {line:?}"),
+            &|| cancelled.load(Ordering::SeqCst),
+        );
+        // A staging failure is what stopped the run when the Operator
+        // reports success, or says that a preview write stopped it. Any
+        // other failure keeps the Operator's own reason.
+        match (outcome, output.failure) {
+            (Ok(_) | Err(ExecutionError::Output), Some(failure)) => Err(failure.to_owned()),
+            (Err(ExecutionError::Output), None) => Err(PREVIEW_NOT_STORED.to_owned()),
+            (Ok(proposals), None) => Ok((proposals, output.staging)),
+            (Err(error), _) => Err(match error {
                 ExecutionError::Failed(reason) => reason,
                 ExecutionError::Unsupported => "the operator cannot run yet".to_owned(),
                 ExecutionError::Cancelled => CANCELLED.to_owned(),
                 other => other.to_string(),
-            })
+            }),
+        }
     })
     .await;
     outcome.unwrap_or_else(|_| Err("the operator stopped".to_owned()))
@@ -313,10 +385,51 @@ fn cleaned(reason: &str) -> String {
     }
 }
 
-/// Check every proposal against the Registry before any is stored: its
-/// facet has a schema, it is in the Operator's registered grants, and its
-/// value fits the schema's type. The reason names the first facet refused.
-fn check(registry: &Registry, proposals: &OperatorProposals) -> Result<(), String> {
+/// Check every proposal against the Registry before any is stored: a
+/// preview comes from an Operator that registered as making previews, has a
+/// media type a browser shows and holds bytes; each facet has a schema, is
+/// in the Operator's registered grants, and its value fits the schema's
+/// type. The reason names the first proposal refused. A refusal drops the
+/// staged preview.
+fn check(
+    registry: &Registry,
+    proposals: &OperatorProposals,
+    staging: Option<Staging>,
+) -> Result<Option<StagedPreview>, String> {
+    let preview = match (&proposals.preview, staging) {
+        (None, _) => None,
+        (Some(_), _) if !proposals.makes_previews => {
+            return Err(format!(
+                "operator {} does not make previews",
+                proposals.producer_id
+            ))
+        }
+        (Some(proposal), _) if !PREVIEW_MEDIA_TYPES.contains(&proposal.media_type.as_str()) => {
+            return Err(format!("a preview cannot be {}", proposal.media_type))
+        }
+        (Some(proposal), Some(staging)) if proposals.preview_bytes > 0 => Some(StagedPreview {
+            proposal: proposal.clone(),
+            staging,
+        }),
+        (Some(_), _) => return Err("the preview is empty".to_owned()),
+    };
+    check_facets(registry, proposals)?;
+    Ok(preview)
+}
+
+/// On a blocking worker: hash the staged preview and publish it before any
+/// record names it (ADR-011).
+async fn publish(objects: &ObjectStore, staging: Staging) -> Result<Published, &'static str> {
+    let objects = objects.clone();
+    tokio::task::spawn_blocking(move || {
+        let staged = staging.finish().map_err(|_| PREVIEW_NOT_STORED)?;
+        objects.publish(staged).map_err(|_| PREVIEW_NOT_STORED)
+    })
+    .await
+    .unwrap_or(Err(PREVIEW_NOT_STORED))
+}
+
+fn check_facets(registry: &Registry, proposals: &OperatorProposals) -> Result<(), String> {
     for proposal in &proposals.proposals {
         let name = &proposal.name;
         let Some(declared) = registry.facet_schema(name) else {
@@ -376,10 +489,12 @@ async fn record_failure(
 type KeptSchema = (String, String, String, String, String);
 
 /// In one transaction: keep each used schema version, insert every value
-/// against the subject its scope names, and mark the run `succeeded`. A kept
-/// schema version that differs from the running declaration refuses the run
-/// (the inner error) and stores nothing. Schema versions are kept in name
-/// order, so two runs that first write the same schemas cannot deadlock.
+/// against the subject its scope names, record the published preview as a
+/// derived Asset with one version and its lineage row, and mark the run
+/// `succeeded`. A kept schema version that differs from the running
+/// declaration refuses the run (the inner error) and stores nothing. Schema
+/// versions are kept in name order, so two runs that first write the same
+/// schemas cannot deadlock.
 async fn store(
     database: &Database,
     registry: &Registry,
@@ -387,6 +502,7 @@ async fn store(
     version_id: Uuid,
     version: &Version,
     proposals: &OperatorProposals,
+    preview: Option<&(AssetProposal, Published)>,
 ) -> Result<Result<(), String>, sqlx::Error> {
     let mut tx = database.pool().begin().await?;
     let mut used: Vec<_> = proposals
@@ -465,6 +581,46 @@ async fn store(
         .execute(&mut *tx)
         .await?;
     }
+    if let Some((proposal, published)) = preview {
+        let name: String = sqlx::query_scalar("SELECT name FROM public.assets WHERE id = $1")
+            .bind(version.asset_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        let (asset, derived) = (Uuid::new_v4(), Uuid::new_v4());
+        sqlx::query(
+            "INSERT INTO public.assets (id, kind, name, current_version_id, origin) \
+             VALUES ($1, $2, $3, $4, 'derived')",
+        )
+        .bind(asset)
+        .bind(&proposal.kind)
+        .bind(&name)
+        .bind(derived)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO public.asset_versions \
+             (id, asset_id, content_hash, byte_size, media_type, source_id, source_version, ingested_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+        )
+        .bind(derived)
+        .bind(asset)
+        .bind(&published.hash)
+        .bind(published.size as i64)
+        .bind(&proposal.media_type)
+        .bind(&proposals.producer_id)
+        .bind(&proposals.producer_version)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO public.asset_lineage (output_version_id, input_version_id, role, run_id) \
+             VALUES ($1, $2, 'preview', $3)",
+        )
+        .bind(derived)
+        .bind(version_id)
+        .bind(run_id)
+        .execute(&mut *tx)
+        .await?;
+    }
     let ended = sqlx::query(
         "UPDATE public.operation_runs \
          SET status = 'succeeded', ended_at = greatest(now(), started_at) \
@@ -482,6 +638,8 @@ async fn store(
 
 #[cfg(test)]
 mod accepts;
+#[cfg(test)]
+mod derives;
 #[cfg(test)]
 mod fails;
 #[cfg(test)]

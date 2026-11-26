@@ -147,6 +147,8 @@ pub(super) struct Fixture {
     pub registry: Arc<Registry>,
     /// The `users.id` of the claimed administrator.
     pub nova: i64,
+    /// The storage UUID that pairing committed.
+    pub paired: Uuid,
 }
 
 impl Fixture {
@@ -173,6 +175,7 @@ impl Fixture {
             objects,
             registry: registry(register),
             nova,
+            paired,
         }
     }
 
