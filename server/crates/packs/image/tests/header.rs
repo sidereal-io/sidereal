@@ -104,10 +104,21 @@ impl Candidate for Bytes {
     }
 }
 
+/// The media type the Source records for `bytes`: PNG for a PNG
+/// signature, otherwise JPEG.
+fn media_type(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"\x89PNG") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    }
+}
+
 /// Run the header Operator over `candidate`.
 fn read_header(candidate: &mut Bytes) -> Result<Vec<FacetProposal>, ExecutionError> {
+    let media_type = media_type(&candidate.bytes);
     registry()
-        .execute_operator(READ_HEADER, candidate, &mut |_| {}, &|| false)
+        .execute_operator(READ_HEADER, candidate, media_type, &mut |_| {}, &|| false)
         .map(|run| run.proposals)
 }
 
@@ -314,9 +325,16 @@ impl Candidate for FailsEveryRead {
 #[test]
 fn candidate_whose_first_read_fails_fails_as_unreadable() {
     for bytes in [png(640, 480), jpeg(640, 480)] {
+        let media_type = media_type(&bytes);
         let mut candidate = FailsEveryRead(Bytes::new(bytes));
         let outcome = registry()
-            .execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| false)
+            .execute_operator(
+                READ_HEADER,
+                &mut candidate,
+                media_type,
+                &mut |_| {},
+                &|| false,
+            )
             .map(|run| run.proposals);
         assert_eq!(outcome, failed("the stored file could not be read"));
     }
@@ -642,9 +660,13 @@ fn jpeg_run_cancelled_by_its_host_stops_reading() {
         bytes: Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480))),
         cancelled: cancelled.clone(),
     };
-    let outcome = registry().execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| {
-        cancelled.get()
-    });
+    let outcome = registry().execute_operator(
+        READ_HEADER,
+        &mut candidate,
+        "image/jpeg",
+        &mut |_| {},
+        &|| cancelled.get(),
+    );
     assert_eq!(outcome, Err(ExecutionError::Cancelled));
     assert_eq!(candidate.bytes.reads, 1);
 }
@@ -703,7 +725,13 @@ fn jpeg_whose_candidate_read_fails_fails() {
         let mut candidate =
             FailsOnSecondRead(Bytes::new(jpeg_with(&before, &frame(0xc0, 8, 640, 480))));
         let outcome = registry()
-            .execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| false)
+            .execute_operator(
+                READ_HEADER,
+                &mut candidate,
+                "image/jpeg",
+                &mut |_| {},
+                &|| false,
+            )
             .map(|run| run.proposals);
         assert_eq!(
             outcome,

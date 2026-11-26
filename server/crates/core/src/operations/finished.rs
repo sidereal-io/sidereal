@@ -71,6 +71,7 @@ async fn values_for_a_run_that_already_ended_are_not_stored() {
             asset_id: version.id,
             content_hash: version.version.content_hash.clone(),
             byte_size: 3,
+            media_type: "image/x-test".into(),
         },
         &FacetProposals {
             producer_id: "test.op".into(),

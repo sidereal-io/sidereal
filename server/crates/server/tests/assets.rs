@@ -993,6 +993,9 @@ impl Operator for Blocking {
     fn writes(&self) -> &[&str] {
         &["test.size"]
     }
+    fn accepts(&self) -> &[&str] {
+        &["image/png", "image/jpeg"]
+    }
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         self.started.store(true, Ordering::SeqCst);
         let deadline = std::time::Instant::now() + SECONDS;
@@ -1871,6 +1874,9 @@ mod upload_run {
         }
         fn writes(&self) -> &[&str] {
             &["test.size"]
+        }
+        fn accepts(&self) -> &[&str] {
+            &["image/png", "image/jpeg"]
         }
         fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
             (self.0)(context)

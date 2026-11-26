@@ -22,7 +22,10 @@ use std::fmt;
 /// - `2`: an [`Operator`] reports its version and the facets it writes, and
 ///   runs through an [`AssetContext`]; a pack declares its facet schemas, and
 ///   hosts register packs through [`Registry::register_pack`].
-pub const ABI_VERSION: u32 = 2;
+/// - `3`: an [`Operator`] declares the media types it accepts and reads its
+///   version's media type through its [`AssetContext`], and it can propose a
+///   preview and stream its bytes to the host's [`Output`].
+pub const ABI_VERSION: u32 = 3;
 
 /// Brings files into the library as Assets (e.g. manual upload).
 pub trait Source: Send + Sync {
@@ -78,18 +81,22 @@ impl AssetProposal {
     /// A kind is one lowercase token; a media type is `type/subtype` with no
     /// parameters, so the host can send it as a header unchanged.
     fn is_well_formed(&self) -> bool {
-        fn token(text: &str) -> bool {
-            !text.is_empty()
-                && text
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"+-.".contains(&b))
-        }
-        token(&self.kind)
-            && self
-                .media_type
-                .split_once('/')
-                .is_some_and(|(kind, subtype)| token(kind) && token(subtype))
+        token(&self.kind) && is_media_type(&self.media_type)
     }
+}
+
+/// One lowercase token: letters, digits, `+`, `-` and `.`.
+fn token(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"+-.".contains(&b))
+}
+
+/// Whether `text` is one lowercase `type/subtype` with no parameters.
+fn is_media_type(text: &str) -> bool {
+    text.split_once('/')
+        .is_some_and(|(kind, subtype)| token(kind) && token(subtype))
 }
 
 /// Which Source produced an Asset version, taken from the registered Source
@@ -124,6 +131,9 @@ pub enum ExecutionError {
     NoProposal,
     /// The host cancelled the run.
     Cancelled,
+    /// The Operator does not accept the version's media type, so it did not
+    /// run.
+    NotAccepted,
 }
 
 impl fmt::Display for ExecutionError {
@@ -136,6 +146,7 @@ impl fmt::Display for ExecutionError {
             Self::Failed(reason) => write!(f, "the source failed: {reason}"),
             Self::NoProposal => f.write_str("the source proposed no asset"),
             Self::Cancelled => f.write_str("the run was cancelled"),
+            Self::NotAccepted => f.write_str("the operator does not accept this media type"),
         }
     }
 }
@@ -171,6 +182,7 @@ enum RunKind {
 pub struct AssetContext<'a> {
     kind: RunKind,
     candidate: &'a mut dyn Candidate,
+    media_type: Option<&'a str>,
     log: &'a mut dyn FnMut(&str),
     cancelled: &'a dyn Fn() -> bool,
     proposal: Option<AssetProposal>,
@@ -182,12 +194,14 @@ impl<'a> AssetContext<'a> {
     fn new(
         kind: RunKind,
         candidate: &'a mut dyn Candidate,
+        media_type: Option<&'a str>,
         log: &'a mut dyn FnMut(&str),
         cancelled: &'a dyn Fn() -> bool,
     ) -> Self {
         Self {
             kind,
             candidate,
+            media_type,
             log,
             cancelled,
             proposal: None,
@@ -201,6 +215,12 @@ impl AssetContext<'_> {
     /// The candidate's size in bytes.
     pub fn candidate_size(&self) -> u64 {
         self.candidate.size()
+    }
+
+    /// The media type the host recorded for the version an Operator reads.
+    /// A Source run has none: recognizing the candidate is the Source's job.
+    pub fn media_type(&self) -> Option<&str> {
+        self.media_type
     }
 
     /// Read candidate bytes starting at `offset`. One call reads at most
@@ -271,9 +291,9 @@ impl AssetContext<'_> {
 
 /// Takes an Asset version and proposes facts about it (e.g. plate solving).
 ///
-/// The Registry asks for [`Operator::id`], [`Operator::version`] and
-/// [`Operator::writes`] once, when the Operator registers, and keeps the
-/// answers: later answers change nothing.
+/// The Registry asks for [`Operator::id`], [`Operator::version`],
+/// [`Operator::writes`] and [`Operator::accepts`] once, when the Operator
+/// registers, and keeps the answers: later answers change nothing.
 pub trait Operator: Send + Sync {
     /// Stable, namespaced identifier, e.g. `"astro.plate-solve"`.
     fn id(&self) -> &str;
@@ -284,6 +304,11 @@ pub trait Operator: Send + Sync {
     /// The facets this Operator writes: its grants. Core refuses a proposal
     /// for any other facet.
     fn writes(&self) -> &[&str];
+
+    /// The media types of originals' versions this Operator reads, such as
+    /// `image/png`: each one lowercase `type/subtype` with no parameters.
+    /// The host runs it only over a version with one of these media types.
+    fn accepts(&self) -> &[&str];
 
     /// Read one Asset version through `context` and propose facet values.
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError>;
@@ -334,6 +359,7 @@ pub struct RegisteredOperator {
     id: String,
     version: String,
     writes: Vec<String>,
+    accepts: Vec<String>,
     operator: Box<dyn Operator>,
 }
 
@@ -351,6 +377,16 @@ impl RegisteredOperator {
     /// The facets the Operator listed when it registered: its grants.
     pub fn writes(&self) -> &[String] {
         &self.writes
+    }
+
+    /// The media types the Operator listed when it registered.
+    pub fn accepts(&self) -> &[String] {
+        &self.accepts
+    }
+
+    /// Whether the Operator registered to accept exactly `media_type`.
+    pub fn accepts_media_type(&self, media_type: &str) -> bool {
+        self.accepts.iter().any(|accepted| accepted == media_type)
     }
 }
 
@@ -476,13 +512,14 @@ impl Registry {
         self.sources.push(source);
     }
 
-    /// Register an [`Operator`]. Its id, version and grants are recorded
-    /// now, once.
+    /// Register an [`Operator`]. Its id, version, grants and accepted media
+    /// types are recorded now, once.
     pub fn register_operator(&mut self, operator: Box<dyn Operator>) {
         self.operators.push(RegisteredOperator {
             id: operator.id().to_owned(),
             version: operator.version().to_owned(),
             writes: operator.writes().iter().map(|&w| w.to_owned()).collect(),
+            accepts: operator.accepts().iter().map(|&m| m.to_owned()).collect(),
             operator,
         });
     }
@@ -587,7 +624,7 @@ impl Registry {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Accepted, ExecutionError> {
         let source = self.source(id).ok_or(ExecutionError::UnknownSource)?;
-        let mut context = AssetContext::new(RunKind::Source, candidate, log, cancelled);
+        let mut context = AssetContext::new(RunKind::Source, candidate, None, log, cancelled);
         let outcome = source.run(&mut context);
         if context.is_cancelled() {
             return Err(ExecutionError::Cancelled);
@@ -611,18 +648,30 @@ impl Registry {
         })
     }
 
-    /// Run the Operator registered as `id` over one Asset version's bytes.
-    /// The result names the producer and the grants from the Operator's
-    /// registration. It does not check the proposals; the host does.
+    /// Run the Operator registered as `id` over one Asset version's bytes,
+    /// whose recorded media type is `media_type`. An Operator that did not
+    /// register to accept that media type does not run. The result names the
+    /// producer and the grants from the Operator's registration. It does not
+    /// check the proposals; the host does.
     pub fn execute_operator(
         &self,
         id: &str,
         candidate: &mut dyn Candidate,
+        media_type: &str,
         log: &mut dyn FnMut(&str),
         cancelled: &dyn Fn() -> bool,
     ) -> Result<FacetProposals, ExecutionError> {
         let entry = self.operator(id).ok_or(ExecutionError::UnknownOperator)?;
-        let mut context = AssetContext::new(RunKind::Operator, candidate, log, cancelled);
+        if !entry.accepts_media_type(media_type) {
+            return Err(ExecutionError::NotAccepted);
+        }
+        let mut context = AssetContext::new(
+            RunKind::Operator,
+            candidate,
+            Some(media_type),
+            log,
+            cancelled,
+        );
         let outcome = entry.operator.run(&mut context);
         if context.is_cancelled() {
             return Err(ExecutionError::Cancelled);
@@ -695,6 +744,10 @@ fn unrecordable_operator(entry: &RegisteredOperator) -> Option<&'static str> {
         Some("its version is empty")
     } else if entry.version.contains('\0') {
         Some("its version holds a zero character")
+    } else if entry.accepts.is_empty() {
+        Some("it accepts no media type")
+    } else if !entry.accepts.iter().all(|m| is_media_type(m)) {
+        Some("it accepts a media type that is not well formed")
     } else {
         None
     }
@@ -1151,6 +1204,9 @@ mod operator_registration {
                 &["test.size"]
             }
         }
+        fn accepts(&self) -> &[&str] {
+            &["image/x-test"]
+        }
         fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
             Ok(())
         }
@@ -1197,7 +1253,13 @@ mod operator_registration {
         assert_eq!(entry.writes(), ["test.size"]);
         assert_eq!(entry.version(), "1.2.3");
         let run = registry
-            .execute_operator("test.op", &mut NoBytes, &mut |_| {}, &|| false)
+            .execute_operator(
+                "test.op",
+                &mut NoBytes,
+                "image/x-test",
+                &mut |_| {},
+                &|| false,
+            )
             .unwrap();
         assert_eq!(run.grants, ["test.size"]);
         assert_eq!(run.producer_version, "1.2.3");
@@ -1255,8 +1317,8 @@ mod operator_registration {
     }
 
     #[test]
-    fn operator_registration_is_abi_version_2() {
-        assert_eq!(ABI_VERSION, 2);
+    fn operator_registration_is_abi_version_3() {
+        assert_eq!(ABI_VERSION, 3);
     }
 }
 
@@ -1289,6 +1351,9 @@ mod operator_execution {
         fn writes(&self) -> &[&str] {
             &["test.first-byte"]
         }
+        fn accepts(&self) -> &[&str] {
+            &["image/x-test"]
+        }
         fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
             (self.0)(context)
         }
@@ -1310,9 +1375,13 @@ mod operator_execution {
     ) -> Result<FacetProposals, ExecutionError> {
         let mut registry = Registry::new();
         registry.register_pack(&TestPack(script)).unwrap();
-        registry.execute_operator("test.op", &mut Bytes(bytes.to_vec()), &mut |_| {}, &|| {
-            false
-        })
+        registry.execute_operator(
+            "test.op",
+            &mut Bytes(bytes.to_vec()),
+            "image/x-test",
+            &mut |_| {},
+            &|| false,
+        )
     }
 
     fn first_byte(context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
@@ -1373,6 +1442,7 @@ mod operator_execution {
             .execute_operator(
                 "test.op",
                 &mut Bytes(b"I".to_vec()),
+                "image/x-test",
                 &mut |line| lines.push(line.to_owned()),
                 &|| false,
             )
@@ -1448,7 +1518,13 @@ mod operator_execution {
         let mut registry = Registry::new();
         registry.register_pack(&TestPack(first_byte)).unwrap();
         assert_eq!(
-            registry.execute_operator("test.op", &mut Bytes(b"I".to_vec()), &mut |_| {}, &|| true),
+            registry.execute_operator(
+                "test.op",
+                &mut Bytes(b"I".to_vec()),
+                "image/x-test",
+                &mut |_| {},
+                &|| true
+            ),
             Err(ExecutionError::Cancelled)
         );
     }
@@ -1457,7 +1533,13 @@ mod operator_execution {
     fn operator_execution_refuses_an_unknown_operator() {
         let registry = Registry::new();
         assert_eq!(
-            registry.execute_operator("test.op", &mut Bytes(vec![]), &mut |_| {}, &|| false),
+            registry.execute_operator(
+                "test.op",
+                &mut Bytes(vec![]),
+                "image/x-test",
+                &mut |_| {},
+                &|| false
+            ),
             Err(ExecutionError::UnknownOperator)
         );
     }
@@ -1500,6 +1582,9 @@ mod pack_registration {
         }
         fn writes(&self) -> &[&str] {
             self.writes
+        }
+        fn accepts(&self) -> &[&str] {
+            &["image/x-test"]
         }
         fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
             Ok(())
@@ -1554,7 +1639,7 @@ mod pack_registration {
     }
 
     fn runs(registry: &Registry, id: &str) -> Result<FacetProposals, ExecutionError> {
-        registry.execute_operator(id, &mut NoBytes, &mut |_| {}, &|| false)
+        registry.execute_operator(id, &mut NoBytes, "image/x-test", &mut |_| {}, &|| false)
     }
 
     fn with_earlier_pack() -> Registry {
@@ -1721,5 +1806,245 @@ mod pack_registration {
         }));
         assert!(outcome.is_err());
         assert_unchanged(&registry);
+    }
+}
+
+#[cfg(test)]
+mod accepted_media_types {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    struct TestPack(Box<dyn Fn(&mut Registry)>);
+    impl Pack for TestPack {
+        fn id(&self) -> &str {
+            "test"
+        }
+        fn register(&self, registry: &mut Registry) {
+            (self.0)(registry)
+        }
+    }
+
+    /// An Operator that accepts `accepts`, widened to `image/gif` once
+    /// `widened` is set, and records whether it ran.
+    struct Accepting {
+        accepts: &'static [&'static str],
+        widened: Arc<AtomicBool>,
+        ran: Arc<AtomicBool>,
+    }
+    impl Operator for Accepting {
+        fn id(&self) -> &str {
+            "test.op"
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn writes(&self) -> &[&str] {
+            &[]
+        }
+        fn accepts(&self) -> &[&str] {
+            if self.widened.load(Ordering::SeqCst) {
+                &["image/png", "image/gif"]
+            } else {
+                self.accepts
+            }
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            self.ran.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    struct Flags {
+        widened: Arc<AtomicBool>,
+        ran: Arc<AtomicBool>,
+    }
+
+    fn register(accepts: &'static [&'static str]) -> (Registry, Result<(), RegistryError>, Flags) {
+        let flags = Flags {
+            widened: Arc::default(),
+            ran: Arc::default(),
+        };
+        let (widened, ran) = (flags.widened.clone(), flags.ran.clone());
+        let mut registry = Registry::new();
+        let outcome = registry.register_pack(&TestPack(Box::new(move |r| {
+            r.declare_facet(FacetSchema {
+                name: "test.size".into(),
+                label: "Size".into(),
+                value_type: FacetType::Count,
+                unit: String::new(),
+                version: 1,
+                scope: FacetScope::AssetVersion,
+            });
+            r.register_operator(Box::new(Accepting {
+                accepts,
+                widened: widened.clone(),
+                ran: ran.clone(),
+            }))
+        })));
+        (registry, outcome, flags)
+    }
+
+    struct NoBytes;
+    impl Candidate for NoBytes {
+        fn size(&self) -> u64 {
+            0
+        }
+        fn read_at(&mut self, _: u64, _: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    fn execute(registry: &Registry, media_type: &str) -> Result<FacetProposals, ExecutionError> {
+        registry.execute_operator("test.op", &mut NoBytes, media_type, &mut |_| {}, &|| false)
+    }
+
+    #[test]
+    fn accepts_records_the_media_types_an_operator_registers_with() {
+        let (registry, outcome, _) = register(&["image/png", "image/jpeg"]);
+        outcome.unwrap();
+        let entry = registry.operator("test.op").unwrap();
+        assert_eq!(entry.accepts(), ["image/png", "image/jpeg"]);
+        assert!(entry.accepts_media_type("image/png"));
+        assert!(entry.accepts_media_type("image/jpeg"));
+        assert!(!entry.accepts_media_type("image/gif"));
+        assert!(!entry.accepts_media_type("image/PNG"));
+    }
+
+    #[test]
+    fn accepts_nothing_is_refused_and_adds_nothing() {
+        let (registry, outcome, _) = register(&[]);
+        let error = outcome.unwrap_err();
+        assert_eq!(
+            error,
+            RegistryError::InvalidOperator {
+                operator: "test.op".into(),
+                reason: "it accepts no media type",
+            }
+        );
+        assert!(error.to_string().contains("test.op"), "{error}");
+        assert!(registry.operator("test.op").is_none());
+        assert!(registry.facet_schema("test.size").is_none());
+    }
+
+    #[test]
+    fn accepts_a_malformed_media_type_is_refused_and_adds_nothing() {
+        for accepts in [
+            &["Image/PNG; q=1"][..],
+            &["image/png", "image/png; q=1"],
+            &["image"],
+            &["image/"],
+            &["/png"],
+            &["image/png/x"],
+        ] {
+            let accepts: &'static [&'static str] = Box::leak(accepts.to_vec().into_boxed_slice());
+            let (registry, outcome, _) = register(accepts);
+            let error = outcome.unwrap_err();
+            assert_eq!(
+                error,
+                RegistryError::InvalidOperator {
+                    operator: "test.op".into(),
+                    reason: "it accepts a media type that is not well formed",
+                },
+                "{accepts:?}"
+            );
+            assert!(registry.operator("test.op").is_none());
+            assert!(registry.facet_schema("test.size").is_none());
+        }
+    }
+
+    #[test]
+    fn accepts_is_checked_before_the_operator_runs() {
+        let (registry, outcome, flags) = register(&["image/png"]);
+        outcome.unwrap();
+        assert_eq!(
+            execute(&registry, "image/gif").unwrap_err(),
+            ExecutionError::NotAccepted
+        );
+        assert!(!flags.ran.load(Ordering::SeqCst));
+        execute(&registry, "image/png").unwrap();
+        assert!(flags.ran.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn accepts_keeps_the_media_types_it_registered_with() {
+        let (registry, outcome, flags) = register(&["image/png"]);
+        outcome.unwrap();
+        flags.widened.store(true, Ordering::SeqCst);
+        assert_eq!(
+            registry.operator("test.op").unwrap().accepts(),
+            ["image/png"]
+        );
+        assert_eq!(
+            execute(&registry, "image/gif").unwrap_err(),
+            ExecutionError::NotAccepted
+        );
+        assert!(!flags.ran.load(Ordering::SeqCst));
+    }
+
+    /// An Operator that proposes the length of the media type it reads.
+    struct ReadsMediaType;
+    impl Operator for ReadsMediaType {
+        fn id(&self) -> &str {
+            "test.reads"
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn writes(&self) -> &[&str] {
+            &["test.size"]
+        }
+        fn accepts(&self) -> &[&str] {
+            &["image/png"]
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            let len = context.media_type().map_or(-1, |m| m.len() as i64);
+            context
+                .propose_facet("test.size", FacetValue::Integer(len))
+                .map_err(|_| OperatorError::Failed("proposal".into()))
+        }
+    }
+
+    #[test]
+    fn media_type_is_the_versions_in_an_operator_run() {
+        let mut registry = Registry::new();
+        registry.register_operator(Box::new(ReadsMediaType));
+        let run = registry
+            .execute_operator(
+                "test.reads",
+                &mut NoBytes,
+                "image/png",
+                &mut |_| {},
+                &|| false,
+            )
+            .unwrap();
+        assert_eq!(run.proposals[0].value, FacetValue::Integer(9));
+    }
+
+    #[test]
+    fn media_type_is_none_in_a_source_run() {
+        struct Looks(Arc<AtomicBool>);
+        impl Source for Looks {
+            fn id(&self) -> &str {
+                "test.source"
+            }
+            fn version(&self) -> &str {
+                "1"
+            }
+            fn run(&self, context: &mut AssetContext<'_>) -> Result<(), SourceError> {
+                self.0
+                    .store(context.media_type().is_none(), Ordering::SeqCst);
+                context
+                    .propose_asset(AssetProposal::new("image", "image/png"))
+                    .map_err(|_| SourceError::Failed("p".into()))
+            }
+        }
+        let saw_none = Arc::new(AtomicBool::new(false));
+        let mut registry = Registry::new();
+        registry.register_source(Box::new(Looks(saw_none.clone())));
+        registry
+            .execute_source("test.source", &mut NoBytes, &mut |_| {}, &|| false)
+            .unwrap();
+        assert!(saw_none.load(Ordering::SeqCst));
     }
 }

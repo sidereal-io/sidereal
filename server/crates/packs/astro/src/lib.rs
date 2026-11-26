@@ -59,6 +59,10 @@ impl Operator for PlateSolveOperator {
         &[]
     }
 
+    fn accepts(&self) -> &[&str] {
+        &["image/fits"]
+    }
+
     fn run(&self, _context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         Err(OperatorError::Unsupported)
     }

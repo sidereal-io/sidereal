@@ -50,6 +50,9 @@ impl Operator for Scripted {
     fn writes(&self) -> &[&str] {
         self.writes
     }
+    fn accepts(&self) -> &[&str] {
+        &["image/x-test"]
+    }
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         (self.script)(context)
     }

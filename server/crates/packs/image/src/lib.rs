@@ -43,6 +43,9 @@ pub const HEIGHT_FACET: &str = "image.height";
 /// The refusal a Source run gives for bytes that are neither PNG nor JPEG.
 pub const UNSUPPORTED: &str = "only PNG and JPEG images are supported";
 
+/// The media types every Operator of the pack reads.
+pub(crate) const ACCEPTS: &[&str] = &["image/png", "image/jpeg"];
+
 /// The image pack.
 pub struct ImagePack;
 
@@ -167,6 +170,10 @@ impl Operator for MeasureFileSize {
 
     fn writes(&self) -> &[&str] {
         &[FILE_SIZE_FACET]
+    }
+
+    fn accepts(&self) -> &[&str] {
+        ACCEPTS
     }
 
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {

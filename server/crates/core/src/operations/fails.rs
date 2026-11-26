@@ -91,6 +91,9 @@ impl Operator for CancelledAfterProposing {
     fn writes(&self) -> &[&str] {
         &["test.size"]
     }
+    fn accepts(&self) -> &[&str] {
+        &["image/x-test"]
+    }
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         size(context)?;
         self.0.store(true, Ordering::SeqCst);

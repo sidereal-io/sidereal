@@ -89,11 +89,22 @@ impl Candidate for Bytes {
 fn measured_run(bytes: Vec<u8>) -> (Result<usize, ExecutionError>, usize) {
     let mut registry = Registry::new();
     registry.register_pack(&ImagePack).unwrap();
+    let media_type = if bytes.starts_with(b"\x89PNG") {
+        "image/png"
+    } else {
+        "image/jpeg"
+    };
     let mut candidate = Bytes(bytes);
     let before = HELD.with(Cell::get);
     PEAK.with(|peak| peak.set(before));
     let outcome = registry
-        .execute_operator(READ_HEADER, &mut candidate, &mut |_| {}, &|| false)
+        .execute_operator(
+            READ_HEADER,
+            &mut candidate,
+            media_type,
+            &mut |_| {},
+            &|| false,
+        )
         .map(|run| run.proposals.len());
     let held = PEAK.with(Cell::get) - before;
     (outcome, held)

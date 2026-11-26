@@ -52,7 +52,13 @@ fn file_size_operator_lists_only_the_file_size_facet() {
 #[test]
 fn file_size_of_a_png_of_known_size_is_its_byte_count() {
     let run = registry()
-        .execute_operator(FILE_SIZE, &mut Unread(1_234_567), &mut |_| {}, &|| false)
+        .execute_operator(
+            FILE_SIZE,
+            &mut Unread(1_234_567),
+            "image/png",
+            &mut |_| {},
+            &|| false,
+        )
         .unwrap();
     assert_eq!(
         run.proposals,

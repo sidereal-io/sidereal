@@ -92,6 +92,7 @@ struct Version {
     asset_id: Uuid,
     content_hash: String,
     byte_size: u64,
+    media_type: String,
 }
 
 fn scope_text(scope: FacetScope) -> &'static str {
@@ -174,8 +175,9 @@ pub async fn run_operator(
     let entry = registry
         .operator(&run.operator_id)
         .ok_or(OperationError::UnknownOperator)?;
-    let row: (Uuid, String, i64) = sqlx::query_as(
-        "SELECT asset_id, content_hash, byte_size FROM public.asset_versions WHERE id = $1",
+    let row: (Uuid, String, i64, String) = sqlx::query_as(
+        "SELECT asset_id, content_hash, byte_size, media_type \
+         FROM public.asset_versions WHERE id = $1",
     )
     .bind(run.asset_version_id)
     .fetch_optional(database.pool())
@@ -185,6 +187,7 @@ pub async fn run_operator(
         asset_id: row.0,
         content_hash: row.1,
         byte_size: row.2 as u64,
+        media_type: row.3,
     };
     let run_id = Uuid::new_v4();
     sqlx::query(
@@ -249,6 +252,7 @@ async fn execute(
     let operator_id = operator_id.to_owned();
     let hash = version.content_hash.clone();
     let size = version.byte_size;
+    let media_type = version.media_type.clone();
     let cancelled = cancelled.clone();
     let outcome = tokio::task::spawn_blocking(move || {
         let (file, length) = objects
@@ -261,6 +265,7 @@ async fn execute(
             .execute_operator(
                 &operator_id,
                 &mut ObjectBytes { file, size },
+                &media_type,
                 &mut |line| eprintln!("operator {operator_id}: {line:?}"),
                 &|| cancelled.load(Ordering::SeqCst),
             )

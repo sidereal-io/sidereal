@@ -38,6 +38,10 @@ impl Operator for ReadHeader {
         &[WIDTH_FACET, HEIGHT_FACET]
     }
 
+    fn accepts(&self) -> &[&str] {
+        crate::ACCEPTS
+    }
+
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
         let mut reader = CandidateReader::new(context);
         let head = reader
