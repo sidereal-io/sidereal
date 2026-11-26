@@ -154,6 +154,18 @@ fn a_tiff_that_ends_after_its_signature_fails() {
     assert_eq!(read_header(b"II*\0".to_vec()), unreadable());
 }
 
+/// A classic TIFF's entry has four bytes, so an eight-byte LONG8 width
+/// sits elsewhere and the entry holds only its offset. That offset is not
+/// the width.
+#[test]
+fn a_classic_tiff_whose_width_is_a_long8_entry_fails() {
+    let image = rgb(800, 600).with(IMAGE_WIDTH, LONG8, &[800]);
+    assert_eq!(
+        read_header(Tiff::classic(vec![image]).bytes()),
+        unreadable()
+    );
+}
+
 #[test]
 fn a_tiff_whose_first_image_has_no_width_fails() {
     let image = rgb(800, 600).without(IMAGE_WIDTH);

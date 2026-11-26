@@ -177,13 +177,17 @@ impl Directory {
     }
 
     /// The one whole-number value of `tag`, when it holds exactly one value
-    /// of a whole-number type, stored in the entry.
+    /// of a whole-number type, stored in the entry. A value too large for
+    /// the entry, such as a LONG8 in a classic TIFF, is not stored there.
     pub(crate) fn scalar(&self, tag: u16) -> Option<u64> {
         let entry = self.entry(tag)?;
         if entry.count != 1 {
             return None;
         }
         let size = whole_number_size(entry.kind)?;
+        if size > self.inline() {
+            return None;
+        }
         Some(self.order.number(&entry.field[..size as usize]))
     }
 
