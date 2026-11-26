@@ -54,7 +54,7 @@ pub const HEIGHT_FACET: &str = "image.height";
 pub const MAKE_PREVIEW: &str = "image.make-preview";
 
 /// The refusal a Source run gives for bytes of no format the pack reads,
-/// such as `only PNG and JPEG images are supported`.
+/// such as `only PNG, JPEG and TIFF images are supported`.
 pub fn unsupported() -> String {
     formats::refusal()
 }

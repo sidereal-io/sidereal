@@ -23,7 +23,10 @@ use std::{
     path::{Path, PathBuf},
     pin::pin,
     process::{Child, ChildStdout, Command, ExitStatus, Stdio},
-    sync::{Arc, Condvar, Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Condvar, Mutex, MutexGuard,
+    },
     task::{Context, Poll, Wake, Waker},
     time::{Duration, Instant},
 };
@@ -77,6 +80,8 @@ pub struct WorkerRunner {
     slot: Arc<Semaphore>,
     /// A slot permit an upload took before it asked core to run the preview.
     admitted: Mutex<Option<OwnedSemaphorePermit>>,
+    /// How many runs have begun copying their input.
+    copies: AtomicUsize,
 }
 
 /// The slot an upload holds for the preview run it starts next. Dropping it
@@ -99,6 +104,7 @@ impl WorkerRunner {
             deadline: Self::DEADLINE,
             slot: Arc::new(Semaphore::new(1)),
             admitted: Mutex::new(None),
+            copies: AtomicUsize::new(0),
         }
     }
 
@@ -119,6 +125,12 @@ impl WorkerRunner {
             .expect("the slot is never closed");
         *lock(&self.admitted) = Some(permit);
         Admission(self)
+    }
+
+    /// How many runs have begun copying their input. A run begins its copy
+    /// only once it holds the slot.
+    pub fn copies_begun(&self) -> usize {
+        self.copies.load(Ordering::SeqCst)
     }
 
     /// The slot an upload took for this run, or else the slot once it is
@@ -301,6 +313,7 @@ impl WorkerRunner {
         shared: &Shared,
         media_type: &str,
     ) -> Result<(), OperatorError> {
+        self.copies.fetch_add(1, Ordering::SeqCst);
         let file = match copy(context, shared)? {
             Some(file) => file,
             None => return verdict(shared, media_type, None),

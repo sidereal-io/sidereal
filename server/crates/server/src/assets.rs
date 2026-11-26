@@ -3,10 +3,12 @@
 //!
 //! Upload streams one multipart field into core's staging in bounded chunks,
 //! then core runs the manual-upload Source, publishes the object and commits
-//! the Asset, or finds the Asset that already holds the bytes (409). A new
-//! Asset then has the file-size and header Operators run over its version.
-//! Every refusal has a fixed body, so no path or driver error reaches a
-//! client; the operational log names the cause.
+//! the Asset, or finds the original that already holds the bytes (409). A
+//! new Asset then has the file-size, header and preview Operators run over
+//! its version, in that order. The preview run waits for the server's one
+//! preview slot first. Every refusal has a fixed body, apart from the
+//! Source's own reason for refusing a file, so no path or driver error
+//! reaches a client; the operational log names the cause.
 use crate::access::Log;
 use crate::preview::{WorkerCommand, WorkerRunner};
 use axum::{
@@ -34,7 +36,7 @@ use sidereal_core::{
     storage::objects::{ObjectStore, StageError, Staged, Staging, MAX_UPLOAD_BYTES},
 };
 use sidereal_pack_astro::AstroPack;
-use sidereal_pack_image::{ImagePack, FILE_SIZE, MANUAL_UPLOAD, READ_HEADER};
+use sidereal_pack_image::{ImagePack, FILE_SIZE, MAKE_PREVIEW, MANUAL_UPLOAD, READ_HEADER};
 use sidereal_plugin_abi::Registry;
 use std::{
     convert::Infallible,
@@ -67,6 +69,8 @@ pub struct Library {
     registry: Arc<Registry>,
     upload_operators: Vec<String>,
     reader: OriginalReader,
+    /// Runs every preview, one at a time, in the preview helper.
+    previews: Arc<WorkerRunner>,
 }
 
 impl Library {
@@ -82,18 +86,33 @@ impl Library {
             args: Vec::new(),
         });
         let previews = Arc::new(WorkerRunner::new(command));
-        let images = ImagePack::new(previews);
-        let mut registry = Registry::new();
-        for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &images] {
-            if let Err(error) = registry.register_pack(pack) {
-                panic!("a compiled-in pack was refused: {error}");
-            }
-        }
         Self {
             objects,
-            registry: Arc::new(registry),
-            upload_operators: vec![FILE_SIZE.to_owned(), READ_HEADER.to_owned()],
+            registry: Arc::new(production_registry(&previews)),
+            upload_operators: vec![
+                FILE_SIZE.to_owned(),
+                READ_HEADER.to_owned(),
+                MAKE_PREVIEW.to_owned(),
+            ],
             reader: Arc::new(|file| Box::new(file)),
+            previews,
+        }
+    }
+
+    /// The runner that makes this library's previews.
+    #[doc(hidden)]
+    pub fn previews(&self) -> Arc<WorkerRunner> {
+        self.previews.clone()
+    }
+
+    /// Make previews with `runner`, in place of the helper beside the
+    /// server's executable, and rebuild the production Registry around it.
+    #[doc(hidden)]
+    pub fn with_previews(self, runner: Arc<WorkerRunner>) -> Self {
+        Self {
+            registry: Arc::new(production_registry(&runner)),
+            previews: runner,
+            ..self
         }
     }
 
@@ -153,7 +172,21 @@ pub(crate) fn routes(database: Database, library: Library, log: Log) -> Router<D
         })
 }
 
-/// One Asset as the API shows it.
+/// The Registry of every compiled-in pack, with the image pack's previews
+/// made by `previews`.
+fn production_registry(previews: &Arc<WorkerRunner>) -> Registry {
+    let images = ImagePack::new(previews.clone());
+    let mut registry = Registry::new();
+    for pack in [&AstroPack as &dyn sidereal_plugin_abi::Pack, &images] {
+        if let Err(error) = registry.register_pack(pack) {
+            panic!("a compiled-in pack was refused: {error}");
+        }
+    }
+    registry
+}
+
+/// One Asset as the API shows it. `preview_url` is `null` when its current
+/// version has no preview.
 fn entry(record: &AssetRecord) -> Value {
     json!({
         "id": record.id.to_string(),
@@ -161,6 +194,9 @@ fn entry(record: &AssetRecord) -> Value {
         "name": record.name,
         "current_version_id": record.current_version_id.to_string(),
         "original_url": format!("/api/assets/{}/original", record.id),
+        "preview_url": record
+            .has_preview
+            .then(|| format!("/api/assets/{}/preview", record.id)),
     })
 }
 
@@ -301,12 +337,15 @@ fn unavailable() -> Response {
         .into_response()
 }
 
-/// Every refusal an upload can get, each with a fixed message.
+/// Every refusal an upload can get, each with a fixed message, apart from
+/// the Source's reason for a format it does not take.
 #[derive(Debug)]
 enum UploadError {
     Malformed,
     TooLarge,
-    Unsupported,
+    /// The Source refused the file, with its own reason. The server names
+    /// no format.
+    Unsupported(String),
     NoStorage,
     Failed,
 }
@@ -322,10 +361,13 @@ impl IntoResponse for UploadError {
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "the file is larger than the 100 MiB limit",
             ),
-            Self::Unsupported => (
-                StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                "unsupported format: only PNG and JPEG images are supported",
-            ),
+            Self::Unsupported(reason) => {
+                let body = json!({
+                    "error": format!("unsupported format: {reason}"),
+                    "reason": reason,
+                });
+                return (StatusCode::UNSUPPORTED_MEDIA_TYPE, Json(body)).into_response();
+            }
             Self::NoStorage => (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "storage unavailable: this server has no managed storage",
@@ -496,7 +538,7 @@ async fn upload(
             StatusCode::CONFLICT,
             Json(json!({ "asset": entry(&record) })),
         )),
-        Ok(Err(IngestError::Refused(_))) => Err(UploadError::Unsupported),
+        Ok(Err(IngestError::Refused(reason))) => Err(UploadError::Unsupported(reason)),
         Ok(Err(IngestError::EmptyName)) => Err(UploadError::Malformed),
         Ok(Err(error)) => Err(failed(&error)),
         Err(_) => Err(failed(&"the upload task stopped")),
@@ -508,7 +550,9 @@ async fn upload(
 /// reaches ingest only: the runs get their own flag, which nothing sets. Each
 /// run is independent: a failed run never stops the next one, and never
 /// fails the upload. This task logs each failure under its Operator's id,
-/// since the request may be gone.
+/// since the request may be gone. The preview run first waits, without a
+/// thread, for the preview slot; the record it answers says whether that run
+/// made the version's preview.
 async fn save(
     assets: Assets,
     actor: i64,
@@ -531,11 +575,17 @@ async fn save(
         cancelled,
     )
     .await?;
-    let Ingested::Created(record) = &ingested else {
+    let Ingested::Created(mut record) = ingested else {
         // The bytes are already in the library: its version needs no new run.
         return Ok(ingested);
     };
     for operator in &assets.library.upload_operators {
+        let previewing = operator == MAKE_PREVIEW;
+        let admission = if previewing {
+            Some(assets.library.previews.admit().await)
+        } else {
+            None
+        };
         let outcome = run_operator(
             &assets.database,
             objects,
@@ -548,7 +598,12 @@ async fn save(
             Arc::new(AtomicBool::new(false)),
         )
         .await;
+        drop(admission);
         let id = record.id;
+        if previewing {
+            // Core commits the preview with the run's success.
+            record.has_preview = outcome == Ok(RunOutcome::Succeeded);
+        }
         match outcome {
             // An Operator that does not accept the version did not run, so
             // there is nothing to log.
@@ -563,7 +618,7 @@ async fn save(
             )),
         }
     }
-    Ok(ingested)
+    Ok(Ingested::Created(record))
 }
 
 /// Write `bytes` to staging on a blocking worker.
@@ -597,11 +652,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_production_registry_runs_the_file_size_and_header_operators_on_upload() {
+    fn the_production_registry_runs_the_file_size_header_and_preview_operators_on_upload() {
         let library = Library::new(None);
         assert!(library.registry.operator(FILE_SIZE).is_some());
         assert!(library.registry.operator(READ_HEADER).is_some());
+        assert!(library.registry.operator(MAKE_PREVIEW).is_some());
         assert!(library.registry.source(MANUAL_UPLOAD).is_some());
-        assert_eq!(library.upload_operators, [FILE_SIZE, READ_HEADER]);
+        assert_eq!(
+            library.upload_operators,
+            [FILE_SIZE, READ_HEADER, MAKE_PREVIEW]
+        );
     }
 }

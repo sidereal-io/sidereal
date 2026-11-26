@@ -225,22 +225,45 @@ fn original(server: &Server, cookie: &str, entry: &Value) -> (String, Vec<u8>) {
     (reply.header("content-type").unwrap().to_owned(), reply.body)
 }
 
-/// Every Asset with its current version's record, ordered by name, each
+/// Every original with its current version's record, ordered by name, each
 /// value as text: id, kind, name, version id, hash, size, media type, Source
 /// id, Source version and ingestion time.
 async fn records(db: &TestDatabase) -> Vec<Vec<String>> {
-    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
-    let rows = sqlx::query(
+    rows(
+        db,
         "SELECT a.id::text, a.kind, a.name, a.current_version_id::text, v.content_hash,
                 v.byte_size::text, v.media_type, v.source_id, v.source_version,
                 v.ingested_at::text
          FROM public.assets a
          JOIN public.asset_versions v ON v.asset_id = a.id AND v.id = a.current_version_id
+         WHERE a.origin = 'source'
          ORDER BY a.name",
     )
-    .fetch_all(&mut conn)
     .await
-    .unwrap();
+}
+
+/// Every preview with its lineage row, ordered by its original's name, each
+/// value as text: the original's name, the preview's Asset id, version id,
+/// hash, media type and producer, and the lineage row's input version, role
+/// and run.
+async fn previews(db: &TestDatabase) -> Vec<Vec<String>> {
+    rows(
+        db,
+        "SELECT o.name, p.id::text, v.id::text, v.content_hash, v.media_type, v.source_id,
+                l.input_version_id::text, l.role, l.run_id::text
+         FROM public.asset_lineage l
+         JOIN public.asset_versions v ON v.id = l.output_version_id
+         JOIN public.assets p ON p.id = v.asset_id
+         JOIN public.asset_versions i ON i.id = l.input_version_id
+         JOIN public.assets o ON o.id = i.asset_id
+         ORDER BY o.name",
+    )
+    .await
+}
+
+async fn rows(db: &TestDatabase, sql: &'static str) -> Vec<Vec<String>> {
+    let mut conn = PgConnection::connect_with(&db.options).await.unwrap();
+    let rows = sqlx::query(sql).fetch_all(&mut conn).await.unwrap();
     conn.close().await.unwrap();
     rows.iter()
         .map(|row| (0..row.len()).map(|i| row.get::<String, _>(i)).collect())
@@ -270,6 +293,19 @@ async fn journey_keeps_a_png_and_a_jpeg_across_a_restart() {
     let listed = list(&first, &cookie);
     let before = records(&db).await;
     assert_eq!(before.len(), 2);
+    let kept_previews = previews(&db).await;
+    assert_eq!(kept_previews.len(), 2);
+    for (preview, record) in kept_previews.iter().zip(&before) {
+        assert_eq!(preview[0], record[2]);
+        assert_eq!(preview[4], "image/jpeg");
+        assert_eq!(preview[5], "image.make-preview");
+        assert_eq!(preview[6], record[3]);
+        assert_eq!(preview[7], "preview");
+    }
+    for entry in [&png, &jpeg] {
+        let id = entry["id"].as_str().unwrap();
+        assert_eq!(entry["preview_url"], format!("/api/assets/{id}/preview"));
+    }
     for (record, (media, bytes)) in before
         .iter()
         .zip([("image/jpeg", JPEG), ("image/png", PNG)])
@@ -300,6 +336,7 @@ async fn journey_keeps_a_png_and_a_jpeg_across_a_restart() {
     let second = start(&db, &storage.0);
     assert_eq!(list(&second, &cookie), listed);
     assert_eq!(records(&db).await, before);
+    assert_eq!(previews(&db).await, kept_previews);
     assert_eq!(
         original(&second, &cookie, &png),
         ("image/png".to_owned(), PNG.to_vec())

@@ -73,7 +73,7 @@ pub(crate) fn media_types() -> &'static [&'static str] {
     &MEDIA_TYPES
 }
 
-/// The Source's refusal: `only PNG and JPEG images are supported`, with
+/// The Source's refusal: `only PNG, JPEG and TIFF images are supported`, with
 /// every format's name.
 pub(crate) fn refusal() -> String {
     let names: Vec<_> = FORMATS.iter().map(|f| f.name()).collect();
