@@ -737,7 +737,7 @@ mod upload {
     async fn upload_of_unsupported_bytes_answers_415_naming_png_and_jpeg() {
         let instance = Instance::new().await;
         for (name, bytes) in [
-            ("nebula.tif", &b"II*\x00\x08\x00\x00\x00"[..]),
+            ("nebula.gif", &b"GIF89a\x01\x00\x01\x00\x00\x00\x00;"[..]),
             ("nebula.svg", b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
             ("empty.png", b""),
             ("nebula.jpg", b"plain text, not a JPEG"),

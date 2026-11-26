@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 
 mod jpeg;
 mod png;
+mod tiff;
 
 /// One image format. Internal to the pack: it is not part of the plugin
 /// contract.
@@ -32,7 +33,7 @@ pub(crate) trait ImageFormat: Sync {
 }
 
 /// Every format the pack reads, in the order the Source tries them.
-pub(crate) static FORMATS: &[&dyn ImageFormat] = &[&png::Png, &jpeg::Jpeg];
+pub(crate) static FORMATS: &[&dyn ImageFormat] = &[&png::Png, &jpeg::Jpeg, &tiff::Tiff];
 
 /// How many leading bytes the Source reads: the most any format needs.
 pub(crate) fn probe_len() -> usize {
@@ -108,8 +109,8 @@ mod tests {
 
     #[test]
     fn the_refusal_names_every_format() {
-        assert_eq!(refusal(), "only PNG and JPEG images are supported");
-        assert_eq!(media_types(), ["image/png", "image/jpeg"]);
+        assert_eq!(refusal(), "only PNG, JPEG and TIFF images are supported");
+        assert_eq!(media_types(), ["image/png", "image/jpeg", "image/tiff"]);
         assert_eq!(probe_len(), 8);
     }
 }

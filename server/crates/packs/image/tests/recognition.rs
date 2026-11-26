@@ -57,7 +57,7 @@ fn registration_gives_every_operator_the_media_types_the_source_recognizes() {
     for id in registry.operator_ids() {
         assert_eq!(
             registry.operator(id).unwrap().accepts(),
-            ["image/png", "image/jpeg"],
+            ["image/png", "image/jpeg", "image/tiff"],
             "{id}"
         );
     }
@@ -105,25 +105,49 @@ fn text_that_a_filename_calls_a_jpeg_is_refused() {
     ));
 }
 
+/// A TIFF is recognized by its first four bytes, in each layout: classic
+/// and BigTIFF, little- and big-endian.
+#[test]
+fn tiff_bytes_in_each_layout_are_an_image_tiff() {
+    for signature in [&b"II*\0"[..], b"MM\0*", b"II+\0", b"MM\0+"] {
+        let mut bytes = signature.to_vec();
+        bytes.extend_from_slice(b"\x08\0\0\0 not decoded");
+        assert_eq!(
+            recognize(&bytes),
+            Ok(AssetProposal::new("image", "image/tiff")),
+            "{signature:?}"
+        );
+        assert_eq!(
+            recognize(signature),
+            Ok(AssetProposal::new("image", "image/tiff")),
+            "only the signature: {signature:?}"
+        );
+    }
+}
+
 #[test]
 fn unsupported_bytes_are_refused_with_the_supported_formats_named() {
+    assert_eq!(
+        sidereal_pack_image::unsupported(),
+        "only PNG, JPEG and TIFF images are supported"
+    );
     for (what, bytes) in [
         ("empty", &b""[..]),
-        ("TIFF little-endian", b"II*\x00\x08\x00\x00\x00"),
-        ("TIFF big-endian", b"MM\x00*\x00\x00\x00\x08"),
+        ("GIF", b"GIF89a\x01\x00\x01\x00\x00\x00\x00;"),
         ("SVG", b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>"),
+        ("plain text", b"this is not a tiff"),
         ("a truncated PNG signature", &PNG_SIGNATURE[..7]),
         ("two JPEG bytes", b"\xff\xd8"),
+        ("three TIFF bytes", b"II*"),
+        ("a TIFF byte order with another number", b"II\x2b\x01"),
     ] {
-        match recognize(bytes) {
-            Err(ExecutionError::Refused(reason)) => {
-                assert!(
-                    reason.contains("PNG") && reason.contains("JPEG"),
-                    "{what}: {reason}"
-                )
-            }
-            other => panic!("{what}: {other:?}"),
-        }
+        assert_eq!(
+            recognize(bytes),
+            Err(ExecutionError::Refused(
+                "only PNG, JPEG and TIFF images are supported".into()
+            )),
+            "{what}"
+        );
     }
 }
 
