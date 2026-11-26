@@ -3,7 +3,7 @@
 //! its counting allocator sees only these tests. It counts per thread, so
 //! tests that run at the same time do not mix their counts.
 use sidereal_pack_image::{ImagePack, READ_HEADER};
-use sidereal_plugin_abi::{Candidate, ExecutionError, Registry};
+use sidereal_plugin_abi::{Candidate, ExecutionError, Output, Registry};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 
@@ -102,6 +102,7 @@ fn measured_run(bytes: Vec<u8>) -> (Result<usize, ExecutionError>, usize) {
             READ_HEADER,
             &mut candidate,
             media_type,
+            &mut Discard,
             &mut |_| {},
             &|| false,
         )
@@ -192,4 +193,13 @@ fn a_png_of_200000_text_chunks_holds_under_1_mib() {
     assert_eq!(outcome, Ok(2));
     eprintln!("PNG run held {held} bytes");
     assert!(held < MIB, "the run held {held} bytes");
+}
+
+/// A host destination that drops every preview byte.
+struct Discard;
+
+impl Output for Discard {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
+        Ok(())
+    }
 }

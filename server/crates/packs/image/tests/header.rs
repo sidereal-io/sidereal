@@ -3,7 +3,7 @@
 use sidereal_pack_image::{ImagePack, HEIGHT_FACET, READ_HEADER, WIDTH_FACET};
 use sidereal_plugin_abi::{
     Candidate, ExecutionError, FacetProposal, FacetSchema, FacetScope, FacetType, FacetValue,
-    Registry,
+    Output, Registry,
 };
 
 fn registry() -> Registry {
@@ -118,7 +118,14 @@ fn media_type(bytes: &[u8]) -> &'static str {
 fn read_header(candidate: &mut Bytes) -> Result<Vec<FacetProposal>, ExecutionError> {
     let media_type = media_type(&candidate.bytes);
     registry()
-        .execute_operator(READ_HEADER, candidate, media_type, &mut |_| {}, &|| false)
+        .execute_operator(
+            READ_HEADER,
+            candidate,
+            media_type,
+            &mut Discard,
+            &mut |_| {},
+            &|| false,
+        )
         .map(|run| run.proposals)
 }
 
@@ -332,6 +339,7 @@ fn candidate_whose_first_read_fails_fails_as_unreadable() {
                 READ_HEADER,
                 &mut candidate,
                 media_type,
+                &mut Discard,
                 &mut |_| {},
                 &|| false,
             )
@@ -664,6 +672,7 @@ fn jpeg_run_cancelled_by_its_host_stops_reading() {
         READ_HEADER,
         &mut candidate,
         "image/jpeg",
+        &mut Discard,
         &mut |_| {},
         &|| cancelled.get(),
     );
@@ -729,6 +738,7 @@ fn jpeg_whose_candidate_read_fails_fails() {
                 READ_HEADER,
                 &mut candidate,
                 "image/jpeg",
+                &mut Discard,
                 &mut |_| {},
                 &|| false,
             )
@@ -739,5 +749,14 @@ fn jpeg_whose_candidate_read_fails_fails() {
             "{} bytes before",
             before.len()
         );
+    }
+}
+
+/// A host destination that drops every preview byte.
+struct Discard;
+
+impl Output for Discard {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
+        Ok(())
     }
 }

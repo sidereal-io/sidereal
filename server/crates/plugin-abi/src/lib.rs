@@ -9,8 +9,10 @@
 //!
 //! A [`Source`] and an [`Operator`] run through an [`AssetContext`]: the
 //! context is the only way they reach their input's bytes. A Source can
-//! propose one Asset; an Operator can propose facet values. The host keeps
-//! identity, hashing and provenance; a plugin never sets them.
+//! propose one Asset; an Operator can propose facet values and one preview,
+//! whose bytes it writes through the context to the host's [`Output`]. The
+//! host keeps identity, hashing, provenance and lineage; a plugin never sets
+//! them.
 
 use std::fmt;
 
@@ -129,6 +131,8 @@ pub enum ExecutionError {
     Failed(String),
     /// The run ended without a proposal.
     NoProposal,
+    /// The Operator stopped because the host refused a preview write.
+    Output,
     /// The host cancelled the run.
     Cancelled,
     /// The Operator does not accept the version's media type, so it did not
@@ -145,6 +149,7 @@ impl fmt::Display for ExecutionError {
             Self::Unsupported => f.write_str("the source cannot run yet"),
             Self::Failed(reason) => write!(f, "the source failed: {reason}"),
             Self::NoProposal => f.write_str("the source proposed no asset"),
+            Self::Output => f.write_str("the preview could not be written"),
             Self::Cancelled => f.write_str("the run was cancelled"),
             Self::NotAccepted => f.write_str("the operator does not accept this media type"),
         }
@@ -162,9 +167,34 @@ pub enum ContextError {
     AlreadyProposed,
     /// The proposal's kind or media type is not well formed.
     InvalidProposal,
-    /// This kind of run may not make this proposal: a Source run proposes
-    /// no facet, and an Operator run proposes no Asset.
+    /// This kind of run may not make this proposal or write: a Source run
+    /// proposes no facet and no preview, an Operator run proposes no Asset,
+    /// and preview bytes need a proposed preview first.
     NotAllowed,
+    /// The host refused a preview write.
+    Write,
+}
+
+impl fmt::Display for ContextError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Read => "the candidate could not be read",
+            Self::AlreadyProposed => "the run already made this proposal",
+            Self::InvalidProposal => "the proposal is not well formed",
+            Self::NotAllowed => "the context does not allow this",
+            Self::Write => "the preview could not be written",
+        })
+    }
+}
+
+impl std::error::Error for ContextError {}
+
+/// Where the host keeps the bytes of a preview an Operator writes. The host
+/// supplies it; the Operator reaches it only through
+/// [`AssetContext::write_preview`].
+pub trait Output {
+    /// Keep `bytes`, after the bytes of every earlier write.
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<()>;
 }
 
 /// Which kind of plugin a context serves.
@@ -183,10 +213,14 @@ pub struct AssetContext<'a> {
     kind: RunKind,
     candidate: &'a mut dyn Candidate,
     media_type: Option<&'a str>,
+    /// Where preview bytes go: only an Operator run has one.
+    output: Option<&'a mut dyn Output>,
     log: &'a mut dyn FnMut(&str),
     cancelled: &'a dyn Fn() -> bool,
     proposal: Option<AssetProposal>,
     facets: Vec<FacetProposal>,
+    preview: Option<AssetProposal>,
+    preview_bytes: u64,
     broken: Option<String>,
 }
 
@@ -195,6 +229,7 @@ impl<'a> AssetContext<'a> {
         kind: RunKind,
         candidate: &'a mut dyn Candidate,
         media_type: Option<&'a str>,
+        output: Option<&'a mut dyn Output>,
         log: &'a mut dyn FnMut(&str),
         cancelled: &'a dyn Fn() -> bool,
     ) -> Self {
@@ -202,10 +237,13 @@ impl<'a> AssetContext<'a> {
             kind,
             candidate,
             media_type,
+            output,
             log,
             cancelled,
             proposal: None,
             facets: Vec::new(),
+            preview: None,
+            preview_bytes: 0,
             broken: None,
         }
     }
@@ -273,6 +311,41 @@ impl AssetContext<'_> {
         Ok(())
     }
 
+    /// Propose the one preview of the version this Operator run reads: a
+    /// browser-ready image the host keeps as a new, derived Asset. The host
+    /// mints its ids, hashes its bytes and links it to the version.
+    pub fn propose_preview(&mut self, proposal: AssetProposal) -> Result<(), ContextError> {
+        if self.kind != RunKind::Operator {
+            self.broken = Some("a source run proposed a preview".into());
+            return Err(ContextError::NotAllowed);
+        }
+        if self.preview.is_some() {
+            self.broken = Some("proposed more than one preview".into());
+            return Err(ContextError::AlreadyProposed);
+        }
+        if !proposal.is_well_formed() {
+            return Err(ContextError::InvalidProposal);
+        }
+        self.preview = Some(proposal);
+        Ok(())
+    }
+
+    /// Write the next bytes of the proposed preview to the host.
+    pub fn write_preview(&mut self, bytes: &[u8]) -> Result<(), ContextError> {
+        let Some(output) = self.output.as_deref_mut() else {
+            self.broken = Some("a source run wrote preview bytes".into());
+            return Err(ContextError::NotAllowed);
+        };
+        if self.preview.is_none() {
+            self.broken
+                .get_or_insert_with(|| "wrote preview bytes before proposing a preview".into());
+            return Err(ContextError::NotAllowed);
+        }
+        output.write(bytes).map_err(|_| ContextError::Write)?;
+        self.preview_bytes += bytes.len() as u64;
+        Ok(())
+    }
+
     /// Write one log line through the host.
     pub fn log(&mut self, line: &str) {
         (self.log)(line);
@@ -310,6 +383,13 @@ pub trait Operator: Send + Sync {
     /// The host runs it only over a version with one of these media types.
     fn accepts(&self) -> &[&str];
 
+    /// Whether this Operator makes previews through
+    /// [`AssetContext::propose_preview`]. The host refuses a preview from an
+    /// Operator that did not say so when it registered.
+    fn makes_previews(&self) -> bool {
+        false
+    }
+
     /// Read one Asset version through `context` and propose facet values.
     fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError>;
 }
@@ -321,6 +401,20 @@ pub enum OperatorError {
     Unsupported,
     /// The Operator could not finish.
     Failed(String),
+    /// The Operator stopped because the host refused a preview write.
+    Output,
+}
+
+/// `?` on a context call reports a refused preview write as
+/// [`OperatorError::Output`], and any other refusal as a failure with its
+/// text.
+impl From<ContextError> for OperatorError {
+    fn from(error: ContextError) -> Self {
+        match error {
+            ContextError::Write => Self::Output,
+            other => Self::Failed(other.to_string()),
+        }
+    }
 }
 
 /// A facet value an Operator proposes.
@@ -342,15 +436,23 @@ pub struct FacetProposal {
     pub value: FacetValue,
 }
 
-/// An Operator run that finished, with what it proposed. The producer and
-/// the grants come from the Operator's registration, never from the run.
-/// Nothing here is checked yet: the host checks it before it stores it.
+/// An Operator run that finished, with what it proposed. The producer, the
+/// grants and `makes_previews` come from the Operator's registration, never
+/// from the run. Nothing here is checked yet: the host checks it before it
+/// stores it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FacetProposals {
+pub struct OperatorProposals {
     pub producer_id: String,
     pub producer_version: String,
     pub grants: Vec<String>,
     pub proposals: Vec<FacetProposal>,
+    /// Whether the Operator registered as one that makes previews.
+    pub makes_previews: bool,
+    /// The preview the run proposed, if it proposed one.
+    pub preview: Option<AssetProposal>,
+    /// How many preview bytes the context passed on to the host's
+    /// [`Output`].
+    pub preview_bytes: u64,
 }
 
 /// An Operator as the Registry recorded it when it registered. Core takes
@@ -360,6 +462,7 @@ pub struct RegisteredOperator {
     version: String,
     writes: Vec<String>,
     accepts: Vec<String>,
+    makes_previews: bool,
     operator: Box<dyn Operator>,
 }
 
@@ -382,6 +485,11 @@ impl RegisteredOperator {
     /// The media types the Operator listed when it registered.
     pub fn accepts(&self) -> &[String] {
         &self.accepts
+    }
+
+    /// Whether the Operator registered as one that makes previews.
+    pub fn makes_previews(&self) -> bool {
+        self.makes_previews
     }
 
     /// Whether the Operator registered to accept exactly `media_type`.
@@ -520,6 +628,7 @@ impl Registry {
             version: operator.version().to_owned(),
             writes: operator.writes().iter().map(|&w| w.to_owned()).collect(),
             accepts: operator.accepts().iter().map(|&m| m.to_owned()).collect(),
+            makes_previews: operator.makes_previews(),
             operator,
         });
     }
@@ -624,7 +733,7 @@ impl Registry {
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Accepted, ExecutionError> {
         let source = self.source(id).ok_or(ExecutionError::UnknownSource)?;
-        let mut context = AssetContext::new(RunKind::Source, candidate, None, log, cancelled);
+        let mut context = AssetContext::new(RunKind::Source, candidate, None, None, log, cancelled);
         let outcome = source.run(&mut context);
         if context.is_cancelled() {
             return Err(ExecutionError::Cancelled);
@@ -650,17 +759,19 @@ impl Registry {
 
     /// Run the Operator registered as `id` over one Asset version's bytes,
     /// whose recorded media type is `media_type`. An Operator that did not
-    /// register to accept that media type does not run. The result names the
-    /// producer and the grants from the Operator's registration. It does not
-    /// check the proposals; the host does.
+    /// register to accept that media type does not run. Preview bytes the
+    /// Operator writes go to `output`. The result names the producer and the
+    /// grants from the Operator's registration. It does not check the
+    /// proposals; the host does.
     pub fn execute_operator(
         &self,
         id: &str,
         candidate: &mut dyn Candidate,
         media_type: &str,
+        output: &mut dyn Output,
         log: &mut dyn FnMut(&str),
         cancelled: &dyn Fn() -> bool,
-    ) -> Result<FacetProposals, ExecutionError> {
+    ) -> Result<OperatorProposals, ExecutionError> {
         let entry = self.operator(id).ok_or(ExecutionError::UnknownOperator)?;
         if !entry.accepts_media_type(media_type) {
             return Err(ExecutionError::NotAccepted);
@@ -669,6 +780,7 @@ impl Registry {
             RunKind::Operator,
             candidate,
             Some(media_type),
+            Some(output),
             log,
             cancelled,
         );
@@ -679,16 +791,20 @@ impl Registry {
         match outcome {
             Err(OperatorError::Unsupported) => return Err(ExecutionError::Unsupported),
             Err(OperatorError::Failed(reason)) => return Err(ExecutionError::Failed(reason)),
+            Err(OperatorError::Output) => return Err(ExecutionError::Output),
             Ok(()) => {}
         }
         if let Some(reason) = context.broken {
             return Err(ExecutionError::Failed(reason));
         }
-        Ok(FacetProposals {
+        Ok(OperatorProposals {
             producer_id: entry.id.clone(),
             producer_version: entry.version.clone(),
             grants: entry.writes.clone(),
             proposals: context.facets,
+            makes_previews: entry.makes_previews,
+            preview: context.preview,
+            preview_bytes: context.preview_bytes,
         })
     }
 
@@ -768,6 +884,16 @@ pub trait Pack {
     /// `register_pack` hands the pack a staging Registry and checks what it
     /// registered before any of it joins the live one.
     fn register(&self, registry: &mut Registry);
+}
+
+/// A host destination that drops every preview byte, for tests.
+#[cfg(test)]
+struct Discard;
+#[cfg(test)]
+impl Output for Discard {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1257,6 +1383,7 @@ mod operator_registration {
                 "test.op",
                 &mut NoBytes,
                 "image/x-test",
+                &mut Discard,
                 &mut |_| {},
                 &|| false,
             )
@@ -1372,13 +1499,14 @@ mod operator_execution {
     fn run(
         script: fn(&mut AssetContext<'_>) -> Result<(), OperatorError>,
         bytes: &[u8],
-    ) -> Result<FacetProposals, ExecutionError> {
+    ) -> Result<OperatorProposals, ExecutionError> {
         let mut registry = Registry::new();
         registry.register_pack(&TestPack(script)).unwrap();
         registry.execute_operator(
             "test.op",
             &mut Bytes(bytes.to_vec()),
             "image/x-test",
+            &mut Discard,
             &mut |_| {},
             &|| false,
         )
@@ -1443,6 +1571,7 @@ mod operator_execution {
                 "test.op",
                 &mut Bytes(b"I".to_vec()),
                 "image/x-test",
+                &mut Discard,
                 &mut |line| lines.push(line.to_owned()),
                 &|| false,
             )
@@ -1522,6 +1651,7 @@ mod operator_execution {
                 "test.op",
                 &mut Bytes(b"I".to_vec()),
                 "image/x-test",
+                &mut Discard,
                 &mut |_| {},
                 &|| true
             ),
@@ -1537,6 +1667,7 @@ mod operator_execution {
                 "test.op",
                 &mut Bytes(vec![]),
                 "image/x-test",
+                &mut Discard,
                 &mut |_| {},
                 &|| false
             ),
@@ -1638,8 +1769,15 @@ mod pack_registration {
         }
     }
 
-    fn runs(registry: &Registry, id: &str) -> Result<FacetProposals, ExecutionError> {
-        registry.execute_operator(id, &mut NoBytes, "image/x-test", &mut |_| {}, &|| false)
+    fn runs(registry: &Registry, id: &str) -> Result<OperatorProposals, ExecutionError> {
+        registry.execute_operator(
+            id,
+            &mut NoBytes,
+            "image/x-test",
+            &mut Discard,
+            &mut |_| {},
+            &|| false,
+        )
     }
 
     fn with_earlier_pack() -> Registry {
@@ -1895,8 +2033,15 @@ mod accepted_media_types {
         }
     }
 
-    fn execute(registry: &Registry, media_type: &str) -> Result<FacetProposals, ExecutionError> {
-        registry.execute_operator("test.op", &mut NoBytes, media_type, &mut |_| {}, &|| false)
+    fn execute(registry: &Registry, media_type: &str) -> Result<OperatorProposals, ExecutionError> {
+        registry.execute_operator(
+            "test.op",
+            &mut NoBytes,
+            media_type,
+            &mut Discard,
+            &mut |_| {},
+            &|| false,
+        )
     }
 
     #[test]
@@ -2014,6 +2159,7 @@ mod accepted_media_types {
                 "test.reads",
                 &mut NoBytes,
                 "image/png",
+                &mut Discard,
                 &mut |_| {},
                 &|| false,
             )
@@ -2046,5 +2192,301 @@ mod accepted_media_types {
             .execute_source("test.source", &mut NoBytes, &mut |_| {}, &|| false)
             .unwrap();
         assert!(saw_none.load(Ordering::SeqCst));
+    }
+}
+
+#[cfg(test)]
+mod preview_output {
+    use super::*;
+
+    struct Bytes(Vec<u8>);
+    impl Candidate for Bytes {
+        fn size(&self) -> u64 {
+            self.0.len() as u64
+        }
+        fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+            let start = (offset as usize).min(self.0.len());
+            let n = buf.len().min(self.0.len() - start);
+            buf[..n].copy_from_slice(&self.0[start..start + n]);
+            Ok(n)
+        }
+    }
+
+    /// The host's destination: it keeps every write, or refuses them all.
+    #[derive(Default)]
+    struct Kept {
+        bytes: Vec<u8>,
+        writes: usize,
+        refuse: bool,
+    }
+    impl Output for Kept {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+            self.writes += 1;
+            if self.refuse {
+                return Err(std::io::Error::other("the disk is full"));
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(())
+        }
+    }
+
+    type Script = fn(&mut AssetContext<'_>) -> Result<(), OperatorError>;
+
+    struct Previewing {
+        makes_previews: bool,
+        script: Script,
+    }
+    impl Operator for Previewing {
+        fn id(&self) -> &str {
+            "test.preview"
+        }
+        fn version(&self) -> &str {
+            "1.2.3"
+        }
+        fn writes(&self) -> &[&str] {
+            &[]
+        }
+        fn accepts(&self) -> &[&str] {
+            &["image/png"]
+        }
+        fn makes_previews(&self) -> bool {
+            self.makes_previews
+        }
+        fn run(&self, context: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            (self.script)(context)
+        }
+    }
+
+    /// An Operator that declares nothing about previews.
+    struct Plain;
+    impl Operator for Plain {
+        fn id(&self) -> &str {
+            "test.plain"
+        }
+        fn version(&self) -> &str {
+            "1"
+        }
+        fn writes(&self) -> &[&str] {
+            &[]
+        }
+        fn accepts(&self) -> &[&str] {
+            &["image/png"]
+        }
+        fn run(&self, _: &mut AssetContext<'_>) -> Result<(), OperatorError> {
+            Ok(())
+        }
+    }
+
+    fn run(script: Script, output: &mut Kept) -> Result<OperatorProposals, ExecutionError> {
+        let mut registry = Registry::new();
+        registry.register_operator(Box::new(Previewing {
+            makes_previews: true,
+            script,
+        }));
+        registry.execute_operator(
+            "test.preview",
+            &mut Bytes(b"png".to_vec()),
+            "image/png",
+            output,
+            &mut |_| {},
+            &|| false,
+        )
+    }
+
+    fn jpeg() -> AssetProposal {
+        AssetProposal::new("image", "image/jpeg")
+    }
+
+    #[test]
+    fn preview_registration_records_whether_an_operator_makes_previews() {
+        let mut registry = Registry::new();
+        registry.register_operator(Box::new(Previewing {
+            makes_previews: true,
+            script: |_| Ok(()),
+        }));
+        registry.register_operator(Box::new(Plain));
+        assert!(registry.operator("test.preview").unwrap().makes_previews());
+        assert!(!registry.operator("test.plain").unwrap().makes_previews());
+        let run = registry
+            .execute_operator(
+                "test.plain",
+                &mut Bytes(vec![]),
+                "image/png",
+                &mut Kept::default(),
+                &mut |_| {},
+                &|| false,
+            )
+            .unwrap();
+        assert!(!run.makes_previews);
+        assert_eq!(run.preview, None);
+        assert_eq!(run.preview_bytes, 0);
+    }
+
+    #[test]
+    fn preview_proposed_and_written_reaches_the_output_and_the_result() {
+        let mut output = Kept::default();
+        let run = run(
+            |context| {
+                context.propose_preview(jpeg())?;
+                context.write_preview(b"01234")?;
+                context.write_preview(b"56789")?;
+                Ok(())
+            },
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output.bytes, b"0123456789");
+        assert!(run.makes_previews);
+        assert_eq!(run.preview, Some(jpeg()));
+        assert_eq!(run.preview_bytes, 10);
+        assert_eq!(run.producer_id, "test.preview");
+        assert_eq!(run.producer_version, "1.2.3");
+    }
+
+    #[test]
+    fn preview_proposed_by_a_source_is_refused_and_fails_its_run() {
+        struct Proposer;
+        impl Source for Proposer {
+            fn id(&self) -> &str {
+                "test.source"
+            }
+            fn version(&self) -> &str {
+                "1"
+            }
+            fn run(&self, context: &mut AssetContext<'_>) -> Result<(), SourceError> {
+                assert_eq!(
+                    context.propose_preview(AssetProposal::new("image", "image/jpeg")),
+                    Err(ContextError::NotAllowed)
+                );
+                assert_eq!(
+                    context.write_preview(b"bytes"),
+                    Err(ContextError::NotAllowed)
+                );
+                context
+                    .propose_asset(AssetProposal::new("image", "image/png"))
+                    .map_err(|_| SourceError::Failed("p".into()))
+            }
+        }
+        let mut registry = Registry::new();
+        registry.register_source(Box::new(Proposer));
+        let outcome =
+            registry.execute_source("test.source", &mut Bytes(vec![]), &mut |_| {}, &|| false);
+        assert!(
+            matches!(outcome, Err(ExecutionError::Failed(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn preview_proposed_twice_fails_the_run() {
+        let outcome = run(
+            |context| {
+                context.propose_preview(jpeg())?;
+                assert_eq!(
+                    context.propose_preview(AssetProposal::new("image", "image/png")),
+                    Err(ContextError::AlreadyProposed)
+                );
+                context.write_preview(b"bytes")?;
+                Ok(())
+            },
+            &mut Kept::default(),
+        );
+        assert_eq!(
+            outcome,
+            Err(ExecutionError::Failed(
+                "proposed more than one preview".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn preview_written_before_any_proposal_fails_the_run() {
+        let mut output = Kept::default();
+        let outcome = run(
+            |context| {
+                assert_eq!(
+                    context.write_preview(b"bytes"),
+                    Err(ContextError::NotAllowed)
+                );
+                context.propose_preview(jpeg())?;
+                context.write_preview(b"bytes")?;
+                Ok(())
+            },
+            &mut output,
+        );
+        assert_eq!(
+            outcome,
+            Err(ExecutionError::Failed(
+                "wrote preview bytes before proposing a preview".into()
+            ))
+        );
+        assert_eq!(
+            output.bytes, b"bytes",
+            "the first write never reached the host"
+        );
+    }
+
+    #[test]
+    fn preview_malformed_proposal_is_refused() {
+        let outcome = run(
+            |context| {
+                assert_eq!(
+                    context.propose_preview(AssetProposal::new("image", "JPEG")),
+                    Err(ContextError::InvalidProposal)
+                );
+                Ok(())
+            },
+            &mut Kept::default(),
+        )
+        .unwrap();
+        assert_eq!(outcome.preview, None);
+    }
+
+    #[test]
+    fn preview_write_the_output_refuses_is_a_write_error() {
+        let mut output = Kept {
+            refuse: true,
+            ..Kept::default()
+        };
+        let run = run(
+            |context| {
+                context.propose_preview(jpeg())?;
+                assert_eq!(context.write_preview(b"bytes"), Err(ContextError::Write));
+                Ok(())
+            },
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(output.writes, 1);
+        assert_eq!(run.preview_bytes, 0);
+    }
+
+    #[test]
+    fn preview_write_error_converts_to_an_output_error() {
+        assert_eq!(
+            OperatorError::from(ContextError::Write),
+            OperatorError::Output
+        );
+        assert!(matches!(
+            OperatorError::from(ContextError::Read),
+            OperatorError::Failed(_)
+        ));
+    }
+
+    #[test]
+    fn preview_output_error_stops_the_run_as_an_output_error() {
+        let mut output = Kept {
+            refuse: true,
+            ..Kept::default()
+        };
+        let outcome = run(
+            |context| {
+                context.propose_preview(jpeg())?;
+                context.write_preview(b"bytes")?;
+                Ok(())
+            },
+            &mut output,
+        );
+        assert_eq!(outcome, Err(ExecutionError::Output));
     }
 }

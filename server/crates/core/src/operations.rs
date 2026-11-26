@@ -9,8 +9,8 @@ use crate::{
     storage::objects::ObjectStore,
 };
 use sidereal_plugin_abi::{
-    Candidate, ExecutionError, FacetProposals, FacetScope, FacetType, FacetValue, Registry,
-    MAX_COUNT,
+    Candidate, ExecutionError, FacetScope, FacetType, FacetValue, OperatorProposals, Output,
+    Registry, MAX_COUNT,
 };
 use std::{
     fs::File,
@@ -84,6 +84,16 @@ impl Candidate for ObjectBytes {
         let remaining = self.size.saturating_sub(offset);
         let len = buf.len().min(remaining.try_into().unwrap_or(usize::MAX));
         self.file.read_at(&mut buf[..len], offset)
+    }
+}
+
+/// Where an Operator's preview bytes go. Core keeps no preview yet, so it
+/// refuses every write.
+struct NoPreviews;
+
+impl Output for NoPreviews {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<()> {
+        Err(std::io::Error::other("this host keeps no previews"))
     }
 }
 
@@ -246,7 +256,7 @@ async fn execute(
     operator_id: &str,
     version: &Version,
     cancelled: &Arc<AtomicBool>,
-) -> Result<FacetProposals, String> {
+) -> Result<OperatorProposals, String> {
     let objects = objects.clone();
     let registry = registry.clone();
     let operator_id = operator_id.to_owned();
@@ -266,6 +276,7 @@ async fn execute(
                 &operator_id,
                 &mut ObjectBytes { file, size },
                 &media_type,
+                &mut NoPreviews,
                 &mut |line| eprintln!("operator {operator_id}: {line:?}"),
                 &|| cancelled.load(Ordering::SeqCst),
             )
@@ -295,7 +306,7 @@ fn cleaned(reason: &str) -> String {
 /// Check every proposal against the Registry before any is stored: its
 /// facet has a schema, it is in the Operator's registered grants, and its
 /// value fits the schema's type. The reason names the first facet refused.
-fn check(registry: &Registry, proposals: &FacetProposals) -> Result<(), String> {
+fn check(registry: &Registry, proposals: &OperatorProposals) -> Result<(), String> {
     for proposal in &proposals.proposals {
         let name = &proposal.name;
         let Some(declared) = registry.facet_schema(name) else {
@@ -365,7 +376,7 @@ async fn store(
     run_id: Uuid,
     version_id: Uuid,
     version: &Version,
-    proposals: &FacetProposals,
+    proposals: &OperatorProposals,
 ) -> Result<Result<(), String>, sqlx::Error> {
     let mut tx = database.pool().begin().await?;
     let mut used: Vec<_> = proposals
