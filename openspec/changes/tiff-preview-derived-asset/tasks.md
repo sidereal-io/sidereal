@@ -40,7 +40,7 @@
 
 ## 6. Journey [depends-on: 4, 5]
 
-- [ ] 6.1 [medium] In the browser journey (`web/e2e/upload.spec.ts`), Nova uploads an 8-bit RGB TIFF built by the test, sees it in the Library with its image loaded from `/api/assets/<id>/preview` (the `<img>` has a natural width above 0), opens it, and sees `Format` `TIFF` first, then its width and height and the image, before and after a reload. In `instance-verify`, also upload an image and fetch its preview using the shipped container and app user. The whole gate passes (image-upload "The Library shows each image through its preview"; asset-page "A TIFF's page") (verify: `mise run e2e`, then `mise run instance-verify` and `mise run check`)
+- [x] 6.1 [medium] In the browser journey (`web/e2e/upload.spec.ts`), Nova uploads an 8-bit RGB TIFF built by the test, sees it in the Library with its image loaded from `/api/assets/<id>/preview` (the `<img>` has a natural width above 0), opens it, and sees `Format` `TIFF` first, then its width and height and the image, before and after a reload. In `instance-verify`, also upload an image and fetch its preview using the shipped container and app user. The whole gate passes (image-upload "The Library shows each image through its preview"; asset-page "A TIFF's page") (verify: `mise run e2e`, then `mise run instance-verify` and `mise run check`) (✓ `mise run e2e`, `mise run instance-verify` and `mise run check` passed)
 
 ## Deviations Ledger
 

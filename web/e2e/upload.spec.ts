@@ -8,9 +8,11 @@ import { test, expect, type Page } from "@playwright/test";
 // one pick, uploads the PNG's bytes again under another name and is told it
 // is already there, and still sees exactly the two images after the runner
 // restarts the server. Then Nova opens the PNG's asset page and reads its
-// format, file size, height and width, before and after a reload. The Rust
-// process test (server/crates/server/tests/journey.rs) checks ids and bytes;
-// this test checks what Nova sees.
+// format, file size, height and width, before and after a reload. Last,
+// Nova uploads a TIFF, which the browser cannot show itself, and sees it
+// through its preview in the Library and on its page. The Rust process test
+// (server/crates/server/tests/journey.rs) checks ids and bytes; this test
+// checks what Nova sees.
 const runDir = process.env.SIDEREAL_E2E_RUN_DIR ?? "";
 const runnerPid = Number(process.env.SIDEREAL_E2E_RUNNER_PID);
 const fixtures = fileURLToPath(
@@ -25,6 +27,49 @@ async function signIn(page: Page, button: "Claim" | "Sign in") {
   await page.getByLabel("Username").fill("nova");
   await page.getByLabel("Password").fill("correct-horse-battery");
   await page.getByRole("button", { name: button }).click();
+}
+
+// An 8-bit RGB TIFF of `width` by `height`: little-endian, one uncompressed
+// strip, built here so the journey needs no committed file.
+function rgbTiff(width: number, height: number): Buffer {
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      pixels.set([(x * 2) % 256, (y * 3) % 256, 120], (y * width + x) * 3);
+    }
+  }
+  // Header, then the pixels, then the three bits-per-sample values, then
+  // the directory.
+  const bitsAt = 8 + pixels.length;
+  const directoryAt = bitsAt + 6;
+  const entries: [tag: number, type: number, value: number, count?: number][] =
+    [
+      [256, 4, width],
+      [257, 4, height],
+      [258, 3, bitsAt, 3],
+      [259, 3, 1],
+      [262, 3, 2],
+      [273, 4, 8],
+      [277, 3, 3],
+      [278, 4, height],
+      [279, 4, pixels.length],
+      [284, 3, 1],
+    ];
+  const directory = Buffer.alloc(2 + entries.length * 12 + 4);
+  directory.writeUInt16LE(entries.length, 0);
+  entries.forEach(([tag, type, value, count = 1], index) => {
+    const at = 2 + index * 12;
+    directory.writeUInt16LE(tag, at);
+    directory.writeUInt16LE(type, at + 2);
+    directory.writeUInt32LE(count, at + 4);
+    if (type === 3 && count === 1) directory.writeUInt16LE(value, at + 8);
+    else directory.writeUInt32LE(value, at + 8);
+  });
+  const header = Buffer.from([0x49, 0x49, 0x2a, 0, 0, 0, 0, 0]);
+  header.writeUInt32LE(directoryAt, 4);
+  const bits = Buffer.alloc(6);
+  [8, 8, 8].forEach((value, index) => bits.writeUInt16LE(value, index * 2));
+  return Buffer.concat([header, pixels, bits, directory]);
 }
 
 // The image is on screen and the browser decoded it.
@@ -138,4 +183,42 @@ test("Nova opens an image's page, reads its facts, reloads it and goes back", as
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("region", { name: "Library" })).toBeVisible();
   for (const image of images) await expectShown(page, image);
+});
+
+test("Nova uploads a TIFF and sees it through its preview", async ({
+  page,
+}) => {
+  const name = "m42.tif";
+  const tiff = rgbTiff(120, 80);
+  const bytes = new Intl.NumberFormat("en-US").format(tiff.length);
+  const terms = ["Format", "File size", "Height", "Width"];
+  const values = ["TIFF", `${bytes} bytes`, "80 pixels", "120 pixels"];
+  const preview = /^\/api\/assets\/[0-9a-f-]{36}\/preview$/;
+  const expectPage = async () => {
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await expectShown(page, name);
+    await expect(page.getByRole("img", { name })).toHaveAttribute(
+      "src",
+      preview,
+    );
+    await expect(page.getByRole("term")).toHaveText(terms);
+    await expect(page.getByRole("definition")).toHaveText(values);
+  };
+
+  await page.goto("/");
+  await signIn(page, "Sign in");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload" }).click();
+  await (
+    await chooser
+  ).setFiles({ name, mimeType: "image/tiff", buffer: tiff });
+  await expect(page.getByText(`${name} was uploaded.`)).toBeVisible();
+  await expectShown(page, name);
+  await expect(page.getByRole("img", { name })).toHaveAttribute("src", preview);
+
+  await page.getByRole("link", { name }).click();
+  await expect(page).toHaveURL(/\/assets\/[0-9a-f-]{36}$/);
+  await expectPage();
+  await page.reload();
+  await expectPage();
 });
