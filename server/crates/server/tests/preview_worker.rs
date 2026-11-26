@@ -1081,6 +1081,18 @@ fn png_and_jpeg_a_subsampled_jpeg_with_separate_component_scans_is_refused() {
     );
 }
 
+/// Damage decides the reason before the layout does.
+#[test]
+fn png_and_jpeg_a_cut_off_subsampled_jpeg_with_separate_scans_could_not_be_decoded() {
+    assert_eq!(&SEPARATE_420[SEPARATE_420.len() - 2..], &[0xff, 0xd9]);
+    assert_eq!(
+        preview(&SEPARATE_420[..SEPARATE_420.len() - 2], "image/jpeg"),
+        Err(ExecutionError::Failed(
+            "the JPEG image could not be decoded".into()
+        ))
+    );
+}
+
 #[test]
 fn png_and_jpeg_a_444_jpeg_with_separate_component_scans_matches_the_reference_decode() {
     let decoded = decode(&preview(SEPARATE_444, "image/jpeg").unwrap());

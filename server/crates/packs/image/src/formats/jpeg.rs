@@ -242,7 +242,8 @@ struct Frame {
 /// A second SOI, a marker it does not know, or the end of the input before
 /// EOI is damage. A sequential frame with subsampling whose first scan
 /// holds fewer components than the frame is a layout the decoder reads
-/// wrongly, and is refused as unsupported.
+/// wrongly, and is refused as unsupported once the walk reaches EOI, so
+/// damage decides the reason first.
 fn walk(input: &mut dyn ImageInput, size: u64) -> Result<u64, JobFailure> {
     let mut bytes = Bytes::new(input, size);
     if bytes.next()? != 0xff || bytes.next()? != 0xd8 {
@@ -250,6 +251,7 @@ fn walk(input: &mut dyn ImageInput, size: u64) -> Result<u64, JobFailure> {
     }
     let mut frame: Option<Frame> = None;
     let mut scanned = false;
+    let mut unsupported = false;
     let mut pending: Option<u8> = None;
     loop {
         let marker = match pending.take() {
@@ -266,6 +268,7 @@ fn walk(input: &mut dyn ImageInput, size: u64) -> Result<u64, JobFailure> {
             }
         };
         match marker {
+            0xd9 if unsupported => return Err(JobFailure::Unsupported),
             0xd9 => return Ok(bytes.offset()),
             // APPn, COM, DQT, DHT, DRI and DNL.
             0xe0..=0xef | 0xfe | 0xdb | 0xc4 | 0xdd | 0xdc => {
@@ -307,9 +310,8 @@ fn walk(input: &mut dyn ImageInput, size: u64) -> Result<u64, JobFailure> {
                 if !scanned {
                     scanned = true;
                     if let Some(frame) = &frame {
-                        if frame.sequential && frame.subsampled && in_scan < frame.components {
-                            return Err(JobFailure::Unsupported);
-                        }
+                        unsupported =
+                            frame.sequential && frame.subsampled && in_scan < frame.components;
                     }
                 }
                 bytes.skip(u64::from(length - 3))?;
