@@ -621,9 +621,12 @@ async fn store(
         .execute(&mut *tx)
         .await?;
     }
+    // The clock time, not the transaction's start, records when the run was
+    // marked succeeded: a version's newest preview is the one whose run ended
+    // last.
     let ended = sqlx::query(
         "UPDATE public.operation_runs \
-         SET status = 'succeeded', ended_at = greatest(now(), started_at) \
+         SET status = 'succeeded', ended_at = greatest(clock_timestamp(), started_at) \
          WHERE id = $1 AND status = 'running'",
     )
     .bind(run_id)

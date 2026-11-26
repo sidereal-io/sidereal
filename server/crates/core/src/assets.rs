@@ -1,9 +1,10 @@
 //! Assets and their immutable versions in PostgreSQL (ADR-003).
 //!
 //! Core mints every id and records the hash it computed. This module finds
-//! the Asset that already holds a set of bytes, or creates an Asset with its
-//! first version, and reads them back; it offers no way to change or delete
-//! a version.
+//! the original that already holds a set of bytes, or creates an original
+//! with its first version, and reads originals back with their previews; it
+//! offers no way to change or delete a version. A derived Asset, such as a
+//! preview, is read only as the preview of its original (ADR-018).
 use crate::{
     database::{Database, DatabaseError},
     ingest::Ingested,
@@ -12,7 +13,7 @@ use sidereal_plugin_abi::Accepted;
 use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 
-/// One Asset with its current version.
+/// One original Asset with its current version.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssetRecord {
     pub id: Uuid,
@@ -21,6 +22,8 @@ pub struct AssetRecord {
     pub name: String,
     pub current_version_id: Uuid,
     pub version: VersionRecord,
+    /// Whether the current version has a preview.
+    pub has_preview: bool,
 }
 
 /// One immutable Asset version.
@@ -62,12 +65,25 @@ pub(crate) fn content_lock_key(hash: &str) -> i32 {
 const INGESTED_AT: &str =
     r#"to_char(v.ingested_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')"#;
 
+/// The preview of the version `v`: the derived version linked to it as its
+/// preview by the run with the latest recorded completion time, then the
+/// greatest run id.
+const PREVIEW: &str = "LEFT JOIN LATERAL ( \
+     SELECT l.output_version_id FROM public.asset_lineage l \
+     JOIN public.operation_runs r ON r.id = l.run_id \
+     WHERE l.input_version_id = v.id AND l.role = 'preview' \
+     ORDER BY r.ended_at DESC, r.id DESC LIMIT 1) p ON true";
+
+/// Every original with its current version and whether that version has a
+/// preview. Callers add conditions with `AND`.
 fn select() -> String {
     format!(
         "SELECT a.id, a.kind, a.name, a.current_version_id, v.id, v.content_hash, v.byte_size, \
-         v.media_type, v.source_id, v.source_version, {INGESTED_AT} \
+         v.media_type, v.source_id, v.source_version, {INGESTED_AT}, \
+         p.output_version_id IS NOT NULL \
          FROM public.assets a \
-         JOIN public.asset_versions v ON v.asset_id = a.id AND v.id = a.current_version_id"
+         JOIN public.asset_versions v ON v.asset_id = a.id AND v.id = a.current_version_id \
+         {PREVIEW} WHERE a.origin = 'source'"
     )
 }
 
@@ -77,20 +93,26 @@ fn record(row: &PgRow) -> Result<AssetRecord, sqlx::Error> {
         kind: row.try_get(1)?,
         name: row.try_get(2)?,
         current_version_id: row.try_get(3)?,
-        version: VersionRecord {
-            id: row.try_get(4)?,
-            content_hash: row.try_get(5)?,
-            byte_size: row.try_get::<i64, _>(6)? as u64,
-            media_type: row.try_get(7)?,
-            source_id: row.try_get(8)?,
-            source_version: row.try_get(9)?,
-            ingested_at: row.try_get(10)?,
-        },
+        version: version_at(row, 4)?,
+        has_preview: row.try_get(11)?,
+    })
+}
+
+/// The version whose columns start at `first`, in `select`'s order.
+fn version_at(row: &PgRow, first: usize) -> Result<VersionRecord, sqlx::Error> {
+    Ok(VersionRecord {
+        id: row.try_get(first)?,
+        content_hash: row.try_get(first + 1)?,
+        byte_size: row.try_get::<i64, _>(first + 2)? as u64,
+        media_type: row.try_get(first + 3)?,
+        source_id: row.try_get(first + 4)?,
+        source_version: row.try_get(first + 5)?,
+        ingested_at: row.try_get(first + 6)?,
     })
 }
 
 impl Database {
-    /// Every committed Asset, oldest first, then by id.
+    /// Every committed original, oldest first, then by id.
     pub async fn assets(&self) -> Result<Vec<AssetRecord>, DatabaseError> {
         let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{} ORDER BY v.ingested_at, a.id",
@@ -101,13 +123,32 @@ impl Database {
         Ok(rows.iter().map(record).collect::<Result<_, _>>()?)
     }
 
-    /// One committed Asset, when it exists.
+    /// One committed original, when it exists. A derived Asset's id reads as
+    /// missing.
     pub async fn asset(&self, id: Uuid) -> Result<Option<AssetRecord>, DatabaseError> {
-        let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} WHERE a.id = $1", select())))
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} AND a.id = $1", select())))
             .bind(id)
             .fetch_optional(self.pool())
             .await?;
         Ok(row.as_ref().map(record).transpose()?)
+    }
+
+    /// The preview version of the original `asset_id`'s current version,
+    /// when it has one.
+    pub async fn preview(&self, asset_id: Uuid) -> Result<Option<VersionRecord>, DatabaseError> {
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT pv.id, pv.content_hash, pv.byte_size, pv.media_type, pv.source_id, \
+             pv.source_version, to_char(pv.ingested_at AT TIME ZONE 'UTC', \
+             'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') \
+             FROM public.assets a \
+             JOIN public.asset_versions v ON v.asset_id = a.id AND v.id = a.current_version_id \
+             {PREVIEW} JOIN public.asset_versions pv ON pv.id = p.output_version_id \
+             WHERE a.origin = 'source' AND a.id = $1"
+        )))
+        .bind(asset_id)
+        .fetch_optional(self.pool())
+        .await?;
+        Ok(row.as_ref().map(|row| version_at(row, 0)).transpose()?)
     }
 
     /// Find the Asset with a version of `new`'s bytes, or else insert a new
@@ -133,16 +174,19 @@ impl Database {
             .bind(content_lock_key(new.content_hash))
             .execute(&mut *tx)
             .await?;
-        // The oldest matching version, of any Asset, current or not.
+        // The oldest matching version of any original, current or not. A
+        // preview's bytes never match: uploading them makes a new original.
         let existing: Option<Uuid> = sqlx::query_scalar(
-            "SELECT v.asset_id FROM public.asset_versions v WHERE v.content_hash = $1 \
+            "SELECT v.asset_id FROM public.asset_versions v \
+             JOIN public.assets a ON a.id = v.asset_id AND a.origin = 'source' \
+             WHERE v.content_hash = $1 \
              ORDER BY v.ingested_at, v.asset_id LIMIT 1",
         )
         .bind(new.content_hash)
         .fetch_optional(&mut *tx)
         .await?;
         if let Some(asset) = existing {
-            let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} WHERE a.id = $1", select())))
+            let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} AND a.id = $1", select())))
                 .bind(asset)
                 .fetch_one(&mut *tx)
                 .await?;
@@ -175,7 +219,7 @@ impl Database {
         .bind(&new.accepted.provenance.source_version)
         .execute(&mut *tx)
         .await?;
-        let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} WHERE a.id = $1", select())))
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!("{} AND a.id = $1", select())))
             .bind(asset)
             .fetch_one(&mut *tx)
             .await?;

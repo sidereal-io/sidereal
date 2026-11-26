@@ -57,6 +57,39 @@ impl Pack for TestPack {
         registry.register_source(Box::new(Recorder {
             seen: self.0.clone(),
         }));
+        registry.register_operator(Box::new(Previewer));
+    }
+}
+
+/// The bytes of every preview `test.preview` makes.
+const PREVIEW: &[u8] = b"preview bytes";
+
+/// An Operator that makes a JPEG preview holding `PREVIEW`.
+struct Previewer;
+
+impl sidereal_plugin_abi::Operator for Previewer {
+    fn id(&self) -> &str {
+        "test.preview"
+    }
+    fn version(&self) -> &str {
+        "1"
+    }
+    fn writes(&self) -> &[&str] {
+        &[]
+    }
+    fn accepts(&self) -> &[&str] {
+        &["image/x-test"]
+    }
+    fn makes_previews(&self) -> bool {
+        true
+    }
+    fn run(
+        &self,
+        context: &mut AssetContext<'_>,
+    ) -> Result<(), sidereal_plugin_abi::OperatorError> {
+        context.propose_preview(AssetProposal::new("image", "image/jpeg"))?;
+        context.write_preview(PREVIEW)?;
+        Ok(())
     }
 }
 
@@ -1076,5 +1109,216 @@ mod interrupted_ingest {
         assert_eq!(killed.fixture.staging_files(), 1);
         assert_eq!(killed.restart().await.removed, 1);
         assert_eq!(killed.fixture.staging_files(), 0);
+    }
+}
+
+mod originals {
+    use super::*;
+    use crate::operations::{run_operator, RunOutcome, RunRequest};
+
+    impl Fixture {
+        /// Run `test.preview` over `asset`'s current version; the run's id.
+        async fn preview_run(&self, asset: &AssetRecord) -> Uuid {
+            let actor: i64 = sqlx::query_scalar(
+                "INSERT INTO public.users (username, password_hash, role, created_at) \
+                 VALUES ('nova', 'hash', 'admin', now()) \
+                 ON CONFLICT (username) DO UPDATE SET username = excluded.username RETURNING id",
+            )
+            .fetch_one(&mut self.conn().await)
+            .await
+            .unwrap();
+            let outcome = run_operator(
+                &self.database,
+                &self.objects(None),
+                self.registry.clone(),
+                RunRequest {
+                    operator_id: "test.preview".into(),
+                    asset_version_id: asset.version.id,
+                    actor,
+                },
+                Arc::default(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(outcome, RunOutcome::Succeeded);
+            sqlx::query_scalar(
+                "SELECT id FROM public.operation_runs ORDER BY started_at DESC, id DESC LIMIT 1",
+            )
+            .fetch_one(&mut self.conn().await)
+            .await
+            .unwrap()
+        }
+
+        /// The derived version run `run` linked as a preview.
+        async fn made_by(&self, run: Uuid) -> Uuid {
+            sqlx::query_scalar(
+                "SELECT output_version_id FROM public.asset_lineage WHERE run_id = $1",
+            )
+            .bind(run)
+            .fetch_one(&mut self.conn().await)
+            .await
+            .unwrap()
+        }
+
+        async fn set_ended_at(&self, run: Uuid, ended_at: &str) {
+            sqlx::query(
+                "UPDATE public.operation_runs SET started_at = '2026-01-01T00:00:00Z', \
+                 ended_at = $2::timestamptz WHERE id = $1",
+            )
+            .bind(run)
+            .bind(ended_at)
+            .execute(&mut self.conn().await)
+            .await
+            .unwrap();
+        }
+
+        async fn preview_of(&self, asset: &AssetRecord) -> Option<Uuid> {
+            self.database
+                .preview(asset.id)
+                .await
+                .unwrap()
+                .map(|version| version.id)
+        }
+    }
+
+    #[tokio::test]
+    async fn originals_two_preview_runs_over_one_version_the_second_wins() {
+        let fixture = Fixture::new().await;
+        let asset = fixture.create("nebula.png", b"abc").await;
+        let first = fixture.preview_run(&asset).await;
+        let second = fixture.preview_run(&asset).await;
+        let derived: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM public.assets WHERE origin = 'derived'")
+                .fetch_one(&mut fixture.conn().await)
+                .await
+                .unwrap();
+        assert_eq!(derived, 2);
+        assert_ne!(fixture.made_by(first).await, fixture.made_by(second).await);
+        assert_eq!(
+            fixture.preview_of(&asset).await,
+            Some(fixture.made_by(second).await)
+        );
+        let preview = fixture.database.preview(asset.id).await.unwrap().unwrap();
+        assert_eq!(preview.media_type, "image/jpeg");
+        assert_eq!(preview.byte_size, PREVIEW.len() as u64);
+        assert_eq!(preview.source_id, "test.preview");
+    }
+
+    #[tokio::test]
+    async fn originals_preview_is_the_one_with_the_latest_recorded_completion_time() {
+        let fixture = Fixture::new().await;
+        let asset = fixture.create("nebula.png", b"abc").await;
+        let first = fixture.preview_run(&asset).await;
+        let second = fixture.preview_run(&asset).await;
+        fixture.set_ended_at(first, "2026-01-01T02:00:00Z").await;
+        fixture.set_ended_at(second, "2026-01-01T01:00:00Z").await;
+        assert_eq!(
+            fixture.preview_of(&asset).await,
+            Some(fixture.made_by(first).await)
+        );
+    }
+
+    #[tokio::test]
+    async fn originals_tied_completion_times_pick_the_greater_run_id() {
+        let fixture = Fixture::new().await;
+        let asset = fixture.create("nebula.png", b"abc").await;
+        let runs = [
+            fixture.preview_run(&asset).await,
+            fixture.preview_run(&asset).await,
+        ];
+        for run in runs {
+            fixture.set_ended_at(run, "2026-01-01T01:00:00Z").await;
+        }
+        let greatest: Uuid =
+            sqlx::query_scalar("SELECT id FROM public.operation_runs ORDER BY id DESC LIMIT 1")
+                .fetch_one(&mut fixture.conn().await)
+                .await
+                .unwrap();
+        assert_eq!(
+            fixture.preview_of(&asset).await,
+            Some(fixture.made_by(greatest).await)
+        );
+    }
+
+    #[tokio::test]
+    async fn originals_a_version_with_no_preview_has_none() {
+        let fixture = Fixture::new().await;
+        let asset = fixture.create("nebula.png", b"abc").await;
+        assert!(!asset.has_preview);
+        assert_eq!(fixture.preview_of(&asset).await, None);
+        assert!(
+            !fixture
+                .database
+                .asset(asset.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .has_preview
+        );
+        assert_eq!(
+            fixture.database.preview(Uuid::new_v4()).await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn originals_are_all_the_listing_holds_after_a_preview_exists() {
+        let fixture = Fixture::new().await;
+        let asset = fixture.create("nebula.png", b"abc").await;
+        let run = fixture.preview_run(&asset).await;
+        let preview = fixture.made_by(run).await;
+        let derived: Uuid =
+            sqlx::query_scalar("SELECT asset_id FROM public.asset_versions WHERE id = $1")
+                .bind(preview)
+                .fetch_one(&mut fixture.conn().await)
+                .await
+                .unwrap();
+        let listed = fixture.database.assets().await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, asset.id);
+        assert!(listed[0].has_preview);
+        assert!(
+            fixture
+                .database
+                .asset(asset.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .has_preview
+        );
+        assert_eq!(fixture.database.asset(derived).await.unwrap(), None);
+        assert_eq!(fixture.database.preview(derived).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn originals_ingest_of_a_previews_bytes_makes_a_new_original_sharing_its_object() {
+        let fixture = Fixture::new().await;
+        let asset = fixture.create("nebula.png", b"abc").await;
+        fixture.preview_run(&asset).await;
+        let preview = fixture.database.preview(asset.id).await.unwrap().unwrap();
+        let uploaded = fixture.create("copy.jpg", PREVIEW).await;
+        assert_ne!(uploaded.id, asset.id);
+        assert_eq!(uploaded.version.content_hash, preview.content_hash);
+        assert_eq!(uploaded.name, "copy.jpg");
+        assert!(fixture.object(&preview.content_hash).exists());
+        let originals: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM public.assets WHERE origin = 'source'")
+                .fetch_one(&mut fixture.conn().await)
+                .await
+                .unwrap();
+        assert_eq!(originals, 2);
+        // A second upload of the same bytes finds that original, not the
+        // preview.
+        assert_eq!(
+            found(fixture.upload("again.jpg", PREVIEW).await).id,
+            uploaded.id
+        );
+    }
+
+    fn found(outcome: Result<Ingested, IngestError>) -> AssetRecord {
+        match outcome {
+            Ok(Ingested::Found(record)) => record,
+            other => panic!("expected the existing Asset, got {other:?}"),
+        }
     }
 }
